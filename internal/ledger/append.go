@@ -13,12 +13,15 @@ import (
 const defaultLockTimeout = 5 * time.Second
 
 // cleanupTempFiles removes temporary files from the given slice within the range [start, end).
-// This is a best-effort operation; errors are silently ignored since cleanup failures
+// This is a best-effort operation; errors are intentionally ignored since cleanup failures
 // should not mask the original error that triggered the cleanup.
 func cleanupTempFiles(tempPaths []string, start, end int) {
 	for i := start; i < end; i++ {
 		if tempPaths[i] != "" {
-			os.Remove(tempPaths[i])
+			// Intentionally ignore error: this is best-effort cleanup and the file
+			// may already be removed or renamed. We don't want cleanup failures to
+			// mask the original error.
+			_ = os.Remove(tempPaths[i])
 		}
 	}
 }
@@ -86,33 +89,33 @@ func AppendWithTimeout(dir string, event Event, timeout time.Duration) (int, err
 	_, err = tempFile.Write(data)
 	if err != nil {
 		tempFile.Close()
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath) // Best-effort cleanup; don't mask the write error
 		return 0, fmt.Errorf("failed to write event data: %w", err)
 	}
 
 	// Sync to ensure data is on disk
 	if err := tempFile.Sync(); err != nil {
 		tempFile.Close()
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath) // Best-effort cleanup; don't mask the sync error
 		return 0, fmt.Errorf("failed to sync temp file: %w", err)
 	}
 
 	// Close temp file before rename
 	if err := tempFile.Close(); err != nil {
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath) // Best-effort cleanup; don't mask the close error
 		return 0, fmt.Errorf("failed to close temp file: %w", err)
 	}
 
 	// Set file permissions
 	if err := os.Chmod(tempPath, 0644); err != nil {
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath) // Best-effort cleanup; don't mask the chmod error
 		return 0, fmt.Errorf("failed to set file permissions: %w", err)
 	}
 
 	// Atomic rename to final path
 	finalPath := filepath.Join(dir, GenerateFilename(seq))
 	if err := os.Rename(tempPath, finalPath); err != nil {
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath) // Best-effort cleanup; don't mask the rename error
 		return 0, fmt.Errorf("failed to rename temp file: %w", err)
 	}
 

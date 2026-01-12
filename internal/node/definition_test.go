@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/tobias/vibefeld/internal/node"
@@ -87,7 +88,7 @@ func TestNewDefinition(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("NewDefinition(%q, %q) expected error, got nil", tt.defName, tt.content)
-				} else if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
+				} else if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
 					t.Errorf("NewDefinition(%q, %q) error = %q, want error containing %q",
 						tt.defName, tt.content, err.Error(), tt.errContains)
 				}
@@ -508,20 +509,6 @@ func TestDefinitionTimestamp(t *testing.T) {
 }
 
 // Helper functions
-
-// containsString checks if substr is contained in s.
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (substr == "" || findSubstring(s, substr))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
 
 // computeSHA256 computes the SHA256 hash of content and returns it as a hex string.
 func computeSHA256(content string) string {

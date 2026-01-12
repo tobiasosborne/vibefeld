@@ -421,10 +421,10 @@ func TestJSON_UnmarshalInvalid(t *testing.T) {
 		json string
 	}{
 		{"empty object", `{}`},
-		{"missing owner", `{"node_id":"1","acquired_at":"2025-01-01T00:00:00Z","expires_at":"2025-01-01T01:00:00Z"}`},
-		{"missing node_id", `{"owner":"agent","acquired_at":"2025-01-01T00:00:00Z","expires_at":"2025-01-01T01:00:00Z"}`},
-		{"invalid node_id", `{"node_id":"invalid","owner":"agent","acquired_at":"2025-01-01T00:00:00Z","expires_at":"2025-01-01T01:00:00Z"}`},
-		{"invalid timestamp", `{"node_id":"1","owner":"agent","acquired_at":"not-a-time","expires_at":"2025-01-01T01:00:00Z"}`},
+		{"missing owner", `{"node_id":"1","acquired_at":"2025-01-01T00:00:00.000000000Z","expires_at":"2025-01-01T01:00:00.000000000Z"}`},
+		{"missing node_id", `{"owner":"agent","acquired_at":"2025-01-01T00:00:00.000000000Z","expires_at":"2025-01-01T01:00:00.000000000Z"}`},
+		{"invalid node_id", `{"node_id":"invalid","owner":"agent","acquired_at":"2025-01-01T00:00:00.000000000Z","expires_at":"2025-01-01T01:00:00.000000000Z"}`},
+		{"invalid timestamp", `{"node_id":"1","owner":"agent","acquired_at":"not-a-time","expires_at":"2025-01-01T01:00:00.000000000Z"}`},
 		{"malformed json", `{not valid json}`},
 		{"array instead of object", `[]`},
 		{"null", `null`},

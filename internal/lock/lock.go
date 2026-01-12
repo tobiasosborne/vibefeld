@@ -95,7 +95,9 @@ func (l *Lock) Refresh(timeout time.Duration) error {
 // 1. Lock has unexported fields that json.Marshal cannot access directly
 // 2. Lock contains a sync.Mutex which must not be serialized
 // 3. JSON uses snake_case field names (node_id, acquired_at, expires_at)
-// 4. Timestamps need explicit RFC3339Nano formatting
+// 4. Timestamps use RFC3339Nano format (not RFC3339) to preserve nanosecond
+//    precision for accurate lock expiration tracking. This differs from
+//    types.Timestamp which uses RFC3339 (second precision) for ledger events.
 type lockJSON struct {
 	NodeID     string `json:"node_id"`
 	Owner      string `json:"owner"`
@@ -140,20 +142,15 @@ func (l *Lock) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	// Parse timestamps (try RFC3339Nano first, then RFC3339)
+	// Parse timestamps using RFC3339Nano (canonical format for locks).
+	// No fallback parsing - we always write RFC3339Nano, so we always read it.
 	acquiredAt, err := time.Parse(time.RFC3339Nano, lj.AcquiredAt)
 	if err != nil {
-		acquiredAt, err = time.Parse(time.RFC3339, lj.AcquiredAt)
-		if err != nil {
-			return errors.New("invalid acquired_at timestamp")
-		}
+		return errors.New("invalid acquired_at timestamp: expected RFC3339Nano format")
 	}
 	expiresAt, err := time.Parse(time.RFC3339Nano, lj.ExpiresAt)
 	if err != nil {
-		expiresAt, err = time.Parse(time.RFC3339, lj.ExpiresAt)
-		if err != nil {
-			return errors.New("invalid expires_at timestamp")
-		}
+		return errors.New("invalid expires_at timestamp: expected RFC3339Nano format")
 	}
 
 	l.nodeID = nodeID

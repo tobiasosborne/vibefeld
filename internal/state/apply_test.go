@@ -4,6 +4,7 @@
 package state
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/tobias/vibefeld/internal/ledger"
@@ -769,10 +770,10 @@ func TestApplyNodesClaimedNonExistentNode(t *testing.T) {
 	}
 
 	// Verify error message contains the node ID
-	if !containsString(err.Error(), "1") {
+	if !strings.Contains(err.Error(), "1") {
 		t.Errorf("Error message should contain node ID: got %q", err.Error())
 	}
-	if !containsString(err.Error(), "not found") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("Error message should mention 'not found': got %q", err.Error())
 	}
 }
@@ -790,10 +791,10 @@ func TestApplyNodesReleasedNonExistentNode(t *testing.T) {
 	}
 
 	// Verify error message contains the node ID
-	if !containsString(err.Error(), "1") {
+	if !strings.Contains(err.Error(), "1") {
 		t.Errorf("Error message should contain node ID: got %q", err.Error())
 	}
-	if !containsString(err.Error(), "not found") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("Error message should mention 'not found': got %q", err.Error())
 	}
 }
@@ -811,10 +812,10 @@ func TestApplyNodeValidatedNonExistentNode(t *testing.T) {
 	}
 
 	// Verify error message contains the node ID
-	if !containsString(err.Error(), "1") {
+	if !strings.Contains(err.Error(), "1") {
 		t.Errorf("Error message should contain node ID: got %q", err.Error())
 	}
-	if !containsString(err.Error(), "not found") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("Error message should mention 'not found': got %q", err.Error())
 	}
 }
@@ -832,10 +833,10 @@ func TestApplyNodeAdmittedNonExistentNode(t *testing.T) {
 	}
 
 	// Verify error message contains the node ID
-	if !containsString(err.Error(), "1") {
+	if !strings.Contains(err.Error(), "1") {
 		t.Errorf("Error message should contain node ID: got %q", err.Error())
 	}
-	if !containsString(err.Error(), "not found") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("Error message should mention 'not found': got %q", err.Error())
 	}
 }
@@ -853,10 +854,10 @@ func TestApplyNodeRefutedNonExistentNode(t *testing.T) {
 	}
 
 	// Verify error message contains the node ID
-	if !containsString(err.Error(), "1") {
+	if !strings.Contains(err.Error(), "1") {
 		t.Errorf("Error message should contain node ID: got %q", err.Error())
 	}
-	if !containsString(err.Error(), "not found") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("Error message should mention 'not found': got %q", err.Error())
 	}
 }
@@ -874,10 +875,10 @@ func TestApplyNodeArchivedNonExistentNode(t *testing.T) {
 	}
 
 	// Verify error message contains the node ID
-	if !containsString(err.Error(), "1") {
+	if !strings.Contains(err.Error(), "1") {
 		t.Errorf("Error message should contain node ID: got %q", err.Error())
 	}
-	if !containsString(err.Error(), "not found") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("Error message should mention 'not found': got %q", err.Error())
 	}
 }
@@ -895,26 +896,10 @@ func TestApplyTaintRecomputedOnNonExistentNode(t *testing.T) {
 	}
 
 	// Verify error message contains the node ID
-	if !containsString(err.Error(), "1") {
+	if !strings.Contains(err.Error(), "1") {
 		t.Errorf("Error message should contain node ID: got %q", err.Error())
 	}
-	if !containsString(err.Error(), "not found") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("Error message should mention 'not found': got %q", err.Error())
 	}
-}
-
-// containsString checks if s contains substr.
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
-}
-
-// findSubstring returns true if substr is found in s.
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

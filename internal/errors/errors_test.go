@@ -3,6 +3,7 @@ package errors
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -144,7 +145,7 @@ func TestErrorInterface(t *testing.T) {
 			if errStr == "" {
 				t.Error("Error() returned empty string")
 			}
-			if !containsSubstring(errStr, tt.wantContain) {
+			if !strings.Contains(errStr, tt.wantContain) {
 				t.Errorf("Error() = %q, want to contain %q", errStr, tt.wantContain)
 			}
 		})
@@ -320,7 +321,7 @@ func TestNewf(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := Newf(tt.code, tt.format, tt.args...)
 			errStr := err.Error()
-			if !containsSubstring(errStr, tt.want) {
+			if !strings.Contains(errStr, tt.want) {
 				t.Errorf("Newf().Error() = %q, want to contain %q", errStr, tt.want)
 			}
 		})
@@ -422,17 +423,3 @@ func TestExitCodeFunc(t *testing.T) {
 	}
 }
 
-// containsSubstring is a helper for checking if a string contains a substring
-func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

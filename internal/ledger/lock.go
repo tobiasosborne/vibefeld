@@ -91,8 +91,9 @@ func (l *LedgerLock) tryAcquire(agentID string) error {
 		AcquiredAt: time.Now(),
 	}
 	if err := json.NewEncoder(f).Encode(&meta); err != nil {
-		// Clean up on failure
-		os.Remove(l.lockPath)
+		// Best-effort cleanup: remove the lock file we just created.
+		// Ignore error since we're already returning an error and don't want to mask it.
+		_ = os.Remove(l.lockPath)
 		return err
 	}
 

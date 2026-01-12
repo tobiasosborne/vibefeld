@@ -3,6 +3,7 @@ package render
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/tobias/vibefeld/internal/errors"
@@ -108,7 +109,7 @@ func TestRenderError_GenericError(t *testing.T) {
 				t.Error("Message is empty, want error message")
 			}
 
-			if !containsSubstring(result.Message, tt.err.Error()) {
+			if !strings.Contains(result.Message, tt.err.Error()) {
 				t.Errorf("Message = %q, want to contain %q", result.Message, tt.err.Error())
 			}
 		})
@@ -157,7 +158,7 @@ func TestRenderAFError_AlreadyClaimed(t *testing.T) {
 	}
 
 	for _, want := range wantSuggestions {
-		if !containsSubstring(recoveryText, want) {
+		if !strings.Contains(recoveryText, want) {
 			t.Errorf("Recovery suggestions missing %q, got: %v", want, result.Recovery)
 		}
 	}
@@ -177,7 +178,7 @@ func TestRenderAFError_NotClaimHolder(t *testing.T) {
 	}
 
 	recoveryText := fmt.Sprintf("%v", result.Recovery)
-	if !containsSubstring(recoveryText, "af claim") {
+	if !strings.Contains(recoveryText, "af claim") {
 		t.Errorf("Recovery suggestions missing 'af claim', got: %v", result.Recovery)
 	}
 }
@@ -202,7 +203,7 @@ func TestRenderAFError_NodeBlocked(t *testing.T) {
 	}
 
 	for _, want := range wantSuggestions {
-		if !containsSubstring(recoveryText, want) {
+		if !strings.Contains(recoveryText, want) {
 			t.Errorf("Recovery suggestions missing %q, got: %v", want, result.Recovery)
 		}
 	}
@@ -222,7 +223,7 @@ func TestRenderAFError_InvalidParent(t *testing.T) {
 	}
 
 	recoveryText := fmt.Sprintf("%v", result.Recovery)
-	if !containsSubstring(recoveryText, "af status") {
+	if !strings.Contains(recoveryText, "af status") {
 		t.Errorf("Recovery suggestions missing 'af status', got: %v", result.Recovery)
 	}
 }
@@ -256,7 +257,7 @@ func TestRenderAFError_LedgerCorrupted(t *testing.T) {
 			}
 
 			recoveryText := fmt.Sprintf("%v", result.Recovery)
-			if !containsSubstring(recoveryText, tt.want) {
+			if !strings.Contains(recoveryText, tt.want) {
 				t.Errorf("Recovery suggestions missing %q, got: %v", tt.want, result.Recovery)
 			}
 		})
@@ -309,17 +310,17 @@ func TestFormatCLI_SingleRecovery(t *testing.T) {
 	}
 
 	// Should contain the error code
-	if !containsSubstring(result, "INVALID_PARENT") {
+	if !strings.Contains(result, "INVALID_PARENT") {
 		t.Errorf("FormatCLI missing code, got: %q", result)
 	}
 
 	// Should contain the message
-	if !containsSubstring(result, "parent node 1.5 does not exist") {
+	if !strings.Contains(result, "parent node 1.5 does not exist") {
 		t.Errorf("FormatCLI missing message, got: %q", result)
 	}
 
 	// Should contain the recovery suggestion
-	if !containsSubstring(result, "Check parent node exists") {
+	if !strings.Contains(result, "Check parent node exists") {
 		t.Errorf("FormatCLI missing recovery suggestion, got: %q", result)
 	}
 }
@@ -345,7 +346,7 @@ func TestFormatCLI_MultipleRecovery(t *testing.T) {
 
 	// Should contain all recovery suggestions
 	for _, suggestion := range rendered.Recovery {
-		if !containsSubstring(result, suggestion) {
+		if !strings.Contains(result, suggestion) {
 			t.Errorf("FormatCLI missing suggestion %q, got: %q", suggestion, result)
 		}
 	}
@@ -367,11 +368,11 @@ func TestFormatCLI_NoRecovery(t *testing.T) {
 	}
 
 	// Should still contain code and message
-	if !containsSubstring(result, "UNKNOWN_ERROR") {
+	if !strings.Contains(result, "UNKNOWN_ERROR") {
 		t.Errorf("FormatCLI missing code, got: %q", result)
 	}
 
-	if !containsSubstring(result, "an unknown error occurred") {
+	if !strings.Contains(result, "an unknown error occurred") {
 		t.Errorf("FormatCLI missing message, got: %q", result)
 	}
 }
@@ -480,7 +481,7 @@ func TestRenderError_WrappedAFError(t *testing.T) {
 	}
 
 	// Message should contain context from wrapping
-	if !containsSubstring(result.Message, "validating") {
+	if !strings.Contains(result.Message, "validating") {
 		t.Errorf("Message missing wrapping context, got: %q", result.Message)
 	}
 }
@@ -529,17 +530,3 @@ func TestRenderError_AllErrorCodes(t *testing.T) {
 	}
 }
 
-// containsSubstring is a helper for checking if a string contains a substring
-func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
