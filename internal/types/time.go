@@ -18,6 +18,13 @@ func Now() Timestamp {
 	return Timestamp{t: time.Now().UTC().Truncate(time.Second)}
 }
 
+// FromTime converts a time.Time to a Timestamp.
+// The time is converted to UTC. Note that when serialized to JSON,
+// precision is truncated to seconds (RFC3339 format).
+func FromTime(t time.Time) Timestamp {
+	return Timestamp{t: t.UTC()}
+}
+
 // ParseTimestamp parses an ISO8601 formatted timestamp string.
 // Expected format: "2025-01-11T10:05:00Z"
 func ParseTimestamp(s string) (Timestamp, error) {

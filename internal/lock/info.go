@@ -25,7 +25,7 @@ func GetLockInfo(lk *Lock) (*LockInfo, error) {
 
 	now := time.Now().UTC()
 	remaining := lk.expiresAt.Sub(now)
-	isExpired := lk.IsExpired()
+	isExpired := now.After(lk.expiresAt)
 
 	return &LockInfo{
 		NodeID:    lk.nodeID.String(),

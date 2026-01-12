@@ -4,6 +4,7 @@ package render
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/node"
@@ -134,17 +135,30 @@ func RenderNodeTree(nodes []*node.Node) string {
 
 // sanitizeStatement removes or replaces characters that would break single-line output.
 func sanitizeStatement(s string) string {
-	// Replace newlines and tabs with spaces
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\t", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
+	// Replace newlines and tabs with spaces, and collapse multiple spaces into one
+	// using O(n) single-pass algorithm with strings.Builder
+	var sb strings.Builder
+	sb.Grow(len(s))
+	prevSpace := true // Start true to trim leading spaces
 
-	// Collapse multiple spaces into one
-	for strings.Contains(s, "  ") {
-		s = strings.ReplaceAll(s, "  ", " ")
+	for _, r := range s {
+		if r == '\n' || r == '\t' || r == '\r' || r == ' ' {
+			if !prevSpace {
+				sb.WriteByte(' ')
+				prevSpace = true
+			}
+		} else {
+			sb.WriteRune(r)
+			prevSpace = false
+		}
 	}
 
-	return strings.TrimSpace(s)
+	result := sb.String()
+	// Trim trailing space if present
+	if len(result) > 0 && result[len(result)-1] == ' ' {
+		result = result[:len(result)-1]
+	}
+	return result
 }
 
 // truncateStatement truncates a statement to the given maximum length,
@@ -168,11 +182,9 @@ func compareNodeIDs(a, b string) bool {
 	}
 
 	for i := 0; i < minLen; i++ {
-		// Parse as integers for numeric comparison
-		numA := 0
-		numB := 0
-		fmt.Sscanf(partsA[i], "%d", &numA)
-		fmt.Sscanf(partsB[i], "%d", &numB)
+		// Parse as integers for numeric comparison using strconv.Atoi (faster than fmt.Sscanf)
+		numA, _ := strconv.Atoi(partsA[i])
+		numB, _ := strconv.Atoi(partsB[i])
 
 		if numA != numB {
 			return numA < numB

@@ -61,14 +61,12 @@ func (l *Lock) Owner() string {
 
 // AcquiredAt returns the timestamp when the lock was acquired.
 func (l *Lock) AcquiredAt() types.Timestamp {
-	ts, _ := types.ParseTimestamp(l.acquiredAt.Format(time.RFC3339Nano))
-	return ts
+	return types.FromTime(l.acquiredAt)
 }
 
 // ExpiresAt returns the timestamp when the lock expires.
 func (l *Lock) ExpiresAt() types.Timestamp {
-	ts, _ := types.ParseTimestamp(l.expiresAt.Format(time.RFC3339Nano))
-	return ts
+	return types.FromTime(l.expiresAt)
 }
 
 // IsExpired returns true if the lock has expired.

@@ -143,29 +143,34 @@ func NewNodeWithOptions(
 // The hash is computed from: type, statement, latex, inference, context, dependencies.
 // Context and dependencies are sorted for deterministic ordering.
 func (n *Node) ComputeContentHash() string {
-	// Build a deterministic string representation of content fields
-	var parts []string
+	// Build a deterministic string representation of content fields using strings.Builder
+	var sb strings.Builder
 
 	// Add type
-	parts = append(parts, "type:"+string(n.Type))
+	sb.WriteString("type:")
+	sb.WriteString(string(n.Type))
 
 	// Add statement
-	parts = append(parts, "statement:"+n.Statement)
+	sb.WriteString("|statement:")
+	sb.WriteString(n.Statement)
 
 	// Add latex if present
 	if n.Latex != "" {
-		parts = append(parts, "latex:"+n.Latex)
+		sb.WriteString("|latex:")
+		sb.WriteString(n.Latex)
 	}
 
 	// Add inference
-	parts = append(parts, "inference:"+string(n.Inference))
+	sb.WriteString("|inference:")
+	sb.WriteString(string(n.Inference))
 
 	// Add sorted context
 	if len(n.Context) > 0 {
 		sortedContext := make([]string, len(n.Context))
 		copy(sortedContext, n.Context)
 		sort.Strings(sortedContext)
-		parts = append(parts, "context:"+strings.Join(sortedContext, ","))
+		sb.WriteString("|context:")
+		sb.WriteString(strings.Join(sortedContext, ","))
 	}
 
 	// Add sorted dependencies
@@ -175,12 +180,12 @@ func (n *Node) ComputeContentHash() string {
 			depStrings[i] = dep.String()
 		}
 		sort.Strings(depStrings)
-		parts = append(parts, "dependencies:"+strings.Join(depStrings, ","))
+		sb.WriteString("|dependencies:")
+		sb.WriteString(strings.Join(depStrings, ","))
 	}
 
-	// Join all parts and compute hash
-	content := strings.Join(parts, "|")
-	sum := sha256.Sum256([]byte(content))
+	// Compute hash from the built string
+	sum := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(sum[:])
 }
 
