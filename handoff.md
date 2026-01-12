@@ -1,127 +1,103 @@
-# Handoff - 2026-01-12 (Session 3)
+# Handoff - 2026-01-12 (Session 4)
 
 ## What Was Accomplished This Session
 
-### Issues Closed (15 total, parallel subagents)
+### Issues Closed (9 total, parallel subagents)
 
-**Phase 1-4 TDD Tests (10 issues):**
-- `vibefeld-axb`: Write tests for NodeID type (`internal/types/id_test.go`)
-- `vibefeld-r95`: Write tests for timestamp handling (`internal/types/time_test.go`)
-- `vibefeld-77d`: Write tests for inference type validation (`internal/schema/inference_test.go`)
-- `vibefeld-zxk`: Write tests for node type validation (`internal/schema/nodetype_test.go`)
-- `vibefeld-bpm`: Write tests for challenge target validation (`internal/schema/target_test.go`)
-- `vibefeld-s7f`: Write tests for workflow state (`internal/schema/workflow_test.go`)
-- `vibefeld-r3i`: Write tests for epistemic state (`internal/schema/epistemic_test.go`)
-- `vibefeld-0oj`: Write tests for config loading (`internal/config/config_test.go`)
-- `vibefeld-qiy`: Write tests for fuzzy command matching (`internal/fuzzy/match_test.go`)
-- `vibefeld-uo7`: Write tests for error rendering (`internal/render/error_test.go`)
+**Phase 3 Implementations (2 issues):**
+- `vibefeld-aoz`: Implement workflow state (`internal/schema/workflow.go`) - FULL
+- `vibefeld-59n`: Implement config loader (`internal/config/config.go`) - FULL
 
-**Phase 1-2 Implementations (5 issues):**
-- `vibefeld-b2t`: Implement NodeID (`internal/types/id.go`)
-- `vibefeld-4ng`: Implement ISO8601 timestamp (`internal/types/time.go`)
-- `vibefeld-35p`: Implement inference types with fuzzy matching (`internal/schema/inference.go`)
-- `vibefeld-x7r`: Implement node types with scope tracking (`internal/schema/nodetype.go`)
-- `vibefeld-p5w`: Implement challenge targets with CSV parsing (`internal/schema/target.go`)
+**Phase 4 TDD Tests + Stubs (7 issues):**
+- `vibefeld-73n`: Write tests for challenge struct (`internal/node/challenge_test.go`)
+- `vibefeld-h6e`: Write tests for definition struct (`internal/node/definition_test.go`)
+- `vibefeld-013`: Write tests for assumption struct (`internal/node/assumption_test.go`)
+- `vibefeld-3gk`: Write tests for external reference (`internal/node/external_test.go`)
+- `vibefeld-ga1`: Write tests for lemma struct (`internal/node/lemma_test.go`)
+- `vibefeld-hle`: Write tests for pending definition (`internal/node/pending_def_test.go`)
+- `vibefeld-2j5`: Write tests for node lock (`internal/lock/lock_test.go`)
 
 ### Implementation Details
 
-**NodeID (`internal/types/id.go`):**
-- Hierarchical ID parsing ("1", "1.1", "1.2.3")
-- Parent/child navigation, ancestry checks
-- CommonAncestor calculation
-- Full validation (no zeros, no gaps, must start with 1)
+**Workflow State (`internal/schema/workflow.go`):**
+- 3 states: available, claimed, blocked
+- Full transition validation (available→claimed, claimed→available/blocked, blocked→available)
+- CanClaim helper function
+- All 22 tests pass
 
-**Timestamp (`internal/types/time.go`):**
-- ISO8601 (RFC3339) parsing and formatting
-- JSON marshaling/unmarshaling
-- Comparison methods (Before, After, Equal)
-- All times normalized to UTC
+**Config (`internal/config/config.go`):**
+- Default(), Load(path), Validate(c), Save(c, path)
+- Default values: LockTimeout=5m, MaxDepth=20, MaxChildren=10, AutoCorrectThreshold=0.8
+- JSON serialization with validation
+- All 22 tests pass
 
-**Inference Types (`internal/schema/inference.go`):**
-- 11 inference types with metadata registry
-- Fuzzy matching using Levenshtein distance
-- Case-insensitive suggestions for typos
+**Node Structs (TDD stubs):**
+- Challenge: ID, TargetID, Target, Reason, Raised, Status (open/resolved/withdrawn)
+- Definition: ID, Name, Content, ContentHash, Created
+- Assumption: ID, Statement, ContentHash, Created, Justification
+- External: ID, Name, Source, ContentHash, Created, Notes
+- Lemma: ID, Statement, SourceNodeID, ContentHash, Created, Proof
+- PendingDef: ID, Term, RequestedBy, Created, ResolvedBy, Status
 
-**Node Types (`internal/schema/nodetype.go`):**
-- 5 node types: claim, local_assume, local_discharge, case, qed
-- Scope tracking (OpensScope, ClosesScope)
-
-**Challenge Targets (`internal/schema/target.go`):**
-- 9 challenge targets with descriptions
-- CSV parsing with strict validation
-- Empty segment detection
-
-**Error Rendering (`internal/render/error.go`):**
-- Full implementation (not stub)
-- Recovery suggestions for all 21 error codes
-- CLI and JSON output formatting
-
-**Epistemic State (`internal/schema/epistemic.go`):**
-- Full implementation (not stub)
-- 5 states with transition validation
-- Taint tracking (only admitted introduces taint)
+**Lock (`internal/lock/lock.go`):**
+- Lock struct with NodeID, Owner, AcquiredAt, ExpiresAt
+- IsExpired, IsOwnedBy, Refresh methods (stubs)
+- 20 tests ready for TDD
 
 ## Current State
 
 ### What's Working
 - `./af --version` outputs "af version 0.1.0"
-- Go module builds successfully
-- **Passing test packages:**
+- Go module builds successfully (`go build ./...`)
+- **Fully passing test packages:**
   - `internal/errors/` - error types
   - `internal/hash/` - SHA256 content hashing
   - `internal/ledger/` - file-based locks
   - `internal/render/` - error rendering
   - `internal/types/` - NodeID + Timestamp
-
-### Partially Implemented (tests exist, some pass)
-- `internal/schema/` - inference, nodetype, target pass; workflow stub remains
-- `internal/fuzzy/` - levenshtein passes; match.go stub remains
+  - `internal/schema/` - ALL TESTS PASS (inference, nodetype, target, workflow, epistemic)
+  - `internal/config/` - ALL TESTS PASS
 
 ### TDD Red Phase (tests exist, stubs fail)
-- `internal/config/` - config loading
-- `internal/fs/` - proof directory initialization
+- `internal/lock/` - lock acquisition tests ready
+- `internal/node/` - 7 struct test files ready
+- `internal/fuzzy/` - match.go stub remains
 
 ## Next Steps (Priority Order)
 
-**Ready to work (10 issues):**
-
-1. `vibefeld-aoz`: Implement workflow state (`internal/schema/workflow.go`)
-2. `vibefeld-vvf`: Implement epistemic state (`internal/schema/epistemic.go`) - may already be done
-3. `vibefeld-59n`: Implement config loader (`internal/config/config.go`)
-4. `vibefeld-73n`: Write tests for challenge struct (`internal/node/challenge_test.go`)
-5. `vibefeld-h6e`: Write tests for definition struct (`internal/node/definition_test.go`)
-6. Node model tests (assumption, external, lemma, pending_def)
-7. `vibefeld-2j5`: Write tests for node lock (`internal/lock/lock_test.go`)
+**Ready to work:**
+Run `bd ready` to see current unblocked issues. Likely next:
+1. Implement lock.go methods (NewLock, IsExpired, IsOwnedBy, Refresh)
+2. Implement node struct methods (Challenge, Definition, Assumption, etc.)
+3. Implement fuzzy matcher (`internal/fuzzy/match.go`)
+4. Phase 5-6: Ledger events, state replay
 
 **Recommended next session:**
-- Implement remaining schema stubs (workflow.go)
-- Implement config loader and fuzzy matcher
-- Start node model (Phase 5)
+- Another round of 10 parallel subagents for node struct implementations
+- Each agent gets one struct file to implement
 
 ## Key Files Changed This Session
 
 ```
-Created (20 files, ~6000 lines):
-  internal/types/id.go              (implementation)
-  internal/types/id_test.go         (530 lines)
-  internal/types/time.go            (implementation)
-  internal/types/time_test.go       (470 lines)
-  internal/schema/inference.go      (implementation)
-  internal/schema/inference_test.go (454 lines)
-  internal/schema/nodetype.go       (implementation)
-  internal/schema/nodetype_test.go  (348 lines)
-  internal/schema/target.go         (implementation)
-  internal/schema/target_test.go    (560 lines)
-  internal/schema/workflow.go       (stub)
-  internal/schema/workflow_test.go  (280 lines)
-  internal/schema/epistemic.go      (full implementation)
-  internal/schema/epistemic_test.go (380 lines)
-  internal/config/config.go         (stub)
-  internal/config/config_test.go    (450 lines)
-  internal/fuzzy/match.go           (stub)
-  internal/fuzzy/match_test.go      (520 lines)
-  internal/render/error.go          (full implementation)
-  internal/render/error_test.go     (546 lines)
+Created (16 files, ~4300 lines):
+  internal/lock/lock.go            (stub)
+  internal/lock/lock_test.go       (20 tests)
+  internal/node/challenge.go       (stub)
+  internal/node/challenge_test.go  (tests)
+  internal/node/definition.go      (stub)
+  internal/node/definition_test.go (tests)
+  internal/node/assumption.go      (stub)
+  internal/node/assumption_test.go (tests)
+  internal/node/external.go        (implementation exists)
+  internal/node/external_test.go   (tests)
+  internal/node/lemma.go           (stub)
+  internal/node/lemma_test.go      (tests)
+  internal/node/pending_def.go     (partial)
+  internal/node/pending_def_test.go(tests)
+
+Modified (2 files):
+  internal/schema/workflow.go      (full implementation)
+  internal/config/config.go        (full implementation)
 ```
 
 ## Testing Status
@@ -132,10 +108,11 @@ go test ./internal/hash/...     # PASS
 go test ./internal/ledger/...   # PASS
 go test ./internal/render/...   # PASS
 go test ./internal/types/...    # PASS
-go test ./internal/schema/...   # PARTIAL (workflow stub)
+go test ./internal/schema/...   # PASS (all workflow + epistemic tests)
+go test ./internal/config/...   # PASS (all 22 tests)
 go test ./internal/fuzzy/...    # PARTIAL (match stub)
-go test ./internal/config/...   # FAIL (TDD stub)
-go test ./internal/fs/...       # FAIL (TDD stub)
+go test ./internal/lock/...     # FAIL (TDD stubs)
+go test ./internal/node/...     # FAIL (TDD stubs)
 ```
 
 ## Blockers/Decisions Needed
@@ -144,20 +121,25 @@ None - clear path forward with TDD implementation.
 
 ## Stats
 
-- Issues open: 205
-- Issues closed: 31 (16 previous + 15 this session)
-- Ready to work: 10
-- Blocked: 191 (waiting on dependencies)
+- Issues closed this session: 9
+- Issues closed total: ~40
+- Build: PASS
+- Schema/config tests: ALL PASS
 
 ## Session Summary
 
-This session used parallel subagents extensively:
-1. **Round 1**: 10 parallel agents wrote TDD tests + stubs
-2. **Round 2**: 5 parallel agents implemented core types
+Session 4 used 9 parallel subagents:
+1. 2 agents implemented full modules (workflow.go, config.go)
+2. 7 agents created TDD test files for Phase 4 node model
 
 All work completed without git conflicts by assigning each agent unique files.
+No agent was allowed to run git commands - all commits done by orchestrator.
 
 ## Previous Sessions
+
+**Session 3:**
+- Phase 1-2 implementations: NodeID, Timestamp, inference, nodetype, target
+- 15 issues closed with parallel subagents
 
 **Session 2:**
 - Phase 1 implementations: errors, hash, ledger lock, fuzzy distance
