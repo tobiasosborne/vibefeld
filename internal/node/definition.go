@@ -69,9 +69,13 @@ func (d *Definition) Equal(other *Definition) bool {
 
 // generateDefinitionID generates a unique identifier for a Definition.
 // Uses random bytes for uniqueness.
+// Panics if crypto/rand fails, as this indicates a critical system issue
+// (e.g., entropy source unavailable) from which there is no reasonable recovery.
 func generateDefinitionID() string {
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand.Read failed: " + err.Error())
+	}
 	return hex.EncodeToString(b)
 }
 

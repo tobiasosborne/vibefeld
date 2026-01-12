@@ -82,8 +82,7 @@ func applyNodesClaimed(s *State, e ledger.NodesClaimed) error {
 	for _, nodeID := range e.NodeIDs {
 		n := s.GetNode(nodeID)
 		if n == nil {
-			// Node not found - skip (may be an error in production)
-			continue
+			return fmt.Errorf("node %s not found in state", nodeID.String())
 		}
 		n.WorkflowState = schema.WorkflowClaimed
 		n.ClaimedBy = e.Owner
@@ -98,8 +97,7 @@ func applyNodesReleased(s *State, e ledger.NodesReleased) error {
 	for _, nodeID := range e.NodeIDs {
 		n := s.GetNode(nodeID)
 		if n == nil {
-			// Node not found - skip (may be an error in production)
-			continue
+			return fmt.Errorf("node %s not found in state", nodeID.String())
 		}
 		n.WorkflowState = schema.WorkflowAvailable
 		n.ClaimedBy = ""
@@ -113,8 +111,7 @@ func applyNodesReleased(s *State, e ledger.NodesReleased) error {
 func applyNodeValidated(s *State, e ledger.NodeValidated) error {
 	n := s.GetNode(e.NodeID)
 	if n == nil {
-		// Node not found - skip (may be an error in production)
-		return nil
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
 	}
 	n.EpistemicState = schema.EpistemicValidated
 	return nil
@@ -125,8 +122,7 @@ func applyNodeValidated(s *State, e ledger.NodeValidated) error {
 func applyNodeAdmitted(s *State, e ledger.NodeAdmitted) error {
 	n := s.GetNode(e.NodeID)
 	if n == nil {
-		// Node not found - skip (may be an error in production)
-		return nil
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
 	}
 	n.EpistemicState = schema.EpistemicAdmitted
 	return nil
@@ -137,8 +133,7 @@ func applyNodeAdmitted(s *State, e ledger.NodeAdmitted) error {
 func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 	n := s.GetNode(e.NodeID)
 	if n == nil {
-		// Node not found - skip (may be an error in production)
-		return nil
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
 	}
 	n.EpistemicState = schema.EpistemicRefuted
 	return nil
@@ -149,8 +144,7 @@ func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 func applyNodeArchived(s *State, e ledger.NodeArchived) error {
 	n := s.GetNode(e.NodeID)
 	if n == nil {
-		// Node not found - skip (may be an error in production)
-		return nil
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
 	}
 	n.EpistemicState = schema.EpistemicArchived
 	return nil
@@ -161,8 +155,7 @@ func applyNodeArchived(s *State, e ledger.NodeArchived) error {
 func applyTaintRecomputed(s *State, e ledger.TaintRecomputed) error {
 	n := s.GetNode(e.NodeID)
 	if n == nil {
-		// Node not found - skip (may be an error in production)
-		return nil
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
 	}
 	n.TaintState = e.NewTaint
 	return nil

@@ -67,8 +67,12 @@ func computeSourceHash(source string) string {
 
 // generateID generates a unique identifier for an External reference.
 // Uses random bytes for uniqueness.
+// Panics if crypto/rand fails, as this indicates a critical system issue
+// (e.g., entropy source unavailable) from which there is no reasonable recovery.
 func generateID() string {
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand.Read failed: " + err.Error())
+	}
 	return hex.EncodeToString(b)
 }

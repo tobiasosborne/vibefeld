@@ -12,6 +12,17 @@ import (
 // Default lock timeout for append operations.
 const defaultLockTimeout = 5 * time.Second
 
+// cleanupTempFiles removes temporary files from the given slice within the range [start, end).
+// This is a best-effort operation; errors are silently ignored since cleanup failures
+// should not mask the original error that triggered the cleanup.
+func cleanupTempFiles(tempPaths []string, start, end int) {
+	for i := start; i < end; i++ {
+		if tempPaths[i] != "" {
+			os.Remove(tempPaths[i])
+		}
+	}
+}
+
 // Append adds an event to the ledger at the given directory.
 // Returns the sequence number assigned to the event.
 // The write is atomic: the event is first written to a temp file, then renamed.
@@ -218,20 +229,14 @@ func AppendBatch(dir string, events []Event) ([]int, error) {
 		// Marshal event to JSON
 		data, err := json.Marshal(event)
 		if err != nil {
-			// Cleanup temp files created so far
-			for j := 0; j < i; j++ {
-				os.Remove(tempPaths[j])
-			}
+			cleanupTempFiles(tempPaths, 0, i)
 			return nil, fmt.Errorf("failed to marshal event %d: %w", i, err)
 		}
 
 		// Create temp file
 		tempFile, err := os.CreateTemp(dir, ".event-*.tmp")
 		if err != nil {
-			// Cleanup temp files created so far
-			for j := 0; j < i; j++ {
-				os.Remove(tempPaths[j])
-			}
+			cleanupTempFiles(tempPaths, 0, i)
 			return nil, fmt.Errorf("failed to create temp file for event %d: %w", i, err)
 		}
 		tempPaths[i] = tempFile.Name()
@@ -240,34 +245,25 @@ func AppendBatch(dir string, events []Event) ([]int, error) {
 		_, err = tempFile.Write(data)
 		if err != nil {
 			tempFile.Close()
-			// Cleanup all temp files including current
-			for j := 0; j <= i; j++ {
-				os.Remove(tempPaths[j])
-			}
+			cleanupTempFiles(tempPaths, 0, i+1)
 			return nil, fmt.Errorf("failed to write event %d: %w", i, err)
 		}
 
 		// Sync and close
 		if err := tempFile.Sync(); err != nil {
 			tempFile.Close()
-			for j := 0; j <= i; j++ {
-				os.Remove(tempPaths[j])
-			}
+			cleanupTempFiles(tempPaths, 0, i+1)
 			return nil, fmt.Errorf("failed to sync event %d: %w", i, err)
 		}
 
 		if err := tempFile.Close(); err != nil {
-			for j := 0; j <= i; j++ {
-				os.Remove(tempPaths[j])
-			}
+			cleanupTempFiles(tempPaths, 0, i+1)
 			return nil, fmt.Errorf("failed to close temp file for event %d: %w", i, err)
 		}
 
 		// Set permissions
 		if err := os.Chmod(tempPaths[i], 0644); err != nil {
-			for j := 0; j <= i; j++ {
-				os.Remove(tempPaths[j])
-			}
+			cleanupTempFiles(tempPaths, 0, i+1)
 			return nil, fmt.Errorf("failed to set permissions for event %d: %w", i, err)
 		}
 	}
@@ -280,9 +276,7 @@ func AppendBatch(dir string, events []Event) ([]int, error) {
 			// Note: Partial failure here leaves some files renamed.
 			// In a production system, we might want to implement rollback.
 			// For now, cleanup remaining temp files.
-			for j := i; j < len(events); j++ {
-				os.Remove(tempPaths[j])
-			}
+			cleanupTempFiles(tempPaths, i, len(events))
 			return nil, fmt.Errorf("failed to rename event %d: %w", i, err)
 		}
 	}

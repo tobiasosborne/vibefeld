@@ -43,9 +43,13 @@ func NewAssumptionWithJustification(statement, justification string) *Assumption
 	sum := sha256.Sum256([]byte(statement))
 	contentHash := hex.EncodeToString(sum[:])
 
-	// Generate unique ID using random bytes
+	// Generate unique ID using random bytes.
+	// Panics if crypto/rand fails, as this indicates a critical system issue
+	// (e.g., entropy source unavailable) from which there is no reasonable recovery.
 	randomBytes := make([]byte, 8)
-	rand.Read(randomBytes)
+	if _, err := rand.Read(randomBytes); err != nil {
+		panic("crypto/rand.Read failed: " + err.Error())
+	}
 	id := hex.EncodeToString(randomBytes)
 
 	return &Assumption{

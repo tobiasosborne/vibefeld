@@ -756,50 +756,165 @@ func TestApplyNilEvent(t *testing.T) {
 	}
 }
 
-// TestApplyNodesClaimedNonExistentNode verifies behavior when claiming non-existent node.
+// TestApplyNodesClaimedNonExistentNode verifies that claiming a non-existent node returns an error.
 func TestApplyNodesClaimedNonExistentNode(t *testing.T) {
 	s := NewState()
 
 	nodeID := mustParseNodeID(t, "1")
 	event := ledger.NewNodesClaimed([]types.NodeID{nodeID}, "agent-1", types.Now())
 
-	// This should either error or be a no-op - implementation dependent
-	// The key is it should not panic
-	_ = Apply(s, event)
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when claiming non-existent node")
+	}
+
+	// Verify error message contains the node ID
+	if !containsString(err.Error(), "1") {
+		t.Errorf("Error message should contain node ID: got %q", err.Error())
+	}
+	if !containsString(err.Error(), "not found") {
+		t.Errorf("Error message should mention 'not found': got %q", err.Error())
+	}
 }
 
-// TestApplyNodesReleasedNonExistentNode verifies behavior when releasing non-existent node.
+// TestApplyNodesReleasedNonExistentNode verifies that releasing a non-existent node returns an error.
 func TestApplyNodesReleasedNonExistentNode(t *testing.T) {
 	s := NewState()
 
 	nodeID := mustParseNodeID(t, "1")
 	event := ledger.NewNodesReleased([]types.NodeID{nodeID})
 
-	// This should either error or be a no-op - implementation dependent
-	// The key is it should not panic
-	_ = Apply(s, event)
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when releasing non-existent node")
+	}
+
+	// Verify error message contains the node ID
+	if !containsString(err.Error(), "1") {
+		t.Errorf("Error message should contain node ID: got %q", err.Error())
+	}
+	if !containsString(err.Error(), "not found") {
+		t.Errorf("Error message should mention 'not found': got %q", err.Error())
+	}
 }
 
-// TestApplyEpistemicStateChangeOnNonExistentNode verifies behavior when changing epistemic state on non-existent node.
-func TestApplyEpistemicStateChangeOnNonExistentNode(t *testing.T) {
+// TestApplyNodeValidatedNonExistentNode verifies that validating a non-existent node returns an error.
+func TestApplyNodeValidatedNonExistentNode(t *testing.T) {
 	s := NewState()
 
 	nodeID := mustParseNodeID(t, "1")
 	event := ledger.NewNodeValidated(nodeID)
 
-	// This should either error or be a no-op - implementation dependent
-	// The key is it should not panic
-	_ = Apply(s, event)
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when validating non-existent node")
+	}
+
+	// Verify error message contains the node ID
+	if !containsString(err.Error(), "1") {
+		t.Errorf("Error message should contain node ID: got %q", err.Error())
+	}
+	if !containsString(err.Error(), "not found") {
+		t.Errorf("Error message should mention 'not found': got %q", err.Error())
+	}
 }
 
-// TestApplyTaintRecomputedOnNonExistentNode verifies behavior when recomputing taint on non-existent node.
+// TestApplyNodeAdmittedNonExistentNode verifies that admitting a non-existent node returns an error.
+func TestApplyNodeAdmittedNonExistentNode(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+	event := ledger.NewNodeAdmitted(nodeID)
+
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when admitting non-existent node")
+	}
+
+	// Verify error message contains the node ID
+	if !containsString(err.Error(), "1") {
+		t.Errorf("Error message should contain node ID: got %q", err.Error())
+	}
+	if !containsString(err.Error(), "not found") {
+		t.Errorf("Error message should mention 'not found': got %q", err.Error())
+	}
+}
+
+// TestApplyNodeRefutedNonExistentNode verifies that refuting a non-existent node returns an error.
+func TestApplyNodeRefutedNonExistentNode(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+	event := ledger.NewNodeRefuted(nodeID)
+
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when refuting non-existent node")
+	}
+
+	// Verify error message contains the node ID
+	if !containsString(err.Error(), "1") {
+		t.Errorf("Error message should contain node ID: got %q", err.Error())
+	}
+	if !containsString(err.Error(), "not found") {
+		t.Errorf("Error message should mention 'not found': got %q", err.Error())
+	}
+}
+
+// TestApplyNodeArchivedNonExistentNode verifies that archiving a non-existent node returns an error.
+func TestApplyNodeArchivedNonExistentNode(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+	event := ledger.NewNodeArchived(nodeID)
+
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when archiving non-existent node")
+	}
+
+	// Verify error message contains the node ID
+	if !containsString(err.Error(), "1") {
+		t.Errorf("Error message should contain node ID: got %q", err.Error())
+	}
+	if !containsString(err.Error(), "not found") {
+		t.Errorf("Error message should mention 'not found': got %q", err.Error())
+	}
+}
+
+// TestApplyTaintRecomputedOnNonExistentNode verifies that recomputing taint on a non-existent node returns an error.
 func TestApplyTaintRecomputedOnNonExistentNode(t *testing.T) {
 	s := NewState()
 
 	nodeID := mustParseNodeID(t, "1")
 	event := ledger.NewTaintRecomputed(nodeID, node.TaintClean)
 
-	// This should either error or be a no-op - implementation dependent
-	// The key is it should not panic
-	_ = Apply(s, event)
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when recomputing taint on non-existent node")
+	}
+
+	// Verify error message contains the node ID
+	if !containsString(err.Error(), "1") {
+		t.Errorf("Error message should contain node ID: got %q", err.Error())
+	}
+	if !containsString(err.Error(), "not found") {
+		t.Errorf("Error message should mention 'not found': got %q", err.Error())
+	}
+}
+
+// containsString checks if s contains substr.
+func containsString(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
+}
+
+// findSubstring returns true if substr is found in s.
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

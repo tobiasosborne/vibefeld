@@ -12,6 +12,98 @@ import (
 	"time"
 )
 
+// TestCleanupTempFiles_RemovesFilesInRange verifies cleanup removes files in specified range.
+func TestCleanupTempFiles_RemovesFilesInRange(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create 5 temp files
+	tempPaths := make([]string, 5)
+	for i := 0; i < 5; i++ {
+		f, err := os.CreateTemp(dir, "cleanup-test-*.tmp")
+		if err != nil {
+			t.Fatalf("Failed to create temp file %d: %v", i, err)
+		}
+		tempPaths[i] = f.Name()
+		f.Close()
+	}
+
+	// Cleanup files at indices 1, 2, 3 (range [1, 4))
+	cleanupTempFiles(tempPaths, 1, 4)
+
+	// Verify files 0 and 4 still exist
+	for _, idx := range []int{0, 4} {
+		if _, err := os.Stat(tempPaths[idx]); os.IsNotExist(err) {
+			t.Errorf("File %d should still exist but was removed", idx)
+		}
+	}
+
+	// Verify files 1, 2, 3 were removed
+	for _, idx := range []int{1, 2, 3} {
+		if _, err := os.Stat(tempPaths[idx]); !os.IsNotExist(err) {
+			t.Errorf("File %d should have been removed but still exists", idx)
+		}
+	}
+}
+
+// TestCleanupTempFiles_HandlesEmptyRange verifies cleanup handles empty range gracefully.
+func TestCleanupTempFiles_HandlesEmptyRange(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a temp file
+	f, err := os.CreateTemp(dir, "cleanup-test-*.tmp")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	tempPath := f.Name()
+	f.Close()
+
+	tempPaths := []string{tempPath}
+
+	// Cleanup with empty range (start == end)
+	cleanupTempFiles(tempPaths, 0, 0)
+
+	// File should still exist
+	if _, err := os.Stat(tempPath); os.IsNotExist(err) {
+		t.Error("File should still exist after empty range cleanup")
+	}
+}
+
+// TestCleanupTempFiles_SkipsEmptyPaths verifies cleanup skips empty strings in slice.
+func TestCleanupTempFiles_SkipsEmptyPaths(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create one real file
+	f, err := os.CreateTemp(dir, "cleanup-test-*.tmp")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	realPath := f.Name()
+	f.Close()
+
+	// Mix of empty paths and real path
+	tempPaths := []string{"", realPath, ""}
+
+	// Should not panic and should remove the real file
+	cleanupTempFiles(tempPaths, 0, 3)
+
+	// Real file should be removed
+	if _, err := os.Stat(realPath); !os.IsNotExist(err) {
+		t.Error("Real file should have been removed")
+	}
+}
+
+// TestCleanupTempFiles_IgnoresNonexistentFiles verifies cleanup silently handles missing files.
+func TestCleanupTempFiles_IgnoresNonexistentFiles(t *testing.T) {
+	// Paths that don't exist
+	tempPaths := []string{
+		"/nonexistent/path/file1.tmp",
+		"/nonexistent/path/file2.tmp",
+	}
+
+	// Should not panic or return error
+	cleanupTempFiles(tempPaths, 0, 2)
+}
+
 // TestAppend_SingleEvent verifies that appending a single event creates a file with correct sequence.
 func TestAppend_SingleEvent(t *testing.T) {
 	dir := t.TempDir()

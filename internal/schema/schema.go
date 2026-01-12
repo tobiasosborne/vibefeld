@@ -14,11 +14,18 @@ type Schema struct {
 	ChallengeTargets []ChallengeTarget `json:"challenge_targets"`
 	WorkflowStates   []WorkflowState   `json:"workflow_states"`
 	EpistemicStates  []EpistemicState  `json:"epistemic_states"`
+
+	// Cache maps for O(1) lookups (not serialized)
+	inferenceTypeMap   map[InferenceType]struct{}   `json:"-"`
+	nodeTypeMap        map[NodeType]struct{}        `json:"-"`
+	challengeTargetMap map[ChallengeTarget]struct{} `json:"-"`
+	workflowStateMap   map[WorkflowState]struct{}   `json:"-"`
+	epistemicStateMap  map[EpistemicState]struct{}  `json:"-"`
 }
 
 // DefaultSchema returns a schema with all default values.
 func DefaultSchema() *Schema {
-	return &Schema{
+	s := &Schema{
 		Version: "1.0",
 		InferenceTypes: []InferenceType{
 			InferenceModusPonens,
@@ -64,6 +71,8 @@ func DefaultSchema() *Schema {
 			EpistemicArchived,
 		},
 	}
+	s.buildCaches()
+	return s
 }
 
 // LoadSchema loads a schema from JSON data.
@@ -78,7 +87,36 @@ func LoadSchema(data []byte) (*Schema, error) {
 		return nil, err
 	}
 
+	s.buildCaches()
 	return &s, nil
+}
+
+// buildCaches initializes the cache maps for O(1) lookups.
+func (s *Schema) buildCaches() {
+	s.inferenceTypeMap = make(map[InferenceType]struct{}, len(s.InferenceTypes))
+	for _, it := range s.InferenceTypes {
+		s.inferenceTypeMap[it] = struct{}{}
+	}
+
+	s.nodeTypeMap = make(map[NodeType]struct{}, len(s.NodeTypes))
+	for _, nt := range s.NodeTypes {
+		s.nodeTypeMap[nt] = struct{}{}
+	}
+
+	s.challengeTargetMap = make(map[ChallengeTarget]struct{}, len(s.ChallengeTargets))
+	for _, ct := range s.ChallengeTargets {
+		s.challengeTargetMap[ct] = struct{}{}
+	}
+
+	s.workflowStateMap = make(map[WorkflowState]struct{}, len(s.WorkflowStates))
+	for _, ws := range s.WorkflowStates {
+		s.workflowStateMap[ws] = struct{}{}
+	}
+
+	s.epistemicStateMap = make(map[EpistemicState]struct{}, len(s.EpistemicStates))
+	for _, es := range s.EpistemicStates {
+		s.epistemicStateMap[es] = struct{}{}
+	}
 }
 
 // Validate validates the schema, ensuring all fields are properly populated
@@ -143,52 +181,32 @@ func (s *Schema) ToJSON() ([]byte, error) {
 
 // HasInferenceType returns true if the schema contains the given inference type.
 func (s *Schema) HasInferenceType(t InferenceType) bool {
-	for _, it := range s.InferenceTypes {
-		if it == t {
-			return true
-		}
-	}
-	return false
+	_, ok := s.inferenceTypeMap[t]
+	return ok
 }
 
 // HasNodeType returns true if the schema contains the given node type.
 func (s *Schema) HasNodeType(t NodeType) bool {
-	for _, nt := range s.NodeTypes {
-		if nt == t {
-			return true
-		}
-	}
-	return false
+	_, ok := s.nodeTypeMap[t]
+	return ok
 }
 
 // HasChallengeTarget returns true if the schema contains the given challenge target.
 func (s *Schema) HasChallengeTarget(t ChallengeTarget) bool {
-	for _, ct := range s.ChallengeTargets {
-		if ct == t {
-			return true
-		}
-	}
-	return false
+	_, ok := s.challengeTargetMap[t]
+	return ok
 }
 
 // HasWorkflowState returns true if the schema contains the given workflow state.
 func (s *Schema) HasWorkflowState(t WorkflowState) bool {
-	for _, ws := range s.WorkflowStates {
-		if ws == t {
-			return true
-		}
-	}
-	return false
+	_, ok := s.workflowStateMap[t]
+	return ok
 }
 
 // HasEpistemicState returns true if the schema contains the given epistemic state.
 func (s *Schema) HasEpistemicState(t EpistemicState) bool {
-	for _, es := range s.EpistemicStates {
-		if es == t {
-			return true
-		}
-	}
-	return false
+	_, ok := s.epistemicStateMap[t]
+	return ok
 }
 
 // Clone returns a deep copy of the schema.
@@ -206,5 +224,6 @@ func (s *Schema) Clone() *Schema {
 	copy(clone.ChallengeTargets, s.ChallengeTargets)
 	copy(clone.WorkflowStates, s.WorkflowStates)
 	copy(clone.EpistemicStates, s.EpistemicStates)
+	clone.buildCaches()
 	return clone
 }
