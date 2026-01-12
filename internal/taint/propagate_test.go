@@ -5,6 +5,7 @@ package taint
 import (
 	"testing"
 
+	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/types"
@@ -341,5 +342,192 @@ func TestPropagateTaint_AdmittedChildUnderAdmittedParent(t *testing.T) {
 	// Should be in changed list
 	if len(changed) != 1 {
 		t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+	}
+}
+
+// Tests for GenerateTaintEvents
+
+func TestGenerateTaintEvents_CreatesEventsForAllNodes(t *testing.T) {
+	// Create changed nodes
+	child1 := makeNode("1.1", schema.EpistemicValidated, node.TaintTainted)
+	child2 := makeNode("1.2", schema.EpistemicValidated, node.TaintTainted)
+	changedNodes := []*node.Node{child1, child2}
+
+	events := GenerateTaintEvents(changedNodes)
+
+	// Should create one event per changed node
+	if len(events) != 2 {
+		t.Errorf("GenerateTaintEvents() returned %d events, want 2", len(events))
+	}
+
+	// Verify event contents
+	for i, e := range events {
+		if e.Type() != ledger.EventTaintRecomputed {
+			t.Errorf("events[%d].Type() = %v, want %v", i, e.Type(), ledger.EventTaintRecomputed)
+		}
+	}
+
+	// Verify node IDs and taint states in events
+	if events[0].NodeID.String() != "1.1" {
+		t.Errorf("events[0].NodeID = %v, want 1.1", events[0].NodeID.String())
+	}
+	if events[0].NewTaint != node.TaintTainted {
+		t.Errorf("events[0].NewTaint = %v, want %v", events[0].NewTaint, node.TaintTainted)
+	}
+	if events[1].NodeID.String() != "1.2" {
+		t.Errorf("events[1].NodeID = %v, want 1.2", events[1].NodeID.String())
+	}
+}
+
+func TestGenerateTaintEvents_NilInput(t *testing.T) {
+	events := GenerateTaintEvents(nil)
+
+	if events != nil {
+		t.Errorf("GenerateTaintEvents(nil) returned %v, want nil", events)
+	}
+}
+
+func TestGenerateTaintEvents_EmptyInput(t *testing.T) {
+	events := GenerateTaintEvents([]*node.Node{})
+
+	if events != nil {
+		t.Errorf("GenerateTaintEvents([]) returned %v, want nil", events)
+	}
+}
+
+func TestGenerateTaintEvents_SkipsNilNodes(t *testing.T) {
+	child := makeNode("1.1", schema.EpistemicValidated, node.TaintTainted)
+	changedNodes := []*node.Node{nil, child, nil}
+
+	events := GenerateTaintEvents(changedNodes)
+
+	// Should only create event for non-nil node
+	if len(events) != 1 {
+		t.Errorf("GenerateTaintEvents() returned %d events, want 1", len(events))
+	}
+
+	if events[0].NodeID.String() != "1.1" {
+		t.Errorf("events[0].NodeID = %v, want 1.1", events[0].NodeID.String())
+	}
+}
+
+func TestGenerateTaintEvents_PreservesTaintState(t *testing.T) {
+	// Test that each taint state is correctly captured in events
+	testCases := []struct {
+		name  string
+		taint node.TaintState
+	}{
+		{"clean", node.TaintClean},
+		{"self_admitted", node.TaintSelfAdmitted},
+		{"tainted", node.TaintTainted},
+		{"unresolved", node.TaintUnresolved},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			n := makeNode("1.1", schema.EpistemicValidated, tc.taint)
+			events := GenerateTaintEvents([]*node.Node{n})
+
+			if len(events) != 1 {
+				t.Fatalf("GenerateTaintEvents() returned %d events, want 1", len(events))
+			}
+
+			if events[0].NewTaint != tc.taint {
+				t.Errorf("events[0].NewTaint = %v, want %v", events[0].NewTaint, tc.taint)
+			}
+		})
+	}
+}
+
+// Tests for PropagateAndGenerateEvents
+
+func TestPropagateAndGenerateEvents_BasicFlow(t *testing.T) {
+	// Setup: parent with self_admitted, child is clean
+	root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+	child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+
+	allNodes := []*node.Node{root, child}
+
+	changedNodes, events := PropagateAndGenerateEvents(root, allNodes)
+
+	// Verify child was changed
+	if len(changedNodes) != 1 {
+		t.Errorf("PropagateAndGenerateEvents() returned %d changed nodes, want 1", len(changedNodes))
+	}
+
+	// Verify event was generated
+	if len(events) != 1 {
+		t.Errorf("PropagateAndGenerateEvents() returned %d events, want 1", len(events))
+	}
+
+	// Verify event matches changed node
+	if events[0].NodeID.String() != "1.1" {
+		t.Errorf("events[0].NodeID = %v, want 1.1", events[0].NodeID.String())
+	}
+	if events[0].NewTaint != node.TaintTainted {
+		t.Errorf("events[0].NewTaint = %v, want %v", events[0].NewTaint, node.TaintTainted)
+	}
+}
+
+func TestPropagateAndGenerateEvents_MultipleChanges(t *testing.T) {
+	// Setup: admitted root with multiple descendants
+	root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+	child1 := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+	child2 := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+	grandchild := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+	allNodes := []*node.Node{root, child1, child2, grandchild}
+
+	changedNodes, events := PropagateAndGenerateEvents(root, allNodes)
+
+	// All 3 descendants should change
+	if len(changedNodes) != 3 {
+		t.Errorf("PropagateAndGenerateEvents() returned %d changed nodes, want 3", len(changedNodes))
+	}
+
+	// Should have 3 events
+	if len(events) != 3 {
+		t.Errorf("PropagateAndGenerateEvents() returned %d events, want 3", len(events))
+	}
+
+	// All events should be TaintRecomputed
+	for i, e := range events {
+		if e.Type() != ledger.EventTaintRecomputed {
+			t.Errorf("events[%d].Type() = %v, want %v", i, e.Type(), ledger.EventTaintRecomputed)
+		}
+	}
+}
+
+func TestPropagateAndGenerateEvents_NoChanges(t *testing.T) {
+	// Setup: already correctly tainted
+	root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+	child := makeNode("1.1", schema.EpistemicValidated, node.TaintTainted) // Already correct
+
+	allNodes := []*node.Node{root, child}
+
+	changedNodes, events := PropagateAndGenerateEvents(root, allNodes)
+
+	// No changes expected
+	if len(changedNodes) != 0 {
+		t.Errorf("PropagateAndGenerateEvents() returned %d changed nodes, want 0", len(changedNodes))
+	}
+
+	// No events expected
+	if events != nil {
+		t.Errorf("PropagateAndGenerateEvents() returned %v events, want nil", events)
+	}
+}
+
+func TestPropagateAndGenerateEvents_NilRoot(t *testing.T) {
+	child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+	allNodes := []*node.Node{child}
+
+	changedNodes, events := PropagateAndGenerateEvents(nil, allNodes)
+
+	if changedNodes != nil {
+		t.Errorf("PropagateAndGenerateEvents(nil, ...) returned changed nodes, want nil")
+	}
+	if events != nil {
+		t.Errorf("PropagateAndGenerateEvents(nil, ...) returned events, want nil")
 	}
 }

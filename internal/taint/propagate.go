@@ -4,6 +4,7 @@ package taint
 import (
 	"sort"
 
+	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
 )
 
@@ -80,4 +81,39 @@ func sortByDepth(nodes []*node.Node) {
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].ID.Depth() < nodes[j].ID.Depth()
 	})
+}
+
+// GenerateTaintEvents creates TaintRecomputed events for all changed nodes.
+// This function should be called after PropagateTaint to generate ledger events
+// for nodes whose taint state has changed.
+//
+// Returns a slice of TaintRecomputed events, one for each changed node.
+// Returns nil if changedNodes is nil or empty.
+func GenerateTaintEvents(changedNodes []*node.Node) []ledger.TaintRecomputed {
+	if len(changedNodes) == 0 {
+		return nil
+	}
+
+	events := make([]ledger.TaintRecomputed, 0, len(changedNodes))
+	for _, n := range changedNodes {
+		if n != nil {
+			events = append(events, ledger.NewTaintRecomputed(n.ID, n.TaintState))
+		}
+	}
+	return events
+}
+
+// PropagateAndGenerateEvents is a convenience function that propagates taint
+// and generates TaintRecomputed events in a single call.
+//
+// It combines PropagateTaint and GenerateTaintEvents for common use cases
+// where both operations are needed together.
+//
+// Returns:
+//   - changedNodes: nodes whose taint state was updated
+//   - events: TaintRecomputed events for each changed node
+func PropagateAndGenerateEvents(root *node.Node, allNodes []*node.Node) ([]*node.Node, []ledger.TaintRecomputed) {
+	changedNodes := PropagateTaint(root, allNodes)
+	events := GenerateTaintEvents(changedNodes)
+	return changedNodes, events
 }
