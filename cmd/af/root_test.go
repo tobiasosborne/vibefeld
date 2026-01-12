@@ -8,6 +8,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Note: This test file uses newTestRootCmd which creates a fresh command
+// instance for each test, ensuring test isolation.
+
 // executeCommand executes a cobra command with the given arguments and returns
 // the combined stdout/stderr output and any error.
 func executeCommand(root *cobra.Command, args ...string) (string, error) {
@@ -73,6 +76,9 @@ Key principles:
 		Short: "Accept a proof node",
 		Run:   func(cmd *cobra.Command, args []string) {},
 	})
+
+	// Add fuzzy matching support
+	AddFuzzyMatching(cmd)
 
 	return cmd
 }

@@ -1,108 +1,109 @@
-# Handoff - 2026-01-12 (Session 7)
+# Handoff - 2026-01-12 (Session 7 continued)
 
 ## What Was Accomplished This Session
 
-### Issues Closed (5 total, 5 parallel subagents)
+### Issues Closed (10 total, 2 batches of 5 parallel subagents)
 
-**Full Implementations (4 new files):**
-- `vibefeld-0ya`: Implement lock release (`internal/lock/release.go`) - ALL TESTS PASS
-- `vibefeld-w10`: Implement lock info retrieval (`internal/lock/info.go`) - ALL TESTS PASS
-- `vibefeld-pf9`: Implement definition file I/O (`internal/fs/def_io.go`) - ALL TESTS PASS
-- `vibefeld-m5y`: Implement assumption file I/O (`internal/fs/assumption_io.go`) - ALL TESTS PASS
+**Batch 1 - Implementations (4 new files):**
+- `vibefeld-0ya`: Lock release (`internal/lock/release.go`) - ALL TESTS PASS
+- `vibefeld-w10`: Lock info retrieval (`internal/lock/info.go`) - ALL TESTS PASS
+- `vibefeld-pf9`: Definition file I/O (`internal/fs/def_io.go`) - ALL TESTS PASS
+- `vibefeld-m5y`: Assumption file I/O (`internal/fs/assumption_io.go`) - ALL TESTS PASS
+- `vibefeld-gew`: Error renderer - was already fully implemented
 
-**Already Done (verified):**
-- `vibefeld-gew`: Error renderer (`internal/render/error.go`) - was already fully implemented
+**Batch 2 - New implementations + TDD tests (6 new files):**
+- `vibefeld-17n`: Node struct + tests (`internal/node/node.go`, `node_test.go`) - 22 TESTS PASS
+- `vibefeld-i6j`: Stale lock tests (`internal/lock/stale_test.go`) - TDD tagged
+- `vibefeld-uzu`: Root command fuzzy matching (`cmd/af/root.go`) - ALL 9 TESTS PASS
+- `vibefeld-nle`: External I/O tests (`internal/fs/external_io_test.go`) - TDD tagged
+- `vibefeld-t8g`: Lemma I/O tests (`internal/fs/lemma_io_test.go`) - TDD tagged
 
 ### Implementation Details
 
-**Lock Release (`internal/lock/release.go`):**
-- `Lock.Release(owner string) error` - releases lock if owned by caller
-- `Release(l *Lock, owner string) error` - package-level function
-- Thread-safe with mutex, prevents double release
-- Validates owner not empty, checks lock not expired
-- Error types: `ErrNilLock`, `ErrNotOwner`, `ErrEmptyOwner`, `ErrLockExpired`, `ErrAlreadyReleased`
-- 15 tests pass
+**Node Struct (`internal/node/node.go`):**
+- `TaintState` type enum (clean, self_admitted, tainted, unresolved)
+- `Node` struct with all fields (ID, Type, Statement, Latex, Inference, Context, Dependencies, states, etc.)
+- `NewNode()` and `NewNodeWithOptions()` constructors
+- `ComputeContentHash()` - deterministic SHA256
+- `Validate()` - validates all fields
+- `IsRoot()`, `Depth()`, `VerifyContentHash()` methods
+- 22 comprehensive tests pass
 
-**Lock Info (`internal/lock/info.go`):**
-- `LockInfo` struct with NodeID, Owner, Acquired, Expires, Remaining, IsExpired
-- `GetLockInfo(lk *Lock) (*LockInfo, error)` - retrieves lock metadata
-- `Lock.Info() (*LockInfo, error)` - method on Lock
-- `LockInfo.String()` - human-readable format
-- JSON serialization with proper field names
-- All tests pass
+**Root Command Fuzzy Matching (`cmd/af/root.go`):**
+- `AddFuzzyMatching(cmd)` - configures cobra command for fuzzy suggestions
+- `unknownCommandError()` - generates "Did you mean:" suggestions
+- Uses `fuzzy.SuggestCommand()` from internal/fuzzy package
+- All 9 tests pass (7 fuzzy + 2 flag tests)
 
-**Definition File I/O (`internal/fs/def_io.go`):**
-- `WriteDefinition(basePath, def)` - atomic write to defs/ subdirectory
-- `ReadDefinition(basePath, id)` - read definition by ID
-- `ListDefinitions(basePath)` - list all definition IDs
-- `DeleteDefinition(basePath, id)` - remove definition
-- Path validation, path traversal prevention
-- All tests pass (except TestRoundTrip - known timestamp bug)
-
-**Assumption File I/O (`internal/fs/assumption_io.go`):**
-- `WriteAssumption(basePath, a)` - atomic write to assumptions/
-- `ReadAssumption(basePath, id)` - read assumption by ID
-- `ListAssumptions(basePath)` - list all assumption IDs
-- `DeleteAssumption(basePath, id)` - remove assumption
-- Path validation, path traversal prevention
-- All tests pass
+**TDD Test Files (integration tagged):**
+- `stale_test.go`: Tests for `IsStale()` function and method
+- `external_io_test.go`: Tests for Write/Read/List/DeleteExternal
+- `lemma_io_test.go`: Tests for Write/Read/List/DeleteLemma
 
 ## Current State
 
 ### What's Working
 - `./af --version` outputs "af version 0.1.0"
+- `./af unknowncommand` shows fuzzy suggestions
 - Go module builds successfully (`go build ./...`)
 - **All passing test packages:**
-  - `internal/errors/` - error types
-  - `internal/hash/` - SHA256 content hashing
-  - `internal/ledger/` - file-based locks
-  - `internal/render/` - error rendering with suggestions
-  - `internal/types/` - NodeID + Timestamp
-  - `internal/schema/` - schema loader
-  - `internal/config/` - configuration loading
-  - `internal/lock/` - 36 tests pass (lock, release, info)
+  - `cmd/af/` - 9 tests pass (including fuzzy matching)
+  - `internal/config/` - PASS
+  - `internal/errors/` - PASS
+  - `internal/fs/` - PASS (without integration tag)
   - `internal/fuzzy/` - 31 tests pass
-  - `internal/scope/` - scope entry
-  - `internal/fs/` - init, def_io, assumption_io tests pass
-  - `cmd/af/` - root command tests pass
+  - `internal/hash/` - PASS
+  - `internal/ledger/` - PASS
+  - `internal/lock/` - 36 tests pass
+  - `internal/node/` - New node tests pass, old JSON roundtrip fail (timestamp bug)
+  - `internal/render/` - PASS
+  - `internal/schema/` - PASS
+  - `internal/scope/` - PASS
+  - `internal/types/` - PASS
 
 ### Known Issues
-- `internal/node/` - JSON roundtrip tests fail (vibefeld-7rs7)
-  - Timestamp precision issue in tests
+- `internal/node/` - Old JSON roundtrip tests fail (vibefeld-7rs7)
+  - Timestamp precision issue + NodeID serialization
 - `internal/fs/TestRoundTrip` - Same timestamp precision issue
 
-### TDD Tests Still Pending Implementation
-Run `bd ready` to see available work. Priorities:
-1. Fix timestamp bug (vibefeld-7rs7)
-2. Node tests (vibefeld-17n)
-3. Root command fuzzy matching (vibefeld-uzu)
-4. External/lemma/pending def file I/O tests
+### TDD Tests Pending Implementation
+Run with `-tags=integration` when implementations exist:
+- `internal/lock/stale_test.go` - needs IsStale()
+- `internal/fs/external_io_test.go` - needs Write/Read/List/DeleteExternal
+- `internal/fs/lemma_io_test.go` - needs Write/Read/List/DeleteLemma
 
 ## Key Files Changed This Session
 
 ```
-Created (4 files):
-  internal/lock/release.go         (full implementation)
-  internal/lock/info.go            (full implementation)
-  internal/fs/def_io.go            (full implementation)
-  internal/fs/assumption_io.go     (full implementation)
+Created (10 files):
+  internal/lock/release.go           (lock release)
+  internal/lock/info.go              (lock info)
+  internal/lock/stale_test.go        (TDD tests)
+  internal/fs/def_io.go              (definition I/O)
+  internal/fs/assumption_io.go       (assumption I/O)
+  internal/fs/external_io_test.go    (TDD tests)
+  internal/fs/lemma_io_test.go       (TDD tests)
+  internal/node/node.go              (Node struct)
+  internal/node/node_test.go         (Node tests)
+  cmd/af/root.go                     (fuzzy matching)
 
-Modified (1 file):
-  internal/lock/lock.go            (added released flag, mutex)
+Modified (2 files):
+  internal/lock/lock.go              (added released flag, mutex)
+  cmd/af/root_test.go                (AddFuzzyMatching call)
 ```
 
 ## Testing Status
 
 ```bash
-go test ./cmd/af/...            # PASS
+go test ./cmd/af/...            # PASS (9 tests)
 go test ./internal/config/...   # PASS
 go test ./internal/errors/...   # PASS
-go test ./internal/fs/... -tags=integration  # PARTIAL (TestRoundTrip fails - timestamp bug)
+go test ./internal/fs/...       # PASS (without integration)
 go test ./internal/fuzzy/...    # PASS (31 tests)
 go test ./internal/hash/...     # PASS
 go test ./internal/ledger/...   # PASS
-go test ./internal/lock/... -tags=integration  # PASS (36 tests)
-go test ./internal/node/...     # PARTIAL (JSON roundtrip fails - bug filed)
+go test ./internal/lock/...     # PASS (36 tests)
+go test ./internal/node/... -run "^TestNode"  # PASS (22 new tests)
 go test ./internal/render/...   # PASS
 go test ./internal/schema/...   # PASS
 go test ./internal/scope/...    # PASS
@@ -111,9 +112,10 @@ go test ./internal/types/...    # PASS
 
 ## Stats
 
-- Issues closed this session: 5
+- Issues closed this session: 10
 - Build: PASS
-- Tests: Most pass, timestamp bug affects node and fs roundtrip tests
+- New tests added: ~40
+- Tests: Most pass, old timestamp bug affects some node tests
 
 ## Previous Sessions
 
