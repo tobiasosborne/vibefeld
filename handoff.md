@@ -1,40 +1,30 @@
-# Handoff - 2026-01-12 (Session 10)
+# Handoff - 2026-01-12 (Session 11)
 
 ## What Was Accomplished This Session
 
-Fixed 5 of 6 HIGH severity code review issues using 5 parallel subagents:
+Fixed 7 more code review issues using 5 parallel subagents (grouped by file to avoid conflicts):
 
-| Issue | Fix Applied |
-|-------|-------------|
-| `vibefeld-qgkk` | Added thread safety documentation to Entry.Discharge() (ledger serialization handles concurrency) |
-| `vibefeld-phly` | Changed missing node handling from silent skip to explicit errors in state/apply.go |
-| `vibefeld-mfuw` | Added map caching to Schema Has* methods for O(1) lookups |
-| `vibefeld-c7hn` | Added panic + documentation for rand.Read() failures (critical system issue) |
-| `vibefeld-2thg` | Extracted `cleanupTempFiles()` helper to deduplicate cleanup loops |
+| Issue | Severity | Fix Applied |
+|-------|----------|-------------|
+| `vibefeld-o343` | HIGH | Refactored Append to delegate to AppendWithTimeout (eliminated ~75 lines duplication) |
+| `vibefeld-3l1d` | MEDIUM | Extracted `validateDirectory` helper for directory validation |
+| `vibefeld-p0eu` | MEDIUM | Replaced fmt.Sscanf with strconv.Atoi in render/node.go |
+| `vibefeld-7l7h` | MEDIUM | Fixed O(n^2) whitespace collapsing with O(n) strings.Builder algorithm |
+| `vibefeld-y6yi` | MEDIUM | Added FromTime() to types package, eliminating ParseTimestamp error path |
+| `vibefeld-cu3i` | MEDIUM | Reused time.Now() instead of double call in lock/info.go |
+| `vibefeld-giug` | MEDIUM | Used strings.Builder in ComputeContentHash for efficient string building |
 
-**Commit:** `b85c74d` - 11 files changed, +339/-93 lines
+**Commit:** `409a695` - 6 files changed, +70/-121 lines (net -51 lines)
 
 ## Remaining Code Review Issues
 
-### HIGH Severity (P1) - 1 remaining
+### MEDIUM Severity (P2) - 3 remaining
 
 | Issue ID | Title | Location |
 |----------|-------|----------|
-| `vibefeld-o343` | Refactor duplicate Append/AppendWithTimeout functions | `ledger/append.go:19-173` |
-
-### MEDIUM Severity (P2) - Fix Soon
-
-| Issue ID | Title | Location |
-|----------|-------|----------|
-| `vibefeld-p0eu` | Replace fmt.Sscanf with strconv.Atoi | `render/node.go:174-175` |
-| `vibefeld-7l7h` | Fix O(n^2) whitespace collapsing | `render/node.go:136-148` |
-| `vibefeld-y6yi` | Handle ParseTimestamp errors | `lock/lock.go:63-71` |
-| `vibefeld-cu3i` | Eliminate double time.Now() call | `lock/info.go:19-38` |
-| `vibefeld-giug` | Use strings.Builder in ComputeContentHash | `node/node.go:145-185` |
 | `vibefeld-c6lz` | Pre-allocate slices with capacity hints | Multiple files |
 | `vibefeld-bogj` | Standardize nil vs empty slice returns | Multiple files |
 | `vibefeld-2xrd` | Extract magic numbers to named constants | Multiple files |
-| `vibefeld-3l1d` | Consolidate duplicated directory validation | `ledger/append.go` |
 
 ### LOW Severity (P3) - Polish
 
@@ -65,12 +55,13 @@ go test ./...  # ALL PASS
 
 ## Next Steps
 
-1. **Fix last HIGH severity issue** - `vibefeld-o343` (refactor Append/AppendWithTimeout duplication)
-2. **Fix MEDIUM severity issues** - performance and maintainability
-3. **Resume feature development** - tracer bullet CLI commands
+1. **Fix remaining P2 issues** - slice preallocation, nil vs empty, magic numbers
+2. **Resume feature development** - tracer bullet CLI commands (Phase 16)
+3. **Fix P3 polish issues** - low priority cleanup
 
 ## Previous Sessions
 
+**Session 11:** 7 issues - Append deduplication, O(n) whitespace, strconv, strings.Builder, FromTime, time.Now reuse
 **Session 10:** 5 issues - thread safety doc, state apply errors, schema caching, rand.Read panic, cleanup helper
 **Session 9:** Code review - 25 issues filed, bubble sort fix
 **Session 8:** 20 issues - ledger append, state apply, scope, taint, jobs, render
