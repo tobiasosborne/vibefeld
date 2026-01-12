@@ -2,7 +2,9 @@
 
 ## What Was Accomplished This Session
 
-Fixed 7 more code review issues using 5 parallel subagents (grouped by file to avoid conflicts):
+Fixed 12 code review issues total using 10 parallel subagents (2 batches of 5):
+
+### Batch 1 - P1/P2 Issues (7 issues)
 
 | Issue | Severity | Fix Applied |
 |-------|----------|-------------|
@@ -14,7 +16,19 @@ Fixed 7 more code review issues using 5 parallel subagents (grouped by file to a
 | `vibefeld-cu3i` | MEDIUM | Reused time.Now() instead of double call in lock/info.go |
 | `vibefeld-giug` | MEDIUM | Used strings.Builder in ComputeContentHash for efficient string building |
 
-**Commit:** `409a695` - 6 files changed, +70/-121 lines (net -51 lines)
+**Commit:** `409a695` - 6 files changed, +70/-121 lines
+
+### Batch 2 - P3 Issues (5 issues)
+
+| Issue | Severity | Fix Applied |
+|-------|----------|-------------|
+| `vibefeld-7fco` | LOW | Changed NodeID.Child() from panic to error return |
+| `vibefeld-sb64` | LOW | Used json.Marshal in MarshalJSON (types/id.go, types/time.go) |
+| `vibefeld-ohhm` | LOW | Converted TODOs to explanatory comments in state/apply.go |
+| `vibefeld-lkr5` | LOW | Fixed AllInferences() to return alphabetically sorted results |
+| `vibefeld-vv0s` | LOW | Documented lockJSON struct purpose (unexported fields, mutex, formatting) |
+
+**Commit:** `9e87687` - 6 files changed, +40/-29 lines
 
 ## Remaining Code Review Issues
 
@@ -26,18 +40,13 @@ Fixed 7 more code review issues using 5 parallel subagents (grouped by file to a
 | `vibefeld-bogj` | Standardize nil vs empty slice returns | Multiple files |
 | `vibefeld-2xrd` | Extract magic numbers to named constants | Multiple files |
 
-### LOW Severity (P3) - Polish
+### LOW Severity (P3) - 5 remaining
 
 | Issue ID | Title |
 |----------|-------|
-| `vibefeld-vv0s` | Remove unnecessary lockJSON intermediate struct |
 | `vibefeld-gp8b` | Standardize nil-checking patterns |
-| `vibefeld-7fco` | Replace panic with error return in NodeID.Child() |
-| `vibefeld-ohhm` | Complete or remove TODO comments in state/apply.go |
 | `vibefeld-z4q7` | Use canonical single time format |
 | `vibefeld-6tpf` | Remove manual findSubstring helper |
-| `vibefeld-lkr5` | Fix AllInferences() ordering |
-| `vibefeld-sb64` | Use json.Marshal instead of manual quote wrapping |
 | `vibefeld-o1cr` | Add logging for silent os.Remove in cleanup |
 | `vibefeld-rxpp` | Standardize error handling in internal/fs |
 
@@ -55,13 +64,13 @@ go test ./...  # ALL PASS
 
 ## Next Steps
 
-1. **Fix remaining P2 issues** - slice preallocation, nil vs empty, magic numbers
-2. **Resume feature development** - tracer bullet CLI commands (Phase 16)
-3. **Fix P3 polish issues** - low priority cleanup
+1. **Fix remaining P2 issues** - slice preallocation, nil vs empty, magic numbers (multi-file)
+2. **Fix remaining P3 issues** - polish work
+3. **Resume feature development** - tracer bullet CLI commands (Phase 16)
 
 ## Previous Sessions
 
-**Session 11:** 7 issues - Append deduplication, O(n) whitespace, strconv, strings.Builder, FromTime, time.Now reuse
+**Session 11:** 12 issues - Append dedup, O(n) whitespace, strconv, strings.Builder, FromTime, time.Now reuse, Child error, json.Marshal, TODOs, ordering, lockJSON doc
 **Session 10:** 5 issues - thread safety doc, state apply errors, schema caching, rand.Read panic, cleanup helper
 **Session 9:** Code review - 25 issues filed, bubble sort fix
 **Session 8:** 20 issues - ledger append, state apply, scope, taint, jobs, render
