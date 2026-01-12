@@ -13,58 +13,73 @@ type Timestamp struct {
 
 // Now returns a Timestamp representing the current time in UTC.
 func Now() Timestamp {
-	// TODO: implement
-	return Timestamp{}
+	return Timestamp{t: time.Now().UTC()}
 }
 
 // ParseTimestamp parses an ISO8601 formatted timestamp string.
 // Expected format: "2025-01-11T10:05:00Z"
 func ParseTimestamp(s string) (Timestamp, error) {
-	// TODO: implement
-	return Timestamp{}, errors.New("not implemented")
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return Timestamp{}, err
+	}
+	return Timestamp{t: t.UTC()}, nil
 }
 
 // String returns the ISO8601 string representation of the timestamp.
 // Format: "2025-01-11T10:05:00Z"
 func (ts Timestamp) String() string {
-	// TODO: implement
-	return ""
+	return ts.t.Format(time.RFC3339)
 }
 
 // Before returns true if ts is before other.
 func (ts Timestamp) Before(other Timestamp) bool {
-	// TODO: implement
-	return false
+	return ts.t.Before(other.t)
 }
 
 // After returns true if ts is after other.
 func (ts Timestamp) After(other Timestamp) bool {
-	// TODO: implement
-	return false
+	return ts.t.After(other.t)
 }
 
 // Equal returns true if ts and other represent the same instant in time.
 func (ts Timestamp) Equal(other Timestamp) bool {
-	// TODO: implement
-	return false
+	return ts.t.Equal(other.t)
 }
 
 // IsZero returns true if ts is the zero value.
 func (ts Timestamp) IsZero() bool {
-	// TODO: implement
-	return false
+	return ts.t.IsZero()
 }
 
 // MarshalJSON implements json.Marshaler.
 // Timestamps are serialized as ISO8601 strings.
 func (ts Timestamp) MarshalJSON() ([]byte, error) {
-	// TODO: implement
-	return nil, errors.New("not implemented")
+	// Format as RFC3339 and wrap in quotes for JSON
+	s := ts.t.Format(time.RFC3339)
+	return []byte(`"` + s + `"`), nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
 // Expects an ISO8601 formatted timestamp string.
 func (ts *Timestamp) UnmarshalJSON(data []byte) error {
-	// TODO: implement
-	return errors.New("not implemented")
+	// Handle null case
+	if string(data) == "null" {
+		return nil
+	}
+
+	// Strip quotes from JSON string
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		return errors.New("invalid JSON timestamp: not a string")
+	}
+	s := string(data[1 : len(data)-1])
+
+	// Parse the timestamp
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return err
+	}
+
+	ts.t = t.UTC()
+	return nil
 }
