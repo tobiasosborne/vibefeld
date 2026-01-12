@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// MaxDepthLimit is the maximum allowed value for MaxDepth configuration.
+// This prevents excessively deep proof trees that could cause performance issues.
+const MaxDepthLimit = 100
+
 // Config holds the configuration for an AF proof.
 // It is stored in meta.json in the proof directory.
 type Config struct {
@@ -96,7 +100,7 @@ func Default() *Config {
 // - Title must not be empty
 // - Conjecture must not be empty
 // - LockTimeout must be between 1s and 1h
-// - MaxDepth must be between 1 and 100
+// - MaxDepth must be between 1 and MaxDepthLimit (100)
 // - MaxChildren must be between 1 and 50
 // - AutoCorrectThreshold must be between 0.0 and 1.0
 // - Version must be "1.0"
@@ -117,8 +121,8 @@ func Validate(c *Config) error {
 		return fmt.Errorf("lock_timeout must be between 1s and 1h, got %v", c.LockTimeout)
 	}
 
-	if c.MaxDepth < 1 || c.MaxDepth > 100 {
-		return fmt.Errorf("max_depth must be between 1 and 100, got %d", c.MaxDepth)
+	if c.MaxDepth < 1 || c.MaxDepth > MaxDepthLimit {
+		return fmt.Errorf("max_depth must be between 1 and %d, got %d", MaxDepthLimit, c.MaxDepth)
 	}
 
 	if c.MaxChildren < 1 || c.MaxChildren > 50 {

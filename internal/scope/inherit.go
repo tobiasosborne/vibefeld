@@ -4,7 +4,7 @@ package scope
 // active (not discharged). Returns an empty slice if entries is nil or empty.
 // Nil entries in the slice are skipped.
 func GetActiveEntries(entries []*Entry) []*Entry {
-	result := make([]*Entry, 0)
+	result := make([]*Entry, 0, len(entries))
 	for _, entry := range entries {
 		if entry != nil && entry.IsActive() {
 			result = append(result, entry)
@@ -18,7 +18,7 @@ func GetActiveEntries(entries []*Entry) []*Entry {
 // The parentScope contains NodeID strings that reference entries.
 // Returns an empty slice if parentScope is nil/empty or entries is nil.
 func InheritScope(parentScope []string, entries []*Entry) []string {
-	result := make([]string, 0)
+	result := make([]string, 0, len(parentScope))
 
 	// If entries is nil, we can't determine which are active
 	if entries == nil {

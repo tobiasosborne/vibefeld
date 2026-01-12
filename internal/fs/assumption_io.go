@@ -155,7 +155,7 @@ func ListAssumptions(basePath string) ([]string, error) {
 		return nil, err
 	}
 
-	var ids []string
+	ids := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		// Skip directories
 		if entry.IsDir() {
@@ -177,11 +177,6 @@ func ListAssumptions(basePath string) ([]string, error) {
 		// Extract ID (remove .json extension)
 		id := strings.TrimSuffix(name, ".json")
 		ids = append(ids, id)
-	}
-
-	// Return empty slice instead of nil if no assumptions found
-	if ids == nil {
-		ids = []string{}
 	}
 
 	return ids, nil

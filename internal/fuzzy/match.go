@@ -81,7 +81,7 @@ func Match(input string, candidates []string, threshold float64) MatchResult {
 		maxSuggestionDistance = 4
 	}
 
-	suggestions := make([]string, 0)
+	suggestions := make([]string, 0, len(candidates))
 	for _, s := range scores {
 		// Include if distance is small enough relative to input length
 		// This allows prefix matching (e.g., "re" -> "refine", "refute", "release")

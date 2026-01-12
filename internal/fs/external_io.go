@@ -125,7 +125,7 @@ func ListExternals(basePath string) ([]string, error) {
 		return nil, err
 	}
 
-	ids := make([]string, 0)
+	ids := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		// Skip directories
 		if entry.IsDir() {

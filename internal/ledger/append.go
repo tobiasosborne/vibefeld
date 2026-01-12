@@ -128,7 +128,7 @@ func AppendWithTimeout(dir string, event Event, timeout time.Duration) (int, err
 // Uses file-based locking to ensure concurrent safety.
 func AppendBatch(dir string, events []Event) ([]int, error) {
 	if len(events) == 0 {
-		return []int{}, nil
+		return nil, nil
 	}
 
 	if err := validateDirectory(dir); err != nil {

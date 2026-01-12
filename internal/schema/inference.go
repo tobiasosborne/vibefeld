@@ -9,6 +9,20 @@ import (
 	"github.com/tobias/vibefeld/internal/fuzzy"
 )
 
+// Scoring constants for fuzzy inference type matching.
+// These weights are used in SuggestInference to rank potential matches.
+const (
+	// CommonPrefixWeight is the multiplier for common prefix length in fuzzy matching.
+	// A higher value prioritizes matches that share longer prefixes with the input,
+	// which helps match abbreviations like "univ_inst" to "universal_instantiation".
+	CommonPrefixWeight = 1.5
+
+	// TargetLengthDivisor normalizes target string length as a tie-breaker.
+	// Dividing by this value ensures target length has minimal influence on scoring,
+	// only breaking ties when distance and prefix are equal.
+	TargetLengthDivisor = 1000.0
+)
+
 // InferenceType represents a valid inference rule in the proof system.
 type InferenceType string
 
@@ -160,9 +174,9 @@ func SuggestInference(input string) (InferenceType, bool) {
 		// - Lower distance is better (primary factor)
 		// - Longer common prefix is better (strong tie-breaker for similar distances)
 		// - Longer target is better (weak tie-breaker for abbreviations)
-		// Score = -distance + (commonPrefix * 1.5) + (targetLen / 1000.0)
-		// The 1.5 weight on commonPrefix helps match abbreviations like "univ_inst" -> "universal_instantiation"
-		score := float64(-distance) + (float64(commonPrefixLen) * 1.5) + (float64(len(typeStr)) / 1000.0)
+		// Score = -distance + (commonPrefix * CommonPrefixWeight) + (targetLen / TargetLengthDivisor)
+		// The CommonPrefixWeight on commonPrefix helps match abbreviations like "univ_inst" -> "universal_instantiation"
+		score := float64(-distance) + (float64(commonPrefixLen) * CommonPrefixWeight) + (float64(len(typeStr)) / TargetLengthDivisor)
 
 		// Update best match if this has a better score
 		if bestDistance == -1 || score > bestScore {
