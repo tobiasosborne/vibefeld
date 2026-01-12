@@ -2,7 +2,7 @@
 
 An exploration of agent-first software design.
 
-The primary application is a reimagining of [alethfeld](link), an adversarial proof verification system. But this repo is also a broader collection of learnings about:
+The primary application is a reimagining of alethfeld, an adversarial proof verification system. But this repo is also a broader collection of learnings about:
 
 - **Agent UX**: What makes tools usable by LLM agents? How do error messages, help text, and output formats need to change?
 - **Agent ethnography**: Observing how agents actually behave in the wild — their failure modes, workarounds, and emergent strategies.
