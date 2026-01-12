@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tobias/vibefeld/internal/types"
@@ -17,6 +18,8 @@ type Lock struct {
 	owner      string
 	acquiredAt time.Time
 	expiresAt  time.Time
+	released   bool
+	mu         sync.Mutex
 }
 
 // NewLock creates a new Lock for the given node.
