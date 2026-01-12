@@ -1,6 +1,12 @@
 package node
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"strings"
+
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -25,19 +31,52 @@ type Definition struct {
 // NewDefinition creates a new Definition with the given name and content.
 // Returns an error if name or content is empty or whitespace-only.
 func NewDefinition(name, content string) (*Definition, error) {
-	// TODO: implement
-	return nil, nil
+	if strings.TrimSpace(name) == "" {
+		return nil, errors.New("definition name cannot be empty")
+	}
+	if strings.TrimSpace(content) == "" {
+		return nil, errors.New("definition content cannot be empty")
+	}
+
+	return &Definition{
+		ID:          generateDefinitionID(),
+		Name:        name,
+		Content:     content,
+		ContentHash: computeContentHash(content),
+		Created:     types.Now(),
+	}, nil
 }
 
 // Validate checks if the Definition is valid.
 // Returns an error if name or content is empty or whitespace-only.
 func (d *Definition) Validate() error {
-	// TODO: implement
+	if strings.TrimSpace(d.Name) == "" {
+		return errors.New("definition name cannot be empty")
+	}
+	if strings.TrimSpace(d.Content) == "" {
+		return errors.New("definition content cannot be empty")
+	}
 	return nil
 }
 
 // Equal returns true if two definitions have the same content hash.
 func (d *Definition) Equal(other *Definition) bool {
-	// TODO: implement
-	return false
+	if other == nil {
+		return false
+	}
+	return d.ContentHash == other.ContentHash
+}
+
+// generateDefinitionID generates a unique identifier for a Definition.
+// Uses random bytes for uniqueness.
+func generateDefinitionID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// computeContentHash computes a SHA256 hash of the content string.
+func computeContentHash(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(sum[:])
 }

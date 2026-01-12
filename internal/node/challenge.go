@@ -1,6 +1,9 @@
 package node
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -47,28 +50,69 @@ type Challenge struct {
 }
 
 // NewChallenge creates a new Challenge with the given parameters.
-// Returns an error if validation fails.
-// TODO: Implement validation and initialization
+// Returns an error if validation fails:
+// - ID must not be empty or whitespace-only
+// - Reason must not be empty or whitespace-only
+// - Target must be a valid ChallengeTarget enum value
 func NewChallenge(id string, targetID types.NodeID, target schema.ChallengeTarget, reason string) (*Challenge, error) {
-	panic("not implemented")
+	// Validate ID is not empty or whitespace-only
+	if strings.TrimSpace(id) == "" {
+		return nil, errors.New("challenge ID must not be empty")
+	}
+
+	// Validate reason is not empty or whitespace-only
+	if strings.TrimSpace(reason) == "" {
+		return nil, errors.New("challenge reason must not be empty")
+	}
+
+	// Validate target is a valid enum value
+	if _, exists := schema.GetChallengeTargetInfo(target); !exists {
+		return nil, errors.New("invalid challenge target")
+	}
+
+	return &Challenge{
+		ID:       id,
+		TargetID: targetID,
+		Target:   target,
+		Reason:   reason,
+		Raised:   types.Now(),
+		Status:   ChallengeStatusOpen,
+	}, nil
 }
 
 // Resolve marks the challenge as resolved with the given resolution.
 // Returns an error if the challenge is not open or if resolution is empty.
-// TODO: Implement state transition and validation
 func (c *Challenge) Resolve(resolution string) error {
-	panic("not implemented")
+	// Validate resolution is not empty or whitespace-only
+	if strings.TrimSpace(resolution) == "" {
+		return errors.New("resolution must not be empty")
+	}
+
+	// Check that challenge is still open
+	if !c.IsOpen() {
+		return errors.New("challenge is not open")
+	}
+
+	c.Status = ChallengeStatusResolved
+	c.Resolution = resolution
+	c.ResolvedAt = types.Now()
+	return nil
 }
 
 // Withdraw marks the challenge as withdrawn.
 // Returns an error if the challenge is not open.
-// TODO: Implement state transition
 func (c *Challenge) Withdraw() error {
-	panic("not implemented")
+	// Check that challenge is still open
+	if !c.IsOpen() {
+		return errors.New("challenge is not open")
+	}
+
+	c.Status = ChallengeStatusWithdrawn
+	c.ResolvedAt = types.Now()
+	return nil
 }
 
 // IsOpen returns true if the challenge is still open (not resolved or withdrawn).
-// TODO: Implement status check
 func (c *Challenge) IsOpen() bool {
-	panic("not implemented")
+	return c.Status == ChallengeStatusOpen
 }

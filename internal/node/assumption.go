@@ -2,6 +2,12 @@
 package node
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"strings"
+
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -27,20 +33,35 @@ type Assumption struct {
 // NewAssumption creates a new Assumption with the given statement.
 // The content hash and timestamp are computed automatically.
 func NewAssumption(statement string) *Assumption {
-	// TODO: implement
-	return nil
+	return NewAssumptionWithJustification(statement, "")
 }
 
 // NewAssumptionWithJustification creates a new Assumption with the
 // given statement and justification.
 func NewAssumptionWithJustification(statement, justification string) *Assumption {
-	// TODO: implement
-	return nil
+	// Compute content hash from statement
+	sum := sha256.Sum256([]byte(statement))
+	contentHash := hex.EncodeToString(sum[:])
+
+	// Generate unique ID using random bytes
+	randomBytes := make([]byte, 8)
+	rand.Read(randomBytes)
+	id := hex.EncodeToString(randomBytes)
+
+	return &Assumption{
+		ID:            id,
+		Statement:     statement,
+		ContentHash:   contentHash,
+		Created:       types.Now(),
+		Justification: justification,
+	}
 }
 
 // Validate checks if the Assumption is valid.
 // Returns an error if the statement is empty or whitespace-only.
 func (a *Assumption) Validate() error {
-	// TODO: implement
+	if strings.TrimSpace(a.Statement) == "" {
+		return errors.New("assumption statement cannot be empty")
+	}
 	return nil
 }
