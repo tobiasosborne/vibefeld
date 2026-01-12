@@ -1,118 +1,142 @@
-# Handoff - 2026-01-12 (Session 7 continued)
+# Handoff - 2026-01-12 (Session 8)
 
 ## What Was Accomplished This Session
 
-### Issues Closed (11 total)
+### Issues Closed (20 total)
 
-**Bug Fix:**
-- `vibefeld-7rs7`: **Fixed timestamp JSON serialization bug** - ALL TESTS NOW PASS
-  - Root cause: `types.Now()` had nanosecond precision but RFC3339 only preserves seconds
-  - Also: `types.NodeID` was missing JSON serialization methods
-  - Fix: Truncate `Now()` to seconds + add `MarshalJSON`/`UnmarshalJSON` to NodeID
-  - Removed workaround from `pending_def.go`
+**Batch 1 - Implementations (4 issues):**
+- `vibefeld-a6v`: Node struct tests verified passing (was already implemented)
+- `vibefeld-zel`: Stale lock detection (`internal/lock/stale.go`)
+- `vibefeld-4qh`: External reference file I/O (`internal/fs/external_io.go`)
+- `vibefeld-2ui`: Lemma file I/O (`internal/fs/lemma_io.go`)
 
-**Batch 1 - Implementations (4 new files):**
-- `vibefeld-0ya`: Lock release (`internal/lock/release.go`) - ALL TESTS PASS
-- `vibefeld-w10`: Lock info retrieval (`internal/lock/info.go`) - ALL TESTS PASS
-- `vibefeld-pf9`: Definition file I/O (`internal/fs/def_io.go`) - ALL TESTS PASS
-- `vibefeld-m5y`: Assumption file I/O (`internal/fs/assumption_io.go`) - ALL TESTS PASS
-- `vibefeld-gew`: Error renderer - was already fully implemented
+**Batch 2 - TDD Tests (6 issues):**
+- `vibefeld-wkh`: Event types tests + implementation (`internal/ledger/event.go`, `event_test.go`)
+- `vibefeld-is5`: State struct tests (`internal/state/state_test.go`)
+- `vibefeld-4ep`: Scope inheritance tests (`internal/scope/inherit_test.go`)
+- `vibefeld-gzz`: Taint computation tests (`internal/taint/compute_test.go`)
+- `vibefeld-95m`: Node rendering tests (`internal/render/node_test.go`)
+- `vibefeld-bi0`: Event types implementation (done with tests)
 
-**Batch 2 - New implementations + TDD tests (6 new files):**
-- `vibefeld-17n`: Node struct + tests (`internal/node/node.go`, `node_test.go`) - 22 TESTS PASS
-- `vibefeld-i6j`: Stale lock tests (`internal/lock/stale_test.go`) - TDD tagged
-- `vibefeld-uzu`: Root command fuzzy matching (`cmd/af/root.go`) - ALL 9 TESTS PASS
-- `vibefeld-nle`: External I/O tests (`internal/fs/external_io_test.go`) - TDD tagged
-- `vibefeld-t8g`: Lemma I/O tests (`internal/fs/lemma_io_test.go`) - TDD tagged
+**Batch 3 - Implementations (5 issues):**
+- `vibefeld-9wg`: State struct (`internal/state/state.go`)
+- `vibefeld-9pk`: Scope inheritance (`internal/scope/inherit.go`)
+- `vibefeld-884`: Taint computation (`internal/taint/compute.go`)
+- `vibefeld-dio`: Node renderer (`internal/render/node.go`)
+- `vibefeld-rhx` + `vibefeld-bn9`: Event filename handling (`internal/ledger/filename.go`)
+
+**Batch 4 - Full Implementations (5 issues):**
+- `vibefeld-ix8`: Ledger append with atomic writes (`internal/ledger/append.go`)
+- `vibefeld-5hv`: State event application (`internal/state/apply.go`)
+- `vibefeld-33a`: Scope validation (`internal/scope/validate.go`)
+- `vibefeld-dy9`: Taint propagation (`internal/taint/propagate.go`)
+- `vibefeld-53q`: Prover job detection (`internal/jobs/prover.go`)
 
 ### Implementation Details
 
-**Timestamp Bug Fix (`internal/types/time.go`, `internal/types/id.go`):**
-- `Now()` now truncates to second precision for JSON roundtrip compatibility
-- `NodeID.MarshalJSON()` serializes as string (e.g., `"1.2.3"`)
-- `NodeID.UnmarshalJSON()` parses string back to NodeID
-- All JSON roundtrip tests in node package now pass
+**Ledger Package (`internal/ledger/`):**
+- `event.go`: 14 event types (ProofInitialized, NodeCreated, NodesClaimed, etc.)
+- `filename.go`: Sequence-based filenames (000001.json, 000002.json)
+- `append.go`: Atomic event append with file locking, batch support
 
-**Node Struct (`internal/node/node.go`):**
-- `TaintState` type enum (clean, self_admitted, tainted, unresolved)
-- `Node` struct with all fields (ID, Type, Statement, Latex, Inference, Context, Dependencies, states, etc.)
-- `NewNode()` and `NewNodeWithOptions()` constructors
-- `ComputeContentHash()` - deterministic SHA256
-- `Validate()` - validates all fields
-- `IsRoot()`, `Depth()`, `VerifyContentHash()` methods
-- 22 comprehensive tests pass
+**State Package (`internal/state/`):**
+- `state.go`: State struct with maps for nodes, definitions, assumptions, externals, lemmas
+- `apply.go`: Apply function handling all 14 event types
 
-**Root Command Fuzzy Matching (`cmd/af/root.go`):**
-- `AddFuzzyMatching(cmd)` - configures cobra command for fuzzy suggestions
-- `unknownCommandError()` - generates "Did you mean:" suggestions
-- Uses `fuzzy.SuggestCommand()` from internal/fuzzy package
-- All 9 tests pass (7 fuzzy + 2 flag tests)
+**Scope Package (`internal/scope/`):**
+- `inherit.go`: GetActiveEntries, InheritScope for local assumption inheritance
+- `validate.go`: ValidateScope (SCOPE_VIOLATION), ValidateScopeBalance (SCOPE_UNCLOSED)
+
+**Taint Package (`internal/taint/`):**
+- `compute.go`: ComputeTaint based on epistemic state and ancestors
+- `propagate.go`: PropagateTaint updates descendants when parent changes
+
+**Jobs Package (`internal/jobs/`):**
+- `prover.go`: FindProverJobs finds available+pending nodes
+
+**Render Package (`internal/render/`):**
+- `node.go`: RenderNode (single-line), RenderNodeVerbose (multi-line), RenderNodeTree
+
+**Lock Package (`internal/lock/`):**
+- `stale.go`: IsStale function and method for detecting expired locks
+
+**FS Package (`internal/fs/`):**
+- `external_io.go`: Write/Read/List/DeleteExternal
+- `lemma_io.go`: Write/Read/List/DeleteLemma
 
 ## Current State
 
 ### What's Working
-- `./af --version` outputs "af version 0.1.0"
-- `./af unknowncommand` shows fuzzy suggestions
-- Go module builds successfully (`go build ./...`)
-- **ALL TESTS PASS** (`go test ./...`)
-  - `cmd/af/` - 9 tests pass
-  - `internal/config/` - PASS
-  - `internal/errors/` - PASS
-  - `internal/fs/` - PASS
-  - `internal/fuzzy/` - 31 tests pass
-  - `internal/hash/` - PASS
-  - `internal/ledger/` - PASS
-  - `internal/lock/` - 36 tests pass
-  - `internal/node/` - ALL TESTS PASS (bug fixed!)
-  - `internal/render/` - PASS
-  - `internal/schema/` - PASS
-  - `internal/scope/` - PASS
-  - `internal/types/` - PASS
+- All core packages implemented and tested
+- Event sourcing pipeline: events -> ledger -> state
+- Taint computation and propagation
+- Scope inheritance and validation
+- Prover job detection
+- Node rendering for CLI output
 
-### TDD Tests Pending Implementation
-Run with `-tags=integration` when implementations exist:
-- `internal/lock/stale_test.go` - needs IsStale()
-- `internal/fs/external_io_test.go` - needs Write/Read/List/DeleteExternal
-- `internal/fs/lemma_io_test.go` - needs Write/Read/List/DeleteLemma
-
-## Key Files Changed This Session
-
-```
-Created (10 files):
-  internal/lock/release.go           (lock release)
-  internal/lock/info.go              (lock info)
-  internal/lock/stale_test.go        (TDD tests)
-  internal/fs/def_io.go              (definition I/O)
-  internal/fs/assumption_io.go       (assumption I/O)
-  internal/fs/external_io_test.go    (TDD tests)
-  internal/fs/lemma_io_test.go       (TDD tests)
-  internal/node/node.go              (Node struct)
-  internal/node/node_test.go         (Node tests)
-  cmd/af/root.go                     (fuzzy matching)
-
-Modified (5 files):
-  internal/lock/lock.go              (added released flag, mutex)
-  cmd/af/root_test.go                (AddFuzzyMatching call)
-  internal/types/time.go             (truncate Now() to seconds)
-  internal/types/id.go               (add JSON serialization)
-  internal/node/pending_def.go       (remove timestamp workaround)
-```
-
-## Testing Status
-
+### Test Status
 ```bash
-go test ./...  # ALL PASS
+go test ./...                    # ALL PASS (non-integration)
+go test -tags=integration ./...  # ALL PASS
 ```
 
-## Stats
+### Stats
+- Total issues: 238
+- Closed: 91
+- Open: 147 (42 ready to work)
+- Blocked: 105
 
-- Issues closed this session: 11
-- Build: PASS
-- All tests: PASS
-- Bug fixed: vibefeld-7rs7 (timestamp serialization)
+## Key Files Created This Session
+
+```
+internal/lock/stale.go              (17 lines)
+internal/fs/external_io.go          (178 lines)
+internal/fs/lemma_io.go             (178 lines)
+internal/ledger/event.go            (320 lines)
+internal/ledger/event_test.go       (756 lines)
+internal/ledger/filename.go         (91 lines)
+internal/ledger/filename_test.go    (265 lines)
+internal/ledger/append.go           (291 lines)
+internal/ledger/append_test.go      (547 lines)
+internal/state/state.go             (92 lines)
+internal/state/state_test.go        (538 lines)
+internal/state/apply.go             (216 lines)
+internal/state/apply_test.go        (805 lines)
+internal/scope/inherit.go           (52 lines)
+internal/scope/inherit_test.go      (226 lines)
+internal/scope/validate.go          (82 lines)
+internal/scope/validate_test.go     (396 lines)
+internal/taint/compute.go           (45 lines)
+internal/taint/compute_test.go      (201 lines)
+internal/taint/propagate.go         (86 lines)
+internal/taint/propagate_test.go    (345 lines)
+internal/render/node.go             (165 lines)
+internal/render/node_test.go        (559 lines)
+internal/jobs/prover.go             (30 lines)
+internal/jobs/prover_test.go        (286 lines)
+```
+
+**Total: ~6,400+ lines of new code**
+
+## Next Steps (Priority Order)
+
+1. **Verifier job detection** (`vibefeld-7cj`) - parallel to prover jobs
+2. **Job facade** (`vibefeld-ern`, `vibefeld-7po`) - combines prover/verifier
+3. **Ledger read/scan** (`vibefeld-qsb`) - read events from ledger
+4. **State replay** (`vibefeld-qmr`, `vibefeld-5c5`) - rebuild state from events
+5. **Service layer** (`vibefeld-5fm`, `vibefeld-q38`) - ProofService facade
+6. **CLI commands** - init, status, claim, refine, release, accept
+
+## Git Status
+
+- Branch: `main`
+- Commits this session: 4
+- All changes pushed to `origin/main`
+- Working tree clean
 
 ## Previous Sessions
 
+**Session 7:** 11 issues - timestamp bug fix, node struct, fuzzy matching
 **Session 6:** 8 issues - schema.go, scope.go, fs/init.go, TDD tests
 **Session 5:** 10 issues - lock.go, fuzzy/match.go, node structs
 **Session 4:** 9 issues - workflow.go, config.go, node TDD tests
