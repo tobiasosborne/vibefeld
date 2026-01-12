@@ -12,8 +12,10 @@ type Timestamp struct {
 }
 
 // Now returns a Timestamp representing the current time in UTC.
+// Timestamps are truncated to second precision to ensure JSON roundtrip
+// equality (RFC3339 format does not preserve nanoseconds).
 func Now() Timestamp {
-	return Timestamp{t: time.Now().UTC()}
+	return Timestamp{t: time.Now().UTC().Truncate(time.Second)}
 }
 
 // ParseTimestamp parses an ISO8601 formatted timestamp string.

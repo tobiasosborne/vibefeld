@@ -36,16 +36,11 @@ type PendingDef struct {
 // NewPendingDef creates a new pending definition request.
 // The ID is automatically generated and the status is set to pending.
 func NewPendingDef(term string, requestedBy types.NodeID) *PendingDef {
-	// Truncate timestamp to second precision for JSON roundtrip compatibility.
-	// types.Now() has nanosecond precision but JSON uses RFC3339 which is seconds.
-	ts := types.Now()
-	truncated, _ := types.ParseTimestamp(ts.String())
-
 	return &PendingDef{
 		ID:          generatePendingDefID(),
 		Term:        term,
 		RequestedBy: requestedBy,
-		Created:     truncated,
+		Created:     types.Now(),
 		ResolvedBy:  "",
 		Status:      PendingDefStatusPending,
 	}

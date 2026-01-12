@@ -2,7 +2,14 @@
 
 ## What Was Accomplished This Session
 
-### Issues Closed (10 total, 2 batches of 5 parallel subagents)
+### Issues Closed (11 total)
+
+**Bug Fix:**
+- `vibefeld-7rs7`: **Fixed timestamp JSON serialization bug** - ALL TESTS NOW PASS
+  - Root cause: `types.Now()` had nanosecond precision but RFC3339 only preserves seconds
+  - Also: `types.NodeID` was missing JSON serialization methods
+  - Fix: Truncate `Now()` to seconds + add `MarshalJSON`/`UnmarshalJSON` to NodeID
+  - Removed workaround from `pending_def.go`
 
 **Batch 1 - Implementations (4 new files):**
 - `vibefeld-0ya`: Lock release (`internal/lock/release.go`) - ALL TESTS PASS
@@ -20,6 +27,12 @@
 
 ### Implementation Details
 
+**Timestamp Bug Fix (`internal/types/time.go`, `internal/types/id.go`):**
+- `Now()` now truncates to second precision for JSON roundtrip compatibility
+- `NodeID.MarshalJSON()` serializes as string (e.g., `"1.2.3"`)
+- `NodeID.UnmarshalJSON()` parses string back to NodeID
+- All JSON roundtrip tests in node package now pass
+
 **Node Struct (`internal/node/node.go`):**
 - `TaintState` type enum (clean, self_admitted, tainted, unresolved)
 - `Node` struct with all fields (ID, Type, Statement, Latex, Inference, Context, Dependencies, states, etc.)
@@ -35,36 +48,26 @@
 - Uses `fuzzy.SuggestCommand()` from internal/fuzzy package
 - All 9 tests pass (7 fuzzy + 2 flag tests)
 
-**TDD Test Files (integration tagged):**
-- `stale_test.go`: Tests for `IsStale()` function and method
-- `external_io_test.go`: Tests for Write/Read/List/DeleteExternal
-- `lemma_io_test.go`: Tests for Write/Read/List/DeleteLemma
-
 ## Current State
 
 ### What's Working
 - `./af --version` outputs "af version 0.1.0"
 - `./af unknowncommand` shows fuzzy suggestions
 - Go module builds successfully (`go build ./...`)
-- **All passing test packages:**
-  - `cmd/af/` - 9 tests pass (including fuzzy matching)
+- **ALL TESTS PASS** (`go test ./...`)
+  - `cmd/af/` - 9 tests pass
   - `internal/config/` - PASS
   - `internal/errors/` - PASS
-  - `internal/fs/` - PASS (without integration tag)
+  - `internal/fs/` - PASS
   - `internal/fuzzy/` - 31 tests pass
   - `internal/hash/` - PASS
   - `internal/ledger/` - PASS
   - `internal/lock/` - 36 tests pass
-  - `internal/node/` - New node tests pass, old JSON roundtrip fail (timestamp bug)
+  - `internal/node/` - ALL TESTS PASS (bug fixed!)
   - `internal/render/` - PASS
   - `internal/schema/` - PASS
   - `internal/scope/` - PASS
   - `internal/types/` - PASS
-
-### Known Issues
-- `internal/node/` - Old JSON roundtrip tests fail (vibefeld-7rs7)
-  - Timestamp precision issue + NodeID serialization
-- `internal/fs/TestRoundTrip` - Same timestamp precision issue
 
 ### TDD Tests Pending Implementation
 Run with `-tags=integration` when implementations exist:
@@ -87,35 +90,26 @@ Created (10 files):
   internal/node/node_test.go         (Node tests)
   cmd/af/root.go                     (fuzzy matching)
 
-Modified (2 files):
+Modified (5 files):
   internal/lock/lock.go              (added released flag, mutex)
   cmd/af/root_test.go                (AddFuzzyMatching call)
+  internal/types/time.go             (truncate Now() to seconds)
+  internal/types/id.go               (add JSON serialization)
+  internal/node/pending_def.go       (remove timestamp workaround)
 ```
 
 ## Testing Status
 
 ```bash
-go test ./cmd/af/...            # PASS (9 tests)
-go test ./internal/config/...   # PASS
-go test ./internal/errors/...   # PASS
-go test ./internal/fs/...       # PASS (without integration)
-go test ./internal/fuzzy/...    # PASS (31 tests)
-go test ./internal/hash/...     # PASS
-go test ./internal/ledger/...   # PASS
-go test ./internal/lock/...     # PASS (36 tests)
-go test ./internal/node/... -run "^TestNode"  # PASS (22 new tests)
-go test ./internal/render/...   # PASS
-go test ./internal/schema/...   # PASS
-go test ./internal/scope/...    # PASS
-go test ./internal/types/...    # PASS
+go test ./...  # ALL PASS
 ```
 
 ## Stats
 
-- Issues closed this session: 10
+- Issues closed this session: 11
 - Build: PASS
-- New tests added: ~40
-- Tests: Most pass, old timestamp bug affects some node tests
+- All tests: PASS
+- Bug fixed: vibefeld-7rs7 (timestamp serialization)
 
 ## Previous Sessions
 

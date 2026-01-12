@@ -152,3 +152,40 @@ func (n NodeID) CommonAncestor(other NodeID) NodeID {
 
 	return NodeID{parts: n.parts[:commonLen]}
 }
+
+// MarshalJSON implements json.Marshaler.
+// NodeIDs are serialized as their string representation.
+func (n NodeID) MarshalJSON() ([]byte, error) {
+	s := n.String()
+	return []byte(`"` + s + `"`), nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+// Expects a NodeID string (e.g., "1", "1.2.3").
+func (n *NodeID) UnmarshalJSON(data []byte) error {
+	// Handle null case
+	if string(data) == "null" {
+		return nil
+	}
+
+	// Handle empty string case
+	if string(data) == `""` {
+		*n = NodeID{}
+		return nil
+	}
+
+	// Strip quotes from JSON string
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		return fmt.Errorf("invalid JSON NodeID: not a string")
+	}
+	s := string(data[1 : len(data)-1])
+
+	// Parse the NodeID
+	parsed, err := Parse(s)
+	if err != nil {
+		return err
+	}
+
+	*n = parsed
+	return nil
+}
