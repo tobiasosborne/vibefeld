@@ -195,7 +195,10 @@ func TestChild(t *testing.T) {
 				t.Fatalf("Parse(%q) unexpected error: %v", tt.parent, err)
 			}
 
-			child := parent.Child(tt.childNum)
+			child, err := parent.Child(tt.childNum)
+			if err != nil {
+				t.Fatalf("Child(%d) unexpected error: %v", tt.childNum, err)
+			}
 			if child.String() != tt.wantChild {
 				t.Errorf("Parse(%q).Child(%d) = %q, want %q", tt.parent, tt.childNum, child.String(), tt.wantChild)
 			}
@@ -405,7 +408,7 @@ func TestNodeID_ZeroValue(t *testing.T) {
 	}
 }
 
-// TestChild_InvalidNumbers verifies Child panics or handles invalid inputs
+// TestChild_InvalidNumbers verifies Child returns error for invalid inputs
 func TestChild_InvalidNumbers(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -424,19 +427,10 @@ func TestChild_InvalidNumbers(t *testing.T) {
 				t.Fatalf("Parse(%q) unexpected error: %v", tt.parent, err)
 			}
 
-			// Child with invalid number might panic or return invalid ID
-			// For now, just ensure it doesn't crash Go runtime
-			defer func() {
-				if r := recover(); r != nil {
-					// Panic is acceptable for invalid input
-					t.Logf("Child(%d) panicked (acceptable): %v", tt.childNum, r)
-				}
-			}()
-
-			child := parent.Child(tt.childNum)
-			// If we get here, verify the result is somehow invalid
-			// (implementation-dependent behavior)
-			_ = child
+			_, err = parent.Child(tt.childNum)
+			if err == nil {
+				t.Errorf("Child(%d) expected error, got nil", tt.childNum)
+			}
 		})
 	}
 }
@@ -536,7 +530,10 @@ func TestChild_Chain(t *testing.T) {
 			}
 
 			for _, num := range tt.childNums {
-				id = id.Child(num)
+				id, err = id.Child(num)
+				if err != nil {
+					t.Fatalf("Child(%d) unexpected error: %v", num, err)
+				}
 			}
 
 			if id.String() != tt.wantFinal {

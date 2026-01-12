@@ -91,6 +91,11 @@ func (l *Lock) Refresh(timeout time.Duration) error {
 }
 
 // lockJSON is the JSON representation of a Lock.
+// This intermediate struct is required because:
+// 1. Lock has unexported fields that json.Marshal cannot access directly
+// 2. Lock contains a sync.Mutex which must not be serialized
+// 3. JSON uses snake_case field names (node_id, acquired_at, expires_at)
+// 4. Timestamps need explicit RFC3339Nano formatting
 type lockJSON struct {
 	NodeID     string `json:"node_id"`
 	Owner      string `json:"owner"`

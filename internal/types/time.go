@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -64,9 +65,9 @@ func (ts Timestamp) IsZero() bool {
 // MarshalJSON implements json.Marshaler.
 // Timestamps are serialized as ISO8601 strings.
 func (ts Timestamp) MarshalJSON() ([]byte, error) {
-	// Format as RFC3339 and wrap in quotes for JSON
+	// Format as RFC3339 and use json.Marshal for proper escaping
 	s := ts.t.Format(time.RFC3339)
-	return []byte(`"` + s + `"`), nil
+	return json.Marshal(s)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

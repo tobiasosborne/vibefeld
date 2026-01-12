@@ -3,6 +3,7 @@ package schema
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/fuzzy"
@@ -110,11 +111,15 @@ func GetInferenceInfo(t InferenceType) (InferenceInfo, bool) {
 }
 
 // AllInferences returns a list of all valid inference types with their metadata.
+// The results are sorted alphabetically by inference type ID for consistent ordering.
 func AllInferences() []InferenceInfo {
 	result := make([]InferenceInfo, 0, len(inferenceRegistry))
 	for _, info := range inferenceRegistry {
 		result = append(result, info)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
 	return result
 }
 

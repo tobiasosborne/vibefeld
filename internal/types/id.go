@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -85,15 +86,16 @@ func (n NodeID) Parent() (NodeID, bool) {
 
 // Child returns the nth child of this NodeID.
 // n must be positive (1, 2, 3, ...).
-func (n NodeID) Child(num int) NodeID {
+// Returns an error if num is not positive.
+func (n NodeID) Child(num int) (NodeID, error) {
 	if num <= 0 {
-		panic(fmt.Sprintf("child number must be positive, got %d", num))
+		return NodeID{}, fmt.Errorf("child number must be positive, got %d", num)
 	}
 
 	newParts := make([]int, len(n.parts)+1)
 	copy(newParts, n.parts)
 	newParts[len(n.parts)] = num
-	return NodeID{parts: newParts}
+	return NodeID{parts: newParts}, nil
 }
 
 // IsRoot returns true if this is the root node ("1").
@@ -156,8 +158,7 @@ func (n NodeID) CommonAncestor(other NodeID) NodeID {
 // MarshalJSON implements json.Marshaler.
 // NodeIDs are serialized as their string representation.
 func (n NodeID) MarshalJSON() ([]byte, error) {
-	s := n.String()
-	return []byte(`"` + s + `"`), nil
+	return json.Marshal(n.String())
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

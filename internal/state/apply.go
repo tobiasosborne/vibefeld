@@ -188,22 +188,24 @@ func applyLemmaExtracted(s *State, e ledger.LemmaExtracted) error {
 }
 
 // applyChallengeRaised handles the ChallengeRaised event.
-// Challenge tracking may be implemented separately.
+// Challenge tracking is not yet implemented in State. The event is recorded
+// in the ledger for history, but challenge state (open/resolved/withdrawn)
+// would require adding a challenges map to State and corresponding methods.
+// For now, challenge queries should replay the ledger directly.
 func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
-	// TODO: Add challenge tracking to state if needed
 	return nil
 }
 
 // applyChallengeResolved handles the ChallengeResolved event.
-// Challenge tracking may be implemented separately.
+// Challenge tracking is not yet implemented in State. The event is recorded
+// in the ledger for history. See applyChallengeRaised for details.
 func applyChallengeResolved(s *State, e ledger.ChallengeResolved) error {
-	// TODO: Add challenge tracking to state if needed
 	return nil
 }
 
 // applyChallengeWithdrawn handles the ChallengeWithdrawn event.
-// Challenge tracking may be implemented separately.
+// Challenge tracking is not yet implemented in State. The event is recorded
+// in the ledger for history. See applyChallengeRaised for details.
 func applyChallengeWithdrawn(s *State, e ledger.ChallengeWithdrawn) error {
-	// TODO: Add challenge tracking to state if needed
 	return nil
 }
