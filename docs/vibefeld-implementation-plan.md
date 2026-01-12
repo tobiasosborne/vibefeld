@@ -1,4 +1,4 @@
-# Alethfeld Implementation Plan
+# Vibefeld Implementation Plan
 
 Greenfield Go implementation of the AF (Adversarial Proof Framework) CLI.
 
@@ -21,7 +21,7 @@ Greenfield Go implementation of the AF (Adversarial Proof Framework) CLI.
 - **Deps**: 1
 
 ### 3. Initialize Go module
-- `go mod init github.com/tobias/alethfeld` (or chosen module path)
+- `go mod init github.com/tobias/vibefeld` (or chosen module path)
 - Create `go.mod`
 - **Deps**: 1
 

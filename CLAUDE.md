@@ -1,4 +1,4 @@
-# Alethfeld (AF) - Claude Code Project Guide
+# Vibefeld (AF) - Claude Code Project Guide
 
 ## Project Overview
 
@@ -117,7 +117,7 @@ Issues use prefix `vibefeld-` followed by hash (e.g., `vibefeld-a3f2dd`).
 
 ## Implementation Phases
 
-See `docs/alethfeld-implementation-plan.md` for full details.
+See `docs/vibefeld-implementation-plan.md` for full details.
 
 **Critical Path to Tracer Bullet**:
 1. Phase 0: Project Bootstrap (steps 1-7)
