@@ -1,0 +1,351 @@
+// Package node_test contains external tests for the node package.
+package node_test
+
+import (
+	"testing"
+
+	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/types"
+)
+
+// TestCheckValidationInvariant_NoChildren tests that a node with no children can be validated.
+func TestCheckValidationInvariant_NoChildren(t *testing.T) {
+	// Create a validated node with no children
+	id, _ := types.Parse("1")
+	n, err := node.NewNode(id, schema.NodeTypeClaim, "Root claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	n.EpistemicState = schema.EpistemicValidated
+
+	// getChildren returns empty slice (no children)
+	getChildren := func(id types.NodeID) []*node.Node {
+		return nil
+	}
+
+	err = node.CheckValidationInvariant(n, getChildren)
+	if err != nil {
+		t.Errorf("CheckValidationInvariant() = %v, want nil for node with no children", err)
+	}
+}
+
+// TestCheckValidationInvariant_AllChildrenValidated tests that a node with all validated children can be validated.
+func TestCheckValidationInvariant_AllChildrenValidated(t *testing.T) {
+	// Create parent node
+	parentID, _ := types.Parse("1")
+	parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	parent.EpistemicState = schema.EpistemicValidated
+
+	// Create validated child nodes
+	childID1, _ := types.Parse("1.1")
+	child1, err := node.NewNode(childID1, schema.NodeTypeClaim, "Child 1", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	child1.EpistemicState = schema.EpistemicValidated
+
+	childID2, _ := types.Parse("1.2")
+	child2, err := node.NewNode(childID2, schema.NodeTypeClaim, "Child 2", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	child2.EpistemicState = schema.EpistemicValidated
+
+	// getChildren returns the validated children
+	getChildren := func(id types.NodeID) []*node.Node {
+		if id.String() == "1" {
+			return []*node.Node{child1, child2}
+		}
+		return nil
+	}
+
+	err = node.CheckValidationInvariant(parent, getChildren)
+	if err != nil {
+		t.Errorf("CheckValidationInvariant() = %v, want nil for node with all validated children", err)
+	}
+}
+
+// TestCheckValidationInvariant_UnvalidatedChild tests that a node with an unvalidated child cannot be validated.
+func TestCheckValidationInvariant_UnvalidatedChild(t *testing.T) {
+	// Create parent node
+	parentID, _ := types.Parse("1")
+	parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	parent.EpistemicState = schema.EpistemicValidated
+
+	// Create a pending (unvalidated) child
+	childID, _ := types.Parse("1.1")
+	child, err := node.NewNode(childID, schema.NodeTypeClaim, "Unvalidated child", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	child.EpistemicState = schema.EpistemicPending
+
+	// getChildren returns the pending child
+	getChildren := func(id types.NodeID) []*node.Node {
+		if id.String() == "1" {
+			return []*node.Node{child}
+		}
+		return nil
+	}
+
+	err = node.CheckValidationInvariant(parent, getChildren)
+	if err == nil {
+		t.Error("CheckValidationInvariant() = nil, want error for node with unvalidated child")
+	}
+}
+
+// TestCheckValidationInvariant_MixedChildStates tests that a node with mixed child states cannot be validated.
+func TestCheckValidationInvariant_MixedChildStates(t *testing.T) {
+	tests := []struct {
+		name         string
+		childStates  []schema.EpistemicState
+		expectError  bool
+		description  string
+	}{
+		{
+			name:         "one validated one pending",
+			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicPending},
+			expectError:  true,
+			description:  "mixed validated and pending",
+		},
+		{
+			name:         "one validated one admitted",
+			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicAdmitted},
+			expectError:  true,
+			description:  "admitted is not validated",
+		},
+		{
+			name:         "one validated one refuted",
+			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicRefuted},
+			expectError:  true,
+			description:  "refuted is not validated",
+		},
+		{
+			name:         "all pending",
+			childStates:  []schema.EpistemicState{schema.EpistemicPending, schema.EpistemicPending},
+			expectError:  true,
+			description:  "all pending children",
+		},
+		{
+			name:         "three children one not validated",
+			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicValidated, schema.EpistemicPending},
+			expectError:  true,
+			description:  "one pending among three",
+		},
+		{
+			name:         "all validated",
+			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicValidated, schema.EpistemicValidated},
+			expectError:  false,
+			description:  "all three validated is OK",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create parent node
+			parentID, _ := types.Parse("1")
+			parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent claim", schema.InferenceAssumption)
+			if err != nil {
+				t.Fatalf("NewNode() error: %v", err)
+			}
+			parent.EpistemicState = schema.EpistemicValidated
+
+			// Create children with specified states
+			children := make([]*node.Node, len(tt.childStates))
+			for i, state := range tt.childStates {
+				childID, _ := types.Parse("1." + string(rune('1'+i)))
+				child, err := node.NewNode(childID, schema.NodeTypeClaim, "Child "+string(rune('1'+i)), schema.InferenceModusPonens)
+				if err != nil {
+					t.Fatalf("NewNode() error: %v", err)
+				}
+				child.EpistemicState = state
+				children[i] = child
+			}
+
+			// getChildren returns the children
+			getChildren := func(id types.NodeID) []*node.Node {
+				if id.String() == "1" {
+					return children
+				}
+				return nil
+			}
+
+			err = node.CheckValidationInvariant(parent, getChildren)
+			if tt.expectError && err == nil {
+				t.Errorf("CheckValidationInvariant() = nil, want error for %s", tt.description)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("CheckValidationInvariant() = %v, want nil for %s", err, tt.description)
+			}
+		})
+	}
+}
+
+// TestCheckValidationInvariant_NilNode tests that nil node returns nil (no violation).
+func TestCheckValidationInvariant_NilNode(t *testing.T) {
+	getChildren := func(id types.NodeID) []*node.Node {
+		return nil
+	}
+
+	err := node.CheckValidationInvariant(nil, getChildren)
+	if err != nil {
+		t.Errorf("CheckValidationInvariant(nil, ...) = %v, want nil", err)
+	}
+}
+
+// TestCheckValidationInvariant_NodeNotValidated tests that check doesn't apply to non-validated nodes.
+func TestCheckValidationInvariant_NodeNotValidated(t *testing.T) {
+	states := []schema.EpistemicState{
+		schema.EpistemicPending,
+		schema.EpistemicAdmitted,
+		schema.EpistemicRefuted,
+		schema.EpistemicArchived,
+	}
+
+	for _, state := range states {
+		t.Run(string(state), func(t *testing.T) {
+			// Create a node in non-validated state
+			id, _ := types.Parse("1")
+			n, err := node.NewNode(id, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+			if err != nil {
+				t.Fatalf("NewNode() error: %v", err)
+			}
+			n.EpistemicState = state
+
+			// Create a pending child (which would be a violation if parent were validated)
+			childID, _ := types.Parse("1.1")
+			child, err := node.NewNode(childID, schema.NodeTypeClaim, "Pending child", schema.InferenceModusPonens)
+			if err != nil {
+				t.Fatalf("NewNode() error: %v", err)
+			}
+			child.EpistemicState = schema.EpistemicPending
+
+			getChildren := func(id types.NodeID) []*node.Node {
+				if id.String() == "1" {
+					return []*node.Node{child}
+				}
+				return nil
+			}
+
+			// The check should not apply to non-validated nodes
+			err = node.CheckValidationInvariant(n, getChildren)
+			if err != nil {
+				t.Errorf("CheckValidationInvariant() = %v, want nil for non-validated node in state %q", err, state)
+			}
+		})
+	}
+}
+
+// TestCheckValidationInvariant_ErrorMessage tests that the error message contains useful details.
+func TestCheckValidationInvariant_ErrorMessage(t *testing.T) {
+	// Create parent node
+	parentID, _ := types.Parse("1")
+	parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	parent.EpistemicState = schema.EpistemicValidated
+
+	// Create a pending child
+	childID, _ := types.Parse("1.1")
+	child, err := node.NewNode(childID, schema.NodeTypeClaim, "Pending child", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	child.EpistemicState = schema.EpistemicPending
+
+	getChildren := func(id types.NodeID) []*node.Node {
+		if id.String() == "1" {
+			return []*node.Node{child}
+		}
+		return nil
+	}
+
+	err = node.CheckValidationInvariant(parent, getChildren)
+	if err == nil {
+		t.Fatal("Expected error but got nil")
+	}
+
+	// Error should contain useful information
+	errMsg := err.Error()
+	if len(errMsg) == 0 {
+		t.Error("Error message should not be empty")
+	}
+
+	// Error should mention the parent node ID
+	if !containsSubstring(errMsg, "1") {
+		t.Errorf("Error message should contain parent node ID '1', got: %s", errMsg)
+	}
+}
+
+// TestCheckValidationInvariant_DeepHierarchy tests the invariant with a deep node hierarchy.
+func TestCheckValidationInvariant_DeepHierarchy(t *testing.T) {
+	// Create a deep hierarchy: 1 -> 1.1 -> 1.1.1
+	// All validated except leaf
+
+	rootID, _ := types.Parse("1")
+	root, err := node.NewNode(rootID, schema.NodeTypeClaim, "Root", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	root.EpistemicState = schema.EpistemicValidated
+
+	childID, _ := types.Parse("1.1")
+	child, err := node.NewNode(childID, schema.NodeTypeClaim, "Child", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	child.EpistemicState = schema.EpistemicValidated
+
+	grandchildID, _ := types.Parse("1.1.1")
+	grandchild, err := node.NewNode(grandchildID, schema.NodeTypeClaim, "Grandchild", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	grandchild.EpistemicState = schema.EpistemicPending
+
+	// getChildren returns children for each node
+	getChildren := func(id types.NodeID) []*node.Node {
+		switch id.String() {
+		case "1":
+			return []*node.Node{child}
+		case "1.1":
+			return []*node.Node{grandchild}
+		default:
+			return nil
+		}
+	}
+
+	// Root should pass - it only checks direct children which are validated
+	err = node.CheckValidationInvariant(root, getChildren)
+	if err != nil {
+		t.Errorf("CheckValidationInvariant(root) = %v, want nil (direct child 1.1 is validated)", err)
+	}
+
+	// Child should fail - its direct child (grandchild) is pending
+	err = node.CheckValidationInvariant(child, getChildren)
+	if err == nil {
+		t.Error("CheckValidationInvariant(child) = nil, want error (grandchild 1.1.1 is pending)")
+	}
+}
+
+// containsSubstring is a helper to check if a string contains a substring.
+func containsSubstring(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || containsSubstringHelper(s, substr))
+}
+
+func containsSubstringHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
