@@ -5,6 +5,7 @@ package state
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -806,10 +807,17 @@ func TestReplay_LargeEventStream(t *testing.T) {
 		t.Fatalf("Append ProofInitialized failed: %v", err)
 	}
 
-	// Create many nodes
+	// Create root node first
+	rootID := mustParseNodeID(t, "1")
+	rootNode, _ := node.NewNode(rootID, schema.NodeTypeClaim, "Root node", schema.InferenceAssumption)
+	if _, err := ledger.Append(dir, ledger.NewNodeCreated(*rootNode)); err != nil {
+		t.Fatalf("Append root NodeCreated failed: %v", err)
+	}
+
+	// Create many child nodes under root (1.1, 1.2, ..., 1.10)
 	for i := 1; i <= nodesPerLevel; i++ {
-		nodeID := mustParseNodeID(t, string(rune('0'+i)))
-		n, _ := node.NewNode(nodeID, schema.NodeTypeClaim, "Node "+string(rune('0'+i)), schema.InferenceAssumption)
+		nodeID := mustParseNodeID(t, fmt.Sprintf("1.%d", i))
+		n, _ := node.NewNode(nodeID, schema.NodeTypeClaim, fmt.Sprintf("Node 1.%d", i), schema.InferenceAssumption)
 		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*n)); err != nil {
 			t.Fatalf("Append NodeCreated failed at %d: %v", i, err)
 		}
@@ -825,12 +833,17 @@ func TestReplay_LargeEventStream(t *testing.T) {
 		t.Fatalf("Replay failed: %v", err)
 	}
 
-	// Verify some nodes exist
+	// Verify root node exists
+	if got := state.GetNode(rootID); got == nil {
+		t.Error("Root node not found after replay")
+	}
+
+	// Verify child nodes exist
 	for i := 1; i <= nodesPerLevel; i++ {
-		nodeID := mustParseNodeID(t, string(rune('0'+i)))
+		nodeID := mustParseNodeID(t, fmt.Sprintf("1.%d", i))
 		got := state.GetNode(nodeID)
 		if got == nil {
-			t.Errorf("Node %d not found after replay", i)
+			t.Errorf("Node 1.%d not found after replay", i)
 		}
 	}
 }

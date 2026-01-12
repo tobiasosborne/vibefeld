@@ -2,6 +2,8 @@
 package ledger
 
 import (
+	"time"
+
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -24,6 +26,7 @@ const (
 	EventTaintRecomputed     EventType = "taint_recomputed"
 	EventDefAdded            EventType = "def_added"
 	EventLemmaExtracted      EventType = "lemma_extracted"
+	EventLockReaped          EventType = "lock_reaped"
 )
 
 // Event is the base interface for all ledger events.
@@ -156,6 +159,13 @@ type Lemma struct {
 type LemmaExtracted struct {
 	BaseEvent
 	Lemma Lemma `json:"lemma"`
+}
+
+// LockReaped is emitted when a stale lock is cleaned up.
+type LockReaped struct {
+	BaseEvent
+	NodeID types.NodeID `json:"node_id"`
+	Owner  string       `json:"owner"`
 }
 
 // NewProofInitialized creates a ProofInitialized event.
@@ -316,5 +326,19 @@ func NewLemmaExtracted(lemma Lemma) LemmaExtracted {
 			EventTime: types.Now(),
 		},
 		Lemma: lemma,
+	}
+}
+
+// NewLockReaped creates a LockReaped event.
+// Note: Uses FromTime to preserve full timestamp precision for accurate
+// comparison with caller's timing windows.
+func NewLockReaped(nodeID types.NodeID, owner string) LockReaped {
+	return LockReaped{
+		BaseEvent: BaseEvent{
+			EventType: EventLockReaped,
+			EventTime: types.FromTime(time.Now().UTC()),
+		},
+		NodeID: nodeID,
+		Owner:  owner,
 	}
 }

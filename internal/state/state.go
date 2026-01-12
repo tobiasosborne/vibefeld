@@ -90,3 +90,13 @@ func (s *State) AddLemma(l *node.Lemma) {
 func (s *State) GetLemma(id string) *node.Lemma {
 	return s.lemmas[id]
 }
+
+// AllNodes returns a slice of all nodes in the state.
+// The order of nodes is not guaranteed.
+func (s *State) AllNodes() []*node.Node {
+	nodes := make([]*node.Node, 0, len(s.nodes))
+	for _, n := range s.nodes {
+		nodes = append(nodes, n)
+	}
+	return nodes
+}

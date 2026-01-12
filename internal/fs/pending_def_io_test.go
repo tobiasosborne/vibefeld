@@ -307,10 +307,15 @@ func TestWritePendingDef_PermissionDenied(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	pendingDefsDir := filepath.Join(dir, ".af", "pending_defs")
+	afDir := filepath.Join(dir, ".af")
+	pendingDefsDir := filepath.Join(afDir, "pending_defs")
 
+	// Create .af directory with write permission first
+	if err := os.MkdirAll(afDir, 0755); err != nil {
+		t.Fatalf("failed to create .af directory: %v", err)
+	}
 	// Create pending_defs directory with no write permission
-	if err := os.MkdirAll(pendingDefsDir, 0555); err != nil {
+	if err := os.Mkdir(pendingDefsDir, 0555); err != nil {
 		t.Fatalf("failed to create pending_defs directory: %v", err)
 	}
 	t.Cleanup(func() {

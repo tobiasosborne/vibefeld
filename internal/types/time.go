@@ -63,10 +63,12 @@ func (ts Timestamp) IsZero() bool {
 }
 
 // MarshalJSON implements json.Marshaler.
-// Timestamps are serialized as ISO8601 strings.
+// Timestamps are serialized as ISO8601 strings with nanosecond precision.
+// When nanoseconds are zero, the output is identical to RFC3339.
 func (ts Timestamp) MarshalJSON() ([]byte, error) {
-	// Format as RFC3339 and use json.Marshal for proper escaping
-	s := ts.t.Format(time.RFC3339)
+	// Format as RFC3339Nano to preserve nanosecond precision.
+	// When nanoseconds are zero, this outputs the same as RFC3339.
+	s := ts.t.Format(time.RFC3339Nano)
 	return json.Marshal(s)
 }
 
