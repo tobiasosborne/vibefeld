@@ -400,9 +400,9 @@ func TestDistance_TriangleInequality(t *testing.T) {
 			if dAC > dAB+dBC {
 				t.Errorf("Triangle inequality violated: Distance(%q, %q) = %d > Distance(%q, %q) + Distance(%q, %q) = %d + %d = %d",
 					triple.a, triple.c, dAC,
-					triple.a, triple.b, dAB,
-					triple.b, triple.c, dBC,
-					dAB+dBC)
+					triple.a, triple.b,
+					triple.b, triple.c,
+					dAB, dBC, dAB+dBC)
 			}
 		})
 	}
