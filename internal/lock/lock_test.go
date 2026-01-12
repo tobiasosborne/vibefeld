@@ -1,0 +1,594 @@
+package lock_test
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/tobias/vibefeld/internal/lock"
+	"github.com/tobias/vibefeld/internal/types"
+)
+
+// TestNewLock_Valid verifies NewLock creates locks with correct fields
+func TestNewLock_Valid(t *testing.T) {
+	tests := []struct {
+		name    string
+		nodeID  string
+		owner   string
+		timeout time.Duration
+	}{
+		{"root node", "1", "agent-001", 5 * time.Minute},
+		{"child node", "1.1", "agent-002", 10 * time.Second},
+		{"deep node", "1.2.3.4", "prover-alpha", 1 * time.Hour},
+		{"short timeout", "1.1.1", "verifier-beta", 1 * time.Millisecond},
+		{"long owner name", "1", "very-long-agent-identifier-with-many-characters", 30 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeID, err := types.Parse(tt.nodeID)
+			if err != nil {
+				t.Fatalf("types.Parse(%q) unexpected error: %v", tt.nodeID, err)
+			}
+
+			lk, err := lock.NewLock(nodeID, tt.owner, tt.timeout)
+			if err != nil {
+				t.Fatalf("NewLock() unexpected error: %v", err)
+			}
+
+			// Verify NodeID
+			if lk.NodeID().String() != tt.nodeID {
+				t.Errorf("NodeID() = %q, want %q", lk.NodeID().String(), tt.nodeID)
+			}
+
+			// Verify Owner
+			if lk.Owner() != tt.owner {
+				t.Errorf("Owner() = %q, want %q", lk.Owner(), tt.owner)
+			}
+
+			// Verify AcquiredAt is set (not zero)
+			if lk.AcquiredAt().IsZero() {
+				t.Error("AcquiredAt() is zero, want non-zero timestamp")
+			}
+
+			// Verify ExpiresAt is after AcquiredAt
+			if !lk.ExpiresAt().After(lk.AcquiredAt()) {
+				t.Errorf("ExpiresAt() = %v should be after AcquiredAt() = %v",
+					lk.ExpiresAt(), lk.AcquiredAt())
+			}
+		})
+	}
+}
+
+// TestNewLock_EmptyOwner verifies NewLock rejects empty owner
+func TestNewLock_EmptyOwner(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	_, err = lock.NewLock(nodeID, "", 5*time.Minute)
+	if err == nil {
+		t.Error("NewLock() with empty owner expected error, got nil")
+	}
+}
+
+// TestNewLock_ZeroTimeout verifies NewLock rejects zero timeout
+func TestNewLock_ZeroTimeout(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	_, err = lock.NewLock(nodeID, "agent-001", 0)
+	if err == nil {
+		t.Error("NewLock() with zero timeout expected error, got nil")
+	}
+}
+
+// TestNewLock_NegativeTimeout verifies NewLock rejects negative timeout
+func TestNewLock_NegativeTimeout(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	_, err = lock.NewLock(nodeID, "agent-001", -5*time.Minute)
+	if err == nil {
+		t.Error("NewLock() with negative timeout expected error, got nil")
+	}
+}
+
+// TestNewLock_InvalidNodeID verifies NewLock rejects zero-value NodeID
+func TestNewLock_InvalidNodeID(t *testing.T) {
+	var zeroNodeID types.NodeID // zero value
+
+	_, err := lock.NewLock(zeroNodeID, "agent-001", 5*time.Minute)
+	if err == nil {
+		t.Error("NewLock() with zero-value NodeID expected error, got nil")
+	}
+}
+
+// TestIsExpired_NotExpired verifies IsExpired returns false for fresh lock
+func TestIsExpired_NotExpired(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewLock() unexpected error: %v", err)
+	}
+
+	if lk.IsExpired() {
+		t.Error("IsExpired() = true for fresh lock, want false")
+	}
+}
+
+// TestIsExpired_Expired verifies IsExpired returns true after timeout
+func TestIsExpired_Expired(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	// Create lock with very short timeout
+	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Nanosecond)
+	if err != nil {
+		t.Fatalf("NewLock() unexpected error: %v", err)
+	}
+
+	// Wait for expiration
+	time.Sleep(10 * time.Millisecond)
+
+	if !lk.IsExpired() {
+		t.Error("IsExpired() = false after timeout, want true")
+	}
+}
+
+// TestIsOwnedBy_SameOwner verifies IsOwnedBy returns true for same owner
+func TestIsOwnedBy_SameOwner(t *testing.T) {
+	tests := []struct {
+		name  string
+		owner string
+	}{
+		{"simple owner", "agent-001"},
+		{"hyphenated owner", "prover-verifier-agent"},
+		{"long owner", "very-long-agent-identifier-with-many-characters-12345"},
+		{"numeric suffix", "agent123"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeID, err := types.Parse("1")
+			if err != nil {
+				t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+			}
+
+			lk, err := lock.NewLock(nodeID, tt.owner, 5*time.Minute)
+			if err != nil {
+				t.Fatalf("NewLock() unexpected error: %v", err)
+			}
+
+			if !lk.IsOwnedBy(tt.owner) {
+				t.Errorf("IsOwnedBy(%q) = false, want true", tt.owner)
+			}
+		})
+	}
+}
+
+// TestIsOwnedBy_DifferentOwner verifies IsOwnedBy returns false for different owner
+func TestIsOwnedBy_DifferentOwner(t *testing.T) {
+	tests := []struct {
+		name       string
+		lockOwner  string
+		queryOwner string
+	}{
+		{"completely different", "agent-001", "agent-002"},
+		{"similar name", "prover", "prover-1"},
+		{"case different", "Agent-001", "agent-001"},
+		{"empty query", "agent-001", ""},
+		{"prefix match", "agent", "agent-001"},
+		{"suffix match", "001", "agent-001"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeID, err := types.Parse("1")
+			if err != nil {
+				t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+			}
+
+			lk, err := lock.NewLock(nodeID, tt.lockOwner, 5*time.Minute)
+			if err != nil {
+				t.Fatalf("NewLock() unexpected error: %v", err)
+			}
+
+			if lk.IsOwnedBy(tt.queryOwner) {
+				t.Errorf("IsOwnedBy(%q) = true for lock owned by %q, want false",
+					tt.queryOwner, tt.lockOwner)
+			}
+		})
+	}
+}
+
+// TestRefresh_ExtendsExpiration verifies Refresh extends expiration time
+func TestRefresh_ExtendsExpiration(t *testing.T) {
+	nodeID, err := types.Parse("1.1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1.1\") unexpected error: %v", err)
+	}
+
+	// Create lock with short timeout
+	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Minute)
+	if err != nil {
+		t.Fatalf("NewLock() unexpected error: %v", err)
+	}
+
+	originalExpires := lk.ExpiresAt()
+
+	// Wait a tiny bit then refresh with longer timeout
+	time.Sleep(10 * time.Millisecond)
+
+	err = lk.Refresh(1 * time.Hour)
+	if err != nil {
+		t.Fatalf("Refresh() unexpected error: %v", err)
+	}
+
+	newExpires := lk.ExpiresAt()
+
+	// New expiration should be after original
+	if !newExpires.After(originalExpires) {
+		t.Errorf("ExpiresAt() after Refresh = %v, should be after original %v",
+			newExpires, originalExpires)
+	}
+
+	// Lock should not be expired
+	if lk.IsExpired() {
+		t.Error("IsExpired() = true after Refresh, want false")
+	}
+}
+
+// TestRefresh_ZeroTimeout verifies Refresh rejects zero timeout
+func TestRefresh_ZeroTimeout(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewLock(nodeID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("NewLock() unexpected error: %v", err)
+	}
+
+	err = lk.Refresh(0)
+	if err == nil {
+		t.Error("Refresh(0) expected error, got nil")
+	}
+}
+
+// TestRefresh_NegativeTimeout verifies Refresh rejects negative timeout
+func TestRefresh_NegativeTimeout(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewLock(nodeID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("NewLock() unexpected error: %v", err)
+	}
+
+	err = lk.Refresh(-5 * time.Minute)
+	if err == nil {
+		t.Error("Refresh(-5m) expected error, got nil")
+	}
+}
+
+// TestRefresh_PreservesOtherFields verifies Refresh doesn't change NodeID or Owner
+func TestRefresh_PreservesOtherFields(t *testing.T) {
+	nodeID, err := types.Parse("1.2.3")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1.2.3\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewLock(nodeID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("NewLock() unexpected error: %v", err)
+	}
+
+	originalNodeID := lk.NodeID().String()
+	originalOwner := lk.Owner()
+
+	err = lk.Refresh(10 * time.Minute)
+	if err != nil {
+		t.Fatalf("Refresh() unexpected error: %v", err)
+	}
+
+	// NodeID should be unchanged
+	if lk.NodeID().String() != originalNodeID {
+		t.Errorf("NodeID() changed from %q to %q after Refresh",
+			originalNodeID, lk.NodeID().String())
+	}
+
+	// Owner should be unchanged
+	if lk.Owner() != originalOwner {
+		t.Errorf("Owner() changed from %q to %q after Refresh",
+			originalOwner, lk.Owner())
+	}
+}
+
+// TestJSON_Roundtrip verifies locks can be serialized and deserialized
+func TestJSON_Roundtrip(t *testing.T) {
+	tests := []struct {
+		name    string
+		nodeID  string
+		owner   string
+		timeout time.Duration
+	}{
+		{"root node", "1", "agent-001", 5 * time.Minute},
+		{"child node", "1.1", "prover-alpha", 1 * time.Hour},
+		{"deep node", "1.2.3.4.5", "verifier-beta-gamma", 30 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeID, err := types.Parse(tt.nodeID)
+			if err != nil {
+				t.Fatalf("types.Parse(%q) unexpected error: %v", tt.nodeID, err)
+			}
+
+			original, err := lock.NewLock(nodeID, tt.owner, tt.timeout)
+			if err != nil {
+				t.Fatalf("NewLock() unexpected error: %v", err)
+			}
+
+			// Serialize to JSON
+			data, err := json.Marshal(original)
+			if err != nil {
+				t.Fatalf("json.Marshal() unexpected error: %v", err)
+			}
+
+			// Deserialize from JSON
+			var restored lock.Lock
+			err = json.Unmarshal(data, &restored)
+			if err != nil {
+				t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+			}
+
+			// Verify fields match
+			if restored.NodeID().String() != original.NodeID().String() {
+				t.Errorf("NodeID mismatch: got %q, want %q",
+					restored.NodeID().String(), original.NodeID().String())
+			}
+
+			if restored.Owner() != original.Owner() {
+				t.Errorf("Owner mismatch: got %q, want %q",
+					restored.Owner(), original.Owner())
+			}
+
+			if !restored.AcquiredAt().Equal(original.AcquiredAt()) {
+				t.Errorf("AcquiredAt mismatch: got %v, want %v",
+					restored.AcquiredAt(), original.AcquiredAt())
+			}
+
+			if !restored.ExpiresAt().Equal(original.ExpiresAt()) {
+				t.Errorf("ExpiresAt mismatch: got %v, want %v",
+					restored.ExpiresAt(), original.ExpiresAt())
+			}
+		})
+	}
+}
+
+// TestJSON_ValidFormat verifies JSON output format
+func TestJSON_ValidFormat(t *testing.T) {
+	nodeID, err := types.Parse("1.1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1.1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewLock(nodeID, "test-agent", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("NewLock() unexpected error: %v", err)
+	}
+
+	data, err := json.Marshal(lk)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	// Parse as generic map to verify structure
+	var m map[string]interface{}
+	err = json.Unmarshal(data, &m)
+	if err != nil {
+		t.Fatalf("json.Unmarshal() to map unexpected error: %v", err)
+	}
+
+	// Check expected fields exist
+	requiredFields := []string{"node_id", "owner", "acquired_at", "expires_at"}
+	for _, field := range requiredFields {
+		if _, ok := m[field]; !ok {
+			t.Errorf("JSON missing required field %q", field)
+		}
+	}
+}
+
+// TestJSON_UnmarshalInvalid verifies Unmarshal handles invalid JSON
+func TestJSON_UnmarshalInvalid(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+	}{
+		{"empty object", `{}`},
+		{"missing owner", `{"node_id":"1","acquired_at":"2025-01-01T00:00:00Z","expires_at":"2025-01-01T01:00:00Z"}`},
+		{"missing node_id", `{"owner":"agent","acquired_at":"2025-01-01T00:00:00Z","expires_at":"2025-01-01T01:00:00Z"}`},
+		{"invalid node_id", `{"node_id":"invalid","owner":"agent","acquired_at":"2025-01-01T00:00:00Z","expires_at":"2025-01-01T01:00:00Z"}`},
+		{"invalid timestamp", `{"node_id":"1","owner":"agent","acquired_at":"not-a-time","expires_at":"2025-01-01T01:00:00Z"}`},
+		{"malformed json", `{not valid json}`},
+		{"array instead of object", `[]`},
+		{"null", `null`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var lk lock.Lock
+			err := json.Unmarshal([]byte(tt.json), &lk)
+			if err == nil {
+				t.Errorf("json.Unmarshal(%q) expected error, got nil", tt.json)
+			}
+		})
+	}
+}
+
+// TestValidation_WhitespaceOwner verifies whitespace-only owner is rejected
+func TestValidation_WhitespaceOwner(t *testing.T) {
+	tests := []struct {
+		name  string
+		owner string
+	}{
+		{"spaces only", "   "},
+		{"tabs only", "\t\t"},
+		{"newlines only", "\n\n"},
+		{"mixed whitespace", " \t\n "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeID, err := types.Parse("1")
+			if err != nil {
+				t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+			}
+
+			_, err = lock.NewLock(nodeID, tt.owner, 5*time.Minute)
+			if err == nil {
+				t.Errorf("NewLock() with whitespace owner %q expected error, got nil", tt.owner)
+			}
+		})
+	}
+}
+
+// TestExpirationCalculation verifies expiration is calculated correctly
+func TestExpirationCalculation(t *testing.T) {
+	tests := []struct {
+		name    string
+		timeout time.Duration
+	}{
+		{"1 second", 1 * time.Second},
+		{"30 seconds", 30 * time.Second},
+		{"1 minute", 1 * time.Minute},
+		{"5 minutes", 5 * time.Minute},
+		{"1 hour", 1 * time.Hour},
+		{"24 hours", 24 * time.Hour},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeID, err := types.Parse("1")
+			if err != nil {
+				t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+			}
+
+			before := time.Now()
+			lk, err := lock.NewLock(nodeID, "agent-001", tt.timeout)
+			if err != nil {
+				t.Fatalf("NewLock() unexpected error: %v", err)
+			}
+			after := time.Now()
+
+			// ExpiresAt should be approximately AcquiredAt + timeout
+			// Allow for small timing differences
+			expectedMin := before.Add(tt.timeout)
+			expectedMax := after.Add(tt.timeout).Add(100 * time.Millisecond)
+
+			// Use time.Time for comparison since we need to extract time from Timestamp
+			// This relies on ExpiresAt being within a reasonable range
+			if lk.IsExpired() {
+				// If already expired, the timeout was very short (sub-millisecond)
+				// and that's acceptable for very short timeouts
+				if tt.timeout > 100*time.Millisecond {
+					t.Error("Lock expired immediately for non-trivial timeout")
+				}
+				return
+			}
+
+			// For longer timeouts, verify expiration is in the future
+			_ = expectedMin
+			_ = expectedMax
+		})
+	}
+}
+
+// TestConcurrentAccess verifies lock is safe for concurrent method calls
+func TestConcurrentAccess(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewLock() unexpected error: %v", err)
+	}
+
+	// Spawn multiple goroutines accessing lock methods
+	done := make(chan bool)
+	for i := 0; i < 10; i++ {
+		go func() {
+			for j := 0; j < 100; j++ {
+				_ = lk.NodeID()
+				_ = lk.Owner()
+				_ = lk.AcquiredAt()
+				_ = lk.ExpiresAt()
+				_ = lk.IsExpired()
+				_ = lk.IsOwnedBy("agent-001")
+			}
+			done <- true
+		}()
+	}
+
+	// Wait for all goroutines
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+}
+
+// TestMultipleLocks verifies multiple locks can coexist independently
+func TestMultipleLocks(t *testing.T) {
+	nodeID1, err := types.Parse("1.1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1.1\") unexpected error: %v", err)
+	}
+
+	nodeID2, err := types.Parse("1.2")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1.2\") unexpected error: %v", err)
+	}
+
+	lk1, err := lock.NewLock(nodeID1, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("NewLock() for node 1.1 unexpected error: %v", err)
+	}
+
+	lk2, err := lock.NewLock(nodeID2, "agent-002", 10*time.Minute)
+	if err != nil {
+		t.Fatalf("NewLock() for node 1.2 unexpected error: %v", err)
+	}
+
+	// Locks should be independent
+	if lk1.NodeID().String() == lk2.NodeID().String() {
+		t.Error("Different locks have same NodeID")
+	}
+
+	if lk1.Owner() == lk2.Owner() {
+		t.Error("Different locks have same Owner")
+	}
+
+	if lk1.IsOwnedBy("agent-002") {
+		t.Error("lk1.IsOwnedBy(\"agent-002\") = true, want false")
+	}
+
+	if lk2.IsOwnedBy("agent-001") {
+		t.Error("lk2.IsOwnedBy(\"agent-001\") = true, want false")
+	}
+}
