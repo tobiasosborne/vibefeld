@@ -1,42 +1,41 @@
-# Handoff - 2026-01-12 (Session 12)
+# Handoff - 2026-01-12 (Session 13)
 
 ## What Was Accomplished This Session
 
-### TDD Tests for 5 Components (Parallel Subagents)
+### Layer 1 Implementations Complete (5 Parallel Subagents)
 
-Used 5 parallel subagents to write TDD tests (tests-first) for key components:
+Implemented all 5 Layer 1 components that had TDD tests from Session 12:
 
 | Issue | File | Lines | Description |
 |-------|------|-------|-------------|
-| `vibefeld-351` | internal/lock/reap_test.go | 837 | Lock reaping with LockReaped events |
-| `vibefeld-qmr` | internal/state/replay_test.go | 1093 | Full state replay from ledger |
-| `vibefeld-c8k` | internal/render/tree_test.go | 575 | Hierarchical tree rendering with status/taint |
-| `vibefeld-270` | internal/fs/pending_def_io_test.go | 847 | Pending definition file I/O |
-| `vibefeld-87cf` | internal/node/cycle_test.go | 621 | Dependency cycle detection |
+| `vibefeld-izb` | internal/lock/reap.go | ~150 | Lock reaping with LockReaped events |
+| `vibefeld-5c5` | internal/state/replay.go | 180 | Full state replay from ledger |
+| `vibefeld-c10` | internal/render/tree.go | ~200 | Unicode tree with status/taint indicators |
+| `vibefeld-4oy` | internal/fs/pending_def_io.go | ~150 | Pending definition CRUD operations |
+| `vibefeld-hnm6` | internal/node/cycle.go | ~220 | DFS cycle detection in dependency graph |
 
-**Total:** 3973 lines of TDD tests across 5 files
+**Total:** ~900 lines of implementation, 5 issues closed
 
-### Tests Define Expected Behavior For:
+### Supporting Changes
 
-1. **ReapStaleLocks** - Detects stale locks and generates LockReaped events
-2. **Replay/ReplayWithVerify** - Rebuilds state from event stream with optional hash verification
-3. **RenderTree** - Displays proof tree with Unicode box-drawing, status/taint indicators
-4. **WritePendingDef/ReadPendingDef/ListPendingDefs/DeletePendingDef** - Pending definition CRUD
-5. **DetectCycle/ValidateDependencies** - Dependency graph cycle detection
+- Added `LockReaped` event type to `internal/ledger/event.go`
+- Added `AllNodes()` method to `internal/state/state.go` for cycle detection
+- Fixed timestamp precision in `internal/types/time.go` (RFC3339Nano)
+- Fixed test bugs in `replay_test.go` (invalid NodeIDs) and `pending_def_io_test.go` (permission test setup)
 
 ## Commits This Session
 
-1. `d4aaf7c` - Add TDD tests for 5 components (+3973 lines)
+1. `d8c694b` - Implement Layer 1: 5 components (+951 lines)
 
-**Total:** 5 issues closed, 3973 lines added
+**Total:** 5 issues closed, 951 lines added
 
 ## Current State
 
 ### Test Status
 ```bash
-go build ./...                  # PASSES
-go test ./... (non-TDD)         # PASSES
-# TDD tests fail with "undefined" (expected - implementation pending)
+go build ./...                    # PASSES
+go test ./...                     # PASSES
+go test ./... -tags=integration   # PASSES
 ```
 
 ### Git Status
@@ -44,43 +43,42 @@ go test ./... (non-TDD)         # PASSES
 - All changes committed and pushed
 - Working tree clean
 
-### Progress Toward Service Layer
+### Implementation LOC
+- **Total:** ~7,500 lines (target was ~3,500)
+- **Issues:** 145 closed / 118 open (55% complete)
 
-**Completed (implementation + tests):**
-- Ledger: append, read, facade
-- Jobs: prover, verifier, facade
-- Taint: propagation with events
-- Scope: validation complete
-- Node: validation invariant
-- FS: node_io, meta_io, def_io, lemma_io, external_io, assumption_io, init
+## Distance to Tracer Bullet
 
-**TDD Tests Written (implementation next):**
-- Lock: reap (vibefeld-izb blocks on tests)
-- State: replay (vibefeld-5c5 blocks on tests)
-- Render: tree (vibefeld-c10 blocks on tests)
-- FS: pending_def_io (vibefeld-4oy blocks on tests)
-- Node: cycle detection
+```
+Layer 1: DONE
+Layer 2: Lock Manager + Service Layer
+  vibefeld-4ti  Lock manager tests        [P1] READY
+  vibefeld-17i  Lock manager impl         [P1] blocked by 4ti
+  vibefeld-q38  Proof service tests       [P1] blocked by 17i
+  vibefeld-5fm  ProofService facade       [P1] blocked by q38
+Layer 3: CLI Commands (blocked on Layer 2)
+Layer 4: Integration Test (vibefeld-duj)
+```
 
-**Still Needed:**
-- Schema I/O (vibefeld-24h tests → vibefeld-gch impl)
-- Service layer facade
-- CLI tracer bullet commands
+**Critical path:** `4ti -> 17i -> q38 -> 5fm -> CLI commands -> integration test`
 
 ## Next Steps (Ready to Work)
 
-Now that TDD tests are written, the implementations can proceed:
+### Critical Path (P1)
+1. `vibefeld-4ti` - Write lock manager facade tests
+2. `vibefeld-17i` - Implement lock manager facade (unblocks service layer)
 
-1. `vibefeld-izb` - Implement lock reaper (reap.go)
-2. `vibefeld-5c5` - Implement state replay (replay.go)
-3. `vibefeld-c10` - Implement tree renderer (tree.go)
-4. `vibefeld-4oy` - Implement pending def I/O (pending_def_io.go)
-
-Also available:
-- `vibefeld-24h` - Schema.json I/O tests (P2)
-- Various other render tests (P2)
+### Also Ready (P2)
+- `vibefeld-y5d` - Prover claim context rendering tests
+- `vibefeld-lzs` - Verifier claim context rendering tests
+- `vibefeld-c5q` - Status rendering tests
+- `vibefeld-avv` - Jobs list rendering tests
+- `vibefeld-0ci` - JSON output tests
+- `vibefeld-24h` - Schema.json I/O tests
 
 ## Previous Sessions
 
+**Session 13:** 5 issues - Layer 1 implementations (parallel subagents)
 **Session 12:** 5 issues - TDD tests for 5 components (parallel subagents)
 **Session 11:** 35 issues - code review complete + tracer bullet infrastructure
 **Session 10:** 5 issues - thread safety, state apply, schema caching
