@@ -191,7 +191,7 @@ func TestReadLemma(t *testing.T) {
 		t.Fatalf("failed to parse timestamp: %v", err)
 	}
 
-	sourceNodeID, err := types.Parse("2.1")
+	sourceNodeID, err := types.Parse("1.2.1")
 	if err != nil {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
@@ -479,7 +479,7 @@ func TestWriteLemma_Overwrite(t *testing.T) {
 	}
 
 	// Modify the lemma (same ID, different content)
-	modifiedSourceNodeID, _ := types.Parse("2")
+	modifiedSourceNodeID, _ := types.Parse("1.2")
 	modifiedLemma := &node.Lemma{
 		ID:           lemma.ID,
 		Statement:    "Updated: The square of any real number is non-negative.",
@@ -885,7 +885,7 @@ func TestLemmaRoundTrip(t *testing.T) {
 		t.Fatalf("failed to create lemmas directory: %v", err)
 	}
 
-	sourceNodeID, err := types.Parse("3.1.4")
+	sourceNodeID, err := types.Parse("1.3.1.4")
 	if err != nil {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
