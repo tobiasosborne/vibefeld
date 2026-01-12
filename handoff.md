@@ -1,62 +1,88 @@
-# Handoff - Session 2026-01-12
+# Handoff - 2026-01-12
 
 ## What Was Accomplished
 
-1. **Beads CLI updated** - Upgraded from v0.44.0 to v0.47.1
-2. **Beads initialized** for this repo with prefix `vibefeld-`
-3. **Git hooks installed** - pre-commit, post-merge, pre-push, etc.
-4. **CLAUDE.md created** - Project guide with:
-   - Core principles and development laws
-   - Directory structure
-   - Data model overview
-   - Beads workflow
-   - Landing the plane protocol
-5. **236 beads issues created** covering all 29 implementation phases:
-   - Phase 0: Project Bootstrap (7 issues)
-   - Phase 1: Core Types & Errors (8 issues)
-   - Phases 2-5: Schema, Fuzzy, Config, Node Model (32 issues)
-   - Phases 6-8: Ledger, Locks, State (30 issues)
-   - Phases 9-14: Scope, Taint, Jobs, Validation, Rendering, FS (52 issues)
-   - Phases 15-16: Service Layer + Tracer Bullet CLI (17 issues)
-   - Phases 17-22: CLI Commands (52 issues)
-   - Phases 23-27: UX, Validation, Lemma, Blocking (24 issues)
-   - Phases 28-29: E2E Tests + Polish (14 issues)
-6. **Full dependency graph** established between all issues
+### Issues Closed (11 total)
+
+**Phase 0 Bootstrap (5 issues):**
+- `vibefeld-8b4`: Go 1.25.5 toolchain verified
+- `vibefeld-6rr`: Go module initialized (`github.com/tobias/vibefeld`)
+- `vibefeld-zky`: cobra-cli installed
+- `vibefeld-pn2`: Cobra dependency added
+- `vibefeld-7yt`: Project directory structure created
+
+**Phase 0 Scaffold + Phase 1 Tests (6 issues):**
+- `vibefeld-zzt`: `cmd/af/main.go` - CLI scaffold with cobra root command
+- `vibefeld-8bs`: Build verified (`./af --version` works)
+- `vibefeld-dgb`: `internal/errors/errors_test.go` - Error types tests
+- `vibefeld-edj`: `internal/hash/hash_test.go` - Content hash tests
+- `vibefeld-dew`: `internal/ledger/lock_test.go` - Ledger lock tests
+- `vibefeld-l8z`: `internal/fuzzy/levenshtein_test.go` - Levenshtein tests
+
+### Additional Fixes
+- Renamed `alethfeld` -> `vibefeld` throughout docs and issues
+- Renamed `docs/alethfeld-implementation-plan.md` to `docs/vibefeld-implementation-plan.md`
 
 ## Current State
 
-- **Working**: Beads issue tracker fully operational
-- **No code written yet** - this was a project setup session
-- **1 issue ready to start**: `vibefeld-8b4` (Install Go 1.22+ toolchain)
-- **235 issues blocked** by dependencies (correct behavior)
+### What's Working
+- `./af --version` outputs "af version 0.1.0"
+- Go module builds successfully
+- Project structure in place
 
-## Next Steps
+### Test Files (TDD - awaiting implementation)
+All test files compile but fail (as expected for TDD):
+- `internal/errors/errors_test.go` - 12 test functions
+- `internal/hash/hash_test.go` - 10 test functions
+- `internal/ledger/lock_test.go` - 18 test functions
+- `internal/fuzzy/levenshtein_test.go` - Property-based + 163 cases
 
-1. **Start with `vibefeld-8b4`**: Install Go 1.22+ toolchain
-2. Follow the dependency chain through Phase 0 (bootstrap)
-3. Use `bd ready` to find next available work as dependencies clear
-4. Follow TDD: write tests before implementation
+## Next Steps (Priority Order)
 
-## Blockers/Decisions Needed
+**Ready to work (7 issues):**
 
-None - ready to begin implementation.
+1. `vibefeld-bge`: Implement error types (`internal/errors/errors.go`)
+2. `vibefeld-axb`: Write tests for NodeID type
+3. `vibefeld-r95`: Write tests for timestamp handling
+4. `vibefeld-3i7`: Implement SHA256 content hash
+5. `vibefeld-1ih`: Implement ledger lock
+6. `vibefeld-wok`: Implement Levenshtein distance
+7. `vibefeld-ldw`: Write tests for proof directory creation
 
-## Key Files Changed/Created
+**Recommended next session:**
+- Implement the 4 modules that have tests written (errors, hash, ledger lock, fuzzy)
+- This will make tests pass and unblock many dependent issues
 
-| File | Description |
-|------|-------------|
-| `CLAUDE.md` | Project guide with laws, structure, workflow |
-| `AGENTS.md` | Agent instructions (created by bd init) |
-| `.beads/` | Beads database and config |
-| `.gitattributes` | Git merge driver for beads |
-| `handoff.md` | This file |
+## Key Files Changed
+
+```
+Created:
+  .gitignore
+  cmd/af/main.go
+  internal/errors/errors_test.go
+  internal/hash/hash_test.go
+  internal/ledger/lock_test.go
+  internal/fuzzy/levenshtein_test.go
+  go.mod
+  go.sum
+
+Modified:
+  CLAUDE.md (alethfeld -> vibefeld)
+  docs/vibefeld-implementation-plan.md (renamed + updated)
+```
 
 ## Testing Status
 
-- No tests to run yet (no code written)
-- Quality gates will apply once Go code exists
+- Build: PASSING
+- Unit tests: NOT YET (test files exist, implementations pending)
 
-## Known Issues
+## Blockers/Decisions Needed
 
-- Claude plugin is at v0.44.0 (latest is v0.47.1) - optional update via `/plugin update beads@beads-marketplace`
-- Sync branch not configured (optional for single-clone setup)
+None - clear path forward with TDD implementation.
+
+## Stats
+
+- Issues open: 225
+- Issues closed: 11
+- Ready to work: 7
+- Blocked: 217 (waiting on dependencies)
