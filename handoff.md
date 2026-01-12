@@ -1,51 +1,42 @@
-# Handoff - 2026-01-12 (Session 11)
+# Handoff - 2026-01-12 (Session 12)
 
 ## What Was Accomplished This Session
 
-### Part 1: Code Review Cleanup (20 issues)
+### TDD Tests for 5 Components (Parallel Subagents)
 
-Fixed ALL remaining code review issues using parallel subagents (4 batches).
+Used 5 parallel subagents to write TDD tests (tests-first) for key components:
 
-### Part 2: Tracer Bullet Prerequisites (15 issues)
+| Issue | File | Lines | Description |
+|-------|------|-------|-------------|
+| `vibefeld-351` | internal/lock/reap_test.go | 837 | Lock reaping with LockReaped events |
+| `vibefeld-qmr` | internal/state/replay_test.go | 1093 | Full state replay from ledger |
+| `vibefeld-c8k` | internal/render/tree_test.go | 575 | Hierarchical tree rendering with status/taint |
+| `vibefeld-270` | internal/fs/pending_def_io_test.go | 847 | Pending definition file I/O |
+| `vibefeld-87cf` | internal/node/cycle_test.go | 621 | Dependency cycle detection |
 
-Implemented core infrastructure needed for CLI commands:
+**Total:** 3973 lines of TDD tests across 5 files
 
-**Batch 1 - Core Functions (5 issues)**
-| Issue | Component | Created |
-|-------|-----------|---------|
-| `vibefeld-qsb` | ledger/read.go | ReadAll, Scan, Count, HasGaps, ListEventFiles |
-| `vibefeld-7cj` | jobs/verifier.go | FindVerifierJobs |
-| `vibefeld-dtq` | scope/validate.go | Verified complete (SCOPE_VIOLATION, SCOPE_UNCLOSED) |
-| `vibefeld-x6z` | taint/propagate.go | Added GenerateTaintEvents, PropagateAndGenerateEvents |
-| `vibefeld-0i0` | jobs/prover.go | Verified FindProverJobs complete |
+### Tests Define Expected Behavior For:
 
-**Batch 2 - Facades and I/O (10 issues)**
-| Issue | Component | Created |
-|-------|-----------|---------|
-| `vibefeld-ii8` | ledger/ledger.go | Ledger facade (Append, ReadAll, Scan, Count) |
-| `vibefeld-7po` | jobs/jobs.go | Jobs facade (FindJobs → JobResult) |
-| `vibefeld-r5p` | node/validate_invariant.go | CheckValidationInvariant |
-| `vibefeld-fym` | fs/node_io.go | WriteNode, ReadNode, ListNodes, DeleteNode |
-| `vibefeld-50s` | fs/meta_io.go | WriteMeta, ReadMeta, Meta struct |
-| Plus 5 auto-closed | Implementation issues closed as already done |
+1. **ReapStaleLocks** - Detects stale locks and generates LockReaped events
+2. **Replay/ReplayWithVerify** - Rebuilds state from event stream with optional hash verification
+3. **RenderTree** - Displays proof tree with Unicode box-drawing, status/taint indicators
+4. **WritePendingDef/ReadPendingDef/ListPendingDefs/DeletePendingDef** - Pending definition CRUD
+5. **DetectCycle/ValidateDependencies** - Dependency graph cycle detection
 
 ## Commits This Session
 
-1. `409a695` - 7 code review issues (P1/P2)
-2. `9e87687` - 5 code review issues (P3)
-3. `d730393` - 5 code review issues (P3)
-4. `12a40a8` - 3 code review issues (P2)
-5. `d2721d0` - Core functions (ledger read, verifier jobs, taint events)
-6. `8c0c743` - Facades and I/O (+3518 lines)
+1. `d4aaf7c` - Add TDD tests for 5 components (+3973 lines)
 
-**Total:** 35 issues closed, ~5500 lines added
+**Total:** 5 issues closed, 3973 lines added
 
 ## Current State
 
 ### Test Status
 ```bash
-go test ./...                    # ALL PASS
-go test -tags=integration ./...  # ALL PASS
+go build ./...                  # PASSES
+go test ./... (non-TDD)         # PASSES
+# TDD tests fail with "undefined" (expected - implementation pending)
 ```
 
 ### Git Status
@@ -55,31 +46,42 @@ go test -tags=integration ./...  # ALL PASS
 
 ### Progress Toward Service Layer
 
-**Completed:**
-- ✅ Ledger: append, read, facade
-- ✅ Jobs: prover, verifier, facade
-- ✅ Taint: propagation with events
-- ✅ Scope: validation complete
-- ✅ Node: validation invariant
-- ✅ FS: node_io, meta_io, def_io, lemma_io, external_io, assumption_io, init
+**Completed (implementation + tests):**
+- Ledger: append, read, facade
+- Jobs: prover, verifier, facade
+- Taint: propagation with events
+- Scope: validation complete
+- Node: validation invariant
+- FS: node_io, meta_io, def_io, lemma_io, external_io, assumption_io, init
 
-**Still Needed (blocking service layer):**
-- Lock manager facade + reap
-- State replay
-- FS: schema_io, pending_def_io
+**TDD Tests Written (implementation next):**
+- Lock: reap (vibefeld-izb blocks on tests)
+- State: replay (vibefeld-5c5 blocks on tests)
+- Render: tree (vibefeld-c10 blocks on tests)
+- FS: pending_def_io (vibefeld-4oy blocks on tests)
+- Node: cycle detection
+
+**Still Needed:**
+- Schema I/O (vibefeld-24h tests → vibefeld-gch impl)
+- Service layer facade
+- CLI tracer bullet commands
 
 ## Next Steps (Ready to Work)
 
-1. `vibefeld-351` - Lock reap tests (P1)
-2. `vibefeld-qmr` - State replay tests (P1)
-3. `vibefeld-270` - Pending def I/O tests (P2)
-4. `vibefeld-24h` - Schema.json I/O tests (P2)
-5. Various render tests (P2)
+Now that TDD tests are written, the implementations can proceed:
 
-After these → Service layer → CLI commands
+1. `vibefeld-izb` - Implement lock reaper (reap.go)
+2. `vibefeld-5c5` - Implement state replay (replay.go)
+3. `vibefeld-c10` - Implement tree renderer (tree.go)
+4. `vibefeld-4oy` - Implement pending def I/O (pending_def_io.go)
+
+Also available:
+- `vibefeld-24h` - Schema.json I/O tests (P2)
+- Various other render tests (P2)
 
 ## Previous Sessions
 
+**Session 12:** 5 issues - TDD tests for 5 components (parallel subagents)
 **Session 11:** 35 issues - code review complete + tracer bullet infrastructure
 **Session 10:** 5 issues - thread safety, state apply, schema caching
 **Session 9:** Code review - 25 issues filed
