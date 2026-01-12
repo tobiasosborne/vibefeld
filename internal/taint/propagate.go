@@ -2,6 +2,8 @@
 package taint
 
 import (
+	"sort"
+
 	"github.com/tobias/vibefeld/internal/node"
 )
 
@@ -75,12 +77,7 @@ func getAncestors(n *node.Node, nodeMap map[string]*node.Node) []*node.Node {
 
 // sortByDepth sorts nodes by their ID depth (shallower first).
 func sortByDepth(nodes []*node.Node) {
-	// Simple bubble sort - good enough for typical proof trees
-	for i := 0; i < len(nodes)-1; i++ {
-		for j := 0; j < len(nodes)-i-1; j++ {
-			if nodes[j].ID.Depth() > nodes[j+1].ID.Depth() {
-				nodes[j], nodes[j+1] = nodes[j+1], nodes[j]
-			}
-		}
-	}
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].ID.Depth() < nodes[j].ID.Depth()
+	})
 }
