@@ -1,6 +1,11 @@
 package scope
 
-import "github.com/tobias/vibefeld/internal/types"
+import (
+	"errors"
+	"strings"
+
+	"github.com/tobias/vibefeld/internal/types"
+)
 
 // Entry represents a scope entry for a local assumption.
 // Local assumptions are introduced by `local_assume` nodes and
@@ -15,15 +20,35 @@ type Entry struct {
 
 // NewEntry creates a new scope entry. Returns error if nodeID invalid or statement empty.
 func NewEntry(nodeID types.NodeID, statement string) (*Entry, error) {
-	return nil, nil // stub
+	// Check for invalid/zero NodeID
+	if nodeID.String() == "" {
+		return nil, errors.New("invalid node ID: zero value")
+	}
+
+	// Check for empty or whitespace-only statement
+	if strings.TrimSpace(statement) == "" {
+		return nil, errors.New("statement cannot be empty or whitespace-only")
+	}
+
+	return &Entry{
+		NodeID:     nodeID,
+		Statement:  statement,
+		Introduced: types.Now(),
+		Discharged: nil,
+	}, nil
 }
 
 // Discharge marks the entry as discharged. Returns error if already discharged.
 func (e *Entry) Discharge() error {
-	return nil // stub
+	if e.Discharged != nil {
+		return errors.New("entry already discharged")
+	}
+	now := types.Now()
+	e.Discharged = &now
+	return nil
 }
 
 // IsActive returns true if the entry is not discharged.
 func (e *Entry) IsActive() bool {
-	return false // stub
+	return e.Discharged == nil
 }
