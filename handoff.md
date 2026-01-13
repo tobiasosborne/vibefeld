@@ -11,7 +11,19 @@
 | `vibefeld-xvs` | `af resolve-challenge` | Resolve an open challenge |
 | `vibefeld-wsy` | `af withdraw-challenge` | Withdraw an open challenge |
 
-### Bug Fix
+### Tracer Bullet Integration Test
+
+| Issue | File | Description |
+|-------|------|-------------|
+| `vibefeld-duj` | `cmd/af/integration_test.go` | Full workflow integration test |
+
+**4 integration tests covering:**
+- `TestTracerBullet_FullWorkflow` - Complete claim→refine→release→accept cycle
+- `TestTracerBullet_ProverVerifierRoleIsolation` - Verifies prover/verifier workflow
+- `TestTracerBullet_MultipleRefinements` - Multiple children per node
+- `TestTracerBullet_JSONOutput` - JSON output format for all commands
+
+### Bug Fixes
 - Fixed `resolve_challenge_test.go` - test was using hardcoded stub instead of real implementation
 - Removed unused `fmt` import after stub removal
 
@@ -21,23 +33,20 @@
 ```bash
 go build ./...                    # PASSES
 go test ./...                     # PASSES (standard tests)
-go test -tags=integration ./cmd/af -run "TestJobsCmd|TestChallengeCmd|TestResolveChallengeCmd|TestWithdrawChallengeCmd"
-                                  # PASSES (all 4 new commands)
+go test -tags=integration ./cmd/af -run "TestTracerBullet"
+                                  # PASSES (all 4 integration tests)
 ```
 
-Pre-existing failures in `accept_test.go` and `release_test.go` (not related to this session).
-
 ### Project Statistics
-- **Issues:** 184 closed / 79 open (~70% complete)
-- **Ready to work:** 68 issues
+- **Issues:** 185 closed / 78 open (~70% complete)
 
-## Distance to Tracer Bullet
+## 🎯 TRACER BULLET COMPLETE! 🎯
 
 ```
 Layer 1: Core Infrastructure    ████████████████████ DONE
 Layer 2: Service Layer          ████████████████████ DONE
 Layer 3: CLI Commands           ████████████████████ DONE (9 core commands)
-Layer 4: Integration Test       ░░░░░░░░░░░░░░░░░░░░ 1 remaining
+Layer 4: Integration Test       ████████████████████ DONE
 ```
 
 ### CLI Commands Complete
@@ -51,33 +60,39 @@ Layer 4: Integration Test       ░░░░░░░░░░░░░░░░
 ✅ `af resolve-challenge` - Resolve challenges
 ✅ `af withdraw-challenge` - Withdraw challenges
 
-### Remaining for Tracer Bullet
-**1 integration test:**
-- `vibefeld-duj` - Full workflow end-to-end test
+## Next Steps (Post-Tracer Bullet)
 
-## Next Steps
+1. **Fix pre-existing test failures** in accept/release commands
+2. **Implement remaining CLI commands:**
+   - `af status` - View proof status with tree view
+   - `af show` - Show node details
+   - `af archive` - Archive completed nodes
+   - Additional commands as needed
 
-1. **Immediate (Tracer Bullet):**
-   - Implement `vibefeld-duj` - integration test for full prover/verifier workflow
-
-2. **Then:**
-   - Fix pre-existing test failures in accept/release commands
-   - Continue with remaining CLI commands (status, show, etc.)
+3. **E2E Tests** (now unblocked by tracer bullet):
+   - Simple proof completion
+   - Challenge and response cycle
+   - Concurrent agents
+   - Taint propagation
+   - And more...
 
 ## Key Files Changed This Session
 
-### Implementations
+### New Files
+- `cmd/af/integration_test.go` - Tracer bullet integration tests
+
+### Updated Implementations
 - `cmd/af/jobs.go` - Full implementation
 - `cmd/af/challenge.go` - Full implementation
 - `cmd/af/resolve_challenge.go` - Full implementation
 - `cmd/af/withdraw_challenge.go` - Full implementation
 
-### Test Fix
+### Test Fixes
 - `cmd/af/resolve_challenge_test.go` - Fixed to use real implementation
 
 ## Previous Sessions
 
-**Session 20:** 4 issues - 4 CLI commands via parallel subagents
+**Session 20:** 5 issues - 4 CLI commands + tracer bullet integration test
 **Session 19:** 5 issues - JSON renderer + TDD tests for 4 CLI commands
 **Session 18:** 5 issues - CLI command implementations
 **Session 17:** 10 issues - Implementations + TDD CLI tests
