@@ -83,6 +83,23 @@ func Init(proofDir, conjecture, author string) error {
 	// Append the initialization event
 	event := ledger.NewProofInitialized(conjecture, author)
 	_, err = ldg.Append(event)
+	if err != nil {
+		return err
+	}
+
+	// Create the root node (node "1") with the conjecture as the statement
+	rootID, err := types.Parse("1")
+	if err != nil {
+		return err
+	}
+
+	rootNode, err := node.NewNode(rootID, schema.NodeTypeClaim, conjecture, schema.InferenceAssumption)
+	if err != nil {
+		return err
+	}
+
+	nodeEvent := ledger.NewNodeCreated(*rootNode)
+	_, err = ldg.Append(nodeEvent)
 	return err
 }
 
