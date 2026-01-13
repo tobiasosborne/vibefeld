@@ -1,34 +1,22 @@
-# Handoff - 2026-01-13 (Session 16)
+# Handoff - 2026-01-13 (Session 17)
 
 ## What Was Accomplished This Session
 
-### TDD Test Files Created (5 Parallel Subagents)
+### Implementations Created (5 Parallel Subagents)
 
 | Issue | File | Lines | Description |
 |-------|------|-------|-------------|
-| `vibefeld-q38` | internal/service/proof_test.go | 1656 | Proof service facade tests (P1 critical path!) |
-| `vibefeld-lzs` | internal/render/verifier_context_test.go | 930 | Verifier claim context rendering tests |
-| `vibefeld-avv` | internal/render/jobs_test.go | 857 | Jobs list rendering tests |
-| `vibefeld-8spm` | internal/node/context_validate_test.go | 964 | Context validation (defs, assumptions, externals) tests |
-| `vibefeld-g78c` | internal/node/depth_test.go | 544 | Max depth checking tests |
+| `vibefeld-5fm` | internal/service/proof.go | 622 | ProofService facade (P1 critical path!) |
+| `vibefeld-kvy` | internal/render/verifier_context.go | 490 | Verifier claim context rendering |
+| `vibefeld-cqk` | internal/render/jobs.go | 80 | Jobs list rendering |
+| `vibefeld-9o96` | internal/node/context_validate.go | 243 | Context validation (defs, assumptions, externals) |
+| `vibefeld-0ci` | internal/render/json_test.go | 586 | JSON output tests |
 
-### Stub Implementations Created
-
-| File | Lines | Functions |
-|------|-------|-----------|
-| internal/node/depth.go | 25 | ValidateDepth |
-| internal/node/context_validate.go | 38 | ValidateDefRefs, ValidateAssnRefs, ValidateExtRefs |
-| internal/render/verifier_context.go | 16 | RenderVerifierContext |
-| internal/render/jobs.go | 15 | RenderJobs |
-
-Also auto-created by subagent:
-- internal/service/proof.go - ProofService stub
-
-**Total:** ~5200 lines, 5 issues closed
+**Total:** ~2021 lines changed, 5 issues closed
 
 ## Commits This Session
 
-1. `d2ba465` - Add TDD tests for 5 components via parallel subagents (+5179 lines)
+1. `1e130ed` - Implement 5 components via parallel subagents (Session 17)
 
 ## Current State
 
@@ -45,51 +33,52 @@ go test ./... -tags=integration   # FAILS (expected - TDD stubs not implemented)
 - Working tree clean
 
 ### Implementation Progress
-- **Issues:** 160 closed / 103 open (61% complete)
-- **Ready to work:** 28 issues
+- **Issues:** 165 closed / 98 open (63% complete)
+- **Ready to work:** 77 issues
 
 ## Distance to Tracer Bullet
 
 ```
 Layer 1: DONE
 Layer 2: Service Layer
-  vibefeld-q38  Proof service tests       [P1] DONE ✓  <-- This session!
-  vibefeld-5fm  ProofService facade       [P1] READY (unblocked!)
-Layer 3: CLI Commands (blocked on Layer 2)
+  vibefeld-q38  Proof service tests       [P1] DONE (Session 16)
+  vibefeld-5fm  ProofService facade       [P1] DONE ✓  <-- This session!
+Layer 3: CLI Commands (NOW UNBLOCKED!)
 Layer 4: Integration Test (vibefeld-duj)
 ```
 
-**Critical path:** `5fm -> CLI commands -> integration test`
+**Critical path:** `CLI commands -> integration test`
 
 ## Next Steps (Ready to Work)
 
 ### Critical Path (P1)
-1. `vibefeld-5fm` - Implement ProofService facade (NOW UNBLOCKED!)
+1. CLI commands - now unblocked by ProofService facade completion
 
 ### Also Ready (P2) - Good for parallel work
-- `vibefeld-kvy` - Implement verifier context renderer
-- `vibefeld-cqk` - Implement jobs renderer
-- `vibefeld-9o96` - Implement context validation (fill stubs)
-- `vibefeld-kmev` - Implement depth validation (fill stubs)
+- Many issues now ready (77 available)
+- Run `bd ready` to see prioritized list
 
 ## Key Files This Session
 
-### Proof Service Tests (`internal/service/proof_test.go`)
-- Tests for NewProofService, Init, Load, Status
-- Tests for Claim, Release, Refine, Accept operations
-- Tests for Definition, Assumption, External management
-- Comprehensive edge cases and error handling
+### ProofService (`internal/service/proof.go`)
+- Full facade implementation coordinating ledger, state, locks, filesystem
+- Methods: NewProofService, Init, LoadState, CreateNode, ClaimNode, ReleaseNode
+- RefineNode, AcceptNode, AdmitNode, RefuteNode
+- AddDefinition, AddAssumption, AddExternal, ExtractLemma
+- Status, GetAvailableNodes
 
-### Node Validation Tests
-- `depth_test.go` - Validates node depth against MaxDepth config
-- `context_validate_test.go` - Validates definition/assumption/external refs exist
+### Context Validation (`internal/node/context_validate.go`)
+- ValidateDefRefs, ValidateAssnRefs, ValidateExtRefs, ValidateContextRefs
+- Position-based error type determination for accurate error reporting
 
-### Render Tests
-- `verifier_context_test.go` - Verifier view of challenges
-- `jobs_test.go` - Prover/verifier job listings
+### Render (`internal/render/`)
+- `verifier_context.go` - Full verifier context rendering with challenge info
+- `jobs.go` - Prover/verifier job listings with sorting and formatting
+- `json_test.go` - Comprehensive JSON output tests
 
 ## Previous Sessions
 
+**Session 17:** 5 issues - Implementations via parallel subagents (ProofService P1!)
 **Session 16:** 5 issues - TDD tests for 5 components (parallel subagents)
 **Session 15:** 5 issues - Implementations for TDD tests (parallel subagents)
 **Session 14:** 5 issues - TDD tests for 5 components (parallel subagents)
