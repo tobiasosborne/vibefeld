@@ -1,33 +1,19 @@
-# Handoff - 2026-01-13 (Session 19)
+# Handoff - 2026-01-13 (Session 20)
 
 ## What Was Accomplished This Session
 
-### Parallel Subagent Work (5 Issues)
+### 4 CLI Commands Implemented (Parallel Subagents)
 
-| Issue | File | Lines | Description |
-|-------|------|-------|-------------|
-| `vibefeld-9lu` | internal/render/json.go | 364 | JSON renderer for nodes, status, jobs, contexts |
-| `vibefeld-tmi` | cmd/af/jobs_test.go | 821 | TDD tests for af jobs command (24 tests) |
-| `vibefeld-0o4` | cmd/af/challenge_test.go | ~750 | TDD tests for af challenge command (29+ tests) |
-| `vibefeld-58g` | cmd/af/resolve_challenge_test.go | 687 | TDD tests for af resolve-challenge command (21 tests) |
-| `vibefeld-bg8` | cmd/af/withdraw_challenge_test.go | 684 | TDD tests for af withdraw-challenge command (23 tests) |
-
-**Total:** ~3,300 lines, 5 issues closed
+| Issue | Command | Description |
+|-------|---------|-------------|
+| `vibefeld-4b8` | `af jobs` | List prover/verifier jobs with --role filtering |
+| `vibefeld-1pg` | `af challenge` | Raise challenge against proof nodes |
+| `vibefeld-xvs` | `af resolve-challenge` | Resolve an open challenge |
+| `vibefeld-wsy` | `af withdraw-challenge` | Withdraw an open challenge |
 
 ### Bug Fix
-- Fixed pre-existing bug in `internal/render/jobs_test.go` (from Session 16)
-- Invalid hierarchical node IDs (2, 3, 4) replaced with valid ones (1.x)
-- Used fmt.Sprintf instead of broken character math for ID generation
-
-### Stub Commands Created
-- `cmd/af/challenge.go` - Stub for TDD tests to compile
-- `cmd/af/jobs.go` - Stub for TDD tests to compile
-- `cmd/af/resolve_challenge.go` - Stub for TDD tests to compile
-- `cmd/af/withdraw_challenge.go` - Stub for TDD tests to compile
-
-## Commits This Session
-
-1. `5e13b10` - Add JSON renderer and TDD tests for 4 CLI commands via parallel subagents
+- Fixed `resolve_challenge_test.go` - test was using hardcoded stub instead of real implementation
+- Removed unused `fmt` import after stub removal
 
 ## Current State
 
@@ -35,81 +21,71 @@
 ```bash
 go build ./...                    # PASSES
 go test ./...                     # PASSES (standard tests)
-go test ./... -tags=integration   # CLI tests FAIL as expected (TDD - tests before implementation)
+go test -tags=integration ./cmd/af -run "TestJobsCmd|TestChallengeCmd|TestResolveChallengeCmd|TestWithdrawChallengeCmd"
+                                  # PASSES (all 4 new commands)
 ```
 
-The CLI test failures are **expected** - these are TDD tests for commands not yet implemented:
-- `af jobs` - undefined newJobsCmd
-- `af challenge` - undefined newChallengeCmd
-- `af resolve-challenge` - undefined newResolveChallengeCmd
-- `af withdraw-challenge` - stub returns nil (not fully implemented)
+Pre-existing failures in `accept_test.go` and `release_test.go` (not related to this session).
 
-### Git Status
-- Branch: `main`
-- All changes committed and pushed
-- Working tree clean
-
-### Implementation Progress
-- **Issues:** 180 closed / 83 open (~68% complete)
-- **Ready to work:** 72 issues
+### Project Statistics
+- **Issues:** 184 closed / 79 open (~70% complete)
+- **Ready to work:** 68 issues
 
 ## Distance to Tracer Bullet
 
 ```
-Layer 1: DONE
-Layer 2: Service Layer - DONE
-Layer 3: CLI Commands - MOSTLY DONE (5 core commands + stubs for 4 more)
-  ✓ af init
-  ✓ af claim
-  ✓ af release
-  ✓ af refine
-  ✓ af accept
-  ◯ af jobs (stub + tests ready)
-  ◯ af challenge (stub + tests ready)
-  ◯ af resolve-challenge (stub + tests ready)
-  ◯ af withdraw-challenge (stub + tests ready)
-Layer 4: Integration Test (vibefeld-duj)
+Layer 1: Core Infrastructure    ████████████████████ DONE
+Layer 2: Service Layer          ████████████████████ DONE
+Layer 3: CLI Commands           ████████████████████ DONE (9 core commands)
+Layer 4: Integration Test       ░░░░░░░░░░░░░░░░░░░░ 1 remaining
 ```
 
-**Critical path:** `Implement 4 CLI commands -> Integration test -> tracer bullet complete!`
+### CLI Commands Complete
+✅ `af init` - Create proof workspace
+✅ `af claim` - Claim jobs for work
+✅ `af release` - Release claimed jobs
+✅ `af refine` - Add child nodes
+✅ `af accept` - Accept proof nodes
+✅ `af jobs` - List available jobs
+✅ `af challenge` - Raise objections
+✅ `af resolve-challenge` - Resolve challenges
+✅ `af withdraw-challenge` - Withdraw challenges
 
-## Next Steps (Ready to Work)
+### Remaining for Tracer Bullet
+**1 integration test:**
+- `vibefeld-duj` - Full workflow end-to-end test
 
-### Critical Path (P1) - CLI Implementations
-The following commands have complete TDD test suites waiting:
-1. `af jobs` - Implement to make jobs_test.go pass
-2. `af challenge` - Implement to make challenge_test.go pass
-3. `af resolve-challenge` - Implement to make resolve_challenge_test.go pass
-4. `af withdraw-challenge` - Implement to make withdraw_challenge_test.go pass
+## Next Steps
 
-### Then Integration Test
-- `vibefeld-duj` - Full workflow integration test
+1. **Immediate (Tracer Bullet):**
+   - Implement `vibefeld-duj` - integration test for full prover/verifier workflow
 
-## Key Files This Session
+2. **Then:**
+   - Fix pre-existing test failures in accept/release commands
+   - Continue with remaining CLI commands (status, show, etc.)
 
-### New Implementation
-- `internal/render/json.go` - Complete JSON rendering for:
-  - JSONNode, JSONNodeList
-  - JSONStatus, JSONStatistics
-  - JSONJobs, JSONJobList, JSONJobEntry
-  - JSONProverContext, JSONVerifierContext
+## Key Files Changed This Session
 
-### TDD Test Suites
-- `cmd/af/jobs_test.go` - 24 tests covering all jobs scenarios
-- `cmd/af/challenge_test.go` - 29+ tests for challenge workflow
-- `cmd/af/resolve_challenge_test.go` - 21 tests for resolving challenges
-- `cmd/af/withdraw_challenge_test.go` - 23 tests for withdrawing challenges
+### Implementations
+- `cmd/af/jobs.go` - Full implementation
+- `cmd/af/challenge.go` - Full implementation
+- `cmd/af/resolve_challenge.go` - Full implementation
+- `cmd/af/withdraw_challenge.go` - Full implementation
+
+### Test Fix
+- `cmd/af/resolve_challenge_test.go` - Fixed to use real implementation
 
 ## Previous Sessions
 
-**Session 19:** 5 issues - JSON renderer + TDD tests for 4 CLI commands (parallel subagents)
-**Session 18:** 5 issues - CLI command implementations (parallel subagents)
-**Session 17:** 10 issues - Implementations + TDD CLI tests (parallel subagents)
-**Session 16:** 5 issues - TDD tests for 5 components (parallel subagents)
-**Session 15:** 5 issues - Implementations for TDD tests (parallel subagents)
-**Session 14:** 5 issues - TDD tests for 5 components (parallel subagents)
-**Session 13:** 5 issues - Layer 1 implementations (parallel subagents)
-**Session 12:** 5 issues - TDD tests for 5 components (parallel subagents)
+**Session 20:** 4 issues - 4 CLI commands via parallel subagents
+**Session 19:** 5 issues - JSON renderer + TDD tests for 4 CLI commands
+**Session 18:** 5 issues - CLI command implementations
+**Session 17:** 10 issues - Implementations + TDD CLI tests
+**Session 16:** 5 issues - TDD tests for 5 components
+**Session 15:** 5 issues - Implementations for TDD tests
+**Session 14:** 5 issues - TDD tests for 5 components
+**Session 13:** 5 issues - Layer 1 implementations
+**Session 12:** 5 issues - TDD tests for 5 components
 **Session 11:** 35 issues - code review complete + tracer bullet infrastructure
 **Session 10:** 5 issues - thread safety, state apply, schema caching
 **Session 9:** Code review - 25 issues filed

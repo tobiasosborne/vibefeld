@@ -4,7 +4,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,28 +93,9 @@ func newTestResolveChallengeCmd() *cobra.Command {
 		Short: "Adversarial Proof Framework CLI",
 	}
 
-	// Try to get the resolve-challenge command if it exists
-	// If newResolveChallengeCmd is not defined yet, we create a minimal stub
-	// so the tests can compile and will appropriately fail until implementation
-	var resolveChallengeCmd *cobra.Command
-
-	// This will be replaced when the actual command is implemented
-	// For now, create a stub that returns an error
-	resolveChallengeCmd = &cobra.Command{
-		Use:   "resolve-challenge <challenge-id>",
-		Short: "Resolve a challenge (not yet implemented)",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("resolve-challenge command not yet implemented")
-		},
-	}
-
-	// Add expected flags to the stub
-	resolveChallengeCmd.Flags().StringP("response", "r", "", "Response text for resolving the challenge")
-	resolveChallengeCmd.Flags().StringP("dir", "d", ".", "Proof directory")
-	resolveChallengeCmd.Flags().StringP("format", "f", "text", "Output format: text or json")
-
+	resolveChallengeCmd := newResolveChallengeCmd()
 	cmd.AddCommand(resolveChallengeCmd)
+	AddFuzzyMatching(cmd)
 
 	return cmd
 }
