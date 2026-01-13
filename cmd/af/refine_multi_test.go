@@ -60,11 +60,8 @@ func setupRefineMultiTest(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Test goal", schema.InferenceAssumption)
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
+	// Note: Init already creates node "1" as the root node, so we just need to claim it.
+	// Don't call CreateNode here - it would fail with "node already exists".
 
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
@@ -177,7 +174,8 @@ func TestRefineMultiCmd_JSONInput(t *testing.T) {
 
 	cmd := newRefineMultiTestCmd()
 	// Test with --children flag accepting JSON array of child specifications
-	childrenJSON := `[{"statement":"Subgoal A","type":"claim","inference":"assumption"},{"statement":"Subgoal B","type":"case","inference":"by_cases"}]`
+	// Note: using "local_assume" as the inference type since "by_cases" is not a valid inference type in the schema
+	childrenJSON := `[{"statement":"Subgoal A","type":"claim","inference":"assumption"},{"statement":"Subgoal B","type":"case","inference":"local_assume"}]`
 
 	output, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
@@ -511,22 +509,13 @@ func TestRefineMultiCmd_ParentNotClaimed(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	// Init creates the root node "1" as an unclaimed node - exactly what we need for this test
 	err = service.Init(tmpDir, "Test conjecture", "test-author")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rootID, _ := types.Parse("1")
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Test goal", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Note: node is NOT claimed
+	// Note: node "1" is NOT claimed - Init creates it but doesn't claim it
 
 	cmd := newRefineMultiTestCmd()
 	childrenJSON := `[{"statement":"Child 1"},{"statement":"Child 2"}]`

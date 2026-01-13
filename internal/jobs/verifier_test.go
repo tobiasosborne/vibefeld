@@ -1,5 +1,3 @@
-//go:build integration
-
 // Package jobs_test contains tests for the jobs package.
 package jobs_test
 

@@ -42,24 +42,8 @@ func setupRequestDefTest(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Create a node for the proof
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	rootID, err := types.Parse("1")
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
+	// Note: service.Init already creates the root node "1" with the conjecture
+	// as its statement, so we don't need to create it again here.
 
 	return tmpDir, cleanup
 }

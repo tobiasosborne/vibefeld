@@ -1,5 +1,3 @@
-//go:build integration
-
 // Package state provides derived state from replaying ledger events.
 package state
 
