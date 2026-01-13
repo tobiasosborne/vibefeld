@@ -4,6 +4,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,20 @@ import (
 	"github.com/tobias/vibefeld/internal/state"
 	"github.com/tobias/vibefeld/internal/types"
 )
+
+// ErrConcurrentModification is returned when an operation fails due to
+// concurrent modification of the proof state. Callers should retry the
+// operation after reloading the current state.
+var ErrConcurrentModification = errors.New("concurrent modification detected")
+
+// wrapSequenceMismatch converts ledger.ErrSequenceMismatch to ErrConcurrentModification
+// with additional context for the caller.
+func wrapSequenceMismatch(err error, operation string) error {
+	if errors.Is(err, ledger.ErrSequenceMismatch) {
+		return fmt.Errorf("%w: %s failed, please retry", ErrConcurrentModification, operation)
+	}
+	return err
+}
 
 // ProofService orchestrates proof operations across ledger, state, locks, and filesystem.
 // It provides a high-level facade for proof manipulation operations.
@@ -198,6 +213,9 @@ func (s *ProofService) isInitialized() (bool, error) {
 
 // CreateNode creates a new proof node with the given parameters.
 // The node is initially in available workflow state and pending epistemic state.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType) error {
 	// Check if initialized
 	init, err := s.isInitialized()
@@ -208,11 +226,14 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 		return errors.New("proof not initialized")
 	}
 
-	// Check if node already exists
+	// Load state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
 		return err
 	}
+	expectedSeq := st.LatestSeq()
+
+	// Check if node already exists
 	if st.GetNode(id) != nil {
 		return errors.New("node already exists")
 	}
@@ -223,19 +244,23 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 		return err
 	}
 
-	// Get ledger and append event
+	// Get ledger and append event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
 		return err
 	}
 
 	event := ledger.NewNodeCreated(*n)
-	_, err = ldg.Append(event)
-	return err
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "CreateNode")
 }
 
 // ClaimNode claims a node for an agent with the given timeout.
 // Returns an error if the node doesn't exist, is already claimed, or validation fails.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. This is the primary defense against multiple agents
+// claiming the same node. Callers should retry after reloading state.
 func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Duration) error {
 	// Validate owner
 	if strings.TrimSpace(owner) == "" {
@@ -247,11 +272,12 @@ func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Dur
 		return errors.New("timeout must be positive")
 	}
 
-	// Load current state
+	// Load current state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
 		return err
 	}
+	expectedSeq := st.LatestSeq()
 
 	// Check if node exists
 	n := st.GetNode(id)
@@ -264,7 +290,7 @@ func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Dur
 		return errors.New("node is not available")
 	}
 
-	// Get ledger and append claim event
+	// Get ledger and append claim event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
 		return err
@@ -274,18 +300,22 @@ func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Dur
 	timeoutTS := types.FromTime(time.Now().Add(timeout))
 
 	event := ledger.NewNodesClaimed([]types.NodeID{id}, owner, timeoutTS)
-	_, err = ldg.Append(event)
-	return err
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "ClaimNode")
 }
 
 // ReleaseNode releases a claimed node, making it available again.
 // Returns an error if the node is not claimed or the owner doesn't match.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) ReleaseNode(id types.NodeID, owner string) error {
-	// Load current state
+	// Load current state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
 		return err
 	}
+	expectedSeq := st.LatestSeq()
 
 	// Check if node exists
 	n := st.GetNode(id)
@@ -303,25 +333,29 @@ func (s *ProofService) ReleaseNode(id types.NodeID, owner string) error {
 		return errors.New("owner does not match")
 	}
 
-	// Get ledger and append release event
+	// Get ledger and append release event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
 		return err
 	}
 
 	event := ledger.NewNodesReleased([]types.NodeID{id})
-	_, err = ldg.Append(event)
-	return err
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "ReleaseNode")
 }
 
 // RefineNode adds a child node to a claimed parent node.
 // Returns an error if the parent is not claimed by the owner or validation fails.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType) error {
-	// Load current state
+	// Load current state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
 		return err
 	}
+	expectedSeq := st.LatestSeq()
 
 	// Check if parent node exists
 	parent := st.GetNode(parentID)
@@ -350,25 +384,29 @@ func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID t
 		return err
 	}
 
-	// Get ledger and append event
+	// Get ledger and append event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
 		return err
 	}
 
 	event := ledger.NewNodeCreated(*child)
-	_, err = ldg.Append(event)
-	return err
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "RefineNode")
 }
 
 // AcceptNode validates a node, marking it as verified correct.
 // Returns an error if the node doesn't exist.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AcceptNode(id types.NodeID) error {
-	// Load current state
+	// Load current state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
 		return err
 	}
+	expectedSeq := st.LatestSeq()
 
 	// Check if node exists
 	n := st.GetNode(id)
@@ -376,25 +414,29 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 		return errors.New("node not found")
 	}
 
-	// Get ledger and append validation event
+	// Get ledger and append validation event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
 		return err
 	}
 
 	event := ledger.NewNodeValidated(id)
-	_, err = ldg.Append(event)
-	return err
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "AcceptNode")
 }
 
 // AdmitNode admits a node without full verification.
 // Returns an error if the node doesn't exist.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AdmitNode(id types.NodeID) error {
-	// Load current state
+	// Load current state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
 		return err
 	}
+	expectedSeq := st.LatestSeq()
 
 	// Check if node exists
 	n := st.GetNode(id)
@@ -402,25 +444,29 @@ func (s *ProofService) AdmitNode(id types.NodeID) error {
 		return errors.New("node not found")
 	}
 
-	// Get ledger and append admit event
+	// Get ledger and append admit event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
 		return err
 	}
 
 	event := ledger.NewNodeAdmitted(id)
-	_, err = ldg.Append(event)
-	return err
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "AdmitNode")
 }
 
 // RefuteNode refutes a node, marking it as incorrect.
 // Returns an error if the node doesn't exist.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefuteNode(id types.NodeID) error {
-	// Load current state
+	// Load current state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
 		return err
 	}
+	expectedSeq := st.LatestSeq()
 
 	// Check if node exists
 	n := st.GetNode(id)
@@ -428,19 +474,22 @@ func (s *ProofService) RefuteNode(id types.NodeID) error {
 		return errors.New("node not found")
 	}
 
-	// Get ledger and append refute event
+	// Get ledger and append refute event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
 		return err
 	}
 
 	event := ledger.NewNodeRefuted(id)
-	_, err = ldg.Append(event)
-	return err
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "RefuteNode")
 }
 
 // AddDefinition adds a new definition to the proof.
 // Returns the definition ID and any error.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AddDefinition(name, content string) (string, error) {
 	// Create the definition (validates inputs)
 	def, err := node.NewDefinition(name, content)
@@ -448,7 +497,14 @@ func (s *ProofService) AddDefinition(name, content string) (string, error) {
 		return "", err
 	}
 
-	// Get ledger and append event
+	// Load state to get current sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return "", err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Get ledger and append event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
 		return "", err
@@ -463,9 +519,9 @@ func (s *ProofService) AddDefinition(name, content string) (string, error) {
 	}
 
 	event := ledger.NewDefAdded(ledgerDef)
-	_, err = ldg.Append(event)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
 	if err != nil {
-		return "", err
+		return "", wrapSequenceMismatch(err, "AddDefinition")
 	}
 
 	return def.ID, nil
@@ -514,18 +570,23 @@ func (s *ProofService) AddExternal(name, source string) (string, error) {
 
 // ExtractLemma extracts a lemma from a source node.
 // Returns the lemma ID and any error.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) ExtractLemma(sourceNodeID types.NodeID, statement string) (string, error) {
 	// Validate statement
 	if strings.TrimSpace(statement) == "" {
 		return "", errors.New("lemma statement cannot be empty")
 	}
 
-	// Check if source node exists
+	// Load state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
 		return "", err
 	}
+	expectedSeq := st.LatestSeq()
 
+	// Check if source node exists
 	n := st.GetNode(sourceNodeID)
 	if n == nil {
 		return "", errors.New("source node not found")
@@ -537,7 +598,7 @@ func (s *ProofService) ExtractLemma(sourceNodeID types.NodeID, statement string)
 		return "", err
 	}
 
-	// Append to ledger
+	// Append to ledger with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
 		return "", err
@@ -551,9 +612,9 @@ func (s *ProofService) ExtractLemma(sourceNodeID types.NodeID, statement string)
 	}
 
 	event := ledger.NewLemmaExtracted(ledgerLemma)
-	_, err = ldg.Append(event)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
 	if err != nil {
-		return "", err
+		return "", wrapSequenceMismatch(err, "ExtractLemma")
 	}
 
 	return lemma.ID, nil

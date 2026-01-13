@@ -3,6 +3,7 @@ package ledger
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,12 @@ import (
 
 // Default lock timeout for append operations.
 const defaultLockTimeout = 5 * time.Second
+
+// ErrSequenceMismatch is returned when an AppendIfSequence operation fails
+// because the ledger has been modified since the expected sequence was observed.
+// This indicates a concurrent modification and the operation should be retried
+// after reloading the current state.
+var ErrSequenceMismatch = errors.New("ledger sequence mismatch: concurrent modification detected")
 
 // cleanupTempFiles removes temporary files from the given slice within the range [start, end).
 // This is a best-effort operation; errors are intentionally ignored since cleanup failures
@@ -116,6 +123,101 @@ func AppendWithTimeout(dir string, event Event, timeout time.Duration) (int, err
 	finalPath := filepath.Join(dir, GenerateFilename(seq))
 	if err := os.Rename(tempPath, finalPath); err != nil {
 		_ = os.Remove(tempPath) // Best-effort cleanup; don't mask the rename error
+		return 0, fmt.Errorf("failed to rename temp file: %w", err)
+	}
+
+	return seq, nil
+}
+
+// AppendIfSequence adds an event to the ledger only if the current sequence
+// matches the expected value. This implements Compare-And-Swap (CAS) semantics
+// for optimistic concurrency control.
+//
+// expectedSeq should be the sequence number of the last event observed when
+// the state was loaded (i.e., state.LatestSeq()). If the ledger has been
+// modified since then, ErrSequenceMismatch is returned.
+//
+// Returns the new sequence number on success, or ErrSequenceMismatch if the
+// ledger was concurrently modified. Other errors indicate infrastructure failures.
+func AppendIfSequence(dir string, event Event, expectedSeq int) (int, error) {
+	return AppendIfSequenceWithTimeout(dir, event, expectedSeq, defaultLockTimeout)
+}
+
+// AppendIfSequenceWithTimeout is like AppendIfSequence but with a custom lock timeout.
+func AppendIfSequenceWithTimeout(dir string, event Event, expectedSeq int, timeout time.Duration) (int, error) {
+	if err := validateDirectory(dir); err != nil {
+		return 0, err
+	}
+
+	// Acquire lock for concurrent safety with custom timeout
+	lock := NewLedgerLock(dir)
+	if err := lock.Acquire("append-if-sequence-operation", timeout); err != nil {
+		return 0, fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer lock.Release()
+
+	// Get current sequence number (inside lock to ensure atomicity)
+	currentSeq, err := NextSequence(dir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to determine current sequence: %w", err)
+	}
+
+	// NextSequence returns the NEXT sequence (current + 1), so current count is currentSeq - 1
+	// If expectedSeq is 0, it means we expect an empty ledger (next would be 1)
+	// If expectedSeq is N, we expect the ledger to have N events (next would be N+1)
+	actualLatest := currentSeq - 1
+	if actualLatest != expectedSeq {
+		return 0, fmt.Errorf("%w: expected sequence %d, but ledger is at %d",
+			ErrSequenceMismatch, expectedSeq, actualLatest)
+	}
+
+	// Sequence matches - proceed with append (same logic as AppendWithTimeout)
+	seq := currentSeq
+
+	// Marshal event to JSON
+	data, err := json.Marshal(event)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Create temp file for atomic write
+	tempFile, err := os.CreateTemp(dir, ".event-*.tmp")
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tempPath := tempFile.Name()
+
+	// Write data to temp file
+	_, err = tempFile.Write(data)
+	if err != nil {
+		tempFile.Close()
+		_ = os.Remove(tempPath)
+		return 0, fmt.Errorf("failed to write event data: %w", err)
+	}
+
+	// Sync to ensure data is on disk
+	if err := tempFile.Sync(); err != nil {
+		tempFile.Close()
+		_ = os.Remove(tempPath)
+		return 0, fmt.Errorf("failed to sync temp file: %w", err)
+	}
+
+	// Close temp file before rename
+	if err := tempFile.Close(); err != nil {
+		_ = os.Remove(tempPath)
+		return 0, fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	// Set file permissions
+	if err := os.Chmod(tempPath, 0644); err != nil {
+		_ = os.Remove(tempPath)
+		return 0, fmt.Errorf("failed to set file permissions: %w", err)
+	}
+
+	// Atomic rename to final path
+	finalPath := filepath.Join(dir, GenerateFilename(seq))
+	if err := os.Rename(tempPath, finalPath); err != nil {
+		_ = os.Remove(tempPath)
 		return 0, fmt.Errorf("failed to rename temp file: %w", err)
 	}
 

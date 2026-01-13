@@ -29,7 +29,7 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 
 	state := NewState()
 
-	// Scan through all events and apply them
+	// Scan through all events and apply them, tracking sequence numbers
 	err := ldg.Scan(func(seq int, data []byte) error {
 		// Parse the event type first
 		event, err := parseEvent(data)
@@ -41,6 +41,9 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 		if err := Apply(state, event); err != nil {
 			return fmt.Errorf("failed to apply event %d (%s): %w", seq, event.Type(), err)
 		}
+
+		// Track the latest sequence number for optimistic concurrency control
+		state.SetLatestSeq(seq)
 
 		// If verifying hashes and this is a NodeCreated event, verify the hash
 		if verifyHashes {

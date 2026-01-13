@@ -23,6 +23,11 @@ type State struct {
 
 	// lemmas maps lemma ID to Lemma instances.
 	lemmas map[string]*node.Lemma
+
+	// latestSeq is the sequence number of the last event applied to this state.
+	// Used for optimistic concurrency control (CAS) when appending new events.
+	// A value of 0 means no events have been applied yet.
+	latestSeq int
 }
 
 // NewState creates a new empty State with all maps initialized.
@@ -99,4 +104,17 @@ func (s *State) AllNodes() []*node.Node {
 		nodes = append(nodes, n)
 	}
 	return nodes
+}
+
+// LatestSeq returns the sequence number of the last event applied to this state.
+// Returns 0 if no events have been applied yet.
+// This is used for optimistic concurrency control when appending new events.
+func (s *State) LatestSeq() int {
+	return s.latestSeq
+}
+
+// SetLatestSeq sets the sequence number of the last applied event.
+// This should only be called by the replay mechanism.
+func (s *State) SetLatestSeq(seq int) {
+	s.latestSeq = seq
 }

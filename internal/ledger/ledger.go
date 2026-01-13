@@ -49,3 +49,17 @@ func (l *Ledger) Scan(fn ScanFunc) error {
 func (l *Ledger) Count() (int, error) {
 	return Count(l.dir)
 }
+
+// AppendIfSequence adds an event to the ledger only if the current sequence
+// matches the expected value. This implements Compare-And-Swap (CAS) semantics
+// for optimistic concurrency control.
+//
+// expectedSeq should be the sequence number of the last event observed when
+// the state was loaded (i.e., state.LatestSeq()). If the ledger has been
+// modified since then, ErrSequenceMismatch is returned.
+//
+// Returns the new sequence number on success, or ErrSequenceMismatch if the
+// ledger was concurrently modified. Other errors indicate infrastructure failures.
+func (l *Ledger) AppendIfSequence(event Event, expectedSeq int) (int, error) {
+	return AppendIfSequence(l.dir, event, expectedSeq)
+}

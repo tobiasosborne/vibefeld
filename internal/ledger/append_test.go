@@ -637,3 +637,266 @@ func TestAppend_FilePermissions(t *testing.T) {
 		t.Errorf("File should have at least 0600 permissions, got %o", mode)
 	}
 }
+
+// =============================================================================
+// AppendIfSequence CAS (Compare-And-Swap) Tests
+// =============================================================================
+
+// TestAppendIfSequence_SuccessOnMatchingSequence verifies CAS succeeds when sequence matches.
+func TestAppendIfSequence_SuccessOnMatchingSequence(t *testing.T) {
+	dir := t.TempDir()
+
+	// Append first event using regular append
+	event1 := NewProofInitialized("CAS test 1", "agent-cas")
+	seq1, err := Append(dir, event1)
+	if err != nil {
+		t.Fatalf("First append failed: %v", err)
+	}
+	if seq1 != 1 {
+		t.Errorf("First append: seq = %d, want 1", seq1)
+	}
+
+	// Use AppendIfSequence with correct expected sequence (1)
+	event2 := NewChallengeResolved("chal-cas")
+	seq2, err := AppendIfSequence(dir, event2, 1)
+	if err != nil {
+		t.Fatalf("AppendIfSequence failed: %v", err)
+	}
+	if seq2 != 2 {
+		t.Errorf("AppendIfSequence: seq = %d, want 2", seq2)
+	}
+
+	// Verify both files exist
+	if _, err := os.Stat(EventFilePath(dir, 1)); os.IsNotExist(err) {
+		t.Error("Event 1 file should exist")
+	}
+	if _, err := os.Stat(EventFilePath(dir, 2)); os.IsNotExist(err) {
+		t.Error("Event 2 file should exist")
+	}
+}
+
+// TestAppendIfSequence_FailsOnMismatchedSequence verifies CAS fails when sequence doesn't match.
+func TestAppendIfSequence_FailsOnMismatchedSequence(t *testing.T) {
+	dir := t.TempDir()
+
+	// Append two events
+	event1 := NewProofInitialized("CAS mismatch test 1", "agent-cas")
+	if _, err := Append(dir, event1); err != nil {
+		t.Fatalf("First append failed: %v", err)
+	}
+
+	event2 := NewChallengeResolved("chal-cas-mismatch")
+	if _, err := Append(dir, event2); err != nil {
+		t.Fatalf("Second append failed: %v", err)
+	}
+
+	// Now ledger is at sequence 2. Try AppendIfSequence with expected sequence 1.
+	event3 := NewChallengeWithdrawn("chal-cas-mismatch-2")
+	_, err := AppendIfSequence(dir, event3, 1) // Expecting seq 1, but ledger is at 2
+
+	if err == nil {
+		t.Fatal("AppendIfSequence should fail when sequence mismatches")
+	}
+
+	if !strings.Contains(err.Error(), "sequence mismatch") {
+		t.Errorf("Error should mention sequence mismatch, got: %v", err)
+	}
+
+	// Verify the event was NOT appended (still only 2 events)
+	count, err := Count(dir)
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("Ledger should still have 2 events, got %d", count)
+	}
+}
+
+// TestAppendIfSequence_FailsOnEmptyLedgerWithNonZeroExpected verifies CAS fails
+// when expecting non-zero sequence on empty ledger.
+func TestAppendIfSequence_FailsOnEmptyLedgerWithNonZeroExpected(t *testing.T) {
+	dir := t.TempDir()
+
+	// Try AppendIfSequence on empty ledger expecting sequence 5
+	event := NewProofInitialized("Empty ledger CAS test", "agent-cas")
+	_, err := AppendIfSequence(dir, event, 5)
+
+	if err == nil {
+		t.Fatal("AppendIfSequence should fail when expecting non-zero on empty ledger")
+	}
+
+	if !strings.Contains(err.Error(), "sequence mismatch") {
+		t.Errorf("Error should mention sequence mismatch, got: %v", err)
+	}
+
+	// Verify nothing was appended
+	count, err := Count(dir)
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Ledger should be empty, got %d events", count)
+	}
+}
+
+// TestAppendIfSequence_SuccessOnEmptyLedgerWithZeroExpected verifies CAS succeeds
+// when expecting zero sequence on empty ledger.
+func TestAppendIfSequence_SuccessOnEmptyLedgerWithZeroExpected(t *testing.T) {
+	dir := t.TempDir()
+
+	// AppendIfSequence on empty ledger expecting sequence 0 should succeed
+	event := NewProofInitialized("Empty ledger CAS test", "agent-cas")
+	seq, err := AppendIfSequence(dir, event, 0)
+
+	if err != nil {
+		t.Fatalf("AppendIfSequence should succeed on empty ledger with expected 0: %v", err)
+	}
+	if seq != 1 {
+		t.Errorf("seq = %d, want 1", seq)
+	}
+
+	// Verify event was appended
+	if _, err := os.Stat(EventFilePath(dir, 1)); os.IsNotExist(err) {
+		t.Error("Event file should exist")
+	}
+}
+
+// TestAppendIfSequence_ConcurrentClaimSimulation simulates two agents trying to claim
+// the same node - only one should succeed.
+func TestAppendIfSequence_ConcurrentClaimSimulation(t *testing.T) {
+	dir := t.TempDir()
+
+	// Setup: Create initial event
+	initEvent := NewProofInitialized("Concurrent claim test", "agent-init")
+	if _, err := Append(dir, initEvent); err != nil {
+		t.Fatalf("Init append failed: %v", err)
+	}
+
+	// Current ledger sequence is 1
+	currentSeq := 1
+
+	// Two goroutines both try to append with expected sequence 1
+	// Only one should succeed; the other should get sequence mismatch
+	var wg sync.WaitGroup
+	successes := make(chan int, 2)
+	failures := make(chan error, 2)
+
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(agentNum int) {
+			defer wg.Done()
+
+			// Both agents "read" the same sequence
+			expectedSeq := currentSeq
+
+			// Try to append (claim) with their expected sequence
+			event := NewChallengeResolved("claim-" + string(rune('A'+agentNum)))
+			seq, err := AppendIfSequence(dir, event, expectedSeq)
+
+			if err != nil {
+				failures <- err
+			} else {
+				successes <- seq
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(successes)
+	close(failures)
+
+	// Count results
+	successCount := 0
+	failureCount := 0
+
+	for range successes {
+		successCount++
+	}
+	for range failures {
+		failureCount++
+	}
+
+	// Exactly one should succeed, one should fail
+	if successCount != 1 {
+		t.Errorf("Expected exactly 1 success, got %d", successCount)
+	}
+	if failureCount != 1 {
+		t.Errorf("Expected exactly 1 failure, got %d", failureCount)
+	}
+
+	// Ledger should have exactly 2 events (init + one successful claim)
+	count, err := Count(dir)
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("Ledger should have 2 events, got %d", count)
+	}
+}
+
+// TestAppendIfSequence_ErrorTypes verifies the error wrapping includes ErrSequenceMismatch.
+func TestAppendIfSequence_ErrorTypes(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create one event
+	event1 := NewProofInitialized("Error type test", "agent-error")
+	if _, err := Append(dir, event1); err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	// Try with wrong expected sequence
+	event2 := NewChallengeResolved("chal-error")
+	_, err := AppendIfSequence(dir, event2, 0) // Wrong: ledger is at 1
+
+	if err == nil {
+		t.Fatal("Expected error")
+	}
+
+	// Verify error contains ErrSequenceMismatch
+	if !strings.Contains(err.Error(), ErrSequenceMismatch.Error()) {
+		t.Errorf("Error should wrap ErrSequenceMismatch, got: %v", err)
+	}
+}
+
+// TestAppendIfSequence_InvalidDirectory verifies proper error on invalid directory.
+func TestAppendIfSequence_InvalidDirectory(t *testing.T) {
+	event := NewProofInitialized("Invalid dir test", "agent-invalid")
+	_, err := AppendIfSequence("/nonexistent/directory/that/does/not/exist", event, 0)
+
+	if err == nil {
+		t.Fatal("Expected error for invalid directory")
+	}
+}
+
+// TestAppendIfSequence_ChainedOperations verifies multiple CAS operations in sequence.
+func TestAppendIfSequence_ChainedOperations(t *testing.T) {
+	dir := t.TempDir()
+
+	// Chain multiple AppendIfSequence calls, each using the previous sequence
+	events := []Event{
+		NewProofInitialized("Chain 1", "agent-chain"),
+		NewChallengeResolved("chal-chain-1"),
+		NewChallengeWithdrawn("chal-chain-2"),
+	}
+
+	expectedSeq := 0 // Start with empty ledger
+	for i, event := range events {
+		seq, err := AppendIfSequence(dir, event, expectedSeq)
+		if err != nil {
+			t.Fatalf("AppendIfSequence %d failed: %v", i, err)
+		}
+		if seq != i+1 {
+			t.Errorf("AppendIfSequence %d: seq = %d, want %d", i, seq, i+1)
+		}
+		expectedSeq = seq // Update for next iteration
+	}
+
+	// Verify all events were appended
+	count, err := Count(dir)
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("Ledger should have 3 events, got %d", count)
+	}
+}
