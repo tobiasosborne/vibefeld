@@ -572,38 +572,110 @@ func TestApplyChallengeRaised(t *testing.T) {
 		t.Fatalf("Apply ChallengeRaised failed: %v", err)
 	}
 
-	// The event should be accepted without error
-	// Challenge tracking may be implemented separately
+	// Verify the challenge was added to state
+	c := s.GetChallenge("chal-001")
+	if c == nil {
+		t.Fatal("Challenge was not added to state")
+	}
+	if c.ID != "chal-001" {
+		t.Errorf("Challenge ID: got %q, want %q", c.ID, "chal-001")
+	}
+	if c.NodeID.String() != "1" {
+		t.Errorf("Challenge NodeID: got %q, want %q", c.NodeID.String(), "1")
+	}
+	if c.Target != "statement" {
+		t.Errorf("Challenge Target: got %q, want %q", c.Target, "statement")
+	}
+	if c.Reason != "This is incorrect" {
+		t.Errorf("Challenge Reason: got %q, want %q", c.Reason, "This is incorrect")
+	}
+	if c.Status != "open" {
+		t.Errorf("Challenge Status: got %q, want %q", c.Status, "open")
+	}
 }
 
 // TestApplyChallengeResolved verifies that ChallengeResolved event is handled.
 func TestApplyChallengeResolved(t *testing.T) {
 	s := NewState()
 
-	// Apply ChallengeResolved event
-	event := ledger.NewChallengeResolved("chal-001")
+	nodeID := mustParseNodeID(t, "1")
 
-	err := Apply(s, event)
+	// First raise a challenge
+	raiseEvent := ledger.NewChallengeRaised("chal-001", nodeID, "statement", "This is incorrect")
+	err := Apply(s, raiseEvent)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised failed: %v", err)
+	}
+
+	// Now resolve the challenge
+	resolveEvent := ledger.NewChallengeResolved("chal-001")
+	err = Apply(s, resolveEvent)
 	if err != nil {
 		t.Fatalf("Apply ChallengeResolved failed: %v", err)
 	}
 
-	// The event should be accepted without error
+	// Verify the challenge status is resolved
+	c := s.GetChallenge("chal-001")
+	if c == nil {
+		t.Fatal("Challenge not found in state")
+	}
+	if c.Status != "resolved" {
+		t.Errorf("Challenge Status: got %q, want %q", c.Status, "resolved")
+	}
+}
+
+// TestApplyChallengeResolved_NotFound verifies error when resolving non-existent challenge.
+func TestApplyChallengeResolved_NotFound(t *testing.T) {
+	s := NewState()
+
+	// Try to resolve a challenge that doesn't exist
+	event := ledger.NewChallengeResolved("chal-nonexistent")
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply ChallengeResolved should fail for non-existent challenge")
+	}
 }
 
 // TestApplyChallengeWithdrawn verifies that ChallengeWithdrawn event is handled.
 func TestApplyChallengeWithdrawn(t *testing.T) {
 	s := NewState()
 
-	// Apply ChallengeWithdrawn event
-	event := ledger.NewChallengeWithdrawn("chal-001")
+	nodeID := mustParseNodeID(t, "1")
 
-	err := Apply(s, event)
+	// First raise a challenge
+	raiseEvent := ledger.NewChallengeRaised("chal-001", nodeID, "statement", "This is incorrect")
+	err := Apply(s, raiseEvent)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised failed: %v", err)
+	}
+
+	// Now withdraw the challenge
+	withdrawEvent := ledger.NewChallengeWithdrawn("chal-001")
+	err = Apply(s, withdrawEvent)
 	if err != nil {
 		t.Fatalf("Apply ChallengeWithdrawn failed: %v", err)
 	}
 
-	// The event should be accepted without error
+	// Verify the challenge status is withdrawn
+	c := s.GetChallenge("chal-001")
+	if c == nil {
+		t.Fatal("Challenge not found in state")
+	}
+	if c.Status != "withdrawn" {
+		t.Errorf("Challenge Status: got %q, want %q", c.Status, "withdrawn")
+	}
+}
+
+// TestApplyChallengeWithdrawn_NotFound verifies error when withdrawing non-existent challenge.
+func TestApplyChallengeWithdrawn_NotFound(t *testing.T) {
+	s := NewState()
+
+	// Try to withdraw a challenge that doesn't exist
+	event := ledger.NewChallengeWithdrawn("chal-nonexistent")
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply ChallengeWithdrawn should fail for non-existent challenge")
+	}
 }
 
 // TestApplyUnknownEventType verifies that unknown event type returns error.

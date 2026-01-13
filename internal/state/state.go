@@ -6,6 +6,17 @@ import (
 	"github.com/tobias/vibefeld/internal/types"
 )
 
+// Challenge represents a challenge tracked in the state.
+// This is a simplified representation of node.Challenge for state tracking.
+type Challenge struct {
+	ID      string          // Unique challenge identifier
+	NodeID  types.NodeID    // The node being challenged
+	Target  string          // What aspect of the node is challenged
+	Reason  string          // Explanation of the challenge
+	Status  string          // "open", "resolved", or "withdrawn"
+	Created types.Timestamp // When the challenge was raised
+}
+
 // State represents the current derived state of a proof.
 // It is reconstructed by replaying ledger events.
 type State struct {
@@ -24,6 +35,9 @@ type State struct {
 	// lemmas maps lemma ID to Lemma instances.
 	lemmas map[string]*node.Lemma
 
+	// challenges maps challenge ID to Challenge instances.
+	challenges map[string]*Challenge
+
 	// latestSeq is the sequence number of the last event applied to this state.
 	// Used for optimistic concurrency control (CAS) when appending new events.
 	// A value of 0 means no events have been applied yet.
@@ -38,6 +52,7 @@ func NewState() *State {
 		assumptions: make(map[string]*node.Assumption),
 		externals:   make(map[string]*node.External),
 		lemmas:      make(map[string]*node.Lemma),
+		challenges:  make(map[string]*Challenge),
 	}
 }
 
@@ -94,6 +109,39 @@ func (s *State) AddLemma(l *node.Lemma) {
 // GetLemma returns the lemma with the given ID, or nil if not found.
 func (s *State) GetLemma(id string) *node.Lemma {
 	return s.lemmas[id]
+}
+
+// AddChallenge adds a challenge to the state.
+// If a challenge with the same ID already exists, it is overwritten.
+func (s *State) AddChallenge(c *Challenge) {
+	s.challenges[c.ID] = c
+}
+
+// GetChallenge returns the challenge with the given ID, or nil if not found.
+func (s *State) GetChallenge(id string) *Challenge {
+	return s.challenges[id]
+}
+
+// AllChallenges returns a slice of all challenges in the state.
+// The order of challenges is not guaranteed.
+func (s *State) AllChallenges() []*Challenge {
+	challenges := make([]*Challenge, 0, len(s.challenges))
+	for _, c := range s.challenges {
+		challenges = append(challenges, c)
+	}
+	return challenges
+}
+
+// OpenChallenges returns a slice of all open challenges in the state.
+// The order of challenges is not guaranteed.
+func (s *State) OpenChallenges() []*Challenge {
+	var open []*Challenge
+	for _, c := range s.challenges {
+		if c.Status == "open" {
+			open = append(open, c)
+		}
+	}
+	return open
 }
 
 // AllNodes returns a slice of all nodes in the state.

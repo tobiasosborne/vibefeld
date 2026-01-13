@@ -188,24 +188,38 @@ func applyLemmaExtracted(s *State, e ledger.LemmaExtracted) error {
 }
 
 // applyChallengeRaised handles the ChallengeRaised event.
-// Challenge tracking is not yet implemented in State. The event is recorded
-// in the ledger for history, but challenge state (open/resolved/withdrawn)
-// would require adding a challenges map to State and corresponding methods.
-// For now, challenge queries should replay the ledger directly.
+// This adds a new challenge to the state with status "open".
 func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
+	c := &Challenge{
+		ID:      e.ChallengeID,
+		NodeID:  e.NodeID,
+		Target:  e.Target,
+		Reason:  e.Reason,
+		Status:  "open",
+		Created: e.EventTime,
+	}
+	s.AddChallenge(c)
 	return nil
 }
 
 // applyChallengeResolved handles the ChallengeResolved event.
-// Challenge tracking is not yet implemented in State. The event is recorded
-// in the ledger for history. See applyChallengeRaised for details.
+// This updates the challenge status to "resolved".
 func applyChallengeResolved(s *State, e ledger.ChallengeResolved) error {
+	c := s.GetChallenge(e.ChallengeID)
+	if c == nil {
+		return fmt.Errorf("challenge %s not found", e.ChallengeID)
+	}
+	c.Status = "resolved"
 	return nil
 }
 
 // applyChallengeWithdrawn handles the ChallengeWithdrawn event.
-// Challenge tracking is not yet implemented in State. The event is recorded
-// in the ledger for history. See applyChallengeRaised for details.
+// This updates the challenge status to "withdrawn".
 func applyChallengeWithdrawn(s *State, e ledger.ChallengeWithdrawn) error {
+	c := s.GetChallenge(e.ChallengeID)
+	if c == nil {
+		return fmt.Errorf("challenge %s not found", e.ChallengeID)
+	}
+	c.Status = "withdrawn"
 	return nil
 }

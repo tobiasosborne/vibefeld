@@ -417,21 +417,24 @@ func TestReplay_LemmaExtractedEvent(t *testing.T) {
 	}
 }
 
-// TestReplay_ChallengeEvents verifies that challenge events are handled (currently no-ops in state).
+// TestReplay_ChallengeEvents verifies that challenge events are handled and tracked in state.
 func TestReplay_ChallengeEvents(t *testing.T) {
 	dir := t.TempDir()
 
 	nodeID := mustParseNodeID(t, "1")
 
-	// Challenge events are recorded but don't modify state currently
-	if _, err := ledger.Append(dir, ledger.NewChallengeRaised("chal-001", nodeID, "statement", "reason")); err != nil {
-		t.Fatalf("Append ChallengeRaised failed: %v", err)
+	// Challenge events: raise chal-001, resolve it; raise chal-002, withdraw it
+	if _, err := ledger.Append(dir, ledger.NewChallengeRaised("chal-001", nodeID, "statement", "reason 1")); err != nil {
+		t.Fatalf("Append ChallengeRaised chal-001 failed: %v", err)
 	}
 	if _, err := ledger.Append(dir, ledger.NewChallengeResolved("chal-001")); err != nil {
-		t.Fatalf("Append ChallengeResolved failed: %v", err)
+		t.Fatalf("Append ChallengeResolved chal-001 failed: %v", err)
+	}
+	if _, err := ledger.Append(dir, ledger.NewChallengeRaised("chal-002", nodeID, "inference", "reason 2")); err != nil {
+		t.Fatalf("Append ChallengeRaised chal-002 failed: %v", err)
 	}
 	if _, err := ledger.Append(dir, ledger.NewChallengeWithdrawn("chal-002")); err != nil {
-		t.Fatalf("Append ChallengeWithdrawn failed: %v", err)
+		t.Fatalf("Append ChallengeWithdrawn chal-002 failed: %v", err)
 	}
 
 	ldg, err := ledger.NewLedger(dir)
@@ -444,9 +447,37 @@ func TestReplay_ChallengeEvents(t *testing.T) {
 		t.Fatalf("Replay failed: %v", err)
 	}
 
-	// Should succeed without error even though challenges aren't tracked in state
 	if state == nil {
 		t.Fatal("Replay returned nil state")
+	}
+
+	// Verify challenge states
+	c1 := state.GetChallenge("chal-001")
+	if c1 == nil {
+		t.Fatal("Challenge chal-001 not found")
+	}
+	if c1.Status != "resolved" {
+		t.Errorf("Challenge chal-001 status: got %q, want %q", c1.Status, "resolved")
+	}
+
+	c2 := state.GetChallenge("chal-002")
+	if c2 == nil {
+		t.Fatal("Challenge chal-002 not found")
+	}
+	if c2.Status != "withdrawn" {
+		t.Errorf("Challenge chal-002 status: got %q, want %q", c2.Status, "withdrawn")
+	}
+
+	// Verify AllChallenges
+	all := state.AllChallenges()
+	if len(all) != 2 {
+		t.Errorf("AllChallenges length: got %d, want 2", len(all))
+	}
+
+	// Verify OpenChallenges (should be empty)
+	open := state.OpenChallenges()
+	if len(open) != 0 {
+		t.Errorf("OpenChallenges length: got %d, want 0", len(open))
 	}
 }
 
@@ -480,6 +511,7 @@ func TestReplay_AllEventTypes(t *testing.T) {
 		// Challenge events
 		ledger.NewChallengeRaised("chal-001", nodeID, "statement", "reason"),
 		ledger.NewChallengeResolved("chal-001"),
+		ledger.NewChallengeRaised("chal-002", nodeID, "inference", "another reason"),
 		ledger.NewChallengeWithdrawn("chal-002"),
 
 		// Epistemic state changes
