@@ -1,133 +1,127 @@
-# Handoff - 2026-01-13 (Session 21)
+# Handoff - 2026-01-13 (Session 22)
 
 ## What Was Accomplished This Session
 
-### P1 Bug Fix: af init Creates Root Node
+### Parallel Agent Execution (5 agents)
 
-**Issue:** `vibefeld-jb8w` (CLOSED)
+Successfully spawned 5 independent agents to work on non-conflicting files:
 
-**Problem:** `af init` only created a `ProofInitialized` event but no root node. This meant `af jobs` showed no available work after initialization - a critical blocker for the tracer bullet workflow.
+| Agent | Task | Files Created | Status |
+|-------|------|---------------|--------|
+| 1 | `af status` command | `cmd/af/status.go`, `status_test.go` | ✓ |
+| 2 | E2E simple proof | `e2e/simple_proof_test.go` | ✓ |
+| 3 | E2E challenge cycle | `e2e/challenge_cycle_test.go` | ✓ |
+| 4 | E2E scope tracking | `e2e/scope_test.go` | ✓ |
+| 5 | E2E taint propagation | `e2e/taint_test.go` | ✓ |
 
-**Fix:** Modified `internal/service/proof.go:Init()` to also create node "1" with:
-- Statement: the conjecture
-- NodeType: `claim`
-- InferenceType: `assumption`
+**Total: 2,077 lines of code added**
 
-**File Changed:** `internal/service/proof.go` (+17 lines)
+### Issues Closed (6)
 
-### Full Proof Walkthrough: sqrt(2) is Irrational
+| Issue | Description |
+|-------|-------------|
+| `vibefeld-oul` | Implement af status with tree view and JSON support |
+| `vibefeld-nnp` | Write tests for af status command |
+| `vibefeld-zgt2` | E2E test: simple proof completion |
+| `vibefeld-bm05` | E2E test: challenge and response cycle |
+| `vibefeld-tyg0` | E2E test: scope tracking with local_assume/discharge |
+| `vibefeld-izt4` | E2E test: taint propagation from admit |
 
-Conducted complete end-to-end test of the AF framework by proving sqrt(2) is irrational:
+### New CLI Command: `af status`
 
-**Proof Statistics:**
-- 27 ledger events generated
-- 10 nodes created (1 root + 9 children)
-- 2 challenges raised by verifier
-- 2 challenges resolved by prover
-- All 10 nodes validated
-
-**Workflow Tested:**
-```
-init → claim → refine (x9) → release → challenge (x2) →
-resolve-challenge (x2) → accept (x10) → proof complete
-```
-
-**Key Finding:** The adversarial model works - verifier caught two genuine gaps:
-1. "n² even implies n even" lemma needed explicit proof
-2. "Same reasoning" was too informal, needed explicit citation
-
-**Experience Report:** `docs/proof-experience-report.md`
-
-### New Bugs Filed
-
-| Issue | Priority | Description |
-|-------|----------|-------------|
-| `vibefeld-99ab` | P2 | `af jobs` should show verifier jobs for pending nodes |
-| `vibefeld-4yft` | P3 | Challenge resolutions should be visible in proof context |
+Shows proof status with:
+- Node tree with hierarchical IDs
+- Epistemic states (pending/validated/admitted/refuted)
+- Taint states (clean/self_admitted/tainted/unresolved)
+- Summary statistics
+- Supports `--format json` and `--dir` flags
 
 ## Current State
 
 ### Test Status
 ```bash
 go build ./...   # PASSES
-go test ./...    # PASSES
+go test ./...    # PASSES (17 packages)
+go test -tags=integration ./e2e  # PASSES (34 integration tests)
 ```
-
-### Tracer Bullet Status: FUNCTIONAL
-
-The core workflow is now fully operational:
-- `af init` creates root node (fixed this session)
-- `af claim` / `af release` work correctly
-- `af refine` creates child nodes
-- `af challenge` / `af resolve-challenge` enable adversarial review
-- `af accept` validates nodes
-- `af jobs` shows available prover work
-
-**Known Limitation:** `af jobs` doesn't distinguish verifier jobs (filed as `vibefeld-99ab`)
 
 ### Project Statistics
-```bash
-bd stats
 ```
-- Tracer bullet: Complete and functional
-- Integration tests: 4 passing
-- New bugs filed: 2
-
-## Proof Artifacts in ./temp (Untracked)
-
-The `./temp` directory contains a complete proof workspace:
-```
-temp/
-├── ledger/          # 27 event files (000001.json - 000027.json)
-├── locks/           # Lock directory
-├── definitions/     # Empty
-├── assumptions/     # Empty
-└── externals/       # Empty
+Total Issues:    266
+Open:            74
+Closed:          192
+Completion:      72%
+Ready to Work:   74
+Blocked:         0
 ```
 
-This can be used for manual testing or demonstration. Not tracked in git.
+### CLI Commands Status
+
+**Implemented (11):**
+- init, claim, release, refine, accept
+- challenge, resolve-challenge, withdraw-challenge
+- jobs, **status** (new)
+
+**Not Implemented (14):**
+- log, replay, reap, recompute-taint
+- admit, refute, archive
+- def-add, def-reject, schema
+- pending-defs, pending-refs
+- extract-lemma, verify-external
 
 ## Next Steps
 
 ### High Priority (P1)
-1. **`vibefeld-oul`** - Implement `af status` with tree view
-2. **`vibefeld-nnp`** - Write tests for `af status`
-3. **E2E Tests** - 10 tests ready to implement (all P1)
+1. Remaining E2E tests (4 left):
+   - `vibefeld-bc6f` - stale lock reaping
+   - `vibefeld-l67g` - replay verification
+   - `vibefeld-k5uf` - lemma extraction
+   - `vibefeld-sgwo` - definition request workflow
+   - `vibefeld-7cdb` - concurrent agents
 
 ### Medium Priority (P2)
-1. **`vibefeld-99ab`** - Fix verifier job detection in `af jobs`
-2. **`vibefeld-mblg`** - Fix Timestamp JSON roundtrip precision loss
-3. **Remaining CLI commands** (phase 20-22)
+1. Verifier commands: `admit`, `refute`, `archive`
+2. Definition workflow: `def-add`, `def-reject`, `pending-defs`
+3. Operations: `log`, `replay`, `reap`, `recompute-taint`
+4. Bug fixes:
+   - `vibefeld-99ab` - af jobs should show verifier jobs
+   - `vibefeld-mblg` - Timestamp JSON precision loss
 
-### Lower Priority (P3)
-1. **`vibefeld-4yft`** - Challenge resolution visibility
+### Parallelization Opportunities
+The following can be safely parallelized (no file conflicts):
+- Any remaining E2E tests (separate files in `e2e/`)
+- CLI commands (separate files in `cmd/af/`)
+- Validation limits (separate files in `internal/node/`)
 
 ## Key Files Changed This Session
 
-### Modified
-- `internal/service/proof.go` - Init now creates root node
+### New Files
+- `cmd/af/status.go` - status command implementation
+- `cmd/af/status_test.go` - unit tests (9 tests)
+- `e2e/simple_proof_test.go` - 3 integration tests
+- `e2e/challenge_cycle_test.go` - 5 integration tests
+- `e2e/scope_test.go` - 11 integration tests
+- `e2e/taint_test.go` - 6 integration tests
 
-### New Documentation
-- `docs/proof-experience-report.md` - Detailed AF usage report
-
-## Commands to Verify
+## Verification Commands
 
 ```bash
 # Build
 go build ./cmd/af
 
-# Test the fix
-rm -rf /tmp/af-test && mkdir /tmp/af-test
-./af init -c "Test conjecture" -a "Claude" -d /tmp/af-test
-./af jobs -d /tmp/af-test
-# Should show: [1] claim: "Test conjecture"
-
-# Run all tests
+# Unit tests
 go test ./...
+
+# Integration tests
+go test -tags=integration ./e2e -v
+
+# Check available work
+bd ready
 ```
 
 ## Session History
 
+**Session 22:** 6 issues (status cmd + 5 E2E tests via parallel agents)
 **Session 21:** 1 bug fix + full proof walkthrough + 2 bugs filed
 **Session 20:** 5 issues - 4 CLI commands + tracer bullet integration test
 **Session 19:** 5 issues - JSON renderer + TDD tests for 4 CLI commands
@@ -139,7 +133,4 @@ go test ./...
 **Session 13:** 5 issues - Layer 1 implementations
 **Session 12:** 5 issues - TDD tests for 5 components
 **Session 11:** 35 issues - code review complete + tracer bullet infrastructure
-**Session 10:** 5 issues - thread safety, state apply, schema caching
-**Session 9:** Code review - 25 issues filed
-**Session 8:** 20 issues - ledger, state, scope, taint, jobs, render
-**Sessions 1-7:** Foundation - types, schema, config, lock, fuzzy, node
+**Sessions 1-10:** Foundation work
