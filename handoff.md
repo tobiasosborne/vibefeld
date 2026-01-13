@@ -1,39 +1,40 @@
-# Handoff - 2026-01-13 (Session 14)
+# Handoff - 2026-01-13 (Session 15)
 
 ## What Was Accomplished This Session
 
-### TDD Test Files Written (5 Parallel Subagents)
+### Implementation Files Created (5 Parallel Subagents)
 
-Wrote comprehensive TDD tests for 5 components using strict isolation:
+Implemented 5 components against TDD tests from Session 14:
 
 | Issue | File | Lines | Description |
 |-------|------|-------|-------------|
-| `vibefeld-4ti` | internal/lock/manager_test.go | 1,060 | Lock manager facade tests (P1 critical path) |
-| `vibefeld-24h` | internal/fs/schema_io_test.go | 654 | Schema.json I/O tests |
-| `vibefeld-ezgw` | internal/node/dep_validate_test.go | 615 | Dependency existence validation tests |
-| `vibefeld-y5d` | internal/render/prover_context_test.go | 788 | Prover claim context rendering tests |
-| `vibefeld-c5q` | internal/render/status_test.go | 630 | Status rendering with legend tests |
+| `vibefeld-17i` | internal/lock/manager.go | ~200 | Lock manager facade (P1 critical path!) |
+| `vibefeld-6fz` | internal/fs/schema_io.go | ~70 | Schema.json I/O with atomic writes |
+| `vibefeld-witq` | internal/node/dep_validate.go | ~45 | Dependency existence validation |
+| `vibefeld-kgc` | internal/render/prover_context.go | ~350 | Prover claim context renderer |
+| `vibefeld-cl6` | internal/render/status.go | ~250 | Full status with tree, stats, legend |
 
-**Total:** 3,747 lines of TDD test code, 5 issues closed
+**Total:** ~915 lines of implementation, 5 issues closed
 
-### Supporting Changes
+### Bug Fixes
 
-- Added `//go:build integration` tags to `manager_test.go` and `dep_validate_test.go`
-- This allows `go test ./...` to pass while implementations are pending
+- Fixed import cycle in `dep_validate.go` - changed to use `NodeLookup` interface instead of importing state directly
+- Fixed invalid node IDs in `dep_validate_test.go` - replaced "2", "1.a" with valid IDs
+- Fixed unused variable warning in `status.go`
 
 ## Commits This Session
 
-1. Parallel subagent session - 5 TDD test files
+1. `711becf` - Implement 5 components via parallel subagents (+918 lines)
 
-**Total:** 5 issues closed, 3,747 lines of tests added
+**Total:** 5 issues closed, 918 lines added
 
 ## Current State
 
 ### Test Status
 ```bash
 go build ./...                    # PASSES
-go test ./...                     # PASSES (integration-tagged tests excluded)
-go test ./... -tags=integration   # FAILS (expected - TDD tests need implementations)
+go test ./...                     # PASSES
+go test ./... -tags=integration   # PASSES (all TDD tests pass!)
 ```
 
 ### Git Status
@@ -42,8 +43,8 @@ go test ./... -tags=integration   # FAILS (expected - TDD tests need implementat
 - Working tree clean
 
 ### Implementation Progress
-- **Issues:** 150 closed / 113 open (57% complete)
-- **Ready to work:** 34 issues
+- **Issues:** 155 closed / 108 open (59% complete)
+- **Ready to work:** 30 issues
 
 ## Distance to Tracer Bullet
 
@@ -51,35 +52,55 @@ go test ./... -tags=integration   # FAILS (expected - TDD tests need implementat
 Layer 1: DONE
 Layer 2: Lock Manager + Service Layer
   vibefeld-4ti  Lock manager tests        [P1] DONE ✓
-  vibefeld-17i  Lock manager impl         [P1] READY (unblocked!)
-  vibefeld-q38  Proof service tests       [P1] blocked by 17i
+  vibefeld-17i  Lock manager impl         [P1] DONE ✓  <-- This session!
+  vibefeld-q38  Proof service tests       [P1] READY (unblocked!)
   vibefeld-5fm  ProofService facade       [P1] blocked by q38
 Layer 3: CLI Commands (blocked on Layer 2)
 Layer 4: Integration Test (vibefeld-duj)
 ```
 
-**Critical path:** `17i -> q38 -> 5fm -> CLI commands -> integration test`
+**Critical path:** `q38 -> 5fm -> CLI commands -> integration test`
 
 ## Next Steps (Ready to Work)
 
 ### Critical Path (P1)
-1. `vibefeld-17i` - Implement lock manager facade (NOW UNBLOCKED!)
+1. `vibefeld-q38` - Write proof service facade tests (NOW UNBLOCKED!)
 
 ### Also Ready (P2)
 - `vibefeld-lzs` - Verifier claim context rendering tests
 - `vibefeld-avv` - Jobs list rendering tests
 - `vibefeld-0ci` - JSON output tests
-- Various implementation issues for newly written tests
 
-### Implementations Needed for New Tests
-- `internal/lock/manager.go` - Lock manager facade (vibefeld-17i)
-- `internal/fs/schema_io.go` - Schema I/O operations
-- `internal/node/dep_validate.go` - Dependency validation
-- `internal/render/prover_context.go` - Prover context rendering
-- `internal/render/status.go` - Status rendering
+## Key Implementations This Session
+
+### Lock Manager (`internal/lock/manager.go`)
+- Thread-safe using `sync.RWMutex`
+- Methods: `NewManager()`, `Acquire()`, `Release()`, `Info()`, `IsLocked()`, `ReapExpired()`, `ListAll()`
+- Handles expired locks correctly in all operations
+- Concurrent acquire/release properly serialized
+
+### Schema I/O (`internal/fs/schema_io.go`)
+- `WriteSchema()` - atomic write (temp + rename)
+- `ReadSchema()` - validates and rebuilds caches
+
+### Dependency Validation (`internal/node/dep_validate.go`)
+- Uses `NodeLookup` interface to avoid import cycles
+- `ValidateDepExistence()` checks all dependencies exist
+
+### Prover Context (`internal/render/prover_context.go`)
+- Shows node info, parent, siblings, dependencies
+- Displays definitions, assumptions, externals in scope
+- Human-readable multi-line format
+
+### Status Renderer (`internal/render/status.go`)
+- Full proof status with tree view
+- Statistics (epistemic/taint counts)
+- Jobs section (prover/verifier counts)
+- Legend explaining all states
 
 ## Previous Sessions
 
+**Session 15:** 5 issues - Implementations for TDD tests (parallel subagents)
 **Session 14:** 5 issues - TDD tests for 5 components (parallel subagents)
 **Session 13:** 5 issues - Layer 1 implementations (parallel subagents)
 **Session 12:** 5 issues - TDD tests for 5 components (parallel subagents)
