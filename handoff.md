@@ -62,8 +62,13 @@ Layer 4: Integration Test       ████████████████
 
 ## Next Steps (Post-Tracer Bullet)
 
-1. **Fix pre-existing test failures** in accept/release commands
-2. **Implement remaining CLI commands:**
+1. **`vibefeld-jb8w` (P1 BUG)**: `af init` should create root node from conjecture
+   - Currently init only creates metadata, no root node
+   - `af jobs` shows nothing after init
+   - Fix: create node 1 with conjecture as statement
+
+2. **Fix pre-existing test failures** in accept/release commands
+3. **Implement remaining CLI commands:**
    - `af status` - View proof status with tree view
    - `af show` - Show node details
    - `af archive` - Archive completed nodes
