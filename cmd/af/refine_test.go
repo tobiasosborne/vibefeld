@@ -61,44 +61,18 @@ func setupRefineTest(t *testing.T) (string, func()) {
 }
 
 // newRefineTestCmd creates a test command hierarchy with the refine command.
-// This will need to be updated once the actual refine command is implemented.
+// This ensures test isolation - each test gets its own command instance.
 func newRefineTestCmd() *cobra.Command {
-	root := &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "af",
 		Short: "Adversarial Proof Framework CLI",
 	}
 
-	// TODO: Replace this stub with the actual refine command once implemented
-	refineCmd := &cobra.Command{
-		Use:   "refine <parent-id>",
-		Short: "Add a child node to a claimed parent",
-		Long: `Add a child node to a claimed parent node.
+	refineCmd := newRefineCmd()
+	cmd.AddCommand(refineCmd)
+	AddFuzzyMatching(cmd)
 
-The parent node must be claimed by the owner specified with --owner.
-Child IDs are auto-generated (e.g., 1.1, 1.2 for children of node 1).
-
-Examples:
-  af refine 1 --owner agent1 --statement "First subgoal"
-  af refine 1 --owner agent1 -s "Case 1" --type case --inference local_assume
-  af refine 1.1 -o agent1 -s "Deeper refinement" -T claim -i modus_ponens`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Stub - will be replaced by actual implementation
-			return nil
-		},
-	}
-
-	refineCmd.Flags().StringP("owner", "o", "", "Agent/owner name (required, must match claim owner)")
-	refineCmd.Flags().StringP("statement", "s", "", "Child node statement (required)")
-	refineCmd.Flags().StringP("type", "T", "claim", "Child node type (claim/local_assume/local_discharge/case/qed)")
-	refineCmd.Flags().StringP("inference", "i", "assumption", "Inference type")
-	refineCmd.Flags().StringP("dir", "d", ".", "Proof directory")
-	refineCmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
-
-	root.AddCommand(refineCmd)
-	AddFuzzyMatching(root)
-
-	return root
+	return cmd
 }
 
 func TestRefineCmd_ValidRefinement(t *testing.T) {

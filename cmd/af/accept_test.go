@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
@@ -99,43 +98,8 @@ func executeAcceptCommand(t *testing.T, args ...string) (string, error) {
 	return buf.String(), err
 }
 
-// newAcceptCmd creates a new accept command for testing.
-// This function defines the expected command structure and behavior.
-func newAcceptCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "accept <node-id>",
-		Short: "Accept a proof node (verifier action)",
-		Long: `Accept validates a proof node, marking it as verified correct.
-
-This is a verifier action that confirms the node's correctness.
-The node's epistemic state changes from pending to validated.
-
-Examples:
-  af accept 1          Accept the root node
-  af accept 1.2.3      Accept a specific child node
-  af accept 1 -d ./proof  Accept using specific directory`,
-		Args: cobra.ExactArgs(1),
-		RunE: runAccept,
-	}
-
-	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
-	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
-
-	return cmd
-}
-
-// runAccept is the placeholder implementation for the accept command.
-// In TDD fashion, this will be implemented after tests are written.
-func runAccept(cmd *cobra.Command, args []string) error {
-	// This is a stub that will fail tests until properly implemented.
-	// The actual implementation should:
-	// 1. Parse the node ID from args[0]
-	// 2. Load the proof service
-	// 3. Call AcceptNode
-	// 4. Output success/failure message
-
-	return nil
-}
+// newAcceptCmd is now implemented in accept.go
+// This test file uses the real implementation.
 
 // =============================================================================
 // Test Cases
