@@ -1,30 +1,27 @@
-# Handoff - 2026-01-13 (Session 24)
+# Handoff - 2026-01-13 (Session 25)
 
 ## What Was Accomplished This Session
 
-### 5 New E2E Tests via Parallel Agents
+### 4 Issues via Parallel Agents
 
-Spawned 5 parallel agents to create comprehensive E2E tests without file conflicts:
+Spawned 4 parallel agents to work on non-conflicting tasks:
 
-| Test File | Test Count | Coverage |
-|-----------|------------|----------|
-| `e2e/concurrent_test.go` | 7 | Concurrent agents, lock conflicts, CAS sequence conflicts |
-| `e2e/def_request_test.go` | 5 | Definition request workflow, state transitions |
-| `e2e/lemma_extraction_test.go` | 9 | Lemma extraction from validated subtrees |
-| `e2e/replay_test.go` | 10 | Replay verification, all event types, sequence tracking |
-| `e2e/reap_test.go` | 11 | Stale lock reaping, concurrent safety |
-
-**Total: 42 new E2E tests** (56 total E2E tests including existing)
+| File | Type | Details |
+|------|------|---------|
+| `internal/service/interface.go` | NEW | ProofOperations interface (16 methods) |
+| `internal/state/state.go` | MODIFIED | Challenge struct + challenges map |
+| `internal/state/apply.go` | MODIFIED | 3 challenge apply functions implemented |
+| `cmd/af/refine_multi_test.go` | NEW | 16 TDD tests for --children JSON flag |
+| `cmd/af/request_def_test.go` | NEW | 30+ TDD tests for request-def command |
 
 ### Issues Closed This Session
 
 | Issue | Description |
 |-------|-------------|
-| vibefeld-7cdb | E2E test: concurrent agents and lock conflicts |
-| vibefeld-sgwo | E2E test: definition request workflow |
-| vibefeld-k5uf | E2E test: lemma extraction |
-| vibefeld-l67g | E2E test: replay verification consistency |
-| vibefeld-bc6f | E2E test: stale lock reaping |
+| vibefeld-d7cf | ProofOperations interface for mocking/testing |
+| vibefeld-0mqd | Challenge state management (raise/resolve/withdraw) |
+| vibefeld-cjc | TDD tests for refine multi-child JSON |
+| vibefeld-3ip | TDD tests for request-def command |
 
 ## Current State
 
@@ -33,17 +30,12 @@ Spawned 5 parallel agents to create comprehensive E2E tests without file conflic
 go build ./...                        # PASSES
 go test ./...                         # PASSES (17 packages)
 go test -tags=integration ./...       # PASSES
-go test -tags=integration ./e2e       # PASSES (56 tests, 1.4s)
+go test -tags=integration ./e2e       # PASSES (56 tests)
 ```
 
-### Files Created
-```
-e2e/concurrent_test.go       637 lines  (7 tests)
-e2e/def_request_test.go      625 lines  (5 tests)
-e2e/lemma_extraction_test.go 605 lines  (9 tests)
-e2e/replay_test.go           700 lines  (10 tests)
-e2e/reap_test.go             700 lines  (11 tests)
-```
+### New TDD Tests (Awaiting Implementation)
+- `cmd/af/refine_multi_test.go`: Tests for `--children` JSON flag on refine
+- `cmd/af/request_def_test.go`: Tests for `newRequestDefCmd()` - not yet implemented
 
 ## Next Steps (Priority Order)
 
@@ -53,14 +45,16 @@ e2e/reap_test.go             700 lines  (11 tests)
 3. **vibefeld-ipjn** - Add state transition validation
 
 ### P1 - High Value
-4. **vibefeld-0mqd** - Implement challenge state management
-5. **vibefeld-edg3** - Remove //go:build integration tags from critical tests
-6. **vibefeld-icii** - Fix double JSON unmarshaling (15-25% perf gain)
-7. **vibefeld-d7cf** - Define ProofOperations interface
+4. **vibefeld-edg3** - Remove //go:build integration tags from critical tests
+5. **vibefeld-icii** - Fix double JSON unmarshaling (15-25% perf gain)
 
 ### P2 - Performance
-8. **vibefeld-2q5j** - Cache NodeID.String() conversions (10-15% gain)
-9. **vibefeld-vi3c** - Fix O(n²) taint propagation algorithm
+6. **vibefeld-2q5j** - Cache NodeID.String() conversions (10-15% gain)
+7. **vibefeld-vi3c** - Fix O(n²) taint propagation algorithm
+
+### P3 - TDD Implementation Needed
+8. Implement `--children` JSON flag for refine command (tests ready)
+9. Implement `newRequestDefCmd()` for request-def command (tests ready)
 
 ## Verification Commands
 
@@ -81,6 +75,7 @@ bd stats
 
 ## Session History
 
+**Session 25:** 4 issues via parallel agents (interface + state + TDD tests)
 **Session 24:** 5 E2E test files via parallel agents (42 new tests)
 **Session 23:** Code review (5 agents) + 24 issues created + TOCTOU fix
 **Session 22:** 6 issues (status cmd + 5 E2E tests via parallel agents)
