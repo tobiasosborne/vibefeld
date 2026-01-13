@@ -5,6 +5,7 @@
 package node_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -185,7 +186,7 @@ func TestValidateDepExistence_AllDependenciesMissing(t *testing.T) {
 	s := state.NewState()
 
 	// Create node with dependencies, but none exist in state
-	n := createTestNode(t, "1.1", "2", "3", "4")
+	n := createTestNode(t, "1.1", "1.2", "1.3", "1.4")
 	s.AddNode(n)
 
 	err := node.ValidateDepExistence(n, s)
@@ -507,14 +508,14 @@ func TestValidateDepExistence_TableDriven(t *testing.T) {
 		},
 		{
 			name:          "dependency on deep node",
-			nodeID:        "2",
+			nodeID:        "1.5",
 			dependencies:  []string{"1.1.1.1"},
 			existingNodes: []string{"1.1.1.1"},
 			expectError:   false,
 		},
 		{
 			name:          "missing deep dependency",
-			nodeID:        "2",
+			nodeID:        "1.5",
 			dependencies:  []string{"1.1.1.1"},
 			existingNodes: []string{"1.1.1"}, // Parent exists, but not the exact dependency
 			expectError:   true,
@@ -575,13 +576,13 @@ func TestValidateDepExistence_LargeNumberOfDependencies(t *testing.T) {
 	// Create 20 dependency nodes
 	var deps []string
 	for i := 1; i <= 20; i++ {
-		depID := "1." + string(rune('a'+i-1))
+		depID := fmt.Sprintf("1.%d", 100+i)
 		createAndAddNode(t, s, depID)
 		deps = append(deps, depID)
 	}
 
 	// Create node depending on all 20
-	n := createTestNode(t, "2", deps...)
+	n := createTestNode(t, "1.200", deps...)
 	s.AddNode(n)
 
 	err := node.ValidateDepExistence(n, s)
@@ -597,7 +598,7 @@ func TestValidateDepExistence_LargeNumberWithOneMissing(t *testing.T) {
 	// Create 19 dependency nodes, skip one
 	var deps []string
 	for i := 1; i <= 20; i++ {
-		depID := "1." + string(rune('a'+i-1))
+		depID := fmt.Sprintf("1.%d", 100+i)
 		if i != 10 { // Skip the 10th one
 			createAndAddNode(t, s, depID)
 		}
@@ -605,7 +606,7 @@ func TestValidateDepExistence_LargeNumberWithOneMissing(t *testing.T) {
 	}
 
 	// Create node depending on all 20 (one is missing)
-	n := createTestNode(t, "2", deps...)
+	n := createTestNode(t, "1.200", deps...)
 	s.AddNode(n)
 
 	err := node.ValidateDepExistence(n, s)
