@@ -3,6 +3,7 @@
 package render
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -149,8 +150,8 @@ func TestRenderJobs_MixedJobs(t *testing.T) {
 		makeJobsTestNode("1.3", "Third prover job", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
 	verifierNodes := []*node.Node{
-		makeJobsTestNode("2", "Ready for verifier", schema.WorkflowClaimed, schema.EpistemicPending),
-		makeJobsTestNode("3", "Another verifier job", schema.WorkflowClaimed, schema.EpistemicPending),
+		makeJobsTestNode("1.4", "Ready for verifier", schema.WorkflowClaimed, schema.EpistemicPending),
+		makeJobsTestNode("1.5", "Another verifier job", schema.WorkflowClaimed, schema.EpistemicPending),
 	}
 
 	jobResult := &jobs.JobResult{
@@ -174,7 +175,7 @@ func TestRenderJobs_MixedJobs(t *testing.T) {
 	}
 
 	// Should contain all job IDs
-	for _, id := range []string{"1.1", "1.2", "1.3", "2", "3"} {
+	for _, id := range []string{"1.1", "1.2", "1.3", "1.4", "1.5"} {
 		if !strings.Contains(result, id) {
 			t.Errorf("RenderJobs missing job ID %q, got: %q", id, result)
 		}
@@ -286,7 +287,7 @@ func TestRenderJobs_SummarySection(t *testing.T) {
 		makeJobsTestNode("1.2", "Prover job 2", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
 	verifierNodes := []*node.Node{
-		makeJobsTestNode("2", "Verifier job 1", schema.WorkflowClaimed, schema.EpistemicPending),
+		makeJobsTestNode("1.3", "Verifier job 1", schema.WorkflowClaimed, schema.EpistemicPending),
 	}
 
 	jobResult := &jobs.JobResult{
@@ -335,7 +336,7 @@ func TestRenderJobs_ConsistentOutput(t *testing.T) {
 		makeJobsTestNode("1.1", "Prover job", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
 	verifierNodes := []*node.Node{
-		makeJobsTestNode("2", "Verifier job", schema.WorkflowClaimed, schema.EpistemicPending),
+		makeJobsTestNode("1.4", "Verifier job", schema.WorkflowClaimed, schema.EpistemicPending),
 	}
 
 	jobResult := &jobs.JobResult{
@@ -494,10 +495,7 @@ func TestRenderJobs_DeepHierarchy(t *testing.T) {
 func TestRenderJobs_LargeJobList(t *testing.T) {
 	var proverNodes []*node.Node
 	for i := 1; i <= 20; i++ {
-		id := "1." + string(rune('0'+i))
-		if i >= 10 {
-			id = "1.1" + string(rune('0'+i-10))
-		}
+		id := fmt.Sprintf("1.%d", i)
 		n := makeJobsTestNode(id, "Prover job", schema.WorkflowAvailable, schema.EpistemicPending)
 		proverNodes = append(proverNodes, n)
 	}
@@ -527,7 +525,7 @@ func TestRenderJobs_SectionHeaders(t *testing.T) {
 		makeJobsTestNode("1.1", "Prover job", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
 	verifierNodes := []*node.Node{
-		makeJobsTestNode("2", "Verifier job", schema.WorkflowClaimed, schema.EpistemicPending),
+		makeJobsTestNode("1.4", "Verifier job", schema.WorkflowClaimed, schema.EpistemicPending),
 	}
 
 	jobResult := &jobs.JobResult{
@@ -704,14 +702,14 @@ func TestRenderJobs_TableDrivenJobTypes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var proverNodes []*node.Node
 			for i := 0; i < tt.proverCount; i++ {
-				id := "1." + string(rune('1'+i))
+				id := fmt.Sprintf("1.%d", i+1)
 				n := makeJobsTestNode(id, "Prover job", schema.WorkflowAvailable, schema.EpistemicPending)
 				proverNodes = append(proverNodes, n)
 			}
 
 			var verifierNodes []*node.Node
 			for i := 0; i < tt.verifierCount; i++ {
-				id := "2." + string(rune('1'+i))
+				id := fmt.Sprintf("1.%d", tt.proverCount+i+1)
 				n := makeJobsTestNode(id, "Verifier job", schema.WorkflowClaimed, schema.EpistemicPending)
 				verifierNodes = append(verifierNodes, n)
 			}
@@ -785,14 +783,14 @@ func TestRenderJobsFromState(t *testing.T) {
 	prover2 := makeJobsTestNode("1.2", "Available prover job 2", schema.WorkflowAvailable, schema.EpistemicPending)
 
 	// Verifier jobs: claimed + pending + all children validated (no children = ready)
-	verifier1 := makeJobsTestNode("2", "Verifier ready", schema.WorkflowClaimed, schema.EpistemicPending)
+	verifier1 := makeJobsTestNode("1.4", "Verifier ready", schema.WorkflowClaimed, schema.EpistemicPending)
 
 	// Not a job: validated (not pending)
-	notJob1 := makeJobsTestNode("3", "Already validated", schema.WorkflowAvailable, schema.EpistemicValidated)
+	notJob1 := makeJobsTestNode("1.5", "Already validated", schema.WorkflowAvailable, schema.EpistemicValidated)
 
 	// Not a job: claimed but has pending children
-	notJob2 := makeJobsTestNode("4", "Has pending children", schema.WorkflowClaimed, schema.EpistemicPending)
-	notJob2Child := makeJobsTestNode("4.1", "Pending child", schema.WorkflowAvailable, schema.EpistemicPending)
+	notJob2 := makeJobsTestNode("1.6", "Has pending children", schema.WorkflowClaimed, schema.EpistemicPending)
+	notJob2Child := makeJobsTestNode("1.6.1", "Pending child", schema.WorkflowAvailable, schema.EpistemicPending)
 
 	s.AddNode(prover1)
 	s.AddNode(prover2)
@@ -830,7 +828,7 @@ func TestRenderJobs_HumanReadableFormat(t *testing.T) {
 		makeJobsTestNode("1.2", "Induction step", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
 	verifierNodes := []*node.Node{
-		makeJobsTestNode("2", "Main theorem review", schema.WorkflowClaimed, schema.EpistemicPending),
+		makeJobsTestNode("1.4", "Main theorem review", schema.WorkflowClaimed, schema.EpistemicPending),
 	}
 
 	jobResult := &jobs.JobResult{
