@@ -1,47 +1,30 @@
-# Handoff - 2026-01-13 (Session 23)
+# Handoff - 2026-01-13 (Session 24)
 
 ## What Was Accomplished This Session
 
-### 1. Comprehensive Code Review (5 parallel agents)
+### 5 New E2E Tests via Parallel Agents
 
-Conducted thorough code reviews from multiple perspectives:
+Spawned 5 parallel agents to create comprehensive E2E tests without file conflicts:
 
-| Review Type | Grade | Key Findings |
-|-------------|-------|--------------|
-| **Architectural** | B+ | Good event-sourcing, clean layering. Issues: challenge state stubs, service lacks interface |
-| **Code Quality** | A- (92/100) | Excellent Go idioms, production-grade error handling |
-| **Efficiency** | B+ | Double JSON unmarshaling (15-25% overhead), O(n²) taint propagation |
-| **Test Coverage** | Mixed | Integration tests hidden by build tags, service tests failing |
-| **Linus-style** | 6.5→8.5/10 | TOCTOU race identified as critical; praised ledger atomicity |
+| Test File | Test Count | Coverage |
+|-----------|------------|----------|
+| `e2e/concurrent_test.go` | 7 | Concurrent agents, lock conflicts, CAS sequence conflicts |
+| `e2e/def_request_test.go` | 5 | Definition request workflow, state transitions |
+| `e2e/lemma_extraction_test.go` | 9 | Lemma extraction from validated subtrees |
+| `e2e/replay_test.go` | 10 | Replay verification, all event types, sequence tracking |
+| `e2e/reap_test.go` | 11 | Stale lock reaping, concurrent safety |
 
-### 2. Created 24 Beads Issues from Review Findings
+**Total: 42 new E2E tests** (56 total E2E tests including existing)
 
-| Priority | Count | Examples |
-|----------|-------|----------|
-| P0 Critical | 4 | TOCTOU race, memory-only locks, broken service tests |
-| P1 High | 4 | Challenge stubs, hidden integration tests, double JSON parsing |
-| P2 Medium | 8 | Performance issues, code duplication, missing tests |
-| P3/P4 Low | 8 | Code cleanup, refactoring opportunities |
+### Issues Closed This Session
 
-### 3. Fixed TOCTOU Race Condition ✓ CLOSED (vibefeld-0mtb)
-
-**Problem:** Between `LoadState()` and `Append()`, two agents could both claim the same node.
-
-**Solution:** Implemented Compare-And-Swap (CAS) on ledger sequence numbers:
-- State tracks `latestSeq` during replay
-- `AppendIfSequence(event, expectedSeq)` atomically validates before writing
-- Returns `ErrSequenceMismatch` on concurrent modification
-- All 9 state-mutating ProofService methods now use CAS
-
-**Files Changed:**
-```
-internal/state/state.go       +17 lines  (latestSeq field + getter)
-internal/state/replay.go       +3 lines  (track seq during replay)
-internal/ledger/append.go    +100 lines  (AppendIfSequence CAS)
-internal/ledger/ledger.go     +13 lines  (method on struct)
-internal/service/proof.go     +40 lines  (9 methods use CAS)
-internal/ledger/append_test.go +260 lines (8 CAS tests)
-```
+| Issue | Description |
+|-------|-------------|
+| vibefeld-7cdb | E2E test: concurrent agents and lock conflicts |
+| vibefeld-sgwo | E2E test: definition request workflow |
+| vibefeld-k5uf | E2E test: lemma extraction |
+| vibefeld-l67g | E2E test: replay verification consistency |
+| vibefeld-bc6f | E2E test: stale lock reaping |
 
 ## Current State
 
@@ -50,19 +33,17 @@ internal/ledger/append_test.go +260 lines (8 CAS tests)
 go build ./...                        # PASSES
 go test ./...                         # PASSES (17 packages)
 go test -tags=integration ./...       # PASSES
-go test -tags=integration ./e2e       # PASSES (34 tests)
+go test -tags=integration ./e2e       # PASSES (56 tests, 1.4s)
 ```
 
-### Issues Closed This Session
-| Issue | Description |
-|-------|-------------|
-| vibefeld-0mtb | CRITICAL: TOCTOU race condition in ClaimNode/RefineNode/AcceptNode |
-
-### Issues Created This Session (23 remaining)
-- 3 P0 Critical (locks, tests, state transitions)
-- 4 P1 High (challenges, test visibility, JSON, interface)
-- 8 P2 Medium (performance, duplication, missing tests)
-- 8 P3/P4 Low (cleanup, refactoring)
+### Files Created
+```
+e2e/concurrent_test.go       637 lines  (7 tests)
+e2e/def_request_test.go      625 lines  (5 tests)
+e2e/lemma_extraction_test.go 605 lines  (9 tests)
+e2e/replay_test.go           700 lines  (10 tests)
+e2e/reap_test.go             700 lines  (11 tests)
+```
 
 ## Next Steps (Priority Order)
 
@@ -90,9 +71,6 @@ go build ./cmd/af
 # All tests
 go test ./...
 
-# Integration tests including CAS
-go test -tags integration ./internal/ledger -run "AppendIfSequence" -v
-
 # E2E tests
 go test -tags integration ./e2e -v
 
@@ -103,6 +81,7 @@ bd stats
 
 ## Session History
 
+**Session 24:** 5 E2E test files via parallel agents (42 new tests)
 **Session 23:** Code review (5 agents) + 24 issues created + TOCTOU fix
 **Session 22:** 6 issues (status cmd + 5 E2E tests via parallel agents)
 **Session 21:** 1 bug fix + full proof walkthrough + 2 bugs filed
