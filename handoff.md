@@ -1,102 +1,134 @@
-# Handoff - 2026-01-13 (Session 20)
+# Handoff - 2026-01-13 (Session 21)
 
 ## What Was Accomplished This Session
 
-### 4 CLI Commands Implemented (Parallel Subagents)
+### P1 Bug Fix: af init Creates Root Node
 
-| Issue | Command | Description |
-|-------|---------|-------------|
-| `vibefeld-4b8` | `af jobs` | List prover/verifier jobs with --role filtering |
-| `vibefeld-1pg` | `af challenge` | Raise challenge against proof nodes |
-| `vibefeld-xvs` | `af resolve-challenge` | Resolve an open challenge |
-| `vibefeld-wsy` | `af withdraw-challenge` | Withdraw an open challenge |
+**Issue:** `vibefeld-jb8w` (CLOSED)
 
-### Tracer Bullet Integration Test
+**Problem:** `af init` only created a `ProofInitialized` event but no root node. This meant `af jobs` showed no available work after initialization - a critical blocker for the tracer bullet workflow.
 
-| Issue | File | Description |
-|-------|------|-------------|
-| `vibefeld-duj` | `cmd/af/integration_test.go` | Full workflow integration test |
+**Fix:** Modified `internal/service/proof.go:Init()` to also create node "1" with:
+- Statement: the conjecture
+- NodeType: `claim`
+- InferenceType: `assumption`
 
-**4 integration tests covering:**
-- `TestTracerBullet_FullWorkflow` - Complete claim→refine→release→accept cycle
-- `TestTracerBullet_ProverVerifierRoleIsolation` - Verifies prover/verifier workflow
-- `TestTracerBullet_MultipleRefinements` - Multiple children per node
-- `TestTracerBullet_JSONOutput` - JSON output format for all commands
+**File Changed:** `internal/service/proof.go` (+17 lines)
 
-### Bug Fixes
-- Fixed `resolve_challenge_test.go` - test was using hardcoded stub instead of real implementation
-- Removed unused `fmt` import after stub removal
+### Full Proof Walkthrough: sqrt(2) is Irrational
+
+Conducted complete end-to-end test of the AF framework by proving sqrt(2) is irrational:
+
+**Proof Statistics:**
+- 27 ledger events generated
+- 10 nodes created (1 root + 9 children)
+- 2 challenges raised by verifier
+- 2 challenges resolved by prover
+- All 10 nodes validated
+
+**Workflow Tested:**
+```
+init → claim → refine (x9) → release → challenge (x2) →
+resolve-challenge (x2) → accept (x10) → proof complete
+```
+
+**Key Finding:** The adversarial model works - verifier caught two genuine gaps:
+1. "n² even implies n even" lemma needed explicit proof
+2. "Same reasoning" was too informal, needed explicit citation
+
+**Experience Report:** `docs/proof-experience-report.md`
+
+### New Bugs Filed
+
+| Issue | Priority | Description |
+|-------|----------|-------------|
+| `vibefeld-99ab` | P2 | `af jobs` should show verifier jobs for pending nodes |
+| `vibefeld-4yft` | P3 | Challenge resolutions should be visible in proof context |
 
 ## Current State
 
 ### Test Status
 ```bash
-go build ./...                    # PASSES
-go test ./...                     # PASSES (standard tests)
-go test -tags=integration ./cmd/af -run "TestTracerBullet"
-                                  # PASSES (all 4 integration tests)
+go build ./...   # PASSES
+go test ./...    # PASSES
 ```
+
+### Tracer Bullet Status: FUNCTIONAL
+
+The core workflow is now fully operational:
+- `af init` creates root node (fixed this session)
+- `af claim` / `af release` work correctly
+- `af refine` creates child nodes
+- `af challenge` / `af resolve-challenge` enable adversarial review
+- `af accept` validates nodes
+- `af jobs` shows available prover work
+
+**Known Limitation:** `af jobs` doesn't distinguish verifier jobs (filed as `vibefeld-99ab`)
 
 ### Project Statistics
-- **Issues:** 185 closed / 78 open (~70% complete)
-
-## 🎯 TRACER BULLET COMPLETE! 🎯
-
+```bash
+bd stats
 ```
-Layer 1: Core Infrastructure    ████████████████████ DONE
-Layer 2: Service Layer          ████████████████████ DONE
-Layer 3: CLI Commands           ████████████████████ DONE (9 core commands)
-Layer 4: Integration Test       ████████████████████ DONE
+- Tracer bullet: Complete and functional
+- Integration tests: 4 passing
+- New bugs filed: 2
+
+## Proof Artifacts in ./temp (Untracked)
+
+The `./temp` directory contains a complete proof workspace:
+```
+temp/
+├── ledger/          # 27 event files (000001.json - 000027.json)
+├── locks/           # Lock directory
+├── definitions/     # Empty
+├── assumptions/     # Empty
+└── externals/       # Empty
 ```
 
-### CLI Commands Complete
-✅ `af init` - Create proof workspace
-✅ `af claim` - Claim jobs for work
-✅ `af release` - Release claimed jobs
-✅ `af refine` - Add child nodes
-✅ `af accept` - Accept proof nodes
-✅ `af jobs` - List available jobs
-✅ `af challenge` - Raise objections
-✅ `af resolve-challenge` - Resolve challenges
-✅ `af withdraw-challenge` - Withdraw challenges
+This can be used for manual testing or demonstration. Not tracked in git.
 
-## Next Steps (Post-Tracer Bullet)
+## Next Steps
 
-1. **`vibefeld-jb8w` (P1 BUG)**: `af init` should create root node from conjecture
-   - Currently init only creates metadata, no root node
-   - `af jobs` shows nothing after init
-   - Fix: create node 1 with conjecture as statement
+### High Priority (P1)
+1. **`vibefeld-oul`** - Implement `af status` with tree view
+2. **`vibefeld-nnp`** - Write tests for `af status`
+3. **E2E Tests** - 10 tests ready to implement (all P1)
 
-2. **Fix pre-existing test failures** in accept/release commands
-3. **Implement remaining CLI commands:**
-   - `af status` - View proof status with tree view
-   - `af show` - Show node details
-   - `af archive` - Archive completed nodes
-   - Additional commands as needed
+### Medium Priority (P2)
+1. **`vibefeld-99ab`** - Fix verifier job detection in `af jobs`
+2. **`vibefeld-mblg`** - Fix Timestamp JSON roundtrip precision loss
+3. **Remaining CLI commands** (phase 20-22)
 
-3. **E2E Tests** (now unblocked by tracer bullet):
-   - Simple proof completion
-   - Challenge and response cycle
-   - Concurrent agents
-   - Taint propagation
-   - And more...
+### Lower Priority (P3)
+1. **`vibefeld-4yft`** - Challenge resolution visibility
 
 ## Key Files Changed This Session
 
-### New Files
-- `cmd/af/integration_test.go` - Tracer bullet integration tests
+### Modified
+- `internal/service/proof.go` - Init now creates root node
 
-### Updated Implementations
-- `cmd/af/jobs.go` - Full implementation
-- `cmd/af/challenge.go` - Full implementation
-- `cmd/af/resolve_challenge.go` - Full implementation
-- `cmd/af/withdraw_challenge.go` - Full implementation
+### New Documentation
+- `docs/proof-experience-report.md` - Detailed AF usage report
 
-### Test Fixes
-- `cmd/af/resolve_challenge_test.go` - Fixed to use real implementation
+## Commands to Verify
 
-## Previous Sessions
+```bash
+# Build
+go build ./cmd/af
 
+# Test the fix
+rm -rf /tmp/af-test && mkdir /tmp/af-test
+./af init -c "Test conjecture" -a "Claude" -d /tmp/af-test
+./af jobs -d /tmp/af-test
+# Should show: [1] claim: "Test conjecture"
+
+# Run all tests
+go test ./...
+```
+
+## Session History
+
+**Session 21:** 1 bug fix + full proof walkthrough + 2 bugs filed
 **Session 20:** 5 issues - 4 CLI commands + tracer bullet integration test
 **Session 19:** 5 issues - JSON renderer + TDD tests for 4 CLI commands
 **Session 18:** 5 issues - CLI command implementations
