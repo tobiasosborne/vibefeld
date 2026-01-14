@@ -240,32 +240,54 @@ func TestRenderProverContext_WithActiveChallenges(t *testing.T) {
 	n := makeTestNodeForProver("1", schema.NodeTypeClaim, "A contested claim", schema.InferenceModusPonens)
 	s.AddNode(n)
 
-	// Note: As of current implementation, challenges are not tracked in State
-	// (they're recorded in ledger only). This test documents the expected behavior
-	// once challenge tracking is added to State.
-	//
-	// When implemented, the State should have:
-	// - AddChallenge(c *node.Challenge)
-	// - GetChallengesForNode(nodeID types.NodeID) []*node.Challenge
-	//
-	// For now, we test that the function handles the current state gracefully.
-
+	// Add challenges to the state
 	rootID, _ := types.Parse("1")
+	s.AddChallenge(&state.Challenge{
+		ID:     "ch-001",
+		NodeID: rootID,
+		Target: "gap",
+		Reason: "Missing case for n=0",
+		Status: "open",
+	})
+	s.AddChallenge(&state.Challenge{
+		ID:     "ch-002",
+		NodeID: rootID,
+		Target: "context",
+		Reason: "Variable x undefined",
+		Status: "resolved",
+	})
+
 	result := RenderProverContext(s, rootID)
 
-	// Should not be empty (even without challenges tracked in state)
+	// Should not be empty
 	if result == "" {
 		t.Fatal("RenderProverContext returned empty string")
 	}
 
 	// Should contain the node information
-	if !strings.Contains(result, "contested") || !strings.Contains(result, "claim") {
+	if !strings.Contains(result, "contested") {
 		t.Errorf("RenderProverContext missing node statement, got: %q", result)
 	}
 
-	// When challenge tracking is implemented, this test should verify:
-	// - Challenges are listed with their target and reason
-	// - Open challenges are distinguished from resolved ones
+	// Should show challenge section with count
+	if !strings.Contains(result, "Challenges (2 total, 1 open)") {
+		t.Errorf("RenderProverContext missing challenge count, got: %q", result)
+	}
+
+	// Should show the open challenge
+	if !strings.Contains(result, "ch-001") || !strings.Contains(result, "Missing case for n=0") {
+		t.Errorf("RenderProverContext missing open challenge details, got: %q", result)
+	}
+
+	// Should show the resolved challenge
+	if !strings.Contains(result, "ch-002") || !strings.Contains(result, "resolved") {
+		t.Errorf("RenderProverContext missing resolved challenge, got: %q", result)
+	}
+
+	// Should show guidance for addressing challenges
+	if !strings.Contains(result, "af refine") {
+		t.Errorf("RenderProverContext missing guidance for addressing challenges, got: %q", result)
+	}
 }
 
 // TestRenderProverContext_EmptyState tests that empty state returns appropriate message.

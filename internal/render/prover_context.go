@@ -2,6 +2,7 @@
 package render
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -58,6 +59,9 @@ func RenderProverContext(s *state.State, nodeID types.NodeID) string {
 
 	// Externals section
 	renderExternals(&sb, s, n)
+
+	// Challenges section - critical for provers to know what to address
+	renderChallenges(&sb, s, nodeID)
 
 	return sb.String()
 }
@@ -461,4 +465,65 @@ func collectExternalIDs(s *state.State, targetNode *node.Node) []string {
 	}
 
 	return ids
+}
+
+// renderChallenges writes the challenges section for a node.
+// This is critical for provers to understand what issues need to be addressed.
+func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) {
+	// Get all challenges and filter for this node
+	allChallenges := s.AllChallenges()
+	nodeIDStr := nodeID.String()
+
+	var nodeChallenges []*state.Challenge
+	for _, c := range allChallenges {
+		if c.NodeID.String() == nodeIDStr {
+			nodeChallenges = append(nodeChallenges, c)
+		}
+	}
+
+	if len(nodeChallenges) == 0 {
+		sb.WriteString("\nChallenges: (none)\n")
+		return
+	}
+
+	// Count open challenges
+	openCount := 0
+	for _, c := range nodeChallenges {
+		if c.Status == "open" {
+			openCount++
+		}
+	}
+
+	sb.WriteString("\nChallenges (")
+	sb.WriteString(fmt.Sprintf("%d total, %d open", len(nodeChallenges), openCount))
+	sb.WriteString("):\n")
+
+	// Sort by status (open first), then by ID
+	sort.Slice(nodeChallenges, func(i, j int) bool {
+		// Open challenges come first
+		if nodeChallenges[i].Status == "open" && nodeChallenges[j].Status != "open" {
+			return true
+		}
+		if nodeChallenges[i].Status != "open" && nodeChallenges[j].Status == "open" {
+			return false
+		}
+		return nodeChallenges[i].ID < nodeChallenges[j].ID
+	})
+
+	for _, c := range nodeChallenges {
+		sb.WriteString("  ")
+		sb.WriteString(c.ID)
+		sb.WriteString(" [")
+		sb.WriteString(c.Status)
+		sb.WriteString("] ")
+		sb.WriteString(c.Target)
+		sb.WriteString(": ")
+		sb.WriteString(c.Reason)
+		sb.WriteString("\n")
+	}
+
+	// Add guidance for open challenges
+	if openCount > 0 {
+		sb.WriteString("\n  To address challenges, use 'af refine' with --addresses flag.\n")
+	}
 }
