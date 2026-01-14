@@ -285,28 +285,36 @@ func TestProofService_LoadState_WithNodes(t *testing.T) {
 		t.Fatalf("NewProofService() unexpected error: %v", err)
 	}
 
-	// Initialize proof
+	// Initialize proof (creates root node "1" automatically)
 	err = svc.Init("Test conjecture", "agent-001")
 	if err != nil {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	// Add a node through the service
-	rootID := mustParseNodeID(t, "1")
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Root claim", schema.InferenceAssumption)
+	// Add a child node through the service (root "1" already exists from Init)
+	childID := mustParseNodeID(t, "1.1")
+	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Child claim", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatalf("CreateNode() unexpected error: %v", err)
 	}
 
-	// Load state and verify node exists
+	// Load state and verify nodes exist
 	st, err := svc.LoadState()
 	if err != nil {
 		t.Fatalf("LoadState() unexpected error: %v", err)
 	}
 
+	// Verify root node from Init
+	rootID := mustParseNodeID(t, "1")
 	n := st.GetNode(rootID)
 	if n == nil {
-		t.Error("LoadState() should contain the created node")
+		t.Error("LoadState() should contain the root node from Init")
+	}
+
+	// Verify child node
+	child := st.GetNode(childID)
+	if child == nil {
+		t.Error("LoadState() should contain the created child node")
 	}
 }
 
@@ -341,6 +349,7 @@ func TestProofService_LoadState_Uninitalized(t *testing.T) {
 // =============================================================================
 
 // TestProofService_CreateNode_ValidNode verifies creating valid nodes.
+// Note: Init() already creates root node "1", so we test with child nodes.
 func TestProofService_CreateNode_ValidNode(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -349,9 +358,9 @@ func TestProofService_CreateNode_ValidNode(t *testing.T) {
 		statement string
 		inference schema.InferenceType
 	}{
-		{"root claim", "1", schema.NodeTypeClaim, "Root statement", schema.InferenceAssumption},
 		{"child node", "1.1", schema.NodeTypeClaim, "Child statement", schema.InferenceModusPonens},
-		{"local assume", "1.2", schema.NodeTypeLocalAssume, "Assume P", schema.InferenceLocalAssume},
+		{"sibling node", "1.2", schema.NodeTypeClaim, "Sibling statement", schema.InferenceModusPonens},
+		{"local assume", "1.3", schema.NodeTypeLocalAssume, "Assume P", schema.InferenceLocalAssume},
 		{"qed node", "1.1.1", schema.NodeTypeQED, "Therefore Q", schema.InferenceModusPonens},
 	}
 
@@ -389,6 +398,7 @@ func TestProofService_CreateNode_ValidNode(t *testing.T) {
 }
 
 // TestProofService_CreateNode_InvalidInput verifies validation of node creation.
+// Note: We use "1.1" since root "1" is already created by Init()
 func TestProofService_CreateNode_InvalidInput(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -397,10 +407,10 @@ func TestProofService_CreateNode_InvalidInput(t *testing.T) {
 		statement string
 		inference schema.InferenceType
 	}{
-		{"empty statement", "1", schema.NodeTypeClaim, "", schema.InferenceAssumption},
-		{"whitespace statement", "1", schema.NodeTypeClaim, "   ", schema.InferenceAssumption},
-		{"invalid node type", "1", schema.NodeType("invalid"), "Statement", schema.InferenceAssumption},
-		{"invalid inference", "1", schema.NodeTypeClaim, "Statement", schema.InferenceType("invalid")},
+		{"empty statement", "1.1", schema.NodeTypeClaim, "", schema.InferenceAssumption},
+		{"whitespace statement", "1.1", schema.NodeTypeClaim, "   ", schema.InferenceAssumption},
+		{"invalid node type", "1.1", schema.NodeType("invalid"), "Statement", schema.InferenceAssumption},
+		{"invalid inference", "1.1", schema.NodeTypeClaim, "Statement", schema.InferenceType("invalid")},
 	}
 
 	for _, tt := range tests {
@@ -426,6 +436,7 @@ func TestProofService_CreateNode_InvalidInput(t *testing.T) {
 }
 
 // TestProofService_CreateNode_DuplicateID verifies error on duplicate node ID.
+// Note: We use "1.1" since root "1" is already created by Init()
 func TestProofService_CreateNode_DuplicateID(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -438,16 +449,16 @@ func TestProofService_CreateNode_DuplicateID(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	nodeID := mustParseNodeID(t, "1")
+	nodeID := mustParseNodeID(t, "1.1")
 
 	// First creation should succeed
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "First statement", schema.InferenceAssumption)
+	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "First statement", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatalf("First CreateNode() unexpected error: %v", err)
 	}
 
 	// Second creation with same ID should fail
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Second statement", schema.InferenceAssumption)
+	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Second statement", schema.InferenceModusPonens)
 	if err == nil {
 		t.Error("Second CreateNode() with duplicate ID expected error, got nil")
 	}
@@ -458,16 +469,18 @@ func TestProofService_CreateNode_DuplicateID(t *testing.T) {
 // =============================================================================
 
 // TestProofService_ClaimNode_Success verifies claiming an available node.
+// Note: Init() creates root node "1", so we use it directly or create child nodes.
 func TestProofService_ClaimNode_Success(t *testing.T) {
 	tests := []struct {
-		name    string
-		nodeID  string
-		owner   string
-		timeout time.Duration
+		name       string
+		nodeID     string
+		owner      string
+		timeout    time.Duration
+		needCreate bool // whether node needs to be created (root "1" doesn't)
 	}{
-		{"root node", "1", "agent-001", 5 * time.Minute},
-		{"child node", "1.1", "prover-alpha", 10 * time.Minute},
-		{"deep node", "1.2.3", "verifier-beta", 1 * time.Hour},
+		{"root node", "1", "agent-001", 5 * time.Minute, false},
+		{"child node", "1.1", "prover-alpha", 10 * time.Minute, true},
+		{"deep node", "1.2.3", "verifier-beta", 1 * time.Hour, true},
 	}
 
 	for _, tt := range tests {
@@ -483,11 +496,22 @@ func TestProofService_ClaimNode_Success(t *testing.T) {
 				t.Fatalf("Init() unexpected error: %v", err)
 			}
 
-			// Create the node first
 			nodeID := mustParseNodeID(t, tt.nodeID)
-			err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-			if err != nil {
-				t.Fatalf("CreateNode() unexpected error: %v", err)
+
+			// Create the node if needed (root "1" is created by Init)
+			if tt.needCreate {
+				// For deep nodes, we need to create parent nodes first
+				if tt.nodeID == "1.2.3" {
+					parentID := mustParseNodeID(t, "1.2")
+					err = svc.CreateNode(parentID, schema.NodeTypeClaim, "Parent statement", schema.InferenceModusPonens)
+					if err != nil {
+						t.Fatalf("CreateNode(parent) unexpected error: %v", err)
+					}
+				}
+				err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens)
+				if err != nil {
+					t.Fatalf("CreateNode() unexpected error: %v", err)
+				}
 			}
 
 			// Claim the node
@@ -515,6 +539,7 @@ func TestProofService_ClaimNode_Success(t *testing.T) {
 }
 
 // TestProofService_ClaimNode_AlreadyClaimed verifies error when claiming already claimed node.
+// Note: Uses root node "1" created by Init()
 func TestProofService_ClaimNode_AlreadyClaimed(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -527,11 +552,8 @@ func TestProofService_ClaimNode_AlreadyClaimed(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	// First claim should succeed
 	err = svc.ClaimNode(nodeID, "agent-001", 5*time.Minute)
@@ -547,6 +569,7 @@ func TestProofService_ClaimNode_AlreadyClaimed(t *testing.T) {
 }
 
 // TestProofService_ClaimNode_InvalidOwner verifies error with invalid owner.
+// Note: Uses root node "1" created by Init()
 func TestProofService_ClaimNode_InvalidOwner(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -569,11 +592,8 @@ func TestProofService_ClaimNode_InvalidOwner(t *testing.T) {
 				t.Fatalf("Init() unexpected error: %v", err)
 			}
 
+			// Use root node "1" created by Init
 			nodeID := mustParseNodeID(t, "1")
-			err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-			if err != nil {
-				t.Fatalf("CreateNode() unexpected error: %v", err)
-			}
 
 			err = svc.ClaimNode(nodeID, tt.owner, 5*time.Minute)
 			if err == nil {
@@ -584,6 +604,7 @@ func TestProofService_ClaimNode_InvalidOwner(t *testing.T) {
 }
 
 // TestProofService_ClaimNode_InvalidTimeout verifies error with invalid timeout.
+// Note: Uses root node "1" created by Init()
 func TestProofService_ClaimNode_InvalidTimeout(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -606,11 +627,8 @@ func TestProofService_ClaimNode_InvalidTimeout(t *testing.T) {
 				t.Fatalf("Init() unexpected error: %v", err)
 			}
 
+			// Use root node "1" created by Init
 			nodeID := mustParseNodeID(t, "1")
-			err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-			if err != nil {
-				t.Fatalf("CreateNode() unexpected error: %v", err)
-			}
 
 			err = svc.ClaimNode(nodeID, "agent-001", tt.timeout)
 			if err == nil {
@@ -621,6 +639,7 @@ func TestProofService_ClaimNode_InvalidTimeout(t *testing.T) {
 }
 
 // TestProofService_ClaimNode_NonExistent verifies error when claiming non-existent node.
+// Note: Use node "2" which doesn't exist (Init creates "1")
 func TestProofService_ClaimNode_NonExistent(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -633,8 +652,8 @@ func TestProofService_ClaimNode_NonExistent(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	nodeID := mustParseNodeID(t, "1")
-	// Don't create the node - try to claim directly
+	// Use node "2" which doesn't exist (Init creates "1")
+	nodeID := mustParseNodeID(t, "1.99")
 	err = svc.ClaimNode(nodeID, "agent-001", 5*time.Minute)
 	if err == nil {
 		t.Error("ClaimNode() on non-existent node expected error, got nil")
@@ -642,6 +661,7 @@ func TestProofService_ClaimNode_NonExistent(t *testing.T) {
 }
 
 // TestProofService_ReleaseNode_Success verifies releasing a claimed node.
+// Note: Uses root node "1" created by Init()
 func TestProofService_ReleaseNode_Success(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -654,13 +674,9 @@ func TestProofService_ReleaseNode_Success(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
 	owner := "agent-001"
-
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	err = svc.ClaimNode(nodeID, owner, 5*time.Minute)
 	if err != nil {
@@ -690,6 +706,7 @@ func TestProofService_ReleaseNode_Success(t *testing.T) {
 }
 
 // TestProofService_ReleaseNode_WrongOwner verifies error when releasing with wrong owner.
+// Note: Uses root node "1" created by Init()
 func TestProofService_ReleaseNode_WrongOwner(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -702,12 +719,8 @@ func TestProofService_ReleaseNode_WrongOwner(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
-
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	err = svc.ClaimNode(nodeID, "agent-001", 5*time.Minute)
 	if err != nil {
@@ -722,6 +735,7 @@ func TestProofService_ReleaseNode_WrongOwner(t *testing.T) {
 }
 
 // TestProofService_ReleaseNode_NotClaimed verifies error when releasing unclaimed node.
+// Note: Uses root node "1" created by Init()
 func TestProofService_ReleaseNode_NotClaimed(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -734,12 +748,8 @@ func TestProofService_ReleaseNode_NotClaimed(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init (not claimed yet)
 	nodeID := mustParseNodeID(t, "1")
-
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	// Try to release without claiming first
 	err = svc.ReleaseNode(nodeID, "agent-001")
@@ -753,6 +763,7 @@ func TestProofService_ReleaseNode_NotClaimed(t *testing.T) {
 // =============================================================================
 
 // TestProofService_RefineNode_Success verifies refining a claimed node.
+// Note: Uses root node "1" created by Init()
 func TestProofService_RefineNode_Success(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -765,13 +776,9 @@ func TestProofService_RefineNode_Success(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
 	owner := "agent-001"
-
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Original statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	err = svc.ClaimNode(nodeID, owner, 5*time.Minute)
 	if err != nil {
@@ -798,6 +805,7 @@ func TestProofService_RefineNode_Success(t *testing.T) {
 }
 
 // TestProofService_RefineNode_NotOwner verifies error when refining with wrong owner.
+// Note: Uses root node "1" created by Init()
 func TestProofService_RefineNode_NotOwner(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -810,12 +818,8 @@ func TestProofService_RefineNode_NotOwner(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
-
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Original statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	err = svc.ClaimNode(nodeID, "agent-001", 5*time.Minute)
 	if err != nil {
@@ -831,6 +835,7 @@ func TestProofService_RefineNode_NotOwner(t *testing.T) {
 }
 
 // TestProofService_RefineNode_NotClaimed verifies error when refining unclaimed node.
+// Note: Uses root node "1" created by Init()
 func TestProofService_RefineNode_NotClaimed(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -843,12 +848,8 @@ func TestProofService_RefineNode_NotClaimed(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init (not claimed)
 	nodeID := mustParseNodeID(t, "1")
-
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Original statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	// Try to refine without claiming first
 	childID := mustParseNodeID(t, "1.1")
@@ -863,6 +864,7 @@ func TestProofService_RefineNode_NotClaimed(t *testing.T) {
 // =============================================================================
 
 // TestProofService_AcceptNode_Success verifies accepting (validating) a node.
+// Note: Uses root node "1" created by Init()
 func TestProofService_AcceptNode_Success(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -875,12 +877,8 @@ func TestProofService_AcceptNode_Success(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
-
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	// Accept the node
 	err = svc.AcceptNode(nodeID)
@@ -905,6 +903,7 @@ func TestProofService_AcceptNode_Success(t *testing.T) {
 }
 
 // TestProofService_AcceptNode_NonExistent verifies error when accepting non-existent node.
+// Note: Use node "2" which doesn't exist (Init creates "1")
 func TestProofService_AcceptNode_NonExistent(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -917,7 +916,8 @@ func TestProofService_AcceptNode_NonExistent(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	nodeID := mustParseNodeID(t, "1")
+	// Use node "2" which doesn't exist (Init creates "1")
+	nodeID := mustParseNodeID(t, "1.99")
 	err = svc.AcceptNode(nodeID)
 	if err == nil {
 		t.Error("AcceptNode() on non-existent node expected error, got nil")
@@ -925,6 +925,7 @@ func TestProofService_AcceptNode_NonExistent(t *testing.T) {
 }
 
 // TestProofService_AdmitNode_Success verifies admitting a node without full verification.
+// Note: Uses root node "1" created by Init()
 func TestProofService_AdmitNode_Success(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -937,12 +938,8 @@ func TestProofService_AdmitNode_Success(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
-
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	// Admit the node
 	err = svc.AdmitNode(nodeID)
@@ -967,6 +964,7 @@ func TestProofService_AdmitNode_Success(t *testing.T) {
 }
 
 // TestProofService_RefuteNode_Success verifies refuting a node.
+// Note: Uses root node "1" created by Init()
 func TestProofService_RefuteNode_Success(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -979,12 +977,8 @@ func TestProofService_RefuteNode_Success(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
-
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	// Refute the node
 	err = svc.RefuteNode(nodeID)
@@ -1240,6 +1234,7 @@ func TestProofService_AddExternal_Invalid(t *testing.T) {
 // =============================================================================
 
 // TestProofService_ExtractLemma_Success verifies extracting a lemma from a node.
+// Note: Uses root node "1" created by Init()
 func TestProofService_ExtractLemma_Success(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -1252,11 +1247,8 @@ func TestProofService_ExtractLemma_Success(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Reusable statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	// Validate the node first (lemmas typically extracted from validated nodes)
 	err = svc.AcceptNode(nodeID)
@@ -1286,6 +1278,7 @@ func TestProofService_ExtractLemma_Success(t *testing.T) {
 }
 
 // TestProofService_ExtractLemma_InvalidStatement verifies validation of lemma statement.
+// Note: Uses root node "1" created by Init()
 func TestProofService_ExtractLemma_InvalidStatement(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -1298,11 +1291,8 @@ func TestProofService_ExtractLemma_InvalidStatement(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
+	// Use root node "1" created by Init
 	nodeID := mustParseNodeID(t, "1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatalf("CreateNode() unexpected error: %v", err)
-	}
 
 	_, err = svc.ExtractLemma(nodeID, "")
 	if err == nil {
@@ -1311,6 +1301,7 @@ func TestProofService_ExtractLemma_InvalidStatement(t *testing.T) {
 }
 
 // TestProofService_ExtractLemma_NonExistentNode verifies error for non-existent source node.
+// Note: Use node "2" which doesn't exist (Init creates "1")
 func TestProofService_ExtractLemma_NonExistentNode(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -1323,7 +1314,8 @@ func TestProofService_ExtractLemma_NonExistentNode(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	nodeID := mustParseNodeID(t, "1")
+	// Use node "2" which doesn't exist (Init creates "1")
+	nodeID := mustParseNodeID(t, "1.99")
 	_, err = svc.ExtractLemma(nodeID, "Lemma statement")
 	if err == nil {
 		t.Error("ExtractLemma() on non-existent node expected error, got nil")
@@ -1335,6 +1327,7 @@ func TestProofService_ExtractLemma_NonExistentNode(t *testing.T) {
 // =============================================================================
 
 // TestProofService_NodeOperationsFlow verifies complete node operation workflow.
+// Note: Uses root node "1" created by Init()
 func TestProofService_NodeOperationsFlow(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -1362,18 +1355,14 @@ func TestProofService_NodeOperationsFlow(t *testing.T) {
 				t.Fatalf("NewProofService() unexpected error: %v", err)
 			}
 
-			// Step 1: Initialize proof
+			// Step 1: Initialize proof (creates root node "1")
 			err = svc.Init(tt.conjecture, tt.owner)
 			if err != nil {
 				t.Fatalf("Init() unexpected error: %v", err)
 			}
 
-			// Step 2: Create node
+			// Step 2: Use root node "1" created by Init (no CreateNode needed)
 			nodeID := mustParseNodeID(t, tt.nodeID)
-			err = svc.CreateNode(nodeID, schema.NodeTypeClaim, tt.statement, schema.InferenceAssumption)
-			if err != nil {
-				t.Fatalf("CreateNode() unexpected error: %v", err)
-			}
 
 			// Step 3: Claim node
 			err = svc.ClaimNode(nodeID, tt.owner, 5*time.Minute)
@@ -1444,6 +1433,7 @@ func TestProofService_NodeOperationsFlow(t *testing.T) {
 }
 
 // TestProofService_MultipleNodesConcurrentClaim verifies claiming multiple nodes.
+// Note: Node "1" is created by Init(), so only create child nodes
 func TestProofService_MultipleNodesConcurrentClaim(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -1456,18 +1446,21 @@ func TestProofService_MultipleNodesConcurrentClaim(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	// Create multiple nodes
-	nodeIDs := []string{"1", "1.1", "1.2", "1.1.1"}
-	for i, idStr := range nodeIDs {
+	// Create child nodes (root "1" is created by Init)
+	childNodeIDs := []string{"1.1", "1.2", "1.1.1"}
+	for i, idStr := range childNodeIDs {
 		nodeID := mustParseNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceAssumption)
+		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("CreateNode(%d) unexpected error: %v", i, err)
 		}
 	}
 
+	// All nodes including root
+	allNodeIDs := []string{"1", "1.1", "1.2", "1.1.1"}
+
 	// Claim each node with different owners
-	for i, idStr := range nodeIDs {
+	for i, idStr := range allNodeIDs {
 		nodeID := mustParseNodeID(t, idStr)
 		owner := "agent-" + idStr
 		err = svc.ClaimNode(nodeID, owner, 5*time.Minute)
@@ -1482,7 +1475,7 @@ func TestProofService_MultipleNodesConcurrentClaim(t *testing.T) {
 		t.Fatalf("LoadState() unexpected error: %v", err)
 	}
 
-	for _, idStr := range nodeIDs {
+	for _, idStr := range allNodeIDs {
 		nodeID := mustParseNodeID(t, idStr)
 		n := st.GetNode(nodeID)
 		if n == nil {
@@ -1524,6 +1517,7 @@ func TestProofService_Status(t *testing.T) {
 }
 
 // TestProofService_GetAvailableNodes verifies listing available nodes.
+// Note: Node "1" is created by Init(), so only create child nodes
 func TestProofService_GetAvailableNodes(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
@@ -1536,16 +1530,16 @@ func TestProofService_GetAvailableNodes(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	// Create some nodes
-	for _, idStr := range []string{"1", "1.1", "1.2"} {
+	// Create child nodes (root "1" is created by Init)
+	for _, idStr := range []string{"1.1", "1.2"} {
 		nodeID := mustParseNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceAssumption)
+		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("CreateNode() unexpected error: %v", err)
 		}
 	}
 
-	// Claim one node
+	// Claim root node
 	err = svc.ClaimNode(mustParseNodeID(t, "1"), "agent-001", 5*time.Minute)
 	if err != nil {
 		t.Fatalf("ClaimNode() unexpected error: %v", err)

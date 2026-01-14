@@ -2,7 +2,7 @@
 
 ## What Was Accomplished This Session
 
-### 5 Issues via 5 Parallel Agents
+### Part 1: 5 Issues via 5 Parallel Agents
 
 | Issue | Type | Description | Files Changed |
 |-------|------|-------------|---------------|
@@ -12,34 +12,50 @@
 | vibefeld-20fq | TDD Tests | 30+ tests for `af refute` command | `cmd/af/refute_test.go` (1139 LOC) |
 | vibefeld-e0g3 | TDD Tests | 30+ tests for `af archive` command | `cmd/af/archive_test.go` (1134 LOC) |
 
+### Part 2: P0 Critical Bug Fixes
+
+| Issue | Type | Description | Files Changed |
+|-------|------|-------------|---------------|
+| vibefeld-tz7b | Bug Fix | Fixed 30+ service tests failing (root node duplication) | `internal/service/proof_test.go` |
+| vibefeld-ipjn | Bug Fix | Added state machine transition validation | `internal/state/apply.go` |
+
 ### Implementation Details
 
 #### `af pending-defs` / `af pending-def` (64 tests pass)
 - `af pending-defs` - Lists all pending definition requests sorted by term
 - `af pending-def <term|node-id|id>` - Shows specific pending def (supports partial ID matching)
 - Flags: `--dir/-d`, `--format/-f` (text/json), `--full/-F`
-- JSON output support
 
 #### `af pending-refs` / `af pending-ref` (47 tests pass)
 - `af pending-refs` - Lists unverified external references
 - `af pending-ref <name>` - Shows specific pending ref (partial name matching)
 - Flags: `--dir/-d`, `--format/-f` (text/json), `--full/-F`
-- Filters externals by verified status
 
-### TDD Test Files Created
+### P0 Bug Fixes
 
-| File | Tests | Coverage |
-|------|-------|----------|
-| `admit_test.go` | 26+ | Success, errors, JSON output, flag handling, state transitions |
-| `refute_test.go` | 30+ | Success, errors, JSON output, --reason flag, state validation |
-| `archive_test.go` | 30+ | Success, errors, JSON output, --reason flag, state validation |
+#### Service Tests Fix (vibefeld-tz7b)
+**Problem**: Tests were calling `CreateNode("1")` after `Init()`, but Init already creates root node "1".
+
+**Solution**: Removed redundant CreateNode calls for root node, updated tests to:
+- Use the root node created by Init directly
+- Use child nodes like "1.1" for tests that need to create nodes
+- Use "1.99" for non-existent node tests (not "2" since NodeID requires root to be "1")
+
+#### State Transition Validation (vibefeld-ipjn)
+**Problem**: Epistemic state changes were applied without validation, allowing illegal transitions (e.g., refuted → admitted).
+
+**Solution**: Added `schema.ValidateEpistemicTransition()` calls to all four epistemic state change functions in `apply.go`:
+- `applyNodeValidated`
+- `applyNodeAdmitted`
+- `applyNodeRefuted`
+- `applyNodeArchived`
 
 ## Current State
 
 ### Test Status
 ```bash
 go build ./cmd/af/...           # PASSES
-go test ./internal/...          # 16/17 packages pass (service has known P0 failures)
+go test ./internal/...          # ALL 16 packages PASS
 ```
 
 ### Working Commands
@@ -52,17 +68,13 @@ All core CLI commands functional: `init`, `status`, `claim`, `release`, `accept`
 
 ## Next Steps (Priority Order)
 
-### P0 - Critical
-1. **vibefeld-tz7b** - Fix 30+ service integration tests failing
-2. **vibefeld-ipjn** - Add state transition validation
-
 ### P1 - High Value
-3. **vibefeld-icii** - Double JSON unmarshaling (15-25% perf gain)
+1. **vibefeld-icii** - Double JSON unmarshaling (15-25% perf gain)
 
 ### P2 - CLI Implementation (TDD tests ready)
-4. **vibefeld-aucy** - Implement `af admit` command (26+ tests ready)
-5. **vibefeld-negf** - Implement `af refute` command (30+ tests ready)
-6. Need to create issue for `af archive` command implementation
+2. **vibefeld-aucy** - Implement `af admit` command (26+ tests ready)
+3. **vibefeld-negf** - Implement `af refute` command (30+ tests ready)
+4. Need to create issue for `af archive` command implementation
 
 ## Files Changed This Session
 
@@ -73,10 +85,12 @@ All core CLI commands functional: `init`, `status`, `claim`, `release`, `accept`
 | `cmd/af/admit_test.go` | NEW | 998 |
 | `cmd/af/refute_test.go` | NEW | 1139 |
 | `cmd/af/archive_test.go` | NEW | 1134 |
+| `internal/service/proof_test.go` | MODIFIED | ~30 tests fixed |
+| `internal/state/apply.go` | MODIFIED | +16 (validation calls) |
 
 ## Session History
 
-**Session 29:** 5 issues via 5 parallel agents (2 implementations + 3 TDD test files)
+**Session 29:** 7 issues total (5 via parallel agents + 2 P0 bug fixes)
 **Session 28:** 5 issues via 5 parallel agents (3 implementations + 2 TDD test files) + architecture fix for lemmas
 **Session 27:** 5 issues via 5 parallel agents (2 implementations + 3 TDD test files)
 **Session 26:** 5 issues via 5 parallel agents (2 implementations + 2 TDD test files + lock manager fix)

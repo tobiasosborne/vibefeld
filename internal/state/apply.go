@@ -113,6 +113,10 @@ func applyNodeValidated(s *State, e ledger.NodeValidated) error {
 	if n == nil {
 		return fmt.Errorf("node %s not found in state", e.NodeID.String())
 	}
+	// Validate the state transition is legal
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
+		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
+	}
 	n.EpistemicState = schema.EpistemicValidated
 	return nil
 }
@@ -123,6 +127,10 @@ func applyNodeAdmitted(s *State, e ledger.NodeAdmitted) error {
 	n := s.GetNode(e.NodeID)
 	if n == nil {
 		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	// Validate the state transition is legal
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicAdmitted); err != nil {
+		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicAdmitted
 	return nil
@@ -135,6 +143,10 @@ func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 	if n == nil {
 		return fmt.Errorf("node %s not found in state", e.NodeID.String())
 	}
+	// Validate the state transition is legal
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicRefuted); err != nil {
+		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
+	}
 	n.EpistemicState = schema.EpistemicRefuted
 	return nil
 }
@@ -145,6 +157,10 @@ func applyNodeArchived(s *State, e ledger.NodeArchived) error {
 	n := s.GetNode(e.NodeID)
 	if n == nil {
 		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	// Validate the state transition is legal
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicArchived); err != nil {
+		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicArchived
 	return nil
