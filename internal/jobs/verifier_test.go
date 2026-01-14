@@ -29,6 +29,17 @@ func createVerifierTestNode(t *testing.T, idStr string, workflow schema.Workflow
 	return n
 }
 
+// createTestChallenge creates a test challenge for a node.
+func createTestChallenge(t *testing.T, id string, targetID types.NodeID, status node.ChallengeStatus) *node.Challenge {
+	t.Helper()
+	c, err := node.NewChallenge(id, targetID, schema.TargetStatement, "Test challenge reason")
+	if err != nil {
+		t.Fatalf("node.NewChallenge() error: %v", err)
+	}
+	c.Status = status
+	return c
+}
+
 // buildNodeMap builds a map from node ID string to node pointer.
 func buildNodeMap(nodes []*node.Node) map[string]*node.Node {
 	m := make(map[string]*node.Node)
@@ -38,80 +49,136 @@ func buildNodeMap(nodes []*node.Node) map[string]*node.Node {
 	return m
 }
 
+// buildChallengeMap builds a map from node ID string to challenges on that node.
+func buildChallengeMap(challenges []*node.Challenge) map[string][]*node.Challenge {
+	m := make(map[string][]*node.Challenge)
+	for _, c := range challenges {
+		key := c.TargetID.String()
+		m[key] = append(m[key], c)
+	}
+	return m
+}
+
 // TestFindVerifierJobs_EmptyInput tests that FindVerifierJobs handles empty input.
 func TestFindVerifierJobs_EmptyInput(t *testing.T) {
 	// Test with nil slice
-	result := jobs.FindVerifierJobs(nil, nil)
+	result := jobs.FindVerifierJobs(nil, nil, nil)
 	if len(result) != 0 {
-		t.Errorf("FindVerifierJobs(nil, nil) returned %d nodes, want 0", len(result))
+		t.Errorf("FindVerifierJobs(nil, nil, nil) returned %d nodes, want 0", len(result))
 	}
 
 	// Test with empty slice
-	result = jobs.FindVerifierJobs([]*node.Node{}, map[string]*node.Node{})
+	result = jobs.FindVerifierJobs([]*node.Node{}, map[string]*node.Node{}, map[string][]*node.Challenge{})
 	if len(result) != 0 {
-		t.Errorf("FindVerifierJobs([], {}) returned %d nodes, want 0", len(result))
+		t.Errorf("FindVerifierJobs([], {}, {}) returned %d nodes, want 0", len(result))
 	}
 }
 
-// TestFindVerifierJobs_NodeWithNoChildrenIsNotVerifierJob tests that a leaf node
-// with no children is NOT a verifier job (it's a prover job that needs refinement).
-func TestFindVerifierJobs_NodeWithNoChildrenIsNotVerifierJob(t *testing.T) {
-	// A leaf node with no children is NOT a verifier job
+// TestFindVerifierJobs_BreadthFirst_NewNodeIsVerifierJob tests the key behavior change:
+// A new pending node with no challenges should immediately be a verifier job.
+// This is the "breadth-first" model where verifiers can immediately review any new node.
+func TestFindVerifierJobs_BreadthFirst_NewNodeIsVerifierJob(t *testing.T) {
+	// A new node that is available and pending with no challenges should be a verifier job
 	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
 	nodes := []*node.Node{n}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{} // No challenges
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 1", len(result))
+	}
+	if len(result) > 0 && result[0].ID.String() != "1" {
+		t.Errorf("FindVerifierJobs() returned %s, want 1", result[0].ID.String())
+	}
+}
+
+// TestFindVerifierJobs_NodeWithOpenChallengeIsNotVerifierJob tests that a node
+// with an open challenge is NOT a verifier job (it's a prover job).
+func TestFindVerifierJobs_NodeWithOpenChallengeIsNotVerifierJob(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
 	if len(result) != 0 {
-		t.Errorf("FindVerifierJobs() returned %d nodes, want 0 (leaf nodes are not verifier jobs)", len(result))
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 0 (node has open challenge)", len(result))
 	}
 }
 
-// TestFindVerifierJobs_NodeWithUnvalidatedChildrenIsNotVerifierJob tests that a node
-// with unvalidated children is NOT a verifier job.
-func TestFindVerifierJobs_NodeWithUnvalidatedChildrenIsNotVerifierJob(t *testing.T) {
-	parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	child1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending) // Not validated
-	child2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
+// TestFindVerifierJobs_NodeWithResolvedChallengeIsVerifierJob tests that a node
+// with only resolved challenges IS a verifier job.
+func TestFindVerifierJobs_NodeWithResolvedChallengeIsVerifierJob(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusResolved)
 
-	nodes := []*node.Node{parent, child1, child2}
+	nodes := []*node.Node{n}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{challenge})
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
-	// Parent should NOT be a verifier job because child1 is not validated
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			t.Error("FindVerifierJobs() should not return node 1 because it has unvalidated children")
-		}
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 1 (challenge is resolved)", len(result))
 	}
 }
 
-// TestFindVerifierJobs_NodeWithAllValidatedChildrenIsVerifierJob tests that a node
-// with all validated children IS a verifier job.
-func TestFindVerifierJobs_NodeWithAllValidatedChildrenIsVerifierJob(t *testing.T) {
-	parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	child1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child3 := createVerifierTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicValidated)
+// TestFindVerifierJobs_NodeWithWithdrawnChallengeIsVerifierJob tests that a node
+// with only withdrawn challenges IS a verifier job.
+func TestFindVerifierJobs_NodeWithWithdrawnChallengeIsVerifierJob(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusWithdrawn)
 
-	nodes := []*node.Node{parent, child1, child2, child3}
+	nodes := []*node.Node{n}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{challenge})
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
-	// Parent should be a verifier job
-	found := false
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			found = true
-			break
-		}
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 1 (challenge is withdrawn)", len(result))
 	}
+}
 
-	if !found {
-		t.Error("FindVerifierJobs() should return node 1 because all its children are validated")
+// TestFindVerifierJobs_NodeWithMixedChallengesNotVerifierJob tests that a node
+// with mixed challenges (some open, some resolved) is NOT a verifier job.
+func TestFindVerifierJobs_NodeWithMixedChallengesNotVerifierJob(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	resolvedChallenge := createTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusResolved)
+	openChallenge := createTestChallenge(t, "ch-2", nodeID, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{resolvedChallenge, openChallenge})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 0 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 0 (node has open challenge)", len(result))
+	}
+}
+
+// TestFindVerifierJobs_ClaimedNodeIsNotVerifierJob tests that a claimed node
+// is NOT a verifier job (someone is already working on it).
+func TestFindVerifierJobs_ClaimedNodeIsNotVerifierJob(t *testing.T) {
+	n := createVerifierTestNode(t, "1", schema.WorkflowClaimed, schema.EpistemicPending)
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{}
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 0 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 0 (node is claimed)", len(result))
 	}
 }
 
@@ -132,21 +199,14 @@ func TestFindVerifierJobs_OnlyPendingNodesCanBeVerifierJobs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Parent node with one validated child
-			parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, tt.epistemic)
-			child := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-			nodes := []*node.Node{parent, child}
+			n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, tt.epistemic)
+			nodes := []*node.Node{n}
 			nodeMap := buildNodeMap(nodes)
+			challengeMap := map[string][]*node.Challenge{}
 
-			result := jobs.FindVerifierJobs(nodes, nodeMap)
+			result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
-			gotJob := false
-			for _, n := range result {
-				if n.ID.String() == "1" {
-					gotJob = true
-					break
-				}
-			}
+			gotJob := len(result) > 0
 			if gotJob != tt.wantJob {
 				t.Errorf("FindVerifierJobs() with epistemic=%s returned job=%v, want job=%v",
 					tt.epistemic, gotJob, tt.wantJob)
@@ -158,188 +218,48 @@ func TestFindVerifierJobs_OnlyPendingNodesCanBeVerifierJobs(t *testing.T) {
 // TestFindVerifierJobs_BlockedNodesCannotBeVerifierJobs tests that blocked nodes
 // cannot be verifier jobs.
 func TestFindVerifierJobs_BlockedNodesCannotBeVerifierJobs(t *testing.T) {
-	// Blocked parent with validated child - should NOT be a verifier job
-	parent := createVerifierTestNode(t, "1", schema.WorkflowBlocked, schema.EpistemicPending)
-	child := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-
-	nodes := []*node.Node{parent, child}
+	n := createVerifierTestNode(t, "1", schema.WorkflowBlocked, schema.EpistemicPending)
+	nodes := []*node.Node{n}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{}
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			t.Error("FindVerifierJobs() should not return blocked node 1")
-		}
-	}
-}
-
-// TestFindVerifierJobs_AvailableNodesCanBeVerifierJobs tests that available nodes
-// with all validated children ARE verifier jobs (bug fix for vibefeld-99ab).
-func TestFindVerifierJobs_AvailableNodesCanBeVerifierJobs(t *testing.T) {
-	// Available parent with all validated children - should be a verifier job
-	parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	child1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
-
-	nodes := []*node.Node{parent, child1, child2}
-	nodeMap := buildNodeMap(nodes)
-
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
-
-	found := false
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("FindVerifierJobs() should return available node 1 with all validated children")
-	}
-}
-
-// TestFindVerifierJobs_ClaimedNodesCanBeVerifierJobs tests that claimed nodes
-// with all validated children ARE verifier jobs.
-func TestFindVerifierJobs_ClaimedNodesCanBeVerifierJobs(t *testing.T) {
-	// Claimed parent with all validated children - should be a verifier job
-	parent := createVerifierTestNode(t, "1", schema.WorkflowClaimed, schema.EpistemicPending)
-	child1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
-
-	nodes := []*node.Node{parent, child1, child2}
-	nodeMap := buildNodeMap(nodes)
-
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
-
-	found := false
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("FindVerifierJobs() should return claimed node 1 with all validated children")
-	}
-}
-
-// TestFindVerifierJobs_ChildrenWithMixedEpistemicStates tests various child epistemic states.
-func TestFindVerifierJobs_ChildrenWithMixedEpistemicStates(t *testing.T) {
-	tests := []struct {
-		name           string
-		childEpistemic schema.EpistemicState
-		wantParentJob  bool
-	}{
-		{"all children validated", schema.EpistemicValidated, true},
-		{"child pending blocks parent", schema.EpistemicPending, false},
-		{"child admitted blocks parent", schema.EpistemicAdmitted, false},
-		{"child refuted blocks parent", schema.EpistemicRefuted, false},
-		{"child archived blocks parent", schema.EpistemicArchived, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-			child := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, tt.childEpistemic)
-
-			nodes := []*node.Node{parent, child}
-			nodeMap := buildNodeMap(nodes)
-
-			result := jobs.FindVerifierJobs(nodes, nodeMap)
-
-			parentIsJob := false
-			for _, n := range result {
-				if n.ID.String() == "1" {
-					parentIsJob = true
-					break
-				}
-			}
-
-			if parentIsJob != tt.wantParentJob {
-				t.Errorf("FindVerifierJobs() with child epistemic=%s: parent is job=%v, want %v",
-					tt.childEpistemic, parentIsJob, tt.wantParentJob)
-			}
-		})
-	}
-}
-
-// TestFindVerifierJobs_GrandchildrenDoNotAffectParent tests that only direct children
-// affect whether a node is a verifier job, not grandchildren.
-func TestFindVerifierJobs_GrandchildrenDoNotAffectParent(t *testing.T) {
-	// Parent: available, pending
-	// Child: validated
-	// Grandchild: pending (should NOT affect parent)
-	parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	child := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	grandchild := createVerifierTestNode(t, "1.1.1", schema.WorkflowAvailable, schema.EpistemicPending)
-
-	nodes := []*node.Node{parent, child, grandchild}
-	nodeMap := buildNodeMap(nodes)
-
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
-
-	// Parent should still be a verifier job because its direct child (1.1) is validated
-	parentIsJob := false
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			parentIsJob = true
-			break
-		}
-	}
-
-	if !parentIsJob {
-		t.Error("FindVerifierJobs() should return parent node even though grandchild is not validated")
+	if len(result) != 0 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 0 (node is blocked)", len(result))
 	}
 }
 
 // TestFindVerifierJobs_MultipleVerifierJobs tests finding multiple verifier jobs.
 func TestFindVerifierJobs_MultipleVerifierJobs(t *testing.T) {
-	// Node 1.1 with only validated children
 	node1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)
-	node1Child := createVerifierTestNode(t, "1.1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-
-	// Node 1.2 with only validated children
 	node2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending)
-	node2Child := createVerifierTestNode(t, "1.2.1", schema.WorkflowAvailable, schema.EpistemicValidated)
+	node3 := createVerifierTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending)
 
-	nodes := []*node.Node{node1, node1Child, node2, node2Child}
+	nodes := []*node.Node{node1, node2, node3}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{}
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
-	// Both node1.1 and node1.2 should be verifier jobs
-	expectedIDs := map[string]bool{"1.1": true, "1.2": true}
-	for _, n := range result {
-		if expectedIDs[n.ID.String()] {
-			delete(expectedIDs, n.ID.String())
-		}
-	}
-
-	if len(expectedIDs) > 0 {
-		for id := range expectedIDs {
-			t.Errorf("FindVerifierJobs() did not return expected node %s", id)
-		}
+	if len(result) != 3 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 3", len(result))
 	}
 }
 
 // TestFindVerifierJobs_PreservesOrder tests that the order of returned nodes
 // matches the input order.
 func TestFindVerifierJobs_PreservesOrder(t *testing.T) {
-	// Create nodes in specific order, all as verifier jobs (with validated children)
 	node3 := createVerifierTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending)
-	node3Child := createVerifierTestNode(t, "1.3.1", schema.WorkflowAvailable, schema.EpistemicValidated)
 	node1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)
-	node1Child := createVerifierTestNode(t, "1.1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
 	node2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending)
-	node2Child := createVerifierTestNode(t, "1.2.1", schema.WorkflowAvailable, schema.EpistemicValidated)
 
-	nodes := []*node.Node{node3, node3Child, node1, node1Child, node2, node2Child}
+	nodes := []*node.Node{node3, node1, node2}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{}
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
-	// Should return 3 verifier jobs in order: 1.3, 1.1, 1.2
 	if len(result) != 3 {
 		t.Errorf("FindVerifierJobs() returned %d nodes, want 3", len(result))
 		return
@@ -357,11 +277,11 @@ func TestFindVerifierJobs_PreservesOrder(t *testing.T) {
 // contains pointers to the original nodes (not copies).
 func TestFindVerifierJobs_ReturnsOriginalPointers(t *testing.T) {
 	original := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	child := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	nodes := []*node.Node{original, child}
+	nodes := []*node.Node{original}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{}
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
 	if len(result) != 1 {
 		t.Fatalf("FindVerifierJobs() returned %d nodes, want 1", len(result))
@@ -375,17 +295,19 @@ func TestFindVerifierJobs_ReturnsOriginalPointers(t *testing.T) {
 // TestFindVerifierJobs_AllNodesExcluded tests the case where all input nodes
 // are excluded.
 func TestFindVerifierJobs_AllNodesExcluded(t *testing.T) {
+	nodeID1, _ := types.Parse("1")
 	nodes := []*node.Node{
-		// No children (leaf nodes are not verifier jobs)
-		createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),
-		// Blocked
-		createVerifierTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending),
-		// Not pending
-		createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated),
+		createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),   // has open challenge
+		createVerifierTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending),   // blocked
+		createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated), // not pending
+		createVerifierTestNode(t, "1.3", schema.WorkflowClaimed, schema.EpistemicPending),   // claimed
 	}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{
+		createTestChallenge(t, "ch-1", nodeID1, node.ChallengeStatusOpen),
+	})
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
 	if len(result) != 0 {
 		t.Errorf("FindVerifierJobs() returned %d nodes, want 0", len(result))
@@ -394,143 +316,109 @@ func TestFindVerifierJobs_AllNodesExcluded(t *testing.T) {
 
 // TestFindVerifierJobs_MixedStates tests FindVerifierJobs with a mix of different states.
 func TestFindVerifierJobs_MixedStates(t *testing.T) {
+	nodeID1, _ := types.Parse("1")
+	nodeID5, _ := types.Parse("1.5")
+
 	nodes := []*node.Node{
-		createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),     // has children 1.1-1.7 below
-		createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),   // exclude: not validated child
-		createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated), // validated child
-		createVerifierTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending),   // exclude: not validated child
-		createVerifierTestNode(t, "1.4", schema.WorkflowBlocked, schema.EpistemicPending),     // exclude: blocked child
-		createVerifierTestNode(t, "1.5", schema.WorkflowAvailable, schema.EpistemicAdmitted),  // exclude: admitted child
-		createVerifierTestNode(t, "1.6", schema.WorkflowAvailable, schema.EpistemicRefuted),   // exclude: refuted child
-		createVerifierTestNode(t, "1.7", schema.WorkflowAvailable, schema.EpistemicPending),   // exclude: not validated child
+		createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),     // has open challenge -> not verifier
+		createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),   // no challenges -> verifier
+		createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated), // not pending -> not verifier
+		createVerifierTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending),   // no challenges -> verifier
+		createVerifierTestNode(t, "1.4", schema.WorkflowBlocked, schema.EpistemicPending),     // blocked -> not verifier
+		createVerifierTestNode(t, "1.5", schema.WorkflowAvailable, schema.EpistemicPending),   // resolved challenge -> verifier
+		createVerifierTestNode(t, "1.6", schema.WorkflowClaimed, schema.EpistemicPending),     // claimed -> not verifier
 	}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{
+		createTestChallenge(t, "ch-1", nodeID1, node.ChallengeStatusOpen),
+		createTestChallenge(t, "ch-2", nodeID5, node.ChallengeStatusResolved),
+	})
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
-	// Node 1 should NOT be a verifier job because not all children are validated
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			t.Error("FindVerifierJobs() should not return node 1 because it has unvalidated children")
-		}
+	// Nodes 1.1, 1.3, and 1.5 should be verifier jobs
+	expectedIDs := map[string]bool{"1.1": true, "1.3": true, "1.5": true}
+	if len(result) != len(expectedIDs) {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want %d", len(result), len(expectedIDs))
 	}
-}
-
-// TestFindVerifierJobs_DeeplyNestedStructure tests verifier jobs in a deeply nested tree.
-func TestFindVerifierJobs_DeeplyNestedStructure(t *testing.T) {
-	// Create a deep tree:
-	// 1 (available, pending) -> 1.1 (validated) -> 1.1.1 (available, pending) -> 1.1.1.1 (validated)
-	node1 := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	node11 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	node111 := createVerifierTestNode(t, "1.1.1", schema.WorkflowAvailable, schema.EpistemicPending)
-	node1111 := createVerifierTestNode(t, "1.1.1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-
-	nodes := []*node.Node{node1, node11, node111, node1111}
-	nodeMap := buildNodeMap(nodes)
-
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
-
-	// Both node1 (child 1.1 is validated) and node111 (child 1.1.1.1 is validated) should be jobs
-	expectedIDs := map[string]bool{"1": true, "1.1.1": true}
 	for _, n := range result {
 		if !expectedIDs[n.ID.String()] {
 			t.Errorf("FindVerifierJobs() returned unexpected node %s", n.ID.String())
 		}
-		delete(expectedIDs, n.ID.String())
-	}
-
-	if len(expectedIDs) > 0 {
-		for id := range expectedIDs {
-			t.Errorf("FindVerifierJobs() did not return expected node %s", id)
-		}
 	}
 }
 
-// TestFindVerifierJobs_SomeChildrenValidatedSomeNot tests that ALL children must be validated.
-func TestFindVerifierJobs_SomeChildrenValidatedSomeNot(t *testing.T) {
+// TestFindVerifierJobs_ChildrenDontAffectVerifierStatus tests that children's states
+// no longer affect whether a node is a verifier job (breadth-first model).
+func TestFindVerifierJobs_ChildrenDontAffectVerifierStatus(t *testing.T) {
+	// In the new breadth-first model, having unvalidated children should NOT
+	// prevent a node from being a verifier job. Only challenges matter.
 	parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	child1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child3 := createVerifierTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending) // NOT validated
-
-	nodes := []*node.Node{parent, child1, child2, child3}
-	nodeMap := buildNodeMap(nodes)
-
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
-
-	// Parent should NOT be a verifier job because child3 is not validated
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			t.Error("FindVerifierJobs() should not return node 1 because not all children are validated")
-		}
-	}
-}
-
-// TestFindVerifierJobs_EmptyNodeMap tests behavior with empty node map but non-empty nodes.
-func TestFindVerifierJobs_EmptyNodeMap(t *testing.T) {
-	// If nodeMap is empty, nodes will appear to have no children, so they won't be verifier jobs
-	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	nodes := []*node.Node{n}
-	emptyMap := map[string]*node.Node{}
-
-	result := jobs.FindVerifierJobs(nodes, emptyMap)
-
-	// Node 1 should NOT be a verifier job (no children found in empty map)
-	if len(result) != 0 {
-		t.Errorf("FindVerifierJobs() with empty nodeMap returned %d nodes, want 0 (leaf nodes are not verifier jobs)", len(result))
-	}
-}
-
-// TestFindVerifierJobs_NodeMapContainsExtraNodes tests that extra nodes in nodeMap don't affect results.
-func TestFindVerifierJobs_NodeMapContainsExtraNodes(t *testing.T) {
-	// nodeMap has extra nodes not in the input slice
-	node1 := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	node11 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	// extraNode is at 1.2, which is a sibling of 1.1, making it a child of 1
-	extraNode := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
-
-	// Only node1 is in the input slice
-	nodes := []*node.Node{node1}
-	// nodeMap contains all nodes including children 1.1 and 1.2 (both validated)
-	nodeMap := buildNodeMap([]*node.Node{node1, node11, extraNode})
-
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
-
-	// node1 should be a verifier job because both children (1.1 and 1.2) are validated
-	if len(result) != 1 {
-		t.Errorf("FindVerifierJobs() returned %d nodes, want 1", len(result))
-	}
-	if len(result) > 0 && result[0].ID.String() != "1" {
-		t.Errorf("FindVerifierJobs() returned %s, want 1", result[0].ID.String())
-	}
-}
-
-// TestFindVerifierJobs_ReleasedRefinedNodeIsVerifierJob tests the main bug fix for vibefeld-99ab:
-// after a prover refines a node and releases it, the node should appear as a verifier job
-// once all children are validated.
-func TestFindVerifierJobs_ReleasedRefinedNodeIsVerifierJob(t *testing.T) {
-	// Simulate the workflow:
-	// 1. Prover claimed node 1, refined it (added children 1.1, 1.2), then released it
-	// 2. Children 1.1 and 1.2 have been validated
-	// 3. Node 1 should now be a verifier job (available + pending + all children validated)
-	parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	child1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
+	child1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending) // Not validated
+	child2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending) // Not validated
 
 	nodes := []*node.Node{parent, child1, child2}
 	nodeMap := buildNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{} // No challenges
 
-	result := jobs.FindVerifierJobs(nodes, nodeMap)
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
 
-	// Node 1 should be a verifier job
-	found := false
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			found = true
-			break
-		}
+	// ALL nodes should be verifier jobs (no challenges, all pending and available)
+	if len(result) != 3 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 3 (children don't affect parent in breadth-first model)", len(result))
 	}
-	if !found {
-		t.Error("FindVerifierJobs() should return node 1 (available + pending + all children validated) - this is the bug fix for vibefeld-99ab")
+}
+
+// TestFindVerifierJobs_LeafNodeIsVerifierJob tests that a leaf node (no children)
+// IS a verifier job in the breadth-first model.
+func TestFindVerifierJobs_LeafNodeIsVerifierJob(t *testing.T) {
+	// In the old model, leaf nodes were NOT verifier jobs.
+	// In the new breadth-first model, leaf nodes ARE verifier jobs.
+	n := createVerifierTestNode(t, "1.1.1", schema.WorkflowAvailable, schema.EpistemicPending)
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{}
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 1 (leaf nodes are verifier jobs in breadth-first)", len(result))
+	}
+}
+
+// TestFindVerifierJobs_NilChallengeMapTreatedAsEmpty tests that nil challengeMap
+// is treated as empty (backward compatibility).
+func TestFindVerifierJobs_NilChallengeMapTreatedAsEmpty(t *testing.T) {
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, nil)
+
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() with nil challengeMap returned %d nodes, want 1", len(result))
+	}
+}
+
+// TestFindVerifierJobs_EmptyStatementNodeIsNotVerifierJob tests that a node
+// with an empty statement is not a verifier job.
+// Note: In practice, nodes should always have statements due to validation,
+// but we test this edge case for completeness.
+func TestFindVerifierJobs_NodeMustHaveStatement(t *testing.T) {
+	// All nodes created via NewNode have statements, so we test the normal case
+	// This test verifies that nodes with statements qualify
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	if n.Statement == "" {
+		t.Fatal("Test setup error: node should have a statement")
+	}
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{}
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() should return node with statement")
 	}
 }

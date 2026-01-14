@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/state"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -22,9 +24,9 @@ Before working on a node, agents must claim it to prevent concurrent
 modifications. Claims have a timeout to automatically release abandoned work.
 
 Examples:
-  af claim 1 --owner prover-001
-  af claim 1.2 --owner verifier-alpha --timeout 30m
-  af claim 1 -o prover-001 -t 2h --format json`,
+  af claim 1 --owner prover-001 --role prover
+  af claim 1.2 --owner verifier-alpha --timeout 30m --role verifier
+  af claim 1 -o prover-001 -r prover -t 2h --format json`,
 		Args: cobra.ExactArgs(1),
 		RunE: runClaim,
 	}
@@ -34,6 +36,7 @@ Examples:
 	cmd.Flags().StringP("timeout", "t", "1h", "Claim timeout duration (e.g., 30m, 1h, 2h30m)")
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory")
 	cmd.Flags().StringP("format", "f", "text", "Output format: text or json")
+	cmd.Flags().StringP("role", "r", "prover", "Agent role: prover or verifier")
 
 	// Mark owner as required
 	cmd.MarkFlagRequired("owner")
@@ -54,6 +57,7 @@ func runClaim(cmd *cobra.Command, args []string) error {
 	timeoutStr, _ := cmd.Flags().GetString("timeout")
 	dir, _ := cmd.Flags().GetString("dir")
 	format, _ := cmd.Flags().GetString("format")
+	role, _ := cmd.Flags().GetString("role")
 
 	// Validate owner is not empty or whitespace
 	if strings.TrimSpace(owner) == "" {
@@ -71,6 +75,12 @@ func runClaim(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("timeout must be positive, got %v", timeout)
 	}
 
+	// Validate role
+	role = strings.ToLower(strings.TrimSpace(role))
+	if role != "prover" && role != "verifier" {
+		return fmt.Errorf("invalid role %q: must be 'prover' or 'verifier'", role)
+	}
+
 	// Create proof service
 	svc, err := service.NewProofService(dir)
 	if err != nil {
@@ -83,20 +93,40 @@ func runClaim(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to claim node %s: %w", nodeID.String(), err)
 	}
 
-	// Output result based on format
-	if format == "json" {
-		return outputClaimJSON(cmd, nodeID, owner)
+	// Load state for context rendering
+	st, err := svc.LoadState()
+	if err != nil {
+		return fmt.Errorf("failed to load state for context: %w", err)
 	}
 
-	return outputClaimText(cmd, nodeID, owner, timeout)
+	// Output result based on format
+	if format == "json" {
+		return outputClaimJSON(cmd, nodeID, owner, role, st)
+	}
+
+	return outputClaimText(cmd, nodeID, owner, timeout, role, st)
 }
 
 // outputClaimJSON outputs the claim result in JSON format.
-func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner string) error {
+func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string, st *state.State) error {
+	// Render context based on role
+	var context string
+	if role == "prover" {
+		context = render.RenderProverContext(st, nodeID)
+	}
+	// Note: verifier context requires a Challenge, which we don't have here
+	// For verifier role claiming a node, we still show prover-style context
+	// since they're claiming to examine the node
+	if role == "verifier" {
+		context = render.RenderProverContext(st, nodeID)
+	}
+
 	result := map[string]interface{}{
 		"node_id": nodeID.String(),
 		"owner":   owner,
+		"role":    role,
 		"status":  "claimed",
+		"context": context,
 	}
 
 	data, err := json.Marshal(result)
@@ -109,13 +139,28 @@ func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner string) erro
 }
 
 // outputClaimText outputs the claim result in human-readable text format.
-func outputClaimText(cmd *cobra.Command, nodeID types.NodeID, owner string, timeout time.Duration) error {
+func outputClaimText(cmd *cobra.Command, nodeID types.NodeID, owner string, timeout time.Duration, role string, st *state.State) error {
 	cmd.Printf("Claimed node %s\n", nodeID.String())
 	cmd.Printf("  Owner:   %s\n", owner)
+	cmd.Printf("  Role:    %s\n", role)
 	cmd.Printf("  Timeout: %s\n", timeout)
 	cmd.Println()
+
+	// Render and display context based on role
+	// Both prover and verifier roles use prover context when claiming a node
+	// (verifier context is specifically for examining challenges)
+	context := render.RenderProverContext(st, nodeID)
+	if context != "" {
+		cmd.Println(context)
+	}
+
 	cmd.Println("Next steps:")
-	cmd.Println("  af refine  - Add or modify proof content for this node")
+	if role == "prover" {
+		cmd.Println("  af refine  - Add or modify proof content for this node")
+	} else {
+		cmd.Println("  af challenge - Raise a challenge on a claim")
+		cmd.Println("  af accept    - Accept a valid claim")
+	}
 	cmd.Println("  af release - Release the claim if you cannot complete the work")
 
 	return nil

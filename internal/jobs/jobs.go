@@ -9,16 +9,16 @@ import (
 // JobResult contains the results of finding all jobs.
 // It separates prover jobs from verifier jobs.
 type JobResult struct {
-	// ProverJobs contains nodes available for provers to work on.
-	// These are nodes with WorkflowState="available", EpistemicState="pending",
-	// and NOT having all children validated (those are verifier jobs).
+	// ProverJobs contains nodes that need prover attention.
+	// These are nodes with EpistemicState="pending", WorkflowState!="blocked",
+	// and having at least one open/unresolved challenge.
+	// Provers address challenges raised by verifiers.
 	ProverJobs []*node.Node
 
 	// VerifierJobs contains nodes ready for verifier review.
-	// These are nodes with EpistemicState="pending", WorkflowState!="blocked",
-	// and having children where all children have EpistemicState="validated".
-	// After a prover refines and releases a node, it becomes a verifier job
-	// once all children are validated.
+	// These are nodes with EpistemicState="pending", WorkflowState="available",
+	// having a statement, and no open challenges.
+	// In the breadth-first model, every new node is immediately a verifier job.
 	VerifierJobs []*node.Node
 }
 
@@ -34,12 +34,18 @@ func (r *JobResult) TotalCount() int {
 
 // FindJobs finds all prover and verifier jobs from the given nodes.
 // It combines FindProverJobs and FindVerifierJobs into a single result.
-// The nodeMap is required to check children's states for both job types.
+//
+// The nodeMap is provided for consistency but is not currently used
+// (challenge-based detection doesn't need children lookup).
+//
+// The challengeMap maps node ID strings to the challenges on that node.
+// It is required to determine which nodes have open challenges.
+//
 // The returned slices preserve the order of the input nodes.
 // The returned pointers are the same as the input pointers (not copies).
-func FindJobs(nodes []*node.Node, nodeMap map[string]*node.Node) *JobResult {
+func FindJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) *JobResult {
 	return &JobResult{
-		ProverJobs:   FindProverJobs(nodes, nodeMap),
-		VerifierJobs: FindVerifierJobs(nodes, nodeMap),
+		ProverJobs:   FindProverJobs(nodes, nodeMap, challengeMap),
+		VerifierJobs: FindVerifierJobs(nodes, nodeMap, challengeMap),
 	}
 }

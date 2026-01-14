@@ -29,6 +29,17 @@ func createTestNode(t *testing.T, idStr string, workflow schema.WorkflowState, e
 	return n
 }
 
+// createProverTestChallenge creates a test challenge for a node.
+func createProverTestChallenge(t *testing.T, id string, targetID types.NodeID, status node.ChallengeStatus) *node.Challenge {
+	t.Helper()
+	c, err := node.NewChallenge(id, targetID, schema.TargetStatement, "Test challenge reason")
+	if err != nil {
+		t.Fatalf("node.NewChallenge() error: %v", err)
+	}
+	c.Status = status
+	return c
+}
+
 // buildProverNodeMap builds a map from node ID string to node pointer.
 func buildProverNodeMap(nodes []*node.Node) map[string]*node.Node {
 	m := make(map[string]*node.Node)
@@ -38,219 +49,284 @@ func buildProverNodeMap(nodes []*node.Node) map[string]*node.Node {
 	return m
 }
 
-// TestFindProverJobs_FindsAvailablePendingNodes tests that FindProverJobs returns
-// nodes that are available and pending.
-func TestFindProverJobs_FindsAvailablePendingNodes(t *testing.T) {
-	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),
-		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),
-		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending),
+// buildProverChallengeMap builds a map from node ID string to challenges on that node.
+func buildProverChallengeMap(challenges []*node.Challenge) map[string][]*node.Challenge {
+	m := make(map[string][]*node.Challenge)
+	for _, c := range challenges {
+		key := c.TargetID.String()
+		m[key] = append(m[key], c)
 	}
-
-	result := jobs.FindProverJobs(nodes, nil)
-
-	if len(result) != 3 {
-		t.Errorf("FindProverJobs() returned %d nodes, want 3", len(result))
-	}
-
-	// Verify all returned nodes are available + pending
-	for _, n := range result {
-		if n.WorkflowState != schema.WorkflowAvailable {
-			t.Errorf("Node %s WorkflowState = %q, want %q", n.ID.String(), n.WorkflowState, schema.WorkflowAvailable)
-		}
-		if n.EpistemicState != schema.EpistemicPending {
-			t.Errorf("Node %s EpistemicState = %q, want %q", n.ID.String(), n.EpistemicState, schema.EpistemicPending)
-		}
-	}
-}
-
-// TestFindProverJobs_ExcludesClaimedNodes tests that claimed nodes are not
-// returned as prover jobs.
-func TestFindProverJobs_ExcludesClaimedNodes(t *testing.T) {
-	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),   // should be included
-		createTestNode(t, "1.1", schema.WorkflowClaimed, schema.EpistemicPending),   // should be excluded
-		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending), // should be included
-	}
-
-	result := jobs.FindProverJobs(nodes, nil)
-
-	if len(result) != 2 {
-		t.Errorf("FindProverJobs() returned %d nodes, want 2", len(result))
-	}
-
-	// Verify claimed node is not in result
-	for _, n := range result {
-		if n.ID.String() == "1.1" {
-			t.Error("FindProverJobs() should not return claimed node 1.1")
-		}
-	}
-}
-
-// TestFindProverJobs_ExcludesValidatedNodes tests that validated nodes are not
-// returned as prover jobs.
-func TestFindProverJobs_ExcludesValidatedNodes(t *testing.T) {
-	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),   // should be included
-		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated), // should be excluded
-	}
-
-	result := jobs.FindProverJobs(nodes, nil)
-
-	if len(result) != 1 {
-		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
-	}
-
-	if len(result) > 0 && result[0].ID.String() != "1" {
-		t.Errorf("FindProverJobs() returned wrong node, got %s, want 1", result[0].ID.String())
-	}
-}
-
-// TestFindProverJobs_ExcludesAdmittedNodes tests that admitted nodes are not
-// returned as prover jobs.
-func TestFindProverJobs_ExcludesAdmittedNodes(t *testing.T) {
-	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),  // should be included
-		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicAdmitted), // should be excluded
-	}
-
-	result := jobs.FindProverJobs(nodes, nil)
-
-	if len(result) != 1 {
-		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
-	}
-
-	if len(result) > 0 && result[0].ID.String() != "1" {
-		t.Errorf("FindProverJobs() returned wrong node, got %s, want 1", result[0].ID.String())
-	}
-}
-
-// TestFindProverJobs_ExcludesRefutedNodes tests that refuted nodes are not
-// returned as prover jobs.
-func TestFindProverJobs_ExcludesRefutedNodes(t *testing.T) {
-	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending), // should be included
-		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicRefuted), // should be excluded
-	}
-
-	result := jobs.FindProverJobs(nodes, nil)
-
-	if len(result) != 1 {
-		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
-	}
-
-	if len(result) > 0 && result[0].ID.String() != "1" {
-		t.Errorf("FindProverJobs() returned wrong node, got %s, want 1", result[0].ID.String())
-	}
-}
-
-// TestFindProverJobs_ExcludesArchivedNodes tests that archived nodes are not
-// returned as prover jobs.
-func TestFindProverJobs_ExcludesArchivedNodes(t *testing.T) {
-	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),  // should be included
-		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicArchived), // should be excluded
-	}
-
-	result := jobs.FindProverJobs(nodes, nil)
-
-	if len(result) != 1 {
-		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
-	}
-
-	if len(result) > 0 && result[0].ID.String() != "1" {
-		t.Errorf("FindProverJobs() returned wrong node, got %s, want 1", result[0].ID.String())
-	}
-}
-
-// TestFindProverJobs_ExcludesBlockedNodes tests that blocked nodes are not
-// returned as prover jobs.
-func TestFindProverJobs_ExcludesBlockedNodes(t *testing.T) {
-	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending), // should be included
-		createTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending), // should be excluded
-	}
-
-	result := jobs.FindProverJobs(nodes, nil)
-
-	if len(result) != 1 {
-		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
-	}
-
-	if len(result) > 0 && result[0].ID.String() != "1" {
-		t.Errorf("FindProverJobs() returned wrong node, got %s, want 1", result[0].ID.String())
-	}
+	return m
 }
 
 // TestFindProverJobs_EmptyInput tests that FindProverJobs handles empty input.
 func TestFindProverJobs_EmptyInput(t *testing.T) {
-	result := jobs.FindProverJobs(nil, nil)
+	result := jobs.FindProverJobs(nil, nil, nil)
 	if len(result) != 0 {
-		t.Errorf("FindProverJobs(nil) returned %d nodes, want 0", len(result))
+		t.Errorf("FindProverJobs(nil, nil, nil) returned %d nodes, want 0", len(result))
 	}
 
-	result = jobs.FindProverJobs([]*node.Node{}, nil)
+	result = jobs.FindProverJobs([]*node.Node{}, map[string]*node.Node{}, map[string][]*node.Challenge{})
 	if len(result) != 0 {
-		t.Errorf("FindProverJobs([]) returned %d nodes, want 0", len(result))
+		t.Errorf("FindProverJobs([], {}, {}) returned %d nodes, want 0", len(result))
 	}
 }
 
-// TestFindProverJobs_MixedStates tests FindProverJobs with a mix of different states.
-func TestFindProverJobs_MixedStates(t *testing.T) {
-	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),     // include
-		createTestNode(t, "1.1", schema.WorkflowClaimed, schema.EpistemicPending),     // exclude: claimed
-		createTestNode(t, "1.2", schema.WorkflowBlocked, schema.EpistemicPending),     // exclude: blocked
-		createTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicValidated), // exclude: validated
-		createTestNode(t, "1.4", schema.WorkflowAvailable, schema.EpistemicAdmitted),  // exclude: admitted
-		createTestNode(t, "1.5", schema.WorkflowAvailable, schema.EpistemicRefuted),   // exclude: refuted
-		createTestNode(t, "1.6", schema.WorkflowAvailable, schema.EpistemicArchived),  // exclude: archived
-		createTestNode(t, "1.7", schema.WorkflowAvailable, schema.EpistemicPending),   // include
-		createTestNode(t, "1.8", schema.WorkflowClaimed, schema.EpistemicValidated),   // exclude: both
+// TestFindProverJobs_NodeWithOpenChallengeIsProverJob tests the key behavior:
+// A node with an open challenge is a prover job (provers address challenges).
+func TestFindProverJobs_NodeWithOpenChallengeIsProverJob(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 1 (node has open challenge)", len(result))
+	}
+	if len(result) > 0 && result[0].ID.String() != "1" {
+		t.Errorf("FindProverJobs() returned %s, want 1", result[0].ID.String())
+	}
+}
+
+// TestFindProverJobs_NodeWithNoChallengesIsNotProverJob tests that a node
+// with no challenges is NOT a prover job (it's a verifier job).
+func TestFindProverJobs_NodeWithNoChallengesIsNotProverJob(t *testing.T) {
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{} // No challenges
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 0 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 0 (node has no challenges)", len(result))
+	}
+}
+
+// TestFindProverJobs_NodeWithResolvedChallengeIsNotProverJob tests that a node
+// with only resolved challenges is NOT a prover job.
+func TestFindProverJobs_NodeWithResolvedChallengeIsNotProverJob(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusResolved)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 0 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 0 (challenge is resolved)", len(result))
+	}
+}
+
+// TestFindProverJobs_NodeWithWithdrawnChallengeIsNotProverJob tests that a node
+// with only withdrawn challenges is NOT a prover job.
+func TestFindProverJobs_NodeWithWithdrawnChallengeIsNotProverJob(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusWithdrawn)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 0 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 0 (challenge is withdrawn)", len(result))
+	}
+}
+
+// TestFindProverJobs_NodeWithMixedChallengesIsProverJob tests that a node
+// with mixed challenges (some open, some resolved) IS a prover job.
+func TestFindProverJobs_NodeWithMixedChallengesIsProverJob(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	resolvedChallenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusResolved)
+	openChallenge := createProverTestChallenge(t, "ch-2", nodeID, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{resolvedChallenge, openChallenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 1 (node has open challenge)", len(result))
+	}
+}
+
+// TestFindProverJobs_OnlyPendingNodesCanBeProverJobs tests that only pending nodes
+// can be prover jobs.
+func TestFindProverJobs_OnlyPendingNodesCanBeProverJobs(t *testing.T) {
+	tests := []struct {
+		name      string
+		epistemic schema.EpistemicState
+		wantJob   bool
+	}{
+		{"pending with open challenge is prover job", schema.EpistemicPending, true},
+		{"validated is not prover job", schema.EpistemicValidated, false},
+		{"admitted is not prover job", schema.EpistemicAdmitted, false},
+		{"refuted is not prover job", schema.EpistemicRefuted, false},
+		{"archived is not prover job", schema.EpistemicArchived, false},
 	}
 
-	result := jobs.FindProverJobs(nodes, nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeID, _ := types.Parse("1")
+			n := createTestNode(t, "1", schema.WorkflowAvailable, tt.epistemic)
+			challenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
 
-	// Only nodes 1 and 1.7 should be included
-	if len(result) != 2 {
-		t.Errorf("FindProverJobs() returned %d nodes, want 2", len(result))
+			nodes := []*node.Node{n}
+			nodeMap := buildProverNodeMap(nodes)
+			challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
+
+			result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+			gotJob := len(result) > 0
+			if gotJob != tt.wantJob {
+				t.Errorf("FindProverJobs() with epistemic=%s returned job=%v, want job=%v",
+					tt.epistemic, gotJob, tt.wantJob)
+			}
+		})
 	}
+}
 
-	// Verify the correct nodes are returned
-	expectedIDs := map[string]bool{"1": true, "1.7": true}
-	for _, n := range result {
-		if !expectedIDs[n.ID.String()] {
-			t.Errorf("FindProverJobs() returned unexpected node %s", n.ID.String())
-		}
-		delete(expectedIDs, n.ID.String())
+// TestFindProverJobs_BlockedNodesCannotBeProverJobs tests that blocked nodes
+// cannot be prover jobs even with open challenges.
+func TestFindProverJobs_BlockedNodesCannotBeProverJobs(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowBlocked, schema.EpistemicPending)
+	challenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 0 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 0 (node is blocked)", len(result))
 	}
+}
 
-	if len(expectedIDs) > 0 {
-		for id := range expectedIDs {
-			t.Errorf("FindProverJobs() did not return expected node %s", id)
-		}
+// TestFindProverJobs_ClaimedNodesCanBeProverJobs tests that claimed nodes
+// with open challenges can be prover jobs (prover is working on them).
+func TestFindProverJobs_ClaimedNodesCanBeProverJobs(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowClaimed, schema.EpistemicPending)
+	challenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	// Claimed nodes WITH open challenges should still be shown as prover jobs
+	// because they are actively being worked on by a prover
+	if len(result) != 1 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 1 (claimed node with open challenge is prover job)", len(result))
+	}
+}
+
+// TestFindProverJobs_AvailableNodesWithChallengesAreProverJobs tests that available
+// nodes with open challenges are prover jobs.
+func TestFindProverJobs_AvailableNodesWithChallengesAreProverJobs(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
+	}
+}
+
+// TestFindProverJobs_MultipleOpenChallenges tests a node with multiple open challenges.
+func TestFindProverJobs_MultipleOpenChallenges(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge1 := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
+	challenge2 := createProverTestChallenge(t, "ch-2", nodeID, node.ChallengeStatusOpen)
+	challenge3 := createProverTestChallenge(t, "ch-3", nodeID, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge1, challenge2, challenge3})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 1 (node has multiple open challenges)", len(result))
+	}
+}
+
+// TestFindProverJobs_MultipleProverJobs tests finding multiple prover jobs.
+func TestFindProverJobs_MultipleProverJobs(t *testing.T) {
+	nodeID1, _ := types.Parse("1.1")
+	nodeID2, _ := types.Parse("1.2")
+	nodeID3, _ := types.Parse("1.3")
+
+	node1 := createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)
+	node2 := createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending)
+	node3 := createTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	challenge1 := createProverTestChallenge(t, "ch-1", nodeID1, node.ChallengeStatusOpen)
+	challenge2 := createProverTestChallenge(t, "ch-2", nodeID2, node.ChallengeStatusOpen)
+	challenge3 := createProverTestChallenge(t, "ch-3", nodeID3, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{node1, node2, node3}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge1, challenge2, challenge3})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 3 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 3", len(result))
 	}
 }
 
 // TestFindProverJobs_PreservesOrder tests that the order of returned nodes
-// matches the input order (for nodes that qualify).
+// matches the input order.
 func TestFindProverJobs_PreservesOrder(t *testing.T) {
-	nodes := []*node.Node{
-		createTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending),
-		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),
-		createTestNode(t, "1.2", schema.WorkflowClaimed, schema.EpistemicPending),   // excluded
-		createTestNode(t, "1.4", schema.WorkflowAvailable, schema.EpistemicPending),
-	}
+	nodeID3, _ := types.Parse("1.3")
+	nodeID1, _ := types.Parse("1.1")
+	nodeID2, _ := types.Parse("1.2")
 
-	result := jobs.FindProverJobs(nodes, nil)
+	node3 := createTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending)
+	node1 := createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)
+	node2 := createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	challenge3 := createProverTestChallenge(t, "ch-3", nodeID3, node.ChallengeStatusOpen)
+	challenge1 := createProverTestChallenge(t, "ch-1", nodeID1, node.ChallengeStatusOpen)
+	challenge2 := createProverTestChallenge(t, "ch-2", nodeID2, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{node3, node1, node2}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge3, challenge1, challenge2})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
 
 	if len(result) != 3 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 3", len(result))
 		return
 	}
 
-	// Verify order matches input (excluding filtered nodes)
-	expectedOrder := []string{"1.3", "1.1", "1.4"}
+	expectedOrder := []string{"1.3", "1.1", "1.2"}
 	for i, n := range result {
 		if n.ID.String() != expectedOrder[i] {
 			t.Errorf("FindProverJobs() result[%d] = %s, want %s", i, n.ID.String(), expectedOrder[i])
@@ -261,108 +337,105 @@ func TestFindProverJobs_PreservesOrder(t *testing.T) {
 // TestFindProverJobs_ReturnsOriginalPointers tests that the returned slice
 // contains pointers to the original nodes (not copies).
 func TestFindProverJobs_ReturnsOriginalPointers(t *testing.T) {
+	nodeID, _ := types.Parse("1")
 	original := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	nodes := []*node.Node{original}
+	challenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
 
-	result := jobs.FindProverJobs(nodes, nil)
+	nodes := []*node.Node{original}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
 
 	if len(result) != 1 {
 		t.Fatalf("FindProverJobs() returned %d nodes, want 1", len(result))
 	}
 
-	// Verify it's the same pointer
 	if result[0] != original {
 		t.Error("FindProverJobs() should return pointers to original nodes")
 	}
 }
 
 // TestFindProverJobs_AllNodesExcluded tests the case where all input nodes
-// are excluded.
+// are excluded (no open challenges).
 func TestFindProverJobs_AllNodesExcluded(t *testing.T) {
 	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowClaimed, schema.EpistemicPending),
-		createTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending),
-		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated),
+		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),   // no challenges
+		createTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending),   // blocked
+		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated), // not pending
 	}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{} // No challenges
 
-	result := jobs.FindProverJobs(nodes, nil)
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
 
 	if len(result) != 0 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 0", len(result))
 	}
 }
 
-// TestFindProverJobs_ExcludesNodesWithAllValidatedChildren tests that nodes
-// with all validated children are excluded (they are verifier jobs, not prover jobs).
-// This is the key bug fix for vibefeld-99ab.
-func TestFindProverJobs_ExcludesNodesWithAllValidatedChildren(t *testing.T) {
-	// Parent is available + pending but has all validated children -> verifier job, not prover job
-	parent := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	child1 := createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child2 := createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
+// TestFindProverJobs_MixedStates tests FindProverJobs with a mix of different states.
+func TestFindProverJobs_MixedStates(t *testing.T) {
+	nodeID1, _ := types.Parse("1")
+	nodeID3, _ := types.Parse("1.3")
 
-	nodes := []*node.Node{parent, child1, child2}
+	nodes := []*node.Node{
+		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),     // open challenge -> prover
+		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),   // no challenges -> not prover
+		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated), // not pending -> not prover
+		createTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending),   // open challenge -> prover
+		createTestNode(t, "1.4", schema.WorkflowBlocked, schema.EpistemicPending),     // blocked -> not prover
+	}
 	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{
+		createProverTestChallenge(t, "ch-1", nodeID1, node.ChallengeStatusOpen),
+		createProverTestChallenge(t, "ch-3", nodeID3, node.ChallengeStatusOpen),
+	})
 
-	result := jobs.FindProverJobs(nodes, nodeMap)
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
 
-	// Parent should NOT be returned (it's a verifier job because all children are validated)
+	// Nodes 1 and 1.3 should be prover jobs
+	expectedIDs := map[string]bool{"1": true, "1.3": true}
+	if len(result) != len(expectedIDs) {
+		t.Errorf("FindProverJobs() returned %d nodes, want %d", len(result), len(expectedIDs))
+	}
 	for _, n := range result {
-		if n.ID.String() == "1" {
-			t.Error("FindProverJobs() should not return node 1 because all its children are validated (it's a verifier job)")
+		if !expectedIDs[n.ID.String()] {
+			t.Errorf("FindProverJobs() returned unexpected node %s", n.ID.String())
 		}
 	}
 }
 
-// TestFindProverJobs_IncludesNodesWithUnvalidatedChildren tests that nodes
-// with some unvalidated children are included (they still need prover work).
-func TestFindProverJobs_IncludesNodesWithUnvalidatedChildren(t *testing.T) {
-	// Parent is available + pending with one validated and one pending child -> prover job
-	parent := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	child1 := createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child2 := createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending) // Not validated
-
-	nodes := []*node.Node{parent, child1, child2}
+// TestFindProverJobs_NilChallengeMapTreatedAsEmpty tests that nil challengeMap
+// is treated as empty (no prover jobs).
+func TestFindProverJobs_NilChallengeMapTreatedAsEmpty(t *testing.T) {
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	nodes := []*node.Node{n}
 	nodeMap := buildProverNodeMap(nodes)
 
-	result := jobs.FindProverJobs(nodes, nodeMap)
+	result := jobs.FindProverJobs(nodes, nodeMap, nil)
 
-	// Parent should be returned (it still needs work because child2 is not validated)
-	found := false
-	for _, n := range result {
-		if n.ID.String() == "1" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("FindProverJobs() should return node 1 because it has unvalidated children")
-	}
-
-	// child2 should also be returned (it's available + pending)
-	found = false
-	for _, n := range result {
-		if n.ID.String() == "1.2" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("FindProverJobs() should return node 1.2 (available + pending)")
+	// With nil challengeMap, no challenges exist, so no prover jobs
+	if len(result) != 0 {
+		t.Errorf("FindProverJobs() with nil challengeMap returned %d nodes, want 0", len(result))
 	}
 }
 
-// TestFindProverJobs_IncludesLeafNodesWithNoChildren tests that leaf nodes
-// (no children) are included as prover jobs.
-func TestFindProverJobs_IncludesLeafNodesWithNoChildren(t *testing.T) {
-	// Leaf node with no children -> prover job (needs refinement)
-	leaf := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+// TestFindProverJobs_ChildrenDontAffectProverStatus tests that children's states
+// don't affect whether a node is a prover job (only challenges matter).
+func TestFindProverJobs_ChildrenDontAffectProverStatus(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	parent := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	child := createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated) // validated child
+	challenge := createProverTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
 
-	nodes := []*node.Node{leaf}
+	nodes := []*node.Node{parent, child}
 	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
 
-	result := jobs.FindProverJobs(nodes, nodeMap)
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
 
+	// Only parent should be prover job (has challenge), child has no challenge
 	if len(result) != 1 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
 	}

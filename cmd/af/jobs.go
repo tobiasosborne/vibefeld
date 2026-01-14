@@ -18,16 +18,19 @@ func newJobsCmd() *cobra.Command {
 		Short: "List available jobs",
 		Long: `List available prover and verifier jobs in the proof.
 
-Prover jobs are nodes that need proof work:
-  - WorkflowState = "available" and EpistemicState = "pending"
-  - Do not have all children validated (those are verifier jobs)
+Verifier jobs are nodes ready for review (breadth-first model):
+  - Has a statement
+  - EpistemicState = "pending" (not yet verified)
+  - WorkflowState = "available" (not claimed or blocked)
+  - Has NO open/unresolved challenges
 
-Verifier jobs are nodes ready for review:
-  - EpistemicState = "pending" and WorkflowState != "blocked"
-  - Have children and all children are validated
+Prover jobs are nodes with challenges that need addressing:
+  - EpistemicState = "pending"
+  - Has one or more open challenges
 
-After a prover refines a node (adds children) and releases it, the node
-becomes a verifier job once all children are validated.
+Every new node is immediately a verifier job. When a verifier raises a
+challenge, the node becomes a prover job. When challenges are resolved,
+the node returns to verifier territory for final acceptance.
 
 Examples:
   af jobs                     List all available jobs
@@ -92,8 +95,22 @@ func runJobs(cmd *cobra.Command, args []string) error {
 		nodeMap[n.ID.String()] = n
 	}
 
+	// Build challenge map from state challenges
+	// Maps node ID string -> slice of challenges on that node
+	challengeMap := make(map[string][]*node.Challenge)
+	for _, c := range st.AllChallenges() {
+		nodeIDStr := c.NodeID.String()
+		// Convert state.Challenge to node.Challenge (only Status field is needed by jobs package)
+		nc := &node.Challenge{
+			ID:       c.ID,
+			TargetID: c.NodeID,
+			Status:   node.ChallengeStatus(c.Status),
+		}
+		challengeMap[nodeIDStr] = append(challengeMap[nodeIDStr], nc)
+	}
+
 	// Find jobs
-	jobResult := jobs.FindJobs(nodes, nodeMap)
+	jobResult := jobs.FindJobs(nodes, nodeMap, challengeMap)
 
 	// Apply role filter if specified
 	if roleSet && role == "prover" {

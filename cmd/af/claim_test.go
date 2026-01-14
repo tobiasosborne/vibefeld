@@ -815,7 +815,7 @@ func TestClaimCmd_ExpectedFlags(t *testing.T) {
 	}
 
 	// Check expected flags exist
-	expectedFlags := []string{"owner", "timeout", "dir", "format"}
+	expectedFlags := []string{"owner", "timeout", "dir", "format", "role"}
 	for _, flagName := range expectedFlags {
 		if claimCmd.Flags().Lookup(flagName) == nil && claimCmd.PersistentFlags().Lookup(flagName) == nil {
 			t.Errorf("expected claim command to have flag %q", flagName)
@@ -828,6 +828,7 @@ func TestClaimCmd_ExpectedFlags(t *testing.T) {
 		"t": "timeout",
 		"d": "dir",
 		"f": "format",
+		"r": "role",
 	}
 
 	for short, long := range shortFlags {

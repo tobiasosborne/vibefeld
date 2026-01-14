@@ -1,5 +1,3 @@
-//go:build integration
-
 // Package jobs_test contains tests for the jobs package facade.
 package jobs_test
 
@@ -31,6 +29,17 @@ func createJobsTestNode(t *testing.T, idStr string, workflow schema.WorkflowStat
 	return n
 }
 
+// createJobsTestChallenge creates a test challenge for a node.
+func createJobsTestChallenge(t *testing.T, id string, targetID types.NodeID, status node.ChallengeStatus) *node.Challenge {
+	t.Helper()
+	c, err := node.NewChallenge(id, targetID, schema.TargetStatement, "Test challenge reason")
+	if err != nil {
+		t.Fatalf("node.NewChallenge() error: %v", err)
+	}
+	c.Status = status
+	return c
+}
+
 // buildJobsNodeMap builds a map from node ID string to node pointer.
 func buildJobsNodeMap(nodes []*node.Node) map[string]*node.Node {
 	m := make(map[string]*node.Node)
@@ -40,103 +49,154 @@ func buildJobsNodeMap(nodes []*node.Node) map[string]*node.Node {
 	return m
 }
 
+// buildJobsChallengeMap builds a map from node ID string to challenges on that node.
+func buildJobsChallengeMap(challenges []*node.Challenge) map[string][]*node.Challenge {
+	m := make(map[string][]*node.Challenge)
+	for _, c := range challenges {
+		key := c.TargetID.String()
+		m[key] = append(m[key], c)
+	}
+	return m
+}
+
 // TestFindJobs_EmptyInput tests that FindJobs handles empty input.
 func TestFindJobs_EmptyInput(t *testing.T) {
 	// Test with nil slice
-	result := jobs.FindJobs(nil, nil)
+	result := jobs.FindJobs(nil, nil, nil)
 	if result == nil {
-		t.Fatal("FindJobs(nil, nil) returned nil, want non-nil JobResult")
+		t.Fatal("FindJobs(nil, nil, nil) returned nil, want non-nil JobResult")
 	}
 	if len(result.ProverJobs) != 0 {
-		t.Errorf("FindJobs(nil, nil).ProverJobs has %d nodes, want 0", len(result.ProverJobs))
+		t.Errorf("FindJobs(nil, nil, nil).ProverJobs has %d nodes, want 0", len(result.ProverJobs))
 	}
 	if len(result.VerifierJobs) != 0 {
-		t.Errorf("FindJobs(nil, nil).VerifierJobs has %d nodes, want 0", len(result.VerifierJobs))
+		t.Errorf("FindJobs(nil, nil, nil).VerifierJobs has %d nodes, want 0", len(result.VerifierJobs))
 	}
 
 	// Test with empty slice
-	result = jobs.FindJobs([]*node.Node{}, map[string]*node.Node{})
+	result = jobs.FindJobs([]*node.Node{}, map[string]*node.Node{}, map[string][]*node.Challenge{})
 	if result == nil {
-		t.Fatal("FindJobs([], {}) returned nil, want non-nil JobResult")
+		t.Fatal("FindJobs([], {}, {}) returned nil, want non-nil JobResult")
 	}
 	if len(result.ProverJobs) != 0 {
-		t.Errorf("FindJobs([], {}).ProverJobs has %d nodes, want 0", len(result.ProverJobs))
+		t.Errorf("FindJobs([], {}, {}).ProverJobs has %d nodes, want 0", len(result.ProverJobs))
 	}
 	if len(result.VerifierJobs) != 0 {
-		t.Errorf("FindJobs([], {}).VerifierJobs has %d nodes, want 0", len(result.VerifierJobs))
+		t.Errorf("FindJobs([], {}, {}).VerifierJobs has %d nodes, want 0", len(result.VerifierJobs))
 	}
 }
 
-// TestFindJobs_ReturnsBothProverAndVerifierJobs tests that FindJobs returns both types of jobs.
-func TestFindJobs_ReturnsBothProverAndVerifierJobs(t *testing.T) {
-	// Create a prover job: available + pending
-	proverNode := createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)
+// TestFindJobs_BreadthFirstModel tests the new breadth-first adversarial model.
+// New nodes with no challenges are verifier jobs.
+// Challenged nodes are prover jobs.
+func TestFindJobs_BreadthFirstModel(t *testing.T) {
+	nodeID1, _ := types.Parse("1")
 
-	// Create a verifier job: claimed + pending + no children (or all children validated)
-	verifierNode := createJobsTestNode(t, "1.2", schema.WorkflowClaimed, schema.EpistemicPending)
+	// Node 1.1 has no challenges -> verifier job
+	verifierNode := createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)
 
-	nodes := []*node.Node{proverNode, verifierNode}
+	// Node 1 has an open challenge -> prover job
+	proverNode := createJobsTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createJobsTestChallenge(t, "ch-1", nodeID1, node.ChallengeStatusOpen)
+
+	nodes := []*node.Node{verifierNode, proverNode}
 	nodeMap := buildJobsNodeMap(nodes)
+	challengeMap := buildJobsChallengeMap([]*node.Challenge{challenge})
 
-	result := jobs.FindJobs(nodes, nodeMap)
+	result := jobs.FindJobs(nodes, nodeMap, challengeMap)
 
 	if result == nil {
 		t.Fatal("FindJobs() returned nil")
 	}
 
-	// Check prover jobs
+	// Check prover jobs - only node 1 (has open challenge)
 	if len(result.ProverJobs) != 1 {
 		t.Errorf("FindJobs().ProverJobs has %d nodes, want 1", len(result.ProverJobs))
-	} else if result.ProverJobs[0].ID.String() != "1.1" {
-		t.Errorf("FindJobs().ProverJobs[0].ID = %s, want 1.1", result.ProverJobs[0].ID.String())
+	} else if result.ProverJobs[0].ID.String() != "1" {
+		t.Errorf("FindJobs().ProverJobs[0].ID = %s, want 1", result.ProverJobs[0].ID.String())
 	}
 
-	// Check verifier jobs
+	// Check verifier jobs - only node 1.1 (no challenges)
 	if len(result.VerifierJobs) != 1 {
 		t.Errorf("FindJobs().VerifierJobs has %d nodes, want 1", len(result.VerifierJobs))
-	} else if result.VerifierJobs[0].ID.String() != "1.2" {
-		t.Errorf("FindJobs().VerifierJobs[0].ID = %s, want 1.2", result.VerifierJobs[0].ID.String())
+	} else if result.VerifierJobs[0].ID.String() != "1.1" {
+		t.Errorf("FindJobs().VerifierJobs[0].ID = %s, want 1.1", result.VerifierJobs[0].ID.String())
 	}
 }
 
-// TestFindJobs_HandlesNodesNeitherProverNorVerifierJobs tests nodes that don't qualify for either job type.
-func TestFindJobs_HandlesNodesNeitherProverNorVerifierJobs(t *testing.T) {
-	// Create nodes that are neither prover nor verifier jobs
+// TestFindJobs_HandlesMixedStates tests FindJobs with a variety of node states.
+func TestFindJobs_HandlesMixedStates(t *testing.T) {
+	nodeID1, _ := types.Parse("1")
+	nodeID3, _ := types.Parse("1.3")
+
 	nodes := []*node.Node{
-		// Blocked + pending: not a prover job (not available), not a verifier job (not claimed)
-		createJobsTestNode(t, "1", schema.WorkflowBlocked, schema.EpistemicPending),
-		// Available + validated: not a prover job (not pending), not a verifier job (not claimed)
-		createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated),
-		// Claimed + validated: not a prover job (not available), not a verifier job (not pending)
-		createJobsTestNode(t, "1.2", schema.WorkflowClaimed, schema.EpistemicValidated),
+		// Prover jobs (has open challenge, pending, not blocked)
+		createJobsTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),
+		createJobsTestNode(t, "1.3", schema.WorkflowClaimed, schema.EpistemicPending), // claimed but has challenge
+
+		// Verifier jobs (no challenges, pending, available)
+		createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),
+		createJobsTestNode(t, "1.5", schema.WorkflowAvailable, schema.EpistemicPending),
+
+		// Neither (various exclusion reasons)
+		createJobsTestNode(t, "1.2", schema.WorkflowBlocked, schema.EpistemicPending),     // blocked
+		createJobsTestNode(t, "1.4", schema.WorkflowAvailable, schema.EpistemicValidated), // not pending
+		createJobsTestNode(t, "1.6", schema.WorkflowClaimed, schema.EpistemicPending),     // claimed, no challenge
 	}
 	nodeMap := buildJobsNodeMap(nodes)
+	challengeMap := buildJobsChallengeMap([]*node.Challenge{
+		createJobsTestChallenge(t, "ch-1", nodeID1, node.ChallengeStatusOpen),
+		createJobsTestChallenge(t, "ch-3", nodeID3, node.ChallengeStatusOpen),
+	})
 
-	result := jobs.FindJobs(nodes, nodeMap)
+	result := jobs.FindJobs(nodes, nodeMap, challengeMap)
 
 	if result == nil {
 		t.Fatal("FindJobs() returned nil")
 	}
-	if len(result.ProverJobs) != 0 {
-		t.Errorf("FindJobs().ProverJobs has %d nodes, want 0", len(result.ProverJobs))
+
+	// Verify prover jobs (1 and 1.3 have open challenges)
+	expectedProver := map[string]bool{"1": true, "1.3": true}
+	if len(result.ProverJobs) != len(expectedProver) {
+		t.Errorf("FindJobs().ProverJobs has %d nodes, want %d", len(result.ProverJobs), len(expectedProver))
 	}
-	if len(result.VerifierJobs) != 0 {
-		t.Errorf("FindJobs().VerifierJobs has %d nodes, want 0", len(result.VerifierJobs))
+	for _, n := range result.ProverJobs {
+		if !expectedProver[n.ID.String()] {
+			t.Errorf("FindJobs().ProverJobs contains unexpected node %s", n.ID.String())
+		}
+	}
+
+	// Verify verifier jobs (1.1 and 1.5 have no challenges, are available and pending)
+	expectedVerifier := map[string]bool{"1.1": true, "1.5": true}
+	if len(result.VerifierJobs) != len(expectedVerifier) {
+		t.Errorf("FindJobs().VerifierJobs has %d nodes, want %d", len(result.VerifierJobs), len(expectedVerifier))
+	}
+	for _, n := range result.VerifierJobs {
+		if !expectedVerifier[n.ID.String()] {
+			t.Errorf("FindJobs().VerifierJobs contains unexpected node %s", n.ID.String())
+		}
 	}
 }
 
 // TestFindJobs_PreservesOrdering tests that the order of returned nodes matches the input order.
 func TestFindJobs_PreservesOrdering(t *testing.T) {
+	nodeID4, _ := types.Parse("1.4")
+	nodeID1, _ := types.Parse("1.1")
+
 	// Create nodes in specific order
 	nodes := []*node.Node{
-		createJobsTestNode(t, "1.4", schema.WorkflowAvailable, schema.EpistemicPending), // prover job
-		createJobsTestNode(t, "1.2", schema.WorkflowClaimed, schema.EpistemicPending),   // verifier job
-		createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending), // prover job
-		createJobsTestNode(t, "1.3", schema.WorkflowClaimed, schema.EpistemicPending),   // verifier job
+		createJobsTestNode(t, "1.4", schema.WorkflowAvailable, schema.EpistemicPending), // prover (has challenge)
+		createJobsTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending), // verifier (no challenge)
+		createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending), // prover (has challenge)
+		createJobsTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending), // verifier (no challenge)
 	}
 	nodeMap := buildJobsNodeMap(nodes)
+	challengeMap := buildJobsChallengeMap([]*node.Challenge{
+		createJobsTestChallenge(t, "ch-4", nodeID4, node.ChallengeStatusOpen),
+		createJobsTestChallenge(t, "ch-1", nodeID1, node.ChallengeStatusOpen),
+	})
 
-	result := jobs.FindJobs(nodes, nodeMap)
+	result := jobs.FindJobs(nodes, nodeMap, challengeMap)
 
 	if result == nil {
 		t.Fatal("FindJobs() returned nil")
@@ -167,63 +227,25 @@ func TestFindJobs_PreservesOrdering(t *testing.T) {
 	}
 }
 
-// TestFindJobs_MixedNodeStates tests FindJobs with a variety of node states.
-func TestFindJobs_MixedNodeStates(t *testing.T) {
-	nodes := []*node.Node{
-		// Prover jobs (available + pending)
-		createJobsTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),
-		createJobsTestNode(t, "1.5", schema.WorkflowAvailable, schema.EpistemicPending),
-
-		// Verifier jobs (claimed + pending + no unvalidated children)
-		createJobsTestNode(t, "1.1", schema.WorkflowClaimed, schema.EpistemicPending),
-		createJobsTestNode(t, "1.3", schema.WorkflowClaimed, schema.EpistemicPending),
-
-		// Neither
-		createJobsTestNode(t, "1.2", schema.WorkflowBlocked, schema.EpistemicPending),
-		createJobsTestNode(t, "1.4", schema.WorkflowAvailable, schema.EpistemicValidated),
-		createJobsTestNode(t, "1.6", schema.WorkflowClaimed, schema.EpistemicAdmitted),
-	}
-	nodeMap := buildJobsNodeMap(nodes)
-
-	result := jobs.FindJobs(nodes, nodeMap)
-
-	if result == nil {
-		t.Fatal("FindJobs() returned nil")
-	}
-
-	// Verify prover jobs
-	expectedProver := map[string]bool{"1": true, "1.5": true}
-	if len(result.ProverJobs) != len(expectedProver) {
-		t.Errorf("FindJobs().ProverJobs has %d nodes, want %d", len(result.ProverJobs), len(expectedProver))
-	}
-	for _, n := range result.ProverJobs {
-		if !expectedProver[n.ID.String()] {
-			t.Errorf("FindJobs().ProverJobs contains unexpected node %s", n.ID.String())
-		}
-	}
-
-	// Verify verifier jobs
-	expectedVerifier := map[string]bool{"1.1": true, "1.3": true}
-	if len(result.VerifierJobs) != len(expectedVerifier) {
-		t.Errorf("FindJobs().VerifierJobs has %d nodes, want %d", len(result.VerifierJobs), len(expectedVerifier))
-	}
-	for _, n := range result.VerifierJobs {
-		if !expectedVerifier[n.ID.String()] {
-			t.Errorf("FindJobs().VerifierJobs contains unexpected node %s", n.ID.String())
-		}
-	}
-}
-
-// TestFindJobs_OnlyProverJobs tests when only prover jobs exist.
+// TestFindJobs_OnlyProverJobs tests when only prover jobs exist (all have challenges).
 func TestFindJobs_OnlyProverJobs(t *testing.T) {
+	nodeID1, _ := types.Parse("1")
+	nodeID2, _ := types.Parse("1.1")
+	nodeID3, _ := types.Parse("1.2")
+
 	nodes := []*node.Node{
 		createJobsTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),
 		createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),
 		createJobsTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
 	nodeMap := buildJobsNodeMap(nodes)
+	challengeMap := buildJobsChallengeMap([]*node.Challenge{
+		createJobsTestChallenge(t, "ch-1", nodeID1, node.ChallengeStatusOpen),
+		createJobsTestChallenge(t, "ch-2", nodeID2, node.ChallengeStatusOpen),
+		createJobsTestChallenge(t, "ch-3", nodeID3, node.ChallengeStatusOpen),
+	})
 
-	result := jobs.FindJobs(nodes, nodeMap)
+	result := jobs.FindJobs(nodes, nodeMap, challengeMap)
 
 	if result == nil {
 		t.Fatal("FindJobs() returned nil")
@@ -236,18 +258,17 @@ func TestFindJobs_OnlyProverJobs(t *testing.T) {
 	}
 }
 
-// TestFindJobs_OnlyVerifierJobs tests when only verifier jobs exist.
+// TestFindJobs_OnlyVerifierJobs tests when only verifier jobs exist (none have challenges).
 func TestFindJobs_OnlyVerifierJobs(t *testing.T) {
-	// Use sibling leaf nodes (1.1, 1.2, 1.3) which are all claimed + pending
-	// and have no children of their own, making them all valid verifier jobs.
 	nodes := []*node.Node{
-		createJobsTestNode(t, "1.1", schema.WorkflowClaimed, schema.EpistemicPending), // leaf, verifier job
-		createJobsTestNode(t, "1.2", schema.WorkflowClaimed, schema.EpistemicPending), // leaf, verifier job
-		createJobsTestNode(t, "1.3", schema.WorkflowClaimed, schema.EpistemicPending), // leaf, verifier job
+		createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),
+		createJobsTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending),
+		createJobsTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
 	nodeMap := buildJobsNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{} // No challenges
 
-	result := jobs.FindJobs(nodes, nodeMap)
+	result := jobs.FindJobs(nodes, nodeMap, challengeMap)
 
 	if result == nil {
 		t.Fatal("FindJobs() returned nil")
@@ -262,13 +283,16 @@ func TestFindJobs_OnlyVerifierJobs(t *testing.T) {
 
 // TestFindJobs_ReturnsOriginalPointers tests that the returned slices contain pointers to the original nodes.
 func TestFindJobs_ReturnsOriginalPointers(t *testing.T) {
+	nodeID, _ := types.Parse("1")
 	proverNode := createJobsTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
-	verifierNode := createJobsTestNode(t, "1.1", schema.WorkflowClaimed, schema.EpistemicPending)
+	verifierNode := createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createJobsTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
 
 	nodes := []*node.Node{proverNode, verifierNode}
 	nodeMap := buildJobsNodeMap(nodes)
+	challengeMap := buildJobsChallengeMap([]*node.Challenge{challenge})
 
-	result := jobs.FindJobs(nodes, nodeMap)
+	result := jobs.FindJobs(nodes, nodeMap, challengeMap)
 
 	if result == nil {
 		t.Fatal("FindJobs() returned nil")
@@ -291,67 +315,33 @@ func TestFindJobs_ReturnsOriginalPointers(t *testing.T) {
 	}
 }
 
-// TestFindJobs_VerifierJobsRequireValidatedChildren tests that verifier jobs must have all children validated.
-func TestFindJobs_VerifierJobsRequireValidatedChildren(t *testing.T) {
-	// Parent is claimed + pending, but child is not validated
-	parent := createJobsTestNode(t, "1", schema.WorkflowClaimed, schema.EpistemicPending)
-	child := createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending) // Not validated
+// TestFindJobs_ChallengeResolutionTransitionsJob tests that when a challenge is resolved,
+// the node transitions from prover job to verifier job.
+func TestFindJobs_ChallengeResolutionTransitionsJob(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createJobsTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
 
-	nodes := []*node.Node{parent, child}
+	nodes := []*node.Node{n}
 	nodeMap := buildJobsNodeMap(nodes)
 
-	result := jobs.FindJobs(nodes, nodeMap)
+	// With open challenge: prover job
+	openChallenge := createJobsTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusOpen)
+	challengeMap := buildJobsChallengeMap([]*node.Challenge{openChallenge})
 
-	if result == nil {
-		t.Fatal("FindJobs() returned nil")
+	result := jobs.FindJobs(nodes, nodeMap, challengeMap)
+	if len(result.ProverJobs) != 1 || len(result.VerifierJobs) != 0 {
+		t.Errorf("With open challenge: got %d prover, %d verifier; want 1 prover, 0 verifier",
+			len(result.ProverJobs), len(result.VerifierJobs))
 	}
 
-	// Parent should NOT be a verifier job because child is not validated
-	for _, n := range result.VerifierJobs {
-		if n.ID.String() == "1" {
-			t.Error("FindJobs().VerifierJobs should not contain node 1 because it has unvalidated children")
-		}
-	}
+	// With resolved challenge: verifier job
+	resolvedChallenge := createJobsTestChallenge(t, "ch-1", nodeID, node.ChallengeStatusResolved)
+	challengeMap = buildJobsChallengeMap([]*node.Challenge{resolvedChallenge})
 
-	// Child should be a prover job
-	found := false
-	for _, n := range result.ProverJobs {
-		if n.ID.String() == "1.1" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("FindJobs().ProverJobs should contain node 1.1")
-	}
-}
-
-// TestFindJobs_VerifierJobWithValidatedChildren tests that a node with all validated children is a verifier job.
-func TestFindJobs_VerifierJobWithValidatedChildren(t *testing.T) {
-	// Parent is claimed + pending, all children are validated
-	parent := createJobsTestNode(t, "1", schema.WorkflowClaimed, schema.EpistemicPending)
-	child1 := createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
-	child2 := createJobsTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
-
-	nodes := []*node.Node{parent, child1, child2}
-	nodeMap := buildJobsNodeMap(nodes)
-
-	result := jobs.FindJobs(nodes, nodeMap)
-
-	if result == nil {
-		t.Fatal("FindJobs() returned nil")
-	}
-
-	// Parent should be a verifier job because all children are validated
-	found := false
-	for _, n := range result.VerifierJobs {
-		if n.ID.String() == "1" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("FindJobs().VerifierJobs should contain node 1 because all its children are validated")
+	result = jobs.FindJobs(nodes, nodeMap, challengeMap)
+	if len(result.ProverJobs) != 0 || len(result.VerifierJobs) != 1 {
+		t.Errorf("With resolved challenge: got %d prover, %d verifier; want 0 prover, 1 verifier",
+			len(result.ProverJobs), len(result.VerifierJobs))
 	}
 }
 
@@ -373,7 +363,7 @@ func TestJobResult_IsEmpty(t *testing.T) {
 
 	// Result with verifier jobs
 	verifierResult := &jobs.JobResult{
-		VerifierJobs: []*node.Node{createJobsTestNode(t, "1.1", schema.WorkflowClaimed, schema.EpistemicPending)},
+		VerifierJobs: []*node.Node{createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)},
 	}
 	if verifierResult.IsEmpty() {
 		t.Error("JobResult.IsEmpty() should return false when VerifierJobs is non-empty")
@@ -382,7 +372,7 @@ func TestJobResult_IsEmpty(t *testing.T) {
 	// Result with both
 	bothResult := &jobs.JobResult{
 		ProverJobs:   []*node.Node{createJobsTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)},
-		VerifierJobs: []*node.Node{createJobsTestNode(t, "1.1", schema.WorkflowClaimed, schema.EpistemicPending)},
+		VerifierJobs: []*node.Node{createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)},
 	}
 	if bothResult.IsEmpty() {
 		t.Error("JobResult.IsEmpty() should return false when both job slices are non-empty")
@@ -392,10 +382,10 @@ func TestJobResult_IsEmpty(t *testing.T) {
 // TestJobResult_TotalCount tests the TotalCount method on JobResult.
 func TestJobResult_TotalCount(t *testing.T) {
 	tests := []struct {
-		name           string
-		proverCount    int
-		verifierCount  int
-		expectedTotal  int
+		name          string
+		proverCount   int
+		verifierCount int
+		expectedTotal int
 	}{
 		{"empty", 0, 0, 0},
 		{"only prover", 3, 0, 3},
@@ -416,7 +406,7 @@ func TestJobResult_TotalCount(t *testing.T) {
 			// Add verifier jobs
 			for i := 0; i < tt.verifierCount; i++ {
 				result.VerifierJobs = append(result.VerifierJobs,
-					createJobsTestNode(t, "1.1", schema.WorkflowClaimed, schema.EpistemicPending))
+					createJobsTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending))
 			}
 
 			if got := result.TotalCount(); got != tt.expectedTotal {

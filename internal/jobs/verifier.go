@@ -9,25 +9,28 @@ import (
 
 // FindVerifierJobs returns nodes ready for verifier review.
 // A verifier job is a node that:
-//   - WorkflowState != "blocked" (not blocked by dependencies)
+//   - Has a statement (was refined/created with content)
 //   - EpistemicState = "pending" (not yet verified)
-//   - Has children AND all children have EpistemicState = "validated" (refinement complete)
+//   - WorkflowState = "available" (not claimed or blocked)
+//   - Has no unresolved/open challenges
 //
-// Note: The WorkflowState can be either "claimed" or "available". After a prover
-// refines a node and releases it, the node should appear as a verifier job.
-// Leaf nodes (no children) are NOT verifier jobs - they are prover jobs that need refinement.
+// This implements the "breadth-first" adversarial verification model where
+// every new node is immediately reviewable by verifiers. Challenges create
+// prover jobs; when challenges are resolved, the node becomes a verifier job again.
 //
-// This function requires a map of all nodes (keyed by ID string) to check children's states.
+// The challengeMap parameter maps node ID strings to the challenges on that node.
+// If challengeMap is nil, it is treated as empty (no challenges exist).
+//
 // The returned slice preserves the order of the input nodes.
 // The returned pointers are the same as the input pointers (not copies).
-func FindVerifierJobs(nodes []*node.Node, nodeMap map[string]*node.Node) []*node.Node {
+func FindVerifierJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) []*node.Node {
 	if len(nodes) == 0 {
 		return nil
 	}
 
 	var result []*node.Node
 	for _, n := range nodes {
-		if isVerifierJob(n, nodeMap) {
+		if isVerifierJob(n, challengeMap) {
 			result = append(result, n)
 		}
 	}
@@ -36,16 +39,21 @@ func FindVerifierJobs(nodes []*node.Node, nodeMap map[string]*node.Node) []*node
 
 // isVerifierJob checks if a single node qualifies as a verifier job.
 // A verifier job is a node that is ready for verifier review:
+//   - Has a statement (non-empty)
 //   - EpistemicState = "pending" (not yet verified)
-//   - WorkflowState != "blocked" (not blocked by dependencies)
-//   - Has children AND all children are validated (refinement is complete)
+//   - WorkflowState = "available" (not claimed or blocked)
+//   - Has no open/unresolved challenges
 //
-// Note: The WorkflowState can be either "claimed" or "available". After a prover
-// refines a node and releases it, the node becomes available but should still
-// appear as a verifier job once all children are validated.
-func isVerifierJob(n *node.Node, nodeMap map[string]*node.Node) bool {
-	// Must not be blocked
-	if n.WorkflowState == schema.WorkflowBlocked {
+// This is the breadth-first model: new nodes are immediately verifiable.
+// Challenges move nodes to prover territory until resolved.
+func isVerifierJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
+	// Must have a statement (nodes are created with statements, but check anyway)
+	if n.Statement == "" {
+		return false
+	}
+
+	// Must be available (not claimed, not blocked)
+	if n.WorkflowState != schema.WorkflowAvailable {
 		return false
 	}
 
@@ -54,29 +62,21 @@ func isVerifierJob(n *node.Node, nodeMap map[string]*node.Node) bool {
 		return false
 	}
 
-	// Must have children and all children must be validated.
-	// A node with no children is a prover job (needs refinement), not a verifier job.
-	return hasChildrenAllValidated(n, nodeMap)
+	// Must have no open challenges
+	return !hasOpenChallenges(n, challengeMap)
 }
 
-// hasChildrenAllValidated returns true if the node has at least one direct child
-// AND all direct children have EpistemicState = "validated".
-// Returns false if node has no children.
-func hasChildrenAllValidated(n *node.Node, nodeMap map[string]*node.Node) bool {
-	// Find direct children: nodes whose ID starts with n.ID and has depth n.ID.Depth() + 1
-	parentDepth := n.ID.Depth()
-	hasChildren := false
-
-	for _, child := range nodeMap {
-		// Check if this node is a direct child
-		if child.ID.Depth() == parentDepth+1 && n.ID.IsAncestorOf(child.ID) {
-			hasChildren = true
-			if child.EpistemicState != schema.EpistemicValidated {
-				return false
-			}
-		}
+// hasOpenChallenges returns true if the node has any open (unresolved) challenges.
+func hasOpenChallenges(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
+	if challengeMap == nil {
+		return false
 	}
 
-	// Only return true if we found at least one child and all were validated
-	return hasChildren
+	challenges := challengeMap[n.ID.String()]
+	for _, c := range challenges {
+		if c.Status == node.ChallengeStatusOpen {
+			return true
+		}
+	}
+	return false
 }
