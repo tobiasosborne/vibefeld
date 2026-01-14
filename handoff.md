@@ -66,7 +66,7 @@ All critical bugs remain fixed.
 ### P1 Issues: 0 remaining
 All high priority issues resolved.
 
-### P2 Issues: 6 remaining
+### P2 Issues: 7 remaining
 Run `bd ready` to see available work.
 
 ### Test Status
@@ -83,18 +83,19 @@ ok  github.com/tobias/vibefeld/internal/render
 
 Build succeeds: `go build ./cmd/af`
 
-### Known Issue Discovered
-Race condition in `Lock.Refresh()` at `internal/lock/lock.go:89` - writes to `expiresAt` without mutex protection. Documented in race_test.go, should be filed as separate issue.
+### Issue Filed This Session
+**vibefeld-mckr** (P2): Race condition in `Lock.Refresh()` at `internal/lock/lock.go:89` - writes to `expiresAt` without mutex protection. Documented in race_test.go.
 
 ## Next Steps
 
-Run `bd ready` to see 6 remaining P2 issues:
-1. **vibefeld-rccv**: Two lock systems with confusing naming
-2. **vibefeld-ugfn**: Duplicated allChildrenValidated logic
-3. **vibefeld-yxhf**: Epistemic state pre-transition validation
-4. **vibefeld-o9op**: Auto-compute taint after validation events
-5. **vibefeld-r89m**: Help text doesn't match actual CLI behavior
-6. **vibefeld-uxm1**: Inconsistent flag names across commands
+Run `bd ready` to see 7 remaining P2 issues:
+1. **vibefeld-mckr**: Race condition in Lock.Refresh() (NEW - filed this session)
+2. **vibefeld-rccv**: Two lock systems with confusing naming
+3. **vibefeld-ugfn**: Duplicated allChildrenValidated logic
+4. **vibefeld-yxhf**: Epistemic state pre-transition validation
+5. **vibefeld-o9op**: Auto-compute taint after validation events
+6. **vibefeld-r89m**: Help text doesn't match actual CLI behavior
+7. **vibefeld-uxm1**: Inconsistent flag names across commands
 
 ## Session History
 
