@@ -1,108 +1,95 @@
-# Handoff - 2026-01-14 (Session 38 - Part 2)
+# Handoff - 2026-01-14 (Session 38 - Part 3)
 
 ## What Was Accomplished This Session
 
-### Part 1: 4 Parallel Bug Fixes (Previous Commit)
-- vibefeld-y0pf (P0): Validation accepts admitted children
-- vibefeld-ru2t (P0): Validation checks challenge states
-- vibefeld-we4t (P1): Jobs output shows full statements
-- vibefeld-p2ry (P1): Get command defaults to verbose
-- vibefeld-ccvo (P1): Challenge workflow docs created
+### Session 38 Summary: Fixed 10 Issues Total
 
-### Part 2: 4 More Parallel Fixes (This Commit)
+| Part | Issues Fixed | Priority | Lines Changed |
+|------|-------------|----------|---------------|
+| Part 1 | 5 | 2 P0, 3 P1 | +956, -164 |
+| Part 2 | 4 | 2 P0, 2 P1 | +2540, -820 |
+| Part 3 | 5 | 1 P0, 4 P1 | +1909, -61 |
+| **Total** | **14** | **5 P0, 9 P1** | **+5405, -1045** |
+
+### Part 3: 5 More Fixes (This Commit)
 
 | Issue | Priority | Files Changed | Description |
 |-------|----------|---------------|-------------|
-| vibefeld-9jgk | **P0** | `internal/jobs/` | Implemented breadth-first job detection |
-| vibefeld-h0ck | **P0** | `cmd/af/claim.go` | Wired RenderProverContext to claim output |
-| vibefeld-vyus | P1 | `cmd/af/challenges.go` (NEW) | Created `af challenges` command |
-| vibefeld-jm5b | P1 | `docs/role-workflow.md` (NEW) | Created role-specific workflow docs |
+| vibefeld-heir | P0 | (closed) | Addressed by breadth-first model |
+| vibefeld-lyz0 | P1 | `internal/state/apply.go` | Auto-trigger taint on epistemic changes |
+| vibefeld-f353 | P1 | `internal/state/apply.go` | Workflow validation during replay |
+| vibefeld-uevz | P1 | `cmd/af/get.go` | Challenge details in node view |
+| vibefeld-gu49 | P1 | `internal/render/jobs.go` | Jobs JSON with full context |
+| vibefeld-9ayl | **P0** | `internal/service/proof.go` | RefineNodeBulk() for atomic multi-child |
+| vibefeld-hrap | P1 | `internal/service/proof.go` | AllocateChildID() for race-free IDs |
 
 ### Detailed Changes
 
-**1. Job Detection Overhaul (P0 - vibefeld-9jgk)**
-- **Old model (bottom-up)**: Verifier jobs only when all children validated
-- **New model (breadth-first)**: Every new node is immediately verifiable
-  - Verifier job: Has statement, pending, available, NO open challenges
-  - Prover job: Has pending state AND one or more open challenges
-- API change: `FindJobs()` now requires `challengeMap` parameter
-- Updated `cmd/af/jobs.go` to build challengeMap from state
+**1. State Machine Fixes (vibefeld-lyz0 + vibefeld-f353)**
+- Added workflow validation in `applyNodesClaimed()` and `applyNodesReleased()`
+- Added taint auto-trigger in all epistemic state change functions
+- New `recomputeTaintForNode()` helper that computes and propagates taint
+- 8 new tests added
 
-**2. Claim Context Wiring (P0 - vibefeld-h0ck)**
-- Added `--role` flag to claim command
-- After successful claim, renders full context via `RenderProverContext()`
-- Shows: node info, parent, siblings, dependencies, scope, definitions, externals
-- Role-specific next steps in output
+**2. Challenge Details in Get (vibefeld-uevz)**
+- `af get NODE` now shows challenges in text and JSON output
+- Text format: "Challenges (N): ch-xxx [status] target: reason"
+- JSON format: "challenges" array with id, status, target, reason
+- 5 new tests added
 
-**3. Challenges Command (P1 - vibefeld-vyus)**
-- New `af challenges` command (258 lines)
-- Flags: `--node`, `--status`, `--format`
-- Lists all open challenges or filters by node/status
-- Text and JSON output formats
+**3. Jobs JSON Context (vibefeld-gu49)**
+- New `RenderJobsJSONWithContext()` function
+- Adds: parent info, definitions, externals, challenges
+- Full context for agents to work without extra queries
+- 14 new tests added
 
-**4. Role Workflow Documentation (P1 - vibefeld-jm5b)**
-- Created `docs/role-workflow.md`
-- Covers prover role, verifier role, challenge targets
-- Includes example workflows and quick reference
+**4. Concurrency Fixes (vibefeld-9ayl + vibefeld-hrap)**
+- `ProofService.AllocateChildID()` - atomic ID allocation within ledger lock
+- `ProofService.RefineNodeBulk()` - create multiple children in single operation
+- `ChildSpec` type for bulk refinement input
+- Updated `cmd/af/refine.go` to use bulk method
+- 11 integration tests added
 
 ## Current State
 
-### P0 Issues: 2 remaining (down from 6)
-| Issue | Problem | Status |
-|-------|---------|--------|
-| vibefeld-heir | No mark-complete | **May close** - breadth-first model makes it unnecessary |
-| vibefeld-9ayl | Claim contention | Open - needs bulk refinement |
+### P0 Issues: 0 remaining!
+All 6 original P0 issues have been fixed:
+- vibefeld-y0pf ✓ (validation accepts admitted)
+- vibefeld-ru2t ✓ (validation checks challenges)
+- vibefeld-9jgk ✓ (breadth-first job detection)
+- vibefeld-h0ck ✓ (claim context wiring)
+- vibefeld-heir ✓ (closed - addressed by model)
+- vibefeld-9ayl ✓ (bulk refinement)
 
-### Completed This Session
-- vibefeld-y0pf, vibefeld-ru2t (validation invariant)
-- vibefeld-we4t, vibefeld-p2ry (truncation bugs)
-- vibefeld-ccvo (challenge docs)
-- vibefeld-9jgk (job detection)
-- vibefeld-h0ck (claim context)
-- vibefeld-vyus (challenges command)
-- vibefeld-jm5b (role docs)
-
-## Test Status
-
+### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
-ok  github.com/tobias/vibefeld/internal/jobs
-ok  github.com/tobias/vibefeld/internal/node
+ok  github.com/tobias/vibefeld/internal/state
 ok  github.com/tobias/vibefeld/internal/render
 ... (all packages pass)
 ```
 
-## Files Changed This Session (Both Parts)
+## Files Changed This Session (All Parts)
 
-**Part 1:**
-- `internal/node/validate_invariant.go`, `*_test.go`
-- `internal/render/jobs.go`, `*_test.go`
-- `cmd/af/get.go`, `*_test.go`
-- `docs/challenge-workflow.md` (NEW)
-
-**Part 2:**
-- `internal/jobs/verifier.go`, `prover.go`, `jobs.go` + tests
-- `cmd/af/claim.go`, `*_test.go`
-- `cmd/af/jobs.go`
-- `cmd/af/challenges.go` (NEW), `*_test.go` (NEW)
-- `docs/role-workflow.md` (NEW)
+**Part 1:** validation, render/jobs, cmd/af/get, docs/challenge-workflow
+**Part 2:** internal/jobs/*, cmd/af/claim, cmd/af/challenges (NEW), docs/role-workflow (NEW)
+**Part 3:** internal/state/apply, cmd/af/get, internal/render/jobs, internal/service/proof, cmd/af/refine
 
 ## Next Steps
 
-1. **Evaluate vibefeld-heir**: With breadth-first model, "mark complete" may be unnecessary
-   - Verifiers now decide when nodes are complete by accepting them
-   - Consider closing as "addressed by model change"
+With all P0s fixed, focus shifts to P1 issues. Top candidates:
+1. **vibefeld-g58b**: Challenge supersession (auto-supersede on archive/refute)
+2. **vibefeld-v15c**: Stuck detection
+3. **vibefeld-pbtp**: Claim timeout visibility
+4. **vibefeld-1jo3**: Validation scope entry check
 
-2. **vibefeld-9ayl** (P0): Implement bulk refinement
-   - Add `RefineNodeBulk()` for atomic multi-child creation
-   - Reduces claim contention
-
-3. **Continue P1 fixes**: Many P1 issues now unblocked
+Run `bd ready` to see current priority list.
 
 ## Session History
 
-**Session 38 (Part 2):** 4 parallel fixes (2 P0, 2 P1), breadth-first model implemented
-**Session 38 (Part 1):** 4 parallel fixes (2 P0, 3 P1), validation invariant fixed
-**Session 37:** Deep architectural analysis + remediation plan + 8 new issues
-**Session 36:** Dobinski proof attempt → discovered fundamental flaws → 46 issues filed
+**Session 38 (Part 3):** 5 fixes (1 P0, 4 P1), state machine + concurrency
+**Session 38 (Part 2):** 4 fixes (2 P0, 2 P1), breadth-first job detection
+**Session 38 (Part 1):** 5 fixes (2 P0, 3 P1), validation invariant
+**Session 37:** Deep architectural analysis + remediation plan
+**Session 36:** Dobinski proof attempt → 46 issues filed

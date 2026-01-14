@@ -1648,3 +1648,405 @@ var _ interface {
 
 // Note: ProofStatus is defined in proof.go, not duplicated here.
 // Tests use the ProofStatus type from the implementation.
+
+// =============================================================================
+// AllocateChildID Tests (vibefeld-hrap fix)
+// =============================================================================
+
+// TestProofService_AllocateChildID_Success verifies allocating child IDs atomically.
+func TestProofService_AllocateChildID_Success(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Root node "1" is created by Init
+	parentID := mustParseNodeID(t, "1")
+
+	// Allocate first child ID
+	childID, err := svc.AllocateChildID(parentID)
+	if err != nil {
+		t.Fatalf("AllocateChildID() unexpected error: %v", err)
+	}
+
+	// Should return "1.1" since no children exist yet
+	expectedID := mustParseNodeID(t, "1.1")
+	if childID.String() != expectedID.String() {
+		t.Errorf("AllocateChildID() = %q, want %q", childID.String(), expectedID.String())
+	}
+}
+
+// TestProofService_AllocateChildID_SkipsExisting verifies that allocated IDs skip existing children.
+func TestProofService_AllocateChildID_SkipsExisting(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	parentID := mustParseNodeID(t, "1")
+
+	// Create first two children manually
+	child1ID := mustParseNodeID(t, "1.1")
+	child2ID := mustParseNodeID(t, "1.2")
+	err = svc.CreateNode(child1ID, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode(1.1) unexpected error: %v", err)
+	}
+	err = svc.CreateNode(child2ID, schema.NodeTypeClaim, "Child 2", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode(1.2) unexpected error: %v", err)
+	}
+
+	// Allocate next child ID - should skip 1.1 and 1.2
+	childID, err := svc.AllocateChildID(parentID)
+	if err != nil {
+		t.Fatalf("AllocateChildID() unexpected error: %v", err)
+	}
+
+	// Should return "1.3"
+	expectedID := mustParseNodeID(t, "1.3")
+	if childID.String() != expectedID.String() {
+		t.Errorf("AllocateChildID() = %q, want %q", childID.String(), expectedID.String())
+	}
+}
+
+// TestProofService_AllocateChildID_NonExistentParent verifies error for non-existent parent.
+func TestProofService_AllocateChildID_NonExistentParent(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Try to allocate child for non-existent parent
+	parentID := mustParseNodeID(t, "1.99")
+	_, err = svc.AllocateChildID(parentID)
+	if err == nil {
+		t.Error("AllocateChildID() on non-existent parent expected error, got nil")
+	}
+}
+
+// =============================================================================
+// RefineNodeBulk Tests (vibefeld-9ayl fix)
+// =============================================================================
+
+// TestProofService_RefineNodeBulk_Success verifies creating multiple children atomically.
+func TestProofService_RefineNodeBulk_Success(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Claim root node
+	parentID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+	err = svc.ClaimNode(parentID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Create multiple children at once
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "First child", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeCase, Statement: "Second child (case)", Inference: schema.InferenceLocalAssume},
+		{NodeType: schema.NodeTypeClaim, Statement: "Third child", Inference: schema.InferenceModusPonens},
+	}
+
+	childIDs, err := svc.RefineNodeBulk(parentID, owner, children)
+	if err != nil {
+		t.Fatalf("RefineNodeBulk() unexpected error: %v", err)
+	}
+
+	// Should return 3 child IDs
+	if len(childIDs) != 3 {
+		t.Errorf("RefineNodeBulk() returned %d IDs, want 3", len(childIDs))
+	}
+
+	// Verify the IDs are sequential: 1.1, 1.2, 1.3
+	expectedIDs := []string{"1.1", "1.2", "1.3"}
+	for i, childID := range childIDs {
+		if childID.String() != expectedIDs[i] {
+			t.Errorf("Child %d ID = %q, want %q", i+1, childID.String(), expectedIDs[i])
+		}
+	}
+
+	// Verify all children exist in state
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	for i, childID := range childIDs {
+		child := st.GetNode(childID)
+		if child == nil {
+			t.Errorf("Child %d (%s) not found in state", i+1, childID.String())
+			continue
+		}
+		if child.Statement != children[i].Statement {
+			t.Errorf("Child %d statement = %q, want %q", i+1, child.Statement, children[i].Statement)
+		}
+		if child.Type != children[i].NodeType {
+			t.Errorf("Child %d type = %q, want %q", i+1, child.Type, children[i].NodeType)
+		}
+	}
+}
+
+// TestProofService_RefineNodeBulk_SkipsExisting verifies bulk refine skips existing children.
+func TestProofService_RefineNodeBulk_SkipsExisting(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	parentID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+
+	// Create first child manually
+	child1ID := mustParseNodeID(t, "1.1")
+	err = svc.CreateNode(child1ID, schema.NodeTypeClaim, "Existing child", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode(1.1) unexpected error: %v", err)
+	}
+
+	// Claim parent
+	err = svc.ClaimNode(parentID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Bulk create more children - should start from 1.2
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "New child 1", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "New child 2", Inference: schema.InferenceAssumption},
+	}
+
+	childIDs, err := svc.RefineNodeBulk(parentID, owner, children)
+	if err != nil {
+		t.Fatalf("RefineNodeBulk() unexpected error: %v", err)
+	}
+
+	// Should return 1.2 and 1.3 (skipping existing 1.1)
+	expectedIDs := []string{"1.2", "1.3"}
+	for i, childID := range childIDs {
+		if childID.String() != expectedIDs[i] {
+			t.Errorf("Child %d ID = %q, want %q", i+1, childID.String(), expectedIDs[i])
+		}
+	}
+}
+
+// TestProofService_RefineNodeBulk_EmptyChildren verifies error for empty children list.
+func TestProofService_RefineNodeBulk_EmptyChildren(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	parentID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+
+	err = svc.ClaimNode(parentID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Try to create with empty children list
+	_, err = svc.RefineNodeBulk(parentID, owner, []ChildSpec{})
+	if err == nil {
+		t.Error("RefineNodeBulk() with empty children expected error, got nil")
+	}
+}
+
+// TestProofService_RefineNodeBulk_NotClaimed verifies error when parent is not claimed.
+func TestProofService_RefineNodeBulk_NotClaimed(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Don't claim the node
+	parentID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "Child", Inference: schema.InferenceAssumption},
+	}
+
+	_, err = svc.RefineNodeBulk(parentID, owner, children)
+	if err == nil {
+		t.Error("RefineNodeBulk() on unclaimed parent expected error, got nil")
+	}
+}
+
+// TestProofService_RefineNodeBulk_WrongOwner verifies error when owner doesn't match.
+func TestProofService_RefineNodeBulk_WrongOwner(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	parentID := mustParseNodeID(t, "1")
+
+	// Claim with agent-001
+	err = svc.ClaimNode(parentID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Try to refine with agent-002
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "Child", Inference: schema.InferenceAssumption},
+	}
+
+	_, err = svc.RefineNodeBulk(parentID, "agent-002", children)
+	if err == nil {
+		t.Error("RefineNodeBulk() with wrong owner expected error, got nil")
+	}
+}
+
+// TestProofService_RefineNodeBulk_NonExistentParent verifies error for non-existent parent.
+func TestProofService_RefineNodeBulk_NonExistentParent(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Non-existent parent
+	parentID := mustParseNodeID(t, "1.99")
+	owner := "agent-001"
+
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "Child", Inference: schema.InferenceAssumption},
+	}
+
+	_, err = svc.RefineNodeBulk(parentID, owner, children)
+	if err == nil {
+		t.Error("RefineNodeBulk() on non-existent parent expected error, got nil")
+	}
+}
+
+// TestProofService_RefineNodeBulk_EmptyStatement verifies error for empty statement in child spec.
+func TestProofService_RefineNodeBulk_EmptyStatement(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	parentID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+
+	err = svc.ClaimNode(parentID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// One child has empty statement
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "Valid child", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "", Inference: schema.InferenceAssumption}, // Empty!
+	}
+
+	_, err = svc.RefineNodeBulk(parentID, owner, children)
+	if err == nil {
+		t.Error("RefineNodeBulk() with empty statement expected error, got nil")
+	}
+}
+
+// TestProofService_RefineNodeBulk_SingleChild verifies single-child case works.
+func TestProofService_RefineNodeBulk_SingleChild(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	parentID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+
+	err = svc.ClaimNode(parentID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Single child
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "Only child", Inference: schema.InferenceAssumption},
+	}
+
+	childIDs, err := svc.RefineNodeBulk(parentID, owner, children)
+	if err != nil {
+		t.Fatalf("RefineNodeBulk() unexpected error: %v", err)
+	}
+
+	if len(childIDs) != 1 {
+		t.Errorf("RefineNodeBulk() returned %d IDs, want 1", len(childIDs))
+	}
+
+	expectedID := mustParseNodeID(t, "1.1")
+	if childIDs[0].String() != expectedID.String() {
+		t.Errorf("Child ID = %q, want %q", childIDs[0].String(), expectedID.String())
+	}
+}

@@ -973,3 +973,228 @@ func TestApplyTaintRecomputedOnNonExistentNode(t *testing.T) {
 		t.Errorf("Error message should mention 'not found': got %q", err.Error())
 	}
 }
+
+// TestApplyNodesClaimedInvalidTransition verifies that claiming an already claimed node returns an error.
+func TestApplyNodesClaimedInvalidTransition(t *testing.T) {
+	s := NewState()
+
+	// Add a node that is already claimed
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	n.WorkflowState = schema.WorkflowClaimed // Already claimed
+	n.ClaimedBy = "other-agent"
+	s.AddNode(n)
+
+	// Try to claim an already claimed node
+	event := ledger.NewNodesClaimed([]types.NodeID{nodeID}, "agent-123", types.Now())
+
+	err = Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when claiming an already claimed node")
+	}
+
+	// Verify error mentions invalid workflow transition
+	if !strings.Contains(err.Error(), "invalid workflow transition") {
+		t.Errorf("Error should mention 'invalid workflow transition': got %q", err.Error())
+	}
+}
+
+// TestApplyNodesClaimedFromBlocked verifies that claiming a blocked node returns an error.
+func TestApplyNodesClaimedFromBlocked(t *testing.T) {
+	s := NewState()
+
+	// Add a blocked node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	n.WorkflowState = schema.WorkflowBlocked
+	s.AddNode(n)
+
+	// Try to claim a blocked node (not allowed - must become available first)
+	event := ledger.NewNodesClaimed([]types.NodeID{nodeID}, "agent-123", types.Now())
+
+	err = Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when claiming a blocked node")
+	}
+
+	if !strings.Contains(err.Error(), "invalid workflow transition") {
+		t.Errorf("Error should mention 'invalid workflow transition': got %q", err.Error())
+	}
+}
+
+// TestApplyNodesReleasedFromAvailable verifies that releasing an already available node returns an error.
+func TestApplyNodesReleasedFromAvailable(t *testing.T) {
+	s := NewState()
+
+	// Add an available node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	// WorkflowState is already "available" by default
+	s.AddNode(n)
+
+	// Try to release an available node
+	event := ledger.NewNodesReleased([]types.NodeID{nodeID})
+
+	err = Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when releasing an already available node")
+	}
+
+	if !strings.Contains(err.Error(), "invalid workflow transition") {
+		t.Errorf("Error should mention 'invalid workflow transition': got %q", err.Error())
+	}
+}
+
+// TestApplyNodeValidatedAutoTaint verifies that validating a node auto-triggers taint computation.
+func TestApplyNodeValidatedAutoTaint(t *testing.T) {
+	s := NewState()
+
+	// Add a pending node with unresolved taint
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	s.AddNode(n)
+
+	// Verify initial taint state is unresolved
+	if got := s.GetNode(nodeID); got.TaintState != node.TaintUnresolved {
+		t.Fatalf("Initial taint state should be unresolved: got %q", got.TaintState)
+	}
+
+	// Apply NodeValidated event
+	event := ledger.NewNodeValidated(nodeID)
+	err = Apply(s, event)
+	if err != nil {
+		t.Fatalf("Apply NodeValidated failed: %v", err)
+	}
+
+	// Verify taint was auto-computed to clean (validated node with no tainted ancestors)
+	got := s.GetNode(nodeID)
+	if got.TaintState != node.TaintClean {
+		t.Errorf("Taint state after validation should be clean: got %q", got.TaintState)
+	}
+}
+
+// TestApplyNodeAdmittedAutoTaint verifies that admitting a node auto-triggers taint computation.
+func TestApplyNodeAdmittedAutoTaint(t *testing.T) {
+	s := NewState()
+
+	// Add a pending node with unresolved taint
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	s.AddNode(n)
+
+	// Verify initial taint state is unresolved
+	if got := s.GetNode(nodeID); got.TaintState != node.TaintUnresolved {
+		t.Fatalf("Initial taint state should be unresolved: got %q", got.TaintState)
+	}
+
+	// Apply NodeAdmitted event
+	event := ledger.NewNodeAdmitted(nodeID)
+	err = Apply(s, event)
+	if err != nil {
+		t.Fatalf("Apply NodeAdmitted failed: %v", err)
+	}
+
+	// Verify taint was auto-computed to self_admitted (admitted node introduces taint)
+	got := s.GetNode(nodeID)
+	if got.TaintState != node.TaintSelfAdmitted {
+		t.Errorf("Taint state after admission should be self_admitted: got %q", got.TaintState)
+	}
+}
+
+// TestApplyNodeValidatedPropagatesTaint verifies that validating a parent node propagates taint to children.
+func TestApplyNodeValidatedPropagatesTaint(t *testing.T) {
+	s := NewState()
+
+	// Create parent node
+	parentID := mustParseNodeID(t, "1")
+	parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create parent node: %v", err)
+	}
+	s.AddNode(parent)
+
+	// Create child node with validated epistemic state but unresolved ancestor
+	childID := mustParseNodeID(t, "1.1")
+	child, err := node.NewNode(childID, schema.NodeTypeClaim, "Child claim", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("Failed to create child node: %v", err)
+	}
+	// Pre-set child to validated (but taint is unresolved because parent is unresolved)
+	child.EpistemicState = schema.EpistemicValidated
+	s.AddNode(child)
+
+	// Validate parent - this should propagate taint to child
+	event := ledger.NewNodeValidated(parentID)
+	err = Apply(s, event)
+	if err != nil {
+		t.Fatalf("Apply NodeValidated failed: %v", err)
+	}
+
+	// Check that parent taint is clean
+	gotParent := s.GetNode(parentID)
+	if gotParent.TaintState != node.TaintClean {
+		t.Errorf("Parent taint state should be clean: got %q", gotParent.TaintState)
+	}
+
+	// Check that child taint was propagated to clean (since parent is now clean and child is validated)
+	gotChild := s.GetNode(childID)
+	if gotChild.TaintState != node.TaintClean {
+		t.Errorf("Child taint state should be clean after parent validation: got %q", gotChild.TaintState)
+	}
+}
+
+// TestApplyNodeAdmittedPropagatesTaint verifies that admitting a parent propagates taint to descendants.
+func TestApplyNodeAdmittedPropagatesTaint(t *testing.T) {
+	s := NewState()
+
+	// Create parent node
+	parentID := mustParseNodeID(t, "1")
+	parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create parent node: %v", err)
+	}
+	s.AddNode(parent)
+
+	// Create child node that is already validated
+	childID := mustParseNodeID(t, "1.1")
+	child, err := node.NewNode(childID, schema.NodeTypeClaim, "Child claim", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("Failed to create child node: %v", err)
+	}
+	child.EpistemicState = schema.EpistemicValidated
+	s.AddNode(child)
+
+	// Admit parent - this should propagate taint to child
+	event := ledger.NewNodeAdmitted(parentID)
+	err = Apply(s, event)
+	if err != nil {
+		t.Fatalf("Apply NodeAdmitted failed: %v", err)
+	}
+
+	// Check that parent taint is self_admitted
+	gotParent := s.GetNode(parentID)
+	if gotParent.TaintState != node.TaintSelfAdmitted {
+		t.Errorf("Parent taint state should be self_admitted: got %q", gotParent.TaintState)
+	}
+
+	// Check that child taint was propagated to tainted (since parent is self_admitted)
+	gotChild := s.GetNode(childID)
+	if gotChild.TaintState != node.TaintTainted {
+		t.Errorf("Child taint state should be tainted after parent admission: got %q", gotChild.TaintState)
+	}
+}

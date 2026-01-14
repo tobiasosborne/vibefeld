@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/fs"
+	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
@@ -1190,5 +1191,212 @@ func TestGetCmd_SingleNodeShowsVerboseFieldsByDefault(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(output), "epistemic:") {
 		t.Errorf("expected single node output to contain 'Epistemic:' field by default, got: %q", output)
+	}
+}
+
+// =============================================================================
+// Challenge Display Tests
+// =============================================================================
+
+// setupGetTestWithChallenges creates a test environment with challenges on a node.
+func setupGetTestWithChallenges(t *testing.T) (string, func()) {
+	t.Helper()
+
+	tmpDir, cleanup := setupGetTest(t)
+
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	// Add challenges via the ledger
+	ledgerDir := filepath.Join(svc.Path(), "ledger")
+	ldg, err := ledger.NewLedger(ledgerDir)
+	if err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	// Add an open challenge on node 1
+	nodeID1, _ := types.Parse("1")
+	event1 := ledger.NewChallengeRaised("ch-abc123", nodeID1, "gap", "Missing case for n=0")
+	if _, err := ldg.Append(event1); err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	// Add another challenge and resolve it
+	event2 := ledger.NewChallengeRaised("ch-def456", nodeID1, "context", "Undefined variable")
+	if _, err := ldg.Append(event2); err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	event3 := ledger.NewChallengeResolved("ch-def456")
+	if _, err := ldg.Append(event3); err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	return tmpDir, cleanup
+}
+
+// TestGetCmd_ShowsChallengesInTextOutput tests that challenges are displayed in text output.
+func TestGetCmd_ShowsChallengesInTextOutput(t *testing.T) {
+	tmpDir, cleanup := setupGetTestWithChallenges(t)
+	defer cleanup()
+
+	output, err := executeGetCommand(t, "1", "-d", tmpDir)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should show "Challenges" section header
+	if !strings.Contains(output, "Challenges") {
+		t.Errorf("expected output to contain 'Challenges' section, got: %q", output)
+	}
+
+	// Should show challenge ID
+	if !strings.Contains(output, "ch-abc123") {
+		t.Errorf("expected output to contain challenge ID 'ch-abc123', got: %q", output)
+	}
+
+	// Should show challenge status
+	if !strings.Contains(output, "[open]") {
+		t.Errorf("expected output to contain '[open]' status, got: %q", output)
+	}
+
+	// Should show challenge target
+	if !strings.Contains(output, "gap") {
+		t.Errorf("expected output to contain challenge target 'gap', got: %q", output)
+	}
+
+	// Should show challenge reason
+	if !strings.Contains(output, "Missing case for n=0") {
+		t.Errorf("expected output to contain challenge reason 'Missing case for n=0', got: %q", output)
+	}
+
+	// Should also show the resolved challenge
+	if !strings.Contains(output, "ch-def456") {
+		t.Errorf("expected output to contain resolved challenge ID 'ch-def456', got: %q", output)
+	}
+	if !strings.Contains(output, "[resolved]") {
+		t.Errorf("expected output to contain '[resolved]' status, got: %q", output)
+	}
+}
+
+// TestGetCmd_ShowsChallengesInJSONOutput tests that challenges are included in JSON output.
+func TestGetCmd_ShowsChallengesInJSONOutput(t *testing.T) {
+	tmpDir, cleanup := setupGetTestWithChallenges(t)
+	defer cleanup()
+
+	output, err := executeGetCommand(t, "1", "-d", tmpDir, "-f", "json")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Parse the JSON output
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("output is not valid JSON: %v\nOutput: %q", err, output)
+	}
+
+	// Should contain challenges array
+	challenges, ok := result["challenges"]
+	if !ok {
+		t.Fatalf("JSON output should contain 'challenges' field, got: %v", result)
+	}
+
+	// Should be a non-empty array
+	challengeList, ok := challenges.([]interface{})
+	if !ok {
+		t.Fatalf("challenges should be an array, got: %T", challenges)
+	}
+
+	if len(challengeList) != 2 {
+		t.Errorf("expected 2 challenges, got %d", len(challengeList))
+	}
+
+	// Verify first challenge has expected fields
+	if len(challengeList) > 0 {
+		ch, ok := challengeList[0].(map[string]interface{})
+		if !ok {
+			t.Fatalf("challenge should be an object, got: %T", challengeList[0])
+		}
+
+		// Should have id, status, target, reason fields
+		requiredFields := []string{"id", "status", "target", "reason"}
+		for _, field := range requiredFields {
+			if _, ok := ch[field]; !ok {
+				t.Errorf("challenge missing required field %q", field)
+			}
+		}
+	}
+}
+
+// TestGetCmd_NoChallengesDoesNotShowSection tests that no Challenges section appears when none exist.
+func TestGetCmd_NoChallengesDoesNotShowSection(t *testing.T) {
+	tmpDir, cleanup := setupGetTestWithNode(t)
+	defer cleanup()
+
+	output, err := executeGetCommand(t, "1", "-d", tmpDir)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should NOT contain a Challenges section when there are no challenges
+	if strings.Contains(output, "Challenges (") {
+		t.Errorf("expected output to NOT contain 'Challenges' section when no challenges exist, got: %q", output)
+	}
+}
+
+// TestGetCmd_NoChallengesInJSONOutput tests that no challenges key appears when none exist.
+func TestGetCmd_NoChallengesInJSONOutput(t *testing.T) {
+	tmpDir, cleanup := setupGetTestWithNode(t)
+	defer cleanup()
+
+	output, err := executeGetCommand(t, "1", "-d", tmpDir, "-f", "json")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Parse the JSON output
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("output is not valid JSON: %v\nOutput: %q", err, output)
+	}
+
+	// Should NOT contain challenges key when there are no challenges
+	if _, ok := result["challenges"]; ok {
+		t.Errorf("JSON output should NOT contain 'challenges' key when no challenges exist, got: %v", result)
+	}
+}
+
+// TestGetCmd_ChallengesWithFullFlagMultipleNodes tests challenges are shown with --full and multiple nodes.
+func TestGetCmd_ChallengesWithFullFlagMultipleNodes(t *testing.T) {
+	tmpDir, cleanup := setupGetTestWithChallenges(t)
+	defer cleanup()
+
+	// Create a child node first
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodeID11, _ := types.Parse("1.1")
+	err = svc.CreateNode(nodeID11, schema.NodeTypeClaim, "Child claim", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := executeGetCommand(t, "1", "--subtree", "--full", "-d", tmpDir)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should show challenges for node 1 (which has challenges)
+	if !strings.Contains(output, "ch-abc123") {
+		t.Errorf("expected output to contain challenge ID for node 1, got: %q", output)
 	}
 }

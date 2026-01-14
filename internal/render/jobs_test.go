@@ -3,6 +3,7 @@
 package render
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -812,7 +813,8 @@ func TestRenderJobsFromState(t *testing.T) {
 	// Get all nodes and find jobs
 	allNodes := s.AllNodes()
 	nodeMap := buildNodeMap(allNodes)
-	jobResult := jobs.FindJobs(allNodes, nodeMap)
+	challengeMap := make(map[string][]*node.Challenge) // Empty challenge map for this test
+	jobResult := jobs.FindJobs(allNodes, nodeMap, challengeMap)
 
 	result := RenderJobs(jobResult)
 
@@ -861,5 +863,561 @@ func TestRenderJobs_HumanReadableFormat(t *testing.T) {
 	// Should not contain Go-style formatting like &{...}
 	if strings.Contains(result, "&{") || strings.Contains(result, "[]node.Node") {
 		t.Errorf("RenderJobs should not contain Go struct formatting, got: %q", result)
+	}
+}
+
+// =============================================================================
+// JSON Output Tests for RenderJobsJSONWithContext
+// =============================================================================
+
+// TestRenderJobsJSONWithContext_NilJobResult tests handling of nil JobResult.
+func TestRenderJobsJSONWithContext_NilJobResult(t *testing.T) {
+	result := RenderJobsJSONWithContext(nil, nil)
+
+	if result != `{"prover_jobs":[],"verifier_jobs":[]}` {
+		t.Errorf("RenderJobsJSONWithContext(nil, nil) = %q, want empty structure", result)
+	}
+}
+
+// TestRenderJobsJSONWithContext_EmptyJobResult tests rendering when no jobs exist.
+func TestRenderJobsJSONWithContext_EmptyJobResult(t *testing.T) {
+	jobResult := &jobs.JobResult{
+		ProverJobs:   nil,
+		VerifierJobs: nil,
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, nil)
+
+	if result != `{"prover_jobs":[],"verifier_jobs":[]}` {
+		t.Errorf("Expected empty JSON structure, got: %q", result)
+	}
+}
+
+// TestRenderJobsJSONWithContext_BasicFields tests that basic job fields appear in JSON.
+func TestRenderJobsJSONWithContext_BasicFields(t *testing.T) {
+	proverNode := makeJobsTestNode("1.1", "Prove base case", schema.WorkflowAvailable, schema.EpistemicPending)
+	verifierNode := makeJobsTestNode("1.2", "Verify induction", schema.WorkflowClaimed, schema.EpistemicPending)
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   []*node.Node{proverNode},
+		VerifierJobs: []*node.Node{verifierNode},
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, nil)
+
+	var parsed JSONJobListFull
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	// Check prover job basic fields
+	if len(parsed.ProverJobs) != 1 {
+		t.Fatalf("Expected 1 prover job, got %d", len(parsed.ProverJobs))
+	}
+	pj := parsed.ProverJobs[0]
+	if pj.ID != "1.1" {
+		t.Errorf("Prover job ID = %q, want %q", pj.ID, "1.1")
+	}
+	if pj.Statement != "Prove base case" {
+		t.Errorf("Prover job statement = %q, want %q", pj.Statement, "Prove base case")
+	}
+	if pj.Type != "claim" {
+		t.Errorf("Prover job type = %q, want %q", pj.Type, "claim")
+	}
+
+	// Check verifier job basic fields
+	if len(parsed.VerifierJobs) != 1 {
+		t.Fatalf("Expected 1 verifier job, got %d", len(parsed.VerifierJobs))
+	}
+	vj := parsed.VerifierJobs[0]
+	if vj.ID != "1.2" {
+		t.Errorf("Verifier job ID = %q, want %q", vj.ID, "1.2")
+	}
+	if vj.Statement != "Verify induction" {
+		t.Errorf("Verifier job statement = %q, want %q", vj.Statement, "Verify induction")
+	}
+}
+
+// TestRenderJobsJSONWithContext_ParentInfo tests that parent info appears in JSON.
+func TestRenderJobsJSONWithContext_ParentInfo(t *testing.T) {
+	// Create parent node
+	parentNode := makeJobsTestNode("1", "Main theorem statement", schema.WorkflowClaimed, schema.EpistemicPending)
+	// Create child node (job)
+	childNode := makeJobsTestNode("1.1", "Prove first subcase", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	// Build node map
+	nodeMap := map[string]*node.Node{
+		"1":   parentNode,
+		"1.1": childNode,
+	}
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   []*node.Node{childNode},
+		VerifierJobs: nil,
+	}
+
+	ctx := &JobsContext{
+		NodeMap: nodeMap,
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, ctx)
+
+	var parsed JSONJobListFull
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	if len(parsed.ProverJobs) != 1 {
+		t.Fatalf("Expected 1 prover job, got %d", len(parsed.ProverJobs))
+	}
+
+	pj := parsed.ProverJobs[0]
+	if pj.Parent == nil {
+		t.Fatal("Expected parent info to be present")
+	}
+	if pj.Parent.ID != "1" {
+		t.Errorf("Parent ID = %q, want %q", pj.Parent.ID, "1")
+	}
+	if pj.Parent.Statement != "Main theorem statement" {
+		t.Errorf("Parent statement = %q, want %q", pj.Parent.Statement, "Main theorem statement")
+	}
+}
+
+// TestRenderJobsJSONWithContext_Definitions tests that definitions appear in JSON.
+func TestRenderJobsJSONWithContext_Definitions(t *testing.T) {
+	// Create a node with context referencing a definition
+	jobNode := makeJobsTestNode("1.1", "Apply def-1 to prove claim", schema.WorkflowAvailable, schema.EpistemicPending)
+	jobNode.Context = []string{"def-1"}
+
+	// Create state with a definition
+	s := state.NewState()
+	def := &node.Definition{
+		ID:      "def-1",
+		Name:    "natural number",
+		Content: "A non-negative integer",
+	}
+	s.AddDefinition(def)
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   []*node.Node{jobNode},
+		VerifierJobs: nil,
+	}
+
+	ctx := &JobsContext{
+		State: s,
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, ctx)
+
+	var parsed JSONJobListFull
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	if len(parsed.ProverJobs) != 1 {
+		t.Fatalf("Expected 1 prover job, got %d", len(parsed.ProverJobs))
+	}
+
+	pj := parsed.ProverJobs[0]
+	if len(pj.Definitions) != 1 {
+		t.Fatalf("Expected 1 definition, got %d", len(pj.Definitions))
+	}
+
+	defJSON := pj.Definitions[0]
+	if defJSON.ID != "def-1" {
+		t.Errorf("Definition ID = %q, want %q", defJSON.ID, "def-1")
+	}
+	if defJSON.Term != "natural number" {
+		t.Errorf("Definition term = %q, want %q", defJSON.Term, "natural number")
+	}
+	if defJSON.Definition != "A non-negative integer" {
+		t.Errorf("Definition content = %q, want %q", defJSON.Definition, "A non-negative integer")
+	}
+}
+
+// TestRenderJobsJSONWithContext_Externals tests that externals appear in JSON.
+func TestRenderJobsJSONWithContext_Externals(t *testing.T) {
+	// Create a node with context referencing an external
+	jobNode := makeJobsTestNode("1.1", "Apply external theorem", schema.WorkflowAvailable, schema.EpistemicPending)
+	jobNode.Context = []string{"ext-1"}
+
+	// Create state with an external
+	s := state.NewState()
+	ext := &node.External{
+		ID:     "ext-1",
+		Name:   "Fermat's Last Theorem",
+		Source: "Wiles, A. (1995). Modular elliptic curves and Fermat's last theorem.",
+	}
+	s.AddExternal(ext)
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   []*node.Node{jobNode},
+		VerifierJobs: nil,
+	}
+
+	ctx := &JobsContext{
+		State: s,
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, ctx)
+
+	var parsed JSONJobListFull
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	if len(parsed.ProverJobs) != 1 {
+		t.Fatalf("Expected 1 prover job, got %d", len(parsed.ProverJobs))
+	}
+
+	pj := parsed.ProverJobs[0]
+	if len(pj.Externals) != 1 {
+		t.Fatalf("Expected 1 external, got %d", len(pj.Externals))
+	}
+
+	extJSON := pj.Externals[0]
+	if extJSON.ID != "ext-1" {
+		t.Errorf("External ID = %q, want %q", extJSON.ID, "ext-1")
+	}
+	if extJSON.Reference != "Wiles, A. (1995). Modular elliptic curves and Fermat's last theorem." {
+		t.Errorf("External reference = %q, want Wiles citation", extJSON.Reference)
+	}
+}
+
+// TestRenderJobsJSONWithContext_Challenges tests that challenges appear in JSON.
+func TestRenderJobsJSONWithContext_Challenges(t *testing.T) {
+	// Create a node with challenges
+	jobNode := makeJobsTestNode("1.1", "Node with challenges", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	// Create challenge map with an open challenge
+	challengeMap := map[string][]*node.Challenge{
+		"1.1": {
+			{
+				ID:     "ch-1",
+				Target: schema.TargetGap,
+				Reason: "The inference step is not justified",
+				Status: node.ChallengeStatusOpen,
+			},
+		},
+	}
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   []*node.Node{jobNode},
+		VerifierJobs: nil,
+	}
+
+	ctx := &JobsContext{
+		ChallengeMap: challengeMap,
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, ctx)
+
+	var parsed JSONJobListFull
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	if len(parsed.ProverJobs) != 1 {
+		t.Fatalf("Expected 1 prover job, got %d", len(parsed.ProverJobs))
+	}
+
+	pj := parsed.ProverJobs[0]
+	if len(pj.Challenges) != 1 {
+		t.Fatalf("Expected 1 challenge, got %d", len(pj.Challenges))
+	}
+
+	chJSON := pj.Challenges[0]
+	if chJSON.ID != "ch-1" {
+		t.Errorf("Challenge ID = %q, want %q", chJSON.ID, "ch-1")
+	}
+	if chJSON.Target != "gap" {
+		t.Errorf("Challenge target = %q, want %q", chJSON.Target, "gap")
+	}
+	if chJSON.Reason != "The inference step is not justified" {
+		t.Errorf("Challenge reason = %q, want justification challenge", chJSON.Reason)
+	}
+}
+
+// TestRenderJobsJSONWithContext_OnlyOpenChallenges tests that only open challenges appear.
+func TestRenderJobsJSONWithContext_OnlyOpenChallenges(t *testing.T) {
+	jobNode := makeJobsTestNode("1.1", "Node with mixed challenges", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	// Create challenge map with both open and resolved challenges
+	challengeMap := map[string][]*node.Challenge{
+		"1.1": {
+			{
+				ID:     "ch-open",
+				Target: schema.TargetGap,
+				Reason: "Open challenge",
+				Status: node.ChallengeStatusOpen,
+			},
+			{
+				ID:     "ch-resolved",
+				Target: schema.TargetStatement,
+				Reason: "Already resolved",
+				Status: node.ChallengeStatusResolved,
+			},
+		},
+	}
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   []*node.Node{jobNode},
+		VerifierJobs: nil,
+	}
+
+	ctx := &JobsContext{
+		ChallengeMap: challengeMap,
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, ctx)
+
+	var parsed JSONJobListFull
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	pj := parsed.ProverJobs[0]
+	// Should only have the open challenge
+	if len(pj.Challenges) != 1 {
+		t.Fatalf("Expected 1 open challenge, got %d", len(pj.Challenges))
+	}
+	if pj.Challenges[0].ID != "ch-open" {
+		t.Errorf("Expected open challenge ID, got %q", pj.Challenges[0].ID)
+	}
+}
+
+// TestRenderJobsJSONWithContext_FullContext tests all context fields together.
+func TestRenderJobsJSONWithContext_FullContext(t *testing.T) {
+	// Create parent
+	parentNode := makeJobsTestNode("1", "Root theorem", schema.WorkflowClaimed, schema.EpistemicPending)
+
+	// Create job node with context references
+	jobNode := makeJobsTestNode("1.1", "Prove using definition and external", schema.WorkflowAvailable, schema.EpistemicPending)
+	jobNode.Context = []string{"def-1", "ext-1"}
+
+	// Build state with definitions and externals
+	s := state.NewState()
+	s.AddNode(parentNode)
+	s.AddNode(jobNode)
+	s.AddDefinition(&node.Definition{
+		ID:      "def-1",
+		Name:    "prime",
+		Content: "A number divisible only by 1 and itself",
+	})
+	s.AddExternal(&node.External{
+		ID:     "ext-1",
+		Name:   "Prime Number Theorem",
+		Source: "Hadamard (1896)",
+	})
+
+	// Build node map
+	nodeMap := map[string]*node.Node{
+		"1":   parentNode,
+		"1.1": jobNode,
+	}
+
+	// Create challenge map
+	challengeMap := map[string][]*node.Challenge{
+		"1.1": {
+			{
+				ID:     "ch-1",
+				Target: schema.TargetStatement,
+				Reason: "Statement is unclear",
+				Status: node.ChallengeStatusOpen,
+			},
+		},
+	}
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   []*node.Node{jobNode},
+		VerifierJobs: nil,
+	}
+
+	ctx := &JobsContext{
+		State:        s,
+		NodeMap:      nodeMap,
+		ChallengeMap: challengeMap,
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, ctx)
+
+	var parsed JSONJobListFull
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	if len(parsed.ProverJobs) != 1 {
+		t.Fatalf("Expected 1 prover job, got %d", len(parsed.ProverJobs))
+	}
+
+	pj := parsed.ProverJobs[0]
+
+	// Verify all fields are present
+	if pj.ID != "1.1" {
+		t.Errorf("Job ID = %q, want %q", pj.ID, "1.1")
+	}
+
+	if pj.Parent == nil {
+		t.Error("Expected parent to be present")
+	} else if pj.Parent.ID != "1" {
+		t.Errorf("Parent ID = %q, want %q", pj.Parent.ID, "1")
+	}
+
+	if len(pj.Definitions) != 1 {
+		t.Errorf("Expected 1 definition, got %d", len(pj.Definitions))
+	} else if pj.Definitions[0].Term != "prime" {
+		t.Errorf("Definition term = %q, want %q", pj.Definitions[0].Term, "prime")
+	}
+
+	if len(pj.Externals) != 1 {
+		t.Errorf("Expected 1 external, got %d", len(pj.Externals))
+	} else if pj.Externals[0].Reference != "Hadamard (1896)" {
+		t.Errorf("External reference = %q, want %q", pj.Externals[0].Reference, "Hadamard (1896)")
+	}
+
+	if len(pj.Challenges) != 1 {
+		t.Errorf("Expected 1 challenge, got %d", len(pj.Challenges))
+	} else if pj.Challenges[0].Target != "statement" {
+		t.Errorf("Challenge target = %q, want %q", pj.Challenges[0].Target, "statement")
+	}
+}
+
+// TestRenderJobsJSONWithContext_NoParentForRoot tests root nodes have no parent.
+func TestRenderJobsJSONWithContext_NoParentForRoot(t *testing.T) {
+	rootNode := makeJobsTestNode("1", "Root theorem", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   []*node.Node{rootNode},
+		VerifierJobs: nil,
+	}
+
+	ctx := &JobsContext{
+		NodeMap: map[string]*node.Node{"1": rootNode},
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, ctx)
+
+	var parsed JSONJobListFull
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	if len(parsed.ProverJobs) != 1 {
+		t.Fatalf("Expected 1 prover job, got %d", len(parsed.ProverJobs))
+	}
+
+	pj := parsed.ProverJobs[0]
+	if pj.Parent != nil {
+		t.Errorf("Root node should have nil parent, got %+v", pj.Parent)
+	}
+}
+
+// TestRenderJobsJSONWithContext_ValidJSON tests output is valid JSON.
+func TestRenderJobsJSONWithContext_ValidJSON(t *testing.T) {
+	proverNodes := []*node.Node{
+		makeJobsTestNode("1.1", "Prover job", schema.WorkflowAvailable, schema.EpistemicPending),
+	}
+	verifierNodes := []*node.Node{
+		makeJobsTestNode("1.2", "Verifier job", schema.WorkflowClaimed, schema.EpistemicPending),
+	}
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   proverNodes,
+		VerifierJobs: verifierNodes,
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, nil)
+
+	// Should be valid JSON
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Output is not valid JSON: %v\nOutput: %q", err, result)
+	}
+
+	// Should have expected top-level keys
+	if _, ok := parsed["prover_jobs"]; !ok {
+		t.Error("Missing prover_jobs key in JSON")
+	}
+	if _, ok := parsed["verifier_jobs"]; !ok {
+		t.Error("Missing verifier_jobs key in JSON")
+	}
+}
+
+// TestRenderJobsJSONWithContext_SpecialCharacters tests handling of special characters in statements.
+func TestRenderJobsJSONWithContext_SpecialCharacters(t *testing.T) {
+	tests := []struct {
+		name      string
+		statement string
+	}{
+		{"quotes", `Prove that "x" equals "y"`},
+		{"newlines", "Line 1\nLine 2"},
+		{"backslashes", `Let \alpha = \beta`},
+		{"unicode", "Prove x implies y"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jobNode := makeJobsTestNode("1.1", tt.statement, schema.WorkflowAvailable, schema.EpistemicPending)
+
+			jobResult := &jobs.JobResult{
+				ProverJobs:   []*node.Node{jobNode},
+				VerifierJobs: nil,
+			}
+
+			result := RenderJobsJSONWithContext(jobResult, nil)
+
+			// Should produce valid JSON
+			var parsed JSONJobListFull
+			if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+				t.Fatalf("Failed to parse JSON with %s: %v", tt.name, err)
+			}
+
+			// Statement should be preserved
+			if len(parsed.ProverJobs) != 1 {
+				t.Fatalf("Expected 1 job, got %d", len(parsed.ProverJobs))
+			}
+			if parsed.ProverJobs[0].Statement != tt.statement {
+				t.Errorf("Statement not preserved: got %q, want %q", parsed.ProverJobs[0].Statement, tt.statement)
+			}
+		})
+	}
+}
+
+// TestRenderJobsJSONWithContext_LookupByDefinitionName tests definition lookup by name.
+func TestRenderJobsJSONWithContext_LookupByDefinitionName(t *testing.T) {
+	// Create a node referencing a definition by name (not ID)
+	jobNode := makeJobsTestNode("1.1", "Use the natural number definition", schema.WorkflowAvailable, schema.EpistemicPending)
+	jobNode.Context = []string{"natural number"}
+
+	// Create state with a definition that has a different ID
+	s := state.NewState()
+	s.AddDefinition(&node.Definition{
+		ID:      "def-abc123",
+		Name:    "natural number",
+		Content: "A non-negative integer",
+	})
+
+	jobResult := &jobs.JobResult{
+		ProverJobs:   []*node.Node{jobNode},
+		VerifierJobs: nil,
+	}
+
+	ctx := &JobsContext{
+		State: s,
+	}
+
+	result := RenderJobsJSONWithContext(jobResult, ctx)
+
+	var parsed JSONJobListFull
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	pj := parsed.ProverJobs[0]
+	if len(pj.Definitions) != 1 {
+		t.Fatalf("Expected 1 definition (looked up by name), got %d", len(pj.Definitions))
+	}
+	if pj.Definitions[0].ID != "def-abc123" {
+		t.Errorf("Definition ID = %q, want %q", pj.Definitions[0].ID, "def-abc123")
 	}
 }

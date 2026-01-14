@@ -184,6 +184,8 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 }
 
 // runRefineMulti handles the --children flag for creating multiple child nodes at once.
+// This uses the atomic RefineNodeBulk method to create all children in a single operation,
+// preventing race conditions where other agents could grab the node between individual refines.
 func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owner, childrenJSON, dir, format string, svc *service.ProofService, st *state.State) error {
 	// Parse children JSON
 	var children []childSpec
@@ -196,13 +198,14 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 		return fmt.Errorf("--children requires at least one child specification")
 	}
 
-	// Validate each child specification before creating any
+	// Convert to service.ChildSpec and validate each child specification
+	specs := make([]service.ChildSpec, len(children))
 	for i, child := range children {
 		if strings.TrimSpace(child.Statement) == "" {
 			return fmt.Errorf("child %d: statement is required and cannot be empty", i+1)
 		}
 
-		// Validate type if provided
+		// Validate and apply default type
 		childType := child.Type
 		if childType == "" {
 			childType = "claim" // default
@@ -212,7 +215,7 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 			return fmt.Errorf("child %d: invalid node type %q. Valid types: %s", i+1, childType, strings.Join(validTypes, ", "))
 		}
 
-		// Validate inference if provided
+		// Validate and apply default inference
 		childInference := child.Inference
 		if childInference == "" {
 			childInference = "assumption" // default
@@ -220,68 +223,42 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 		if err := schema.ValidateInference(childInference); err != nil {
 			return fmt.Errorf("child %d: invalid inference type %q: %v", i+1, childInference, err)
 		}
+
+		specs[i] = service.ChildSpec{
+			NodeType:  schema.NodeType(childType),
+			Statement: child.Statement,
+			Inference: schema.InferenceType(childInference),
+		}
 	}
 
-	// Find next available child number
-	childNum := 1
-	for {
-		candidateID, err := parentID.Child(childNum)
-		if err != nil {
-			return fmt.Errorf("failed to generate child ID: %v", err)
+	// Use RefineNodeBulk for atomic multi-child creation
+	childIDs, err := svc.RefineNodeBulk(parentID, owner, specs)
+	if err != nil {
+		// Provide helpful error messages
+		if strings.Contains(err.Error(), "not claimed") {
+			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'", parentIDStr)
 		}
-		if st.GetNode(candidateID) == nil {
-			break
+		if strings.Contains(err.Error(), "owner does not match") {
+			return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
 		}
-		childNum++
+		return err
 	}
 
-	// Create all children
+	// Build output structure
 	type createdChild struct {
 		ID        string `json:"id"`
 		Type      string `json:"type"`
 		Statement string `json:"statement"`
 		Inference string `json:"inference"`
 	}
-	var createdChildren []createdChild
-
-	for _, child := range children {
-		// Apply defaults
-		childType := child.Type
-		if childType == "" {
-			childType = "claim"
-		}
-		childInference := child.Inference
-		if childInference == "" {
-			childInference = "assumption"
-		}
-
-		// Generate child ID
-		childID, err := parentID.Child(childNum)
-		if err != nil {
-			return fmt.Errorf("failed to generate child ID: %v", err)
-		}
-
-		// Create the child node
-		err = svc.RefineNode(parentID, owner, childID, schema.NodeType(childType), child.Statement, schema.InferenceType(childInference))
-		if err != nil {
-			// Provide helpful error messages
-			if strings.Contains(err.Error(), "not claimed") {
-				return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'", parentIDStr)
-			}
-			if strings.Contains(err.Error(), "owner does not match") {
-				return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
-			}
-			return err
-		}
-
-		createdChildren = append(createdChildren, createdChild{
+	createdChildren := make([]createdChild, len(childIDs))
+	for i, childID := range childIDs {
+		createdChildren[i] = createdChild{
 			ID:        childID.String(),
-			Type:      childType,
-			Statement: child.Statement,
-			Inference: childInference,
-		})
-
-		childNum++
+			Type:      string(specs[i].NodeType),
+			Statement: specs[i].Statement,
+			Inference: string(specs[i].Inference),
+		}
 	}
 
 	// Output result

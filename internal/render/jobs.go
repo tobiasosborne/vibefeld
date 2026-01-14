@@ -2,11 +2,13 @@
 package render
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/jobs"
 	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobias/vibefeld/internal/state"
 )
 
 // RenderJobs renders the list of available jobs (prover and verifier).
@@ -77,4 +79,183 @@ func renderJobNode(sb *strings.Builder, n *node.Node) {
 	if n.ClaimedBy != "" {
 		sb.WriteString(fmt.Sprintf("         claimed by: %s\n", n.ClaimedBy))
 	}
+}
+
+// JSONJobParent represents parent node info in JSON job output.
+type JSONJobParent struct {
+	ID        string `json:"id"`
+	Statement string `json:"statement"`
+}
+
+// JSONJobDefinition represents a referenced definition in JSON job output.
+type JSONJobDefinition struct {
+	ID         string `json:"id"`
+	Term       string `json:"term"`
+	Definition string `json:"definition"`
+}
+
+// JSONJobExternal represents a referenced external in JSON job output.
+type JSONJobExternal struct {
+	ID        string `json:"id"`
+	Reference string `json:"reference"`
+}
+
+// JSONJobChallenge represents an open challenge in JSON job output.
+type JSONJobChallenge struct {
+	ID     string `json:"id"`
+	Target string `json:"target"`
+	Reason string `json:"reason"`
+}
+
+// JSONJobEntryFull represents a single job entry with full context in JSON format.
+type JSONJobEntryFull struct {
+	ID          string              `json:"id"`
+	Statement   string              `json:"statement"`
+	Type        string              `json:"type"`
+	Depth       int                 `json:"depth"`
+	Parent      *JSONJobParent      `json:"parent,omitempty"`
+	Definitions []JSONJobDefinition `json:"definitions,omitempty"`
+	Externals   []JSONJobExternal   `json:"externals,omitempty"`
+	Challenges  []JSONJobChallenge  `json:"challenges,omitempty"`
+}
+
+// JSONJobListFull represents a list of available jobs with full context in JSON format.
+type JSONJobListFull struct {
+	ProverJobs   []JSONJobEntryFull `json:"prover_jobs"`
+	VerifierJobs []JSONJobEntryFull `json:"verifier_jobs"`
+}
+
+// JobsContext provides the additional context needed for rendering jobs with full details.
+type JobsContext struct {
+	State        *state.State
+	NodeMap      map[string]*node.Node
+	ChallengeMap map[string][]*node.Challenge
+}
+
+// RenderJobsJSONWithContext renders available jobs as JSON with full context.
+// This includes parent info, referenced definitions, externals, and open challenges.
+// Returns JSON string representation of the jobs.
+// Returns empty JSON structure for nil job result.
+func RenderJobsJSONWithContext(jobList *jobs.JobResult, ctx *JobsContext) string {
+	if jobList == nil {
+		return `{"prover_jobs":[],"verifier_jobs":[]}`
+	}
+
+	jl := JSONJobListFull{
+		ProverJobs:   make([]JSONJobEntryFull, 0, len(jobList.ProverJobs)),
+		VerifierJobs: make([]JSONJobEntryFull, 0, len(jobList.VerifierJobs)),
+	}
+
+	for _, job := range jobList.ProverJobs {
+		entry := buildJobEntryFull(job, ctx)
+		jl.ProverJobs = append(jl.ProverJobs, entry)
+	}
+
+	for _, job := range jobList.VerifierJobs {
+		entry := buildJobEntryFull(job, ctx)
+		jl.VerifierJobs = append(jl.VerifierJobs, entry)
+	}
+
+	data, err := json.Marshal(jl)
+	if err != nil {
+		return `{"prover_jobs":[],"verifier_jobs":[]}`
+	}
+
+	return string(data)
+}
+
+// buildJobEntryFull builds a full job entry with context from state.
+func buildJobEntryFull(job *node.Node, ctx *JobsContext) JSONJobEntryFull {
+	entry := JSONJobEntryFull{
+		ID:        job.ID.String(),
+		Statement: job.Statement,
+		Type:      string(job.Type),
+		Depth:     job.Depth(),
+	}
+
+	if ctx == nil {
+		return entry
+	}
+
+	// Add parent info if exists
+	if parentID, hasParent := job.ID.Parent(); hasParent {
+		if ctx.State != nil {
+			if parent := ctx.State.GetNode(parentID); parent != nil {
+				entry.Parent = &JSONJobParent{
+					ID:        parent.ID.String(),
+					Statement: parent.Statement,
+				}
+			}
+		} else if ctx.NodeMap != nil {
+			if parent := ctx.NodeMap[parentID.String()]; parent != nil {
+				entry.Parent = &JSONJobParent{
+					ID:        parent.ID.String(),
+					Statement: parent.Statement,
+				}
+			}
+		}
+	}
+
+	// Add definitions referenced by this node's context
+	if ctx.State != nil && len(job.Context) > 0 {
+		defs := make([]JSONJobDefinition, 0)
+		for _, ctxRef := range job.Context {
+			// Try to find definition by ID or name
+			if def := ctx.State.GetDefinition(ctxRef); def != nil {
+				defs = append(defs, JSONJobDefinition{
+					ID:         def.ID,
+					Term:       def.Name,
+					Definition: def.Content,
+				})
+			} else if def := ctx.State.GetDefinitionByName(ctxRef); def != nil {
+				defs = append(defs, JSONJobDefinition{
+					ID:         def.ID,
+					Term:       def.Name,
+					Definition: def.Content,
+				})
+			}
+		}
+		if len(defs) > 0 {
+			entry.Definitions = defs
+		}
+	}
+
+	// Add externals referenced by this node's context
+	if ctx.State != nil && len(job.Context) > 0 {
+		exts := make([]JSONJobExternal, 0)
+		for _, ctxRef := range job.Context {
+			if ext := ctx.State.GetExternal(ctxRef); ext != nil {
+				exts = append(exts, JSONJobExternal{
+					ID:        ext.ID,
+					Reference: ext.Source,
+				})
+			}
+		}
+		if len(exts) > 0 {
+			entry.Externals = exts
+		}
+	}
+
+	// Add open challenges on this node
+	if ctx.ChallengeMap != nil {
+		nodeIDStr := job.ID.String()
+		if challenges := ctx.ChallengeMap[nodeIDStr]; len(challenges) > 0 {
+			chs := make([]JSONJobChallenge, 0)
+			for _, ch := range challenges {
+				// Only include open challenges
+				if ch.Status == node.ChallengeStatusOpen {
+					chs = append(chs, JSONJobChallenge{
+						ID:     ch.ID,
+						Target: string(ch.Target),
+						Reason: ch.Reason,
+					})
+				}
+			}
+			if len(chs) > 0 {
+				entry.Challenges = chs
+			}
+		}
+	}
+
+	return entry
 }

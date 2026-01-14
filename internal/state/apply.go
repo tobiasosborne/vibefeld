@@ -7,6 +7,7 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/taint"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -84,6 +85,10 @@ func applyNodesClaimed(s *State, e ledger.NodesClaimed) error {
 		if n == nil {
 			return fmt.Errorf("node %s not found in state", nodeID.String())
 		}
+		// Validate the workflow state transition
+		if err := schema.ValidateWorkflowTransition(n.WorkflowState, schema.WorkflowClaimed); err != nil {
+			return fmt.Errorf("invalid workflow transition for node %s: %w", nodeID.String(), err)
+		}
 		n.WorkflowState = schema.WorkflowClaimed
 		n.ClaimedBy = e.Owner
 		n.ClaimedAt = e.Timeout
@@ -98,6 +103,10 @@ func applyNodesReleased(s *State, e ledger.NodesReleased) error {
 		n := s.GetNode(nodeID)
 		if n == nil {
 			return fmt.Errorf("node %s not found in state", nodeID.String())
+		}
+		// Validate the workflow state transition
+		if err := schema.ValidateWorkflowTransition(n.WorkflowState, schema.WorkflowAvailable); err != nil {
+			return fmt.Errorf("invalid workflow transition for node %s: %w", nodeID.String(), err)
 		}
 		n.WorkflowState = schema.WorkflowAvailable
 		n.ClaimedBy = ""
@@ -118,6 +127,10 @@ func applyNodeValidated(s *State, e ledger.NodeValidated) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicValidated
+
+	// Auto-trigger taint recomputation after epistemic state change
+	recomputeTaintForNode(s, n)
+
 	return nil
 }
 
@@ -133,6 +146,10 @@ func applyNodeAdmitted(s *State, e ledger.NodeAdmitted) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicAdmitted
+
+	// Auto-trigger taint recomputation after epistemic state change
+	recomputeTaintForNode(s, n)
+
 	return nil
 }
 
@@ -148,6 +165,10 @@ func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicRefuted
+
+	// Auto-trigger taint recomputation after epistemic state change
+	recomputeTaintForNode(s, n)
+
 	return nil
 }
 
@@ -163,6 +184,10 @@ func applyNodeArchived(s *State, e ledger.NodeArchived) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicArchived
+
+	// Auto-trigger taint recomputation after epistemic state change
+	recomputeTaintForNode(s, n)
+
 	return nil
 }
 
@@ -238,4 +263,42 @@ func applyChallengeWithdrawn(s *State, e ledger.ChallengeWithdrawn) error {
 	}
 	c.Status = "withdrawn"
 	return nil
+}
+
+// recomputeTaintForNode recomputes the taint state for a node and propagates
+// taint changes to its descendants.
+//
+// This function is called automatically after epistemic state changes to ensure
+// the taint system stays in sync with the proof state.
+func recomputeTaintForNode(s *State, n *node.Node) {
+	if n == nil || s == nil {
+		return
+	}
+
+	// Get all nodes in the state for taint computation
+	allNodes := s.AllNodes()
+
+	// Build ancestor list for this node
+	nodeMap := make(map[string]*node.Node)
+	for _, nd := range allNodes {
+		if nd != nil {
+			nodeMap[nd.ID.String()] = nd
+		}
+	}
+
+	var ancestors []*node.Node
+	parentID, hasParent := n.ID.Parent()
+	for hasParent {
+		if parent, ok := nodeMap[parentID.String()]; ok {
+			ancestors = append(ancestors, parent)
+		}
+		parentID, hasParent = parentID.Parent()
+	}
+
+	// Compute the taint for the node itself
+	newTaint := taint.ComputeTaint(n, ancestors)
+	n.TaintState = newTaint
+
+	// Propagate taint to descendants
+	taint.PropagateTaint(n, allNodes)
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/state"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -110,12 +111,15 @@ func runGet(cmd *cobra.Command, nodeIDStr, dir, format string, ancestors, subtre
 		return compareNodeIDs(nodes[i].ID.String(), nodes[j].ID.String())
 	})
 
+	// Get all challenges from state for lookup
+	allChallenges := st.AllChallenges()
+
 	// Output based on format
 	if format == "json" {
-		return outputJSON(cmd, nodes, full)
+		return outputJSON(cmd, nodes, full, allChallenges)
 	}
 
-	return outputText(cmd, nodes, full)
+	return outputText(cmd, nodes, full, allChallenges)
 }
 
 // collectAncestors collects the target node and all its ancestors.
@@ -164,11 +168,12 @@ func collectSubtree(st interface {
 }
 
 // outputJSON outputs nodes in JSON format.
-func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool) error {
+func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*state.Challenge) error {
 	if len(nodes) == 1 {
 		// Single node: always show full output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
-		output := nodeToJSONFull(nodes[0])
+		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)
+		output := nodeToJSONFull(nodes[0], nodeChallenges)
 		data, err := json.Marshal(output)
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %v", err)
@@ -181,7 +186,8 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool) error {
 	if full {
 		jsonNodes := make([]map[string]interface{}, 0, len(nodes))
 		for _, n := range nodes {
-			jsonNodes = append(jsonNodes, nodeToJSONFull(n))
+			nodeChallenges := filterChallengesForNode(challenges, n.ID)
+			jsonNodes = append(jsonNodes, nodeToJSONFull(n, nodeChallenges))
 		}
 		data, err := json.Marshal(jsonNodes)
 		if err != nil {
@@ -212,7 +218,7 @@ func nodeToJSONBasic(n *node.Node) map[string]interface{} {
 }
 
 // nodeToJSONFull creates a full JSON representation of a node.
-func nodeToJSONFull(n *node.Node) map[string]interface{} {
+func nodeToJSONFull(n *node.Node, challenges []*state.Challenge) map[string]interface{} {
 	result := map[string]interface{}{
 		"id":              n.ID.String(),
 		"type":            string(n.Type),
@@ -245,15 +251,37 @@ func nodeToJSONFull(n *node.Node) map[string]interface{} {
 		result["claimed_by"] = n.ClaimedBy
 	}
 
+	// Add challenges if present
+	if len(challenges) > 0 {
+		challengeList := make([]map[string]interface{}, len(challenges))
+		for i, c := range challenges {
+			challengeList[i] = map[string]interface{}{
+				"id":     c.ID,
+				"status": c.Status,
+				"target": c.Target,
+				"reason": c.Reason,
+			}
+		}
+		result["challenges"] = challengeList
+	}
+
 	return result
 }
 
 // outputText outputs nodes in text format.
-func outputText(cmd *cobra.Command, nodes []*node.Node, full bool) error {
+func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*state.Challenge) error {
 	if len(nodes) == 1 {
 		// Single node: always show full/verbose output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
 		cmd.Print(render.RenderNodeVerbose(nodes[0]))
+		// Show challenges for this node
+		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)
+		if len(nodeChallenges) > 0 {
+			cmd.Printf("\nChallenges (%d):\n", len(nodeChallenges))
+			for _, c := range nodeChallenges {
+				cmd.Printf("  %s [%s] %s: %s\n", c.ID, c.Status, c.Target, c.Reason)
+			}
+		}
 		return nil
 	}
 
@@ -264,12 +292,31 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool) error {
 				cmd.Println("---")
 			}
 			cmd.Print(render.RenderNodeVerbose(n))
+			// Show challenges for this node
+			nodeChallenges := filterChallengesForNode(challenges, n.ID)
+			if len(nodeChallenges) > 0 {
+				cmd.Printf("\nChallenges (%d):\n", len(nodeChallenges))
+				for _, c := range nodeChallenges {
+					cmd.Printf("  %s [%s] %s: %s\n", c.ID, c.Status, c.Target, c.Reason)
+				}
+			}
 		}
 	} else {
 		cmd.Println(render.RenderNodeTree(nodes))
 	}
 
 	return nil
+}
+
+// filterChallengesForNode returns challenges that target the given node.
+func filterChallengesForNode(challenges []*state.Challenge, nodeID types.NodeID) []*state.Challenge {
+	var result []*state.Challenge
+	for _, c := range challenges {
+		if c.NodeID.String() == nodeID.String() {
+			result = append(result, c)
+		}
+	}
+	return result
 }
 
 // compareNodeIDs compares two node ID strings for sorting.
