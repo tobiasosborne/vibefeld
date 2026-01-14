@@ -12,21 +12,22 @@ import (
 type EventType string
 
 const (
-	EventProofInitialized    EventType = "proof_initialized"
-	EventNodeCreated         EventType = "node_created"
-	EventNodesClaimed        EventType = "nodes_claimed"
-	EventNodesReleased       EventType = "nodes_released"
-	EventChallengeRaised     EventType = "challenge_raised"
-	EventChallengeResolved   EventType = "challenge_resolved"
-	EventChallengeWithdrawn  EventType = "challenge_withdrawn"
-	EventNodeValidated       EventType = "node_validated"
-	EventNodeAdmitted        EventType = "node_admitted"
-	EventNodeRefuted         EventType = "node_refuted"
-	EventNodeArchived        EventType = "node_archived"
-	EventTaintRecomputed     EventType = "taint_recomputed"
-	EventDefAdded            EventType = "def_added"
-	EventLemmaExtracted      EventType = "lemma_extracted"
-	EventLockReaped          EventType = "lock_reaped"
+	EventProofInitialized     EventType = "proof_initialized"
+	EventNodeCreated          EventType = "node_created"
+	EventNodesClaimed         EventType = "nodes_claimed"
+	EventNodesReleased        EventType = "nodes_released"
+	EventChallengeRaised      EventType = "challenge_raised"
+	EventChallengeResolved    EventType = "challenge_resolved"
+	EventChallengeWithdrawn   EventType = "challenge_withdrawn"
+	EventChallengeSuperseded  EventType = "challenge_superseded"
+	EventNodeValidated        EventType = "node_validated"
+	EventNodeAdmitted         EventType = "node_admitted"
+	EventNodeRefuted          EventType = "node_refuted"
+	EventNodeArchived         EventType = "node_archived"
+	EventTaintRecomputed      EventType = "taint_recomputed"
+	EventDefAdded             EventType = "def_added"
+	EventLemmaExtracted       EventType = "lemma_extracted"
+	EventLockReaped           EventType = "lock_reaped"
 )
 
 // Event is the base interface for all ledger events.
@@ -100,6 +101,14 @@ type ChallengeResolved struct {
 type ChallengeWithdrawn struct {
 	BaseEvent
 	ChallengeID string `json:"challenge_id"`
+}
+
+// ChallengeSuperseded is emitted when a challenge becomes moot because its parent
+// node was archived or refuted. Per PRD p.177, this marks the challenge as superseded.
+type ChallengeSuperseded struct {
+	BaseEvent
+	ChallengeID string       `json:"challenge_id"`
+	NodeID      types.NodeID `json:"node_id"`
 }
 
 // NodeValidated is emitted when a verifier validates a node as correct.
@@ -248,6 +257,19 @@ func NewChallengeWithdrawn(challengeID string) ChallengeWithdrawn {
 			EventTime: types.Now(),
 		},
 		ChallengeID: challengeID,
+	}
+}
+
+// NewChallengeSuperseded creates a ChallengeSuperseded event.
+// This is used when a challenge becomes moot because its parent node was archived or refuted.
+func NewChallengeSuperseded(challengeID string, nodeID types.NodeID) ChallengeSuperseded {
+	return ChallengeSuperseded{
+		BaseEvent: BaseEvent{
+			EventType: EventChallengeSuperseded,
+			EventTime: types.Now(),
+		},
+		ChallengeID: challengeID,
+		NodeID:      nodeID,
 	}
 }
 

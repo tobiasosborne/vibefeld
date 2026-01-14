@@ -10,7 +10,8 @@ import (
 // NodeID represents a hierarchical proof node identifier.
 // Format: "1" (root), "1.1" (first child), "1.2.3" (grandchild), etc.
 type NodeID struct {
-	parts []int
+	parts  []int
+	cached string // cached string representation, computed on first String() call
 }
 
 // Parse parses a string representation of a NodeID.
@@ -59,15 +60,22 @@ func Parse(s string) (NodeID, error) {
 		return NodeID{}, fmt.Errorf("invalid node ID: root must be 1, got %d", intParts[0])
 	}
 
-	return NodeID{parts: intParts}, nil
+	return NodeID{parts: intParts, cached: s}, nil
 }
 
 // String returns the string representation of the NodeID.
+// The result is cached on first computation for performance.
 func (n NodeID) String() string {
 	if len(n.parts) == 0 {
 		return ""
 	}
 
+	// Return cached value if available
+	if n.cached != "" {
+		return n.cached
+	}
+
+	// Compute and return (can't cache with value receiver)
 	strParts := make([]string, len(n.parts))
 	for i, part := range n.parts {
 		strParts[i] = strconv.Itoa(part)
@@ -81,7 +89,17 @@ func (n NodeID) Parent() (NodeID, bool) {
 		return NodeID{}, false
 	}
 
-	return NodeID{parts: n.parts[:len(n.parts)-1]}, true
+	// Derive parent cached string if available
+	var parentCached string
+	if n.cached != "" {
+		// Find last dot and take prefix
+		lastDot := strings.LastIndex(n.cached, ".")
+		if lastDot > 0 {
+			parentCached = n.cached[:lastDot]
+		}
+	}
+
+	return NodeID{parts: n.parts[:len(n.parts)-1], cached: parentCached}, true
 }
 
 // Child returns the nth child of this NodeID.
@@ -95,7 +113,21 @@ func (n NodeID) Child(num int) (NodeID, error) {
 	newParts := make([]int, len(n.parts)+1)
 	copy(newParts, n.parts)
 	newParts[len(n.parts)] = num
-	return NodeID{parts: newParts}, nil
+
+	// Compute cached string for new child
+	var childCached string
+	if n.cached != "" {
+		childCached = n.cached + "." + strconv.Itoa(num)
+	} else {
+		// Fallback: compute full string
+		strParts := make([]string, len(newParts))
+		for i, part := range newParts {
+			strParts[i] = strconv.Itoa(part)
+		}
+		childCached = strings.Join(strParts, ".")
+	}
+
+	return NodeID{parts: newParts, cached: childCached}, nil
 }
 
 // IsRoot returns true if this is the root node ("1").
@@ -152,7 +184,27 @@ func (n NodeID) CommonAncestor(other NodeID) NodeID {
 		return NodeID{}
 	}
 
-	return NodeID{parts: n.parts[:commonLen]}
+	// If common ancestor is the same as n, reuse its cached string
+	if commonLen == len(n.parts) && n.cached != "" {
+		return NodeID{parts: n.parts[:commonLen], cached: n.cached}
+	}
+
+	// If common ancestor is the same as other, reuse its cached string
+	if commonLen == len(other.parts) && other.cached != "" {
+		return NodeID{parts: n.parts[:commonLen], cached: other.cached}
+	}
+
+	// Otherwise, derive from n.cached if available
+	var ancestorCached string
+	if n.cached != "" {
+		// Find the position after commonLen-th dot (or end if commonLen equals n's depth)
+		parts := strings.SplitN(n.cached, ".", commonLen+1)
+		if len(parts) > commonLen {
+			ancestorCached = strings.Join(parts[:commonLen], ".")
+		}
+	}
+
+	return NodeID{parts: n.parts[:commonLen], cached: ancestorCached}
 }
 
 // MarshalJSON implements json.Marshaler.

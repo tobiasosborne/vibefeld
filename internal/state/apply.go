@@ -56,6 +56,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyChallengeResolved(s, e)
 	case ledger.ChallengeWithdrawn:
 		return applyChallengeWithdrawn(s, e)
+	case ledger.ChallengeSuperseded:
+		return applyChallengeSuperseded(s, e)
 	default:
 		return fmt.Errorf("unknown event type: %s", event.Type())
 	}
@@ -155,6 +157,7 @@ func applyNodeAdmitted(s *State, e ledger.NodeAdmitted) error {
 
 // applyNodeRefuted handles the NodeRefuted event.
 // This changes the epistemic state to refuted.
+// Per PRD p.177, refuting a node auto-supersedes any open challenges on it.
 func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 	n := s.GetNode(e.NodeID)
 	if n == nil {
@@ -166,6 +169,9 @@ func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 	}
 	n.EpistemicState = schema.EpistemicRefuted
 
+	// Auto-supersede any open challenges on this node
+	supersedeOpenChallengesForNode(s, e.NodeID)
+
 	// Auto-trigger taint recomputation after epistemic state change
 	recomputeTaintForNode(s, n)
 
@@ -174,6 +180,7 @@ func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 
 // applyNodeArchived handles the NodeArchived event.
 // This changes the epistemic state to archived.
+// Per PRD p.177, archiving a node auto-supersedes any open challenges on it.
 func applyNodeArchived(s *State, e ledger.NodeArchived) error {
 	n := s.GetNode(e.NodeID)
 	if n == nil {
@@ -184,6 +191,9 @@ func applyNodeArchived(s *State, e ledger.NodeArchived) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicArchived
+
+	// Auto-supersede any open challenges on this node
+	supersedeOpenChallengesForNode(s, e.NodeID)
 
 	// Auto-trigger taint recomputation after epistemic state change
 	recomputeTaintForNode(s, n)
@@ -263,6 +273,31 @@ func applyChallengeWithdrawn(s *State, e ledger.ChallengeWithdrawn) error {
 	}
 	c.Status = "withdrawn"
 	return nil
+}
+
+// applyChallengeSuperseded handles the ChallengeSuperseded event.
+// This updates the challenge status to "superseded".
+// Per PRD p.177, a challenge is superseded when its parent node is archived or refuted,
+// making the challenge moot.
+func applyChallengeSuperseded(s *State, e ledger.ChallengeSuperseded) error {
+	c := s.GetChallenge(e.ChallengeID)
+	if c == nil {
+		return fmt.Errorf("challenge %s not found", e.ChallengeID)
+	}
+	c.Status = "superseded"
+	return nil
+}
+
+// supersedeOpenChallengesForNode marks all open challenges for a specific node
+// as superseded. This is called when a node is archived or refuted, making
+// any challenges on it moot.
+func supersedeOpenChallengesForNode(s *State, nodeID types.NodeID) {
+	for _, c := range s.AllChallenges() {
+		// Only supersede open challenges that belong to this specific node
+		if c.Status == "open" && c.NodeID.String() == nodeID.String() {
+			c.Status = "superseded"
+		}
+	}
 }
 
 // recomputeTaintForNode recomputes the taint state for a node and propagates

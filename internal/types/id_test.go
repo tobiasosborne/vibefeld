@@ -1,6 +1,7 @@
 package types
 
 import (
+	"strconv"
 	"testing"
 )
 
@@ -538,6 +539,188 @@ func TestChild_Chain(t *testing.T) {
 
 			if id.String() != tt.wantFinal {
 				t.Errorf("child chain = %q, want %q", id.String(), tt.wantFinal)
+			}
+		})
+	}
+}
+
+// Benchmark tests for NodeID.String() performance optimization
+
+// BenchmarkString_Cached benchmarks String() on parsed NodeIDs (cached)
+func BenchmarkString_Cached(b *testing.B) {
+	ids := []NodeID{}
+	testInputs := []string{"1", "1.1", "1.2.3", "1.2.3.4.5", "1.1.2.3.4.5.6.7.8"}
+	for _, s := range testInputs {
+		id, _ := Parse(s)
+		ids = append(ids, id)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, id := range ids {
+			_ = id.String()
+		}
+	}
+}
+
+// BenchmarkString_Repeated benchmarks repeated String() calls on same ID
+func BenchmarkString_Repeated(b *testing.B) {
+	id, _ := Parse("1.2.3.4.5.6.7.8")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = id.String()
+	}
+}
+
+// BenchmarkString_DeepNesting benchmarks String() on deeply nested IDs
+func BenchmarkString_DeepNesting(b *testing.B) {
+	id, _ := Parse("1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = id.String()
+	}
+}
+
+// BenchmarkString_MapKey benchmarks using String() as map keys
+func BenchmarkString_MapKey(b *testing.B) {
+	ids := []NodeID{}
+	for i := 1; i <= 100; i++ {
+		id, _ := Parse("1." + itoa(i))
+		ids = append(ids, id)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m := make(map[string]int)
+		for j, id := range ids {
+			m[id.String()] = j
+		}
+	}
+}
+
+// BenchmarkChild_WithCaching benchmarks Child() which now includes caching
+func BenchmarkChild_WithCaching(b *testing.B) {
+	root, _ := Parse("1")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		id := root
+		for j := 1; j <= 8; j++ {
+			id, _ = id.Child(j)
+		}
+		_ = id.String()
+	}
+}
+
+// BenchmarkParent_WithCaching benchmarks Parent() which now includes caching
+func BenchmarkParent_WithCaching(b *testing.B) {
+	deep, _ := Parse("1.2.3.4.5.6.7.8")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		id := deep
+		for {
+			parent, ok := id.Parent()
+			if !ok {
+				break
+			}
+			_ = parent.String()
+			id = parent
+		}
+	}
+}
+
+// itoa is a helper to convert int to string for benchmark setup
+func itoa(n int) string {
+	return strconv.Itoa(n)
+}
+
+// TestString_CacheConsistency verifies cached string matches computed string
+func TestString_CacheConsistency(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"root", "1"},
+		{"simple child", "1.5"},
+		{"grandchild", "1.2.3"},
+		{"deep", "1.2.3.4.5.6.7.8"},
+		{"large numbers", "1.999.888"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			id, err := Parse(tt.input)
+			if err != nil {
+				t.Fatalf("Parse(%q) unexpected error: %v", tt.input, err)
+			}
+
+			// Verify cached string matches input
+			if id.String() != tt.input {
+				t.Errorf("Parse(%q).String() = %q, want %q", tt.input, id.String(), tt.input)
+			}
+
+			// Verify multiple calls return same value
+			for i := 0; i < 5; i++ {
+				if id.String() != tt.input {
+					t.Errorf("String() call %d = %q, want %q", i, id.String(), tt.input)
+				}
+			}
+		})
+	}
+}
+
+// TestChild_CacheConsistency verifies Child() produces correct cached strings
+func TestChild_CacheConsistency(t *testing.T) {
+	tests := []struct {
+		parent   string
+		childNum int
+		want     string
+	}{
+		{"1", 1, "1.1"},
+		{"1", 99, "1.99"},
+		{"1.2", 3, "1.2.3"},
+		{"1.2.3.4", 5, "1.2.3.4.5"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			parent, _ := Parse(tt.parent)
+			child, err := parent.Child(tt.childNum)
+			if err != nil {
+				t.Fatalf("Child(%d) unexpected error: %v", tt.childNum, err)
+			}
+
+			if child.String() != tt.want {
+				t.Errorf("Child().String() = %q, want %q", child.String(), tt.want)
+			}
+		})
+	}
+}
+
+// TestParent_CacheConsistency verifies Parent() produces correct cached strings
+func TestParent_CacheConsistency(t *testing.T) {
+	tests := []struct {
+		input      string
+		wantParent string
+	}{
+		{"1.1", "1"},
+		{"1.2.3", "1.2"},
+		{"1.2.3.4.5", "1.2.3.4"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			id, _ := Parse(tt.input)
+			parent, ok := id.Parent()
+			if !ok {
+				t.Fatalf("Parent() returned false")
+			}
+
+			if parent.String() != tt.wantParent {
+				t.Errorf("Parent().String() = %q, want %q", parent.String(), tt.wantParent)
 			}
 		})
 	}

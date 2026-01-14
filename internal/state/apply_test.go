@@ -1198,3 +1198,250 @@ func TestApplyNodeAdmittedPropagatesTaint(t *testing.T) {
 		t.Errorf("Child taint state should be tainted after parent admission: got %q", gotChild.TaintState)
 	}
 }
+
+// TestApplyChallengeSuperseded verifies that ChallengeSuperseded event is handled.
+func TestApplyChallengeSuperseded(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// First raise a challenge
+	raiseEvent := ledger.NewChallengeRaised("chal-001", nodeID, "statement", "This is incorrect")
+	err := Apply(s, raiseEvent)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised failed: %v", err)
+	}
+
+	// Now supersede the challenge
+	supersededEvent := ledger.NewChallengeSuperseded("chal-001", nodeID)
+	err = Apply(s, supersededEvent)
+	if err != nil {
+		t.Fatalf("Apply ChallengeSuperseded failed: %v", err)
+	}
+
+	// Verify the challenge status is superseded
+	c := s.GetChallenge("chal-001")
+	if c == nil {
+		t.Fatal("Challenge not found in state")
+	}
+	if c.Status != "superseded" {
+		t.Errorf("Challenge Status: got %q, want %q", c.Status, "superseded")
+	}
+}
+
+// TestApplyChallengeSuperseded_NotFound verifies error when superseding non-existent challenge.
+func TestApplyChallengeSuperseded_NotFound(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Try to supersede a challenge that doesn't exist
+	event := ledger.NewChallengeSuperseded("chal-nonexistent", nodeID)
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply ChallengeSuperseded should fail for non-existent challenge")
+	}
+}
+
+// TestApplyNodeArchivedSupersedesOpenChallenges verifies that archiving a node auto-supersedes its open challenges.
+func TestApplyNodeArchivedSupersedesOpenChallenges(t *testing.T) {
+	s := NewState()
+
+	// Add a pending node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	s.AddNode(n)
+
+	// Raise multiple challenges on the node
+	raiseEvent1 := ledger.NewChallengeRaised("chal-001", nodeID, "statement", "Challenge 1")
+	err = Apply(s, raiseEvent1)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised 1 failed: %v", err)
+	}
+
+	raiseEvent2 := ledger.NewChallengeRaised("chal-002", nodeID, "inference", "Challenge 2")
+	err = Apply(s, raiseEvent2)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised 2 failed: %v", err)
+	}
+
+	// Also raise a challenge that is already resolved (should not be affected)
+	raiseEvent3 := ledger.NewChallengeRaised("chal-003", nodeID, "statement", "Challenge 3")
+	err = Apply(s, raiseEvent3)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised 3 failed: %v", err)
+	}
+	resolveEvent := ledger.NewChallengeResolved("chal-003")
+	err = Apply(s, resolveEvent)
+	if err != nil {
+		t.Fatalf("Apply ChallengeResolved failed: %v", err)
+	}
+
+	// Archive the node - this should auto-supersede open challenges
+	archiveEvent := ledger.NewNodeArchived(nodeID)
+	err = Apply(s, archiveEvent)
+	if err != nil {
+		t.Fatalf("Apply NodeArchived failed: %v", err)
+	}
+
+	// Verify the node is archived
+	got := s.GetNode(nodeID)
+	if got.EpistemicState != schema.EpistemicArchived {
+		t.Errorf("Node epistemic state: got %q, want %q", got.EpistemicState, schema.EpistemicArchived)
+	}
+
+	// Verify the open challenges are superseded
+	chal1 := s.GetChallenge("chal-001")
+	if chal1.Status != "superseded" {
+		t.Errorf("Challenge 1 Status: got %q, want %q", chal1.Status, "superseded")
+	}
+
+	chal2 := s.GetChallenge("chal-002")
+	if chal2.Status != "superseded" {
+		t.Errorf("Challenge 2 Status: got %q, want %q", chal2.Status, "superseded")
+	}
+
+	// Verify the resolved challenge remains resolved
+	chal3 := s.GetChallenge("chal-003")
+	if chal3.Status != "resolved" {
+		t.Errorf("Challenge 3 Status should remain resolved: got %q, want %q", chal3.Status, "resolved")
+	}
+}
+
+// TestApplyNodeRefutedSupersedesOpenChallenges verifies that refuting a node auto-supersedes its open challenges.
+func TestApplyNodeRefutedSupersedesOpenChallenges(t *testing.T) {
+	s := NewState()
+
+	// Add a pending node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	s.AddNode(n)
+
+	// Raise a challenge on the node
+	raiseEvent := ledger.NewChallengeRaised("chal-001", nodeID, "statement", "This is wrong")
+	err = Apply(s, raiseEvent)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised failed: %v", err)
+	}
+
+	// Also raise a challenge that is withdrawn (should not be affected)
+	raiseEvent2 := ledger.NewChallengeRaised("chal-002", nodeID, "inference", "Another challenge")
+	err = Apply(s, raiseEvent2)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised 2 failed: %v", err)
+	}
+	withdrawEvent := ledger.NewChallengeWithdrawn("chal-002")
+	err = Apply(s, withdrawEvent)
+	if err != nil {
+		t.Fatalf("Apply ChallengeWithdrawn failed: %v", err)
+	}
+
+	// Refute the node - this should auto-supersede open challenges
+	refuteEvent := ledger.NewNodeRefuted(nodeID)
+	err = Apply(s, refuteEvent)
+	if err != nil {
+		t.Fatalf("Apply NodeRefuted failed: %v", err)
+	}
+
+	// Verify the node is refuted
+	got := s.GetNode(nodeID)
+	if got.EpistemicState != schema.EpistemicRefuted {
+		t.Errorf("Node epistemic state: got %q, want %q", got.EpistemicState, schema.EpistemicRefuted)
+	}
+
+	// Verify the open challenge is superseded
+	chal1 := s.GetChallenge("chal-001")
+	if chal1.Status != "superseded" {
+		t.Errorf("Challenge 1 Status: got %q, want %q", chal1.Status, "superseded")
+	}
+
+	// Verify the withdrawn challenge remains withdrawn
+	chal2 := s.GetChallenge("chal-002")
+	if chal2.Status != "withdrawn" {
+		t.Errorf("Challenge 2 Status should remain withdrawn: got %q, want %q", chal2.Status, "withdrawn")
+	}
+}
+
+// TestApplyNodeArchivedNoChallenges verifies that archiving a node with no challenges works fine.
+func TestApplyNodeArchivedNoChallenges(t *testing.T) {
+	s := NewState()
+
+	// Add a pending node (no challenges)
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	s.AddNode(n)
+
+	// Archive the node - should work without any challenges to supersede
+	archiveEvent := ledger.NewNodeArchived(nodeID)
+	err = Apply(s, archiveEvent)
+	if err != nil {
+		t.Fatalf("Apply NodeArchived failed: %v", err)
+	}
+
+	// Verify the node is archived
+	got := s.GetNode(nodeID)
+	if got.EpistemicState != schema.EpistemicArchived {
+		t.Errorf("Node epistemic state: got %q, want %q", got.EpistemicState, schema.EpistemicArchived)
+	}
+}
+
+// TestApplyNodeRefutedOnlyAffectsMatchingChallenges verifies that refuting a node only supersedes challenges on that specific node.
+func TestApplyNodeRefutedOnlyAffectsMatchingChallenges(t *testing.T) {
+	s := NewState()
+
+	// Add two nodes
+	node1ID := mustParseNodeID(t, "1")
+	n1, err := node.NewNode(node1ID, schema.NodeTypeClaim, "Node 1", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create node 1: %v", err)
+	}
+	s.AddNode(n1)
+
+	node2ID := mustParseNodeID(t, "1.1")
+	n2, err := node.NewNode(node2ID, schema.NodeTypeClaim, "Node 2", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("Failed to create node 2: %v", err)
+	}
+	s.AddNode(n2)
+
+	// Raise challenges on both nodes
+	raiseEvent1 := ledger.NewChallengeRaised("chal-node1", node1ID, "statement", "Challenge on node 1")
+	err = Apply(s, raiseEvent1)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised for node 1 failed: %v", err)
+	}
+
+	raiseEvent2 := ledger.NewChallengeRaised("chal-node2", node2ID, "statement", "Challenge on node 2")
+	err = Apply(s, raiseEvent2)
+	if err != nil {
+		t.Fatalf("Apply ChallengeRaised for node 2 failed: %v", err)
+	}
+
+	// Refute node 1 only
+	refuteEvent := ledger.NewNodeRefuted(node1ID)
+	err = Apply(s, refuteEvent)
+	if err != nil {
+		t.Fatalf("Apply NodeRefuted failed: %v", err)
+	}
+
+	// Verify challenge on node 1 is superseded
+	chalNode1 := s.GetChallenge("chal-node1")
+	if chalNode1.Status != "superseded" {
+		t.Errorf("Challenge on node 1 should be superseded: got %q", chalNode1.Status)
+	}
+
+	// Verify challenge on node 2 is still open
+	chalNode2 := s.GetChallenge("chal-node2")
+	if chalNode2.Status != "open" {
+		t.Errorf("Challenge on node 2 should still be open: got %q", chalNode2.Status)
+	}
+}
