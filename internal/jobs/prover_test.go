@@ -29,6 +29,15 @@ func createTestNode(t *testing.T, idStr string, workflow schema.WorkflowState, e
 	return n
 }
 
+// buildProverNodeMap builds a map from node ID string to node pointer.
+func buildProverNodeMap(nodes []*node.Node) map[string]*node.Node {
+	m := make(map[string]*node.Node)
+	for _, n := range nodes {
+		m[n.ID.String()] = n
+	}
+	return m
+}
+
 // TestFindProverJobs_FindsAvailablePendingNodes tests that FindProverJobs returns
 // nodes that are available and pending.
 func TestFindProverJobs_FindsAvailablePendingNodes(t *testing.T) {
@@ -38,7 +47,7 @@ func TestFindProverJobs_FindsAvailablePendingNodes(t *testing.T) {
 		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 3 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 3", len(result))
@@ -64,7 +73,7 @@ func TestFindProverJobs_ExcludesClaimedNodes(t *testing.T) {
 		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending), // should be included
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 2 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 2", len(result))
@@ -86,7 +95,7 @@ func TestFindProverJobs_ExcludesValidatedNodes(t *testing.T) {
 		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated), // should be excluded
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 1 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
@@ -105,7 +114,7 @@ func TestFindProverJobs_ExcludesAdmittedNodes(t *testing.T) {
 		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicAdmitted), // should be excluded
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 1 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
@@ -124,7 +133,7 @@ func TestFindProverJobs_ExcludesRefutedNodes(t *testing.T) {
 		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicRefuted), // should be excluded
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 1 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
@@ -143,7 +152,7 @@ func TestFindProverJobs_ExcludesArchivedNodes(t *testing.T) {
 		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicArchived), // should be excluded
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 1 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
@@ -162,7 +171,7 @@ func TestFindProverJobs_ExcludesBlockedNodes(t *testing.T) {
 		createTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending), // should be excluded
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 1 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
@@ -175,12 +184,12 @@ func TestFindProverJobs_ExcludesBlockedNodes(t *testing.T) {
 
 // TestFindProverJobs_EmptyInput tests that FindProverJobs handles empty input.
 func TestFindProverJobs_EmptyInput(t *testing.T) {
-	result := jobs.FindProverJobs(nil)
+	result := jobs.FindProverJobs(nil, nil)
 	if len(result) != 0 {
 		t.Errorf("FindProverJobs(nil) returned %d nodes, want 0", len(result))
 	}
 
-	result = jobs.FindProverJobs([]*node.Node{})
+	result = jobs.FindProverJobs([]*node.Node{}, nil)
 	if len(result) != 0 {
 		t.Errorf("FindProverJobs([]) returned %d nodes, want 0", len(result))
 	}
@@ -200,7 +209,7 @@ func TestFindProverJobs_MixedStates(t *testing.T) {
 		createTestNode(t, "1.8", schema.WorkflowClaimed, schema.EpistemicValidated),   // exclude: both
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	// Only nodes 1 and 1.7 should be included
 	if len(result) != 2 {
@@ -233,7 +242,7 @@ func TestFindProverJobs_PreservesOrder(t *testing.T) {
 		createTestNode(t, "1.4", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 3 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 3", len(result))
@@ -255,7 +264,7 @@ func TestFindProverJobs_ReturnsOriginalPointers(t *testing.T) {
 	original := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
 	nodes := []*node.Node{original}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 1 {
 		t.Fatalf("FindProverJobs() returned %d nodes, want 1", len(result))
@@ -276,9 +285,88 @@ func TestFindProverJobs_AllNodesExcluded(t *testing.T) {
 		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated),
 	}
 
-	result := jobs.FindProverJobs(nodes)
+	result := jobs.FindProverJobs(nodes, nil)
 
 	if len(result) != 0 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 0", len(result))
+	}
+}
+
+// TestFindProverJobs_ExcludesNodesWithAllValidatedChildren tests that nodes
+// with all validated children are excluded (they are verifier jobs, not prover jobs).
+// This is the key bug fix for vibefeld-99ab.
+func TestFindProverJobs_ExcludesNodesWithAllValidatedChildren(t *testing.T) {
+	// Parent is available + pending but has all validated children -> verifier job, not prover job
+	parent := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	child1 := createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
+	child2 := createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated)
+
+	nodes := []*node.Node{parent, child1, child2}
+	nodeMap := buildProverNodeMap(nodes)
+
+	result := jobs.FindProverJobs(nodes, nodeMap)
+
+	// Parent should NOT be returned (it's a verifier job because all children are validated)
+	for _, n := range result {
+		if n.ID.String() == "1" {
+			t.Error("FindProverJobs() should not return node 1 because all its children are validated (it's a verifier job)")
+		}
+	}
+}
+
+// TestFindProverJobs_IncludesNodesWithUnvalidatedChildren tests that nodes
+// with some unvalidated children are included (they still need prover work).
+func TestFindProverJobs_IncludesNodesWithUnvalidatedChildren(t *testing.T) {
+	// Parent is available + pending with one validated and one pending child -> prover job
+	parent := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	child1 := createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
+	child2 := createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending) // Not validated
+
+	nodes := []*node.Node{parent, child1, child2}
+	nodeMap := buildProverNodeMap(nodes)
+
+	result := jobs.FindProverJobs(nodes, nodeMap)
+
+	// Parent should be returned (it still needs work because child2 is not validated)
+	found := false
+	for _, n := range result {
+		if n.ID.String() == "1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("FindProverJobs() should return node 1 because it has unvalidated children")
+	}
+
+	// child2 should also be returned (it's available + pending)
+	found = false
+	for _, n := range result {
+		if n.ID.String() == "1.2" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("FindProverJobs() should return node 1.2 (available + pending)")
+	}
+}
+
+// TestFindProverJobs_IncludesLeafNodesWithNoChildren tests that leaf nodes
+// (no children) are included as prover jobs.
+func TestFindProverJobs_IncludesLeafNodesWithNoChildren(t *testing.T) {
+	// Leaf node with no children -> prover job (needs refinement)
+	leaf := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	nodes := []*node.Node{leaf}
+	nodeMap := buildProverNodeMap(nodes)
+
+	result := jobs.FindProverJobs(nodes, nodeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 1", len(result))
+	}
+	if len(result) > 0 && result[0].ID.String() != "1" {
+		t.Errorf("FindProverJobs() returned %s, want 1", result[0].ID.String())
 	}
 }

@@ -9,9 +9,13 @@ import (
 
 // FindVerifierJobs returns nodes ready for verifier review.
 // A verifier job is a node that:
-//   - WorkflowState = "claimed" (being worked on by a prover)
+//   - WorkflowState != "blocked" (not blocked by dependencies)
 //   - EpistemicState = "pending" (not yet verified)
-//   - All children have EpistemicState = "validated" (proof complete)
+//   - Has children AND all children have EpistemicState = "validated" (refinement complete)
+//
+// Note: The WorkflowState can be either "claimed" or "available". After a prover
+// refines a node and releases it, the node should appear as a verifier job.
+// Leaf nodes (no children) are NOT verifier jobs - they are prover jobs that need refinement.
 //
 // This function requires a map of all nodes (keyed by ID string) to check children's states.
 // The returned slice preserves the order of the input nodes.
@@ -31,9 +35,17 @@ func FindVerifierJobs(nodes []*node.Node, nodeMap map[string]*node.Node) []*node
 }
 
 // isVerifierJob checks if a single node qualifies as a verifier job.
+// A verifier job is a node that is ready for verifier review:
+//   - EpistemicState = "pending" (not yet verified)
+//   - WorkflowState != "blocked" (not blocked by dependencies)
+//   - Has children AND all children are validated (refinement is complete)
+//
+// Note: The WorkflowState can be either "claimed" or "available". After a prover
+// refines a node and releases it, the node becomes available but should still
+// appear as a verifier job once all children are validated.
 func isVerifierJob(n *node.Node, nodeMap map[string]*node.Node) bool {
-	// Must be claimed (being worked on by prover)
-	if n.WorkflowState != schema.WorkflowClaimed {
+	// Must not be blocked
+	if n.WorkflowState == schema.WorkflowBlocked {
 		return false
 	}
 
@@ -42,13 +54,15 @@ func isVerifierJob(n *node.Node, nodeMap map[string]*node.Node) bool {
 		return false
 	}
 
-	// Check all children are validated
-	return allChildrenValidated(n, nodeMap)
+	// Must have children and all children must be validated.
+	// A node with no children is a prover job (needs refinement), not a verifier job.
+	return hasChildrenAllValidated(n, nodeMap)
 }
 
-// allChildrenValidated returns true if all direct children of the node
-// have EpistemicState = "validated". Returns true if node has no children.
-func allChildrenValidated(n *node.Node, nodeMap map[string]*node.Node) bool {
+// hasChildrenAllValidated returns true if the node has at least one direct child
+// AND all direct children have EpistemicState = "validated".
+// Returns false if node has no children.
+func hasChildrenAllValidated(n *node.Node, nodeMap map[string]*node.Node) bool {
 	// Find direct children: nodes whose ID starts with n.ID and has depth n.ID.Depth() + 1
 	parentDepth := n.ID.Depth()
 	hasChildren := false
@@ -63,7 +77,6 @@ func allChildrenValidated(n *node.Node, nodeMap map[string]*node.Node) bool {
 		}
 	}
 
-	// Node with no children is ready for verification
-	_ = hasChildren // Silence unused variable warning; no-children is valid
-	return true
+	// Only return true if we found at least one child and all were validated
+	return hasChildren
 }

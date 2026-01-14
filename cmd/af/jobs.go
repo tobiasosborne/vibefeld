@@ -18,8 +18,16 @@ func newJobsCmd() *cobra.Command {
 		Short: "List available jobs",
 		Long: `List available prover and verifier jobs in the proof.
 
-Prover jobs are nodes that need proof work (available + pending state).
-Verifier jobs are nodes ready for review (claimed + pending with validated children).
+Prover jobs are nodes that need proof work:
+  - WorkflowState = "available" and EpistemicState = "pending"
+  - Do not have all children validated (those are verifier jobs)
+
+Verifier jobs are nodes ready for review:
+  - EpistemicState = "pending" and WorkflowState != "blocked"
+  - Have children and all children are validated
+
+After a prover refines a node (adds children) and releases it, the node
+becomes a verifier job once all children are validated.
 
 Examples:
   af jobs                     List all available jobs

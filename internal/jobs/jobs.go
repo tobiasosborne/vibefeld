@@ -10,12 +10,15 @@ import (
 // It separates prover jobs from verifier jobs.
 type JobResult struct {
 	// ProverJobs contains nodes available for provers to work on.
-	// These are nodes with WorkflowState="available" and EpistemicState="pending".
+	// These are nodes with WorkflowState="available", EpistemicState="pending",
+	// and NOT having all children validated (those are verifier jobs).
 	ProverJobs []*node.Node
 
 	// VerifierJobs contains nodes ready for verifier review.
-	// These are nodes with WorkflowState="claimed", EpistemicState="pending",
-	// and all children have EpistemicState="validated".
+	// These are nodes with EpistemicState="pending", WorkflowState!="blocked",
+	// and having children where all children have EpistemicState="validated".
+	// After a prover refines and releases a node, it becomes a verifier job
+	// once all children are validated.
 	VerifierJobs []*node.Node
 }
 
@@ -31,12 +34,12 @@ func (r *JobResult) TotalCount() int {
 
 // FindJobs finds all prover and verifier jobs from the given nodes.
 // It combines FindProverJobs and FindVerifierJobs into a single result.
-// The nodeMap is required for verifier job detection (to check children's states).
+// The nodeMap is required to check children's states for both job types.
 // The returned slices preserve the order of the input nodes.
 // The returned pointers are the same as the input pointers (not copies).
 func FindJobs(nodes []*node.Node, nodeMap map[string]*node.Node) *JobResult {
 	return &JobResult{
-		ProverJobs:   FindProverJobs(nodes),
+		ProverJobs:   FindProverJobs(nodes, nodeMap),
 		VerifierJobs: FindVerifierJobs(nodes, nodeMap),
 	}
 }
