@@ -101,14 +101,14 @@ func runClaim(cmd *cobra.Command, args []string) error {
 
 	// Output result based on format
 	if format == "json" {
-		return outputClaimJSON(cmd, nodeID, owner, role, st)
+		return outputClaimJSON(cmd, nodeID, owner, role, timeout, st)
 	}
 
 	return outputClaimText(cmd, nodeID, owner, timeout, role, st)
 }
 
 // outputClaimJSON outputs the claim result in JSON format.
-func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string, st *state.State) error {
+func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string, timeout time.Duration, st *state.State) error {
 	// Render context based on role
 	var context string
 	if role == "prover" {
@@ -121,12 +121,17 @@ func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string
 		context = render.RenderProverContext(st, nodeID)
 	}
 
+	// Calculate expiration time
+	expiresAt := time.Now().Add(timeout)
+
 	result := map[string]interface{}{
-		"node_id": nodeID.String(),
-		"owner":   owner,
-		"role":    role,
-		"status":  "claimed",
-		"context": context,
+		"node_id":    nodeID.String(),
+		"owner":      owner,
+		"role":       role,
+		"status":     "claimed",
+		"context":    context,
+		"timeout":    timeout.String(),
+		"expires_at": expiresAt.Format(time.RFC3339),
 	}
 
 	data, err := json.Marshal(result)
@@ -140,10 +145,14 @@ func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string
 
 // outputClaimText outputs the claim result in human-readable text format.
 func outputClaimText(cmd *cobra.Command, nodeID types.NodeID, owner string, timeout time.Duration, role string, st *state.State) error {
+	// Calculate expiration time
+	expiresAt := time.Now().Add(timeout)
+
 	cmd.Printf("Claimed node %s\n", nodeID.String())
-	cmd.Printf("  Owner:   %s\n", owner)
-	cmd.Printf("  Role:    %s\n", role)
-	cmd.Printf("  Timeout: %s\n", timeout)
+	cmd.Printf("  Owner:      %s\n", owner)
+	cmd.Printf("  Role:       %s\n", role)
+	cmd.Printf("  Timeout:    %s\n", timeout)
+	cmd.Printf("  Expires at: %s\n", expiresAt.Format("15:04:05"))
 	cmd.Println()
 
 	// Render and display context based on role

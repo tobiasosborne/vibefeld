@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/fs"
@@ -390,9 +391,9 @@ func TestClaimCmd_OutputIncludesContext(t *testing.T) {
 
 	// Output should include role context information
 	expectations := []string{
-		"1",             // Node ID
-		"prover-001",    // Owner
-		"claim",         // Confirmation of claim
+		"1",          // Node ID
+		"prover-001", // Owner
+		"claim",      // Confirmation of claim
 	}
 
 	for _, exp := range expectations {
@@ -473,9 +474,9 @@ func TestClaimCmd_Help(t *testing.T) {
 
 	// Help should include usage information
 	expectations := []string{
-		"claim",    // Command name
-		"--owner",  // Required flag
-		"--dir",    // Optional directory flag
+		"claim",   // Command name
+		"--owner", // Required flag
+		"--dir",   // Optional directory flag
 	}
 
 	for _, exp := range expectations {
@@ -540,9 +541,9 @@ func TestClaimCmd_VariousNodeIDs(t *testing.T) {
 	defer cleanup()
 
 	tests := []struct {
-		name     string
-		nodeID   string
-		wantErr  bool
+		name    string
+		nodeID  string
+		wantErr bool
 	}{
 		{"root node", "1", false},
 		{"first child", "1.1", false},
@@ -788,6 +789,153 @@ func TestClaimCmd_ConcurrentAccessSimulation(t *testing.T) {
 			t.Logf("Expected to fail until claim command is implemented: %v", err)
 			continue
 		}
+	}
+}
+
+// =============================================================================
+// Timeout Visibility Tests (vibefeld-pbtp)
+// =============================================================================
+
+// TestClaimCmd_TextOutputShowsTimeout verifies text output includes timeout info.
+func TestClaimCmd_TextOutputShowsTimeout(t *testing.T) {
+	proofDir, cleanup := setupClaimTest(t)
+	defer cleanup()
+
+	cmd := newTestClaimCmd()
+	output, err := executeCommand(cmd, "claim", "1", "--owner", "prover-001", "--timeout", "30m", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("claim command failed: %v", err)
+	}
+
+	// Verify timeout duration is shown
+	if !strings.Contains(output, "30m") {
+		t.Errorf("expected output to show timeout duration '30m', got: %q", output)
+	}
+
+	// Verify "Expires at" is shown
+	if !strings.Contains(output, "Expires at") {
+		t.Errorf("expected output to show 'Expires at', got: %q", output)
+	}
+
+	// Verify expiration time format (HH:MM:SS)
+	// Look for time pattern like "12:34:56"
+	timePattern := false
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "Expires at") && strings.Contains(line, ":") {
+			// Check for time format by looking for colon-separated numbers
+			timePattern = true
+			break
+		}
+	}
+	if !timePattern {
+		t.Errorf("expected output to show expiration time in HH:MM:SS format, got: %q", output)
+	}
+}
+
+// TestClaimCmd_JSONOutputShowsTimeout verifies JSON output includes timeout info.
+func TestClaimCmd_JSONOutputShowsTimeout(t *testing.T) {
+	proofDir, cleanup := setupClaimTest(t)
+	defer cleanup()
+
+	cmd := newTestClaimCmd()
+	output, err := executeCommand(cmd, "claim", "1", "--owner", "prover-001", "--timeout", "2h", "--format", "json", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("claim command failed: %v", err)
+	}
+
+	// Parse JSON output
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("expected valid JSON output, got error: %v\nOutput: %s", err, output)
+	}
+
+	// Verify timeout field is present
+	if _, ok := result["timeout"]; !ok {
+		t.Error("expected JSON to contain 'timeout' field")
+	}
+
+	// Verify timeout value
+	if timeout, ok := result["timeout"].(string); ok {
+		if timeout != "2h0m0s" {
+			t.Errorf("expected timeout to be '2h0m0s', got %q", timeout)
+		}
+	} else {
+		t.Error("expected 'timeout' field to be a string")
+	}
+
+	// Verify expires_at field is present
+	if _, ok := result["expires_at"]; !ok {
+		t.Error("expected JSON to contain 'expires_at' field")
+	}
+
+	// Verify expires_at is in RFC3339 format
+	if expiresAt, ok := result["expires_at"].(string); ok {
+		if _, err := time.Parse(time.RFC3339, expiresAt); err != nil {
+			t.Errorf("expected 'expires_at' to be in RFC3339 format, got %q", expiresAt)
+		}
+	} else {
+		t.Error("expected 'expires_at' field to be a string")
+	}
+}
+
+// TestClaimCmd_DefaultTimeoutShown verifies default 1h timeout is shown.
+func TestClaimCmd_DefaultTimeoutShown(t *testing.T) {
+	proofDir, cleanup := setupClaimTest(t)
+	defer cleanup()
+
+	cmd := newTestClaimCmd()
+	output, err := executeCommand(cmd, "claim", "1", "--owner", "prover-001", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("claim command failed: %v", err)
+	}
+
+	// Verify default timeout (1h) is shown
+	if !strings.Contains(output, "1h") {
+		t.Errorf("expected output to show default timeout '1h', got: %q", output)
+	}
+
+	// Verify "Expires at" is shown
+	if !strings.Contains(output, "Expires at") {
+		t.Errorf("expected output to show 'Expires at', got: %q", output)
+	}
+}
+
+// TestClaimCmd_VariousTimeoutsShownCorrectly verifies different timeout formats are shown correctly.
+func TestClaimCmd_VariousTimeoutsShownCorrectly(t *testing.T) {
+	tests := []struct {
+		name            string
+		timeout         string
+		expectedContain string
+	}{
+		{"30 minutes", "30m", "30m"},
+		{"2 hours", "2h", "2h"},
+		{"90 seconds", "90s", "1m30s"},
+		{"combined", "1h30m", "1h30m"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proofDir, cleanup := setupClaimTest(t)
+			defer cleanup()
+
+			cmd := newTestClaimCmd()
+			output, err := executeCommand(cmd, "claim", "1", "--owner", "prover-001", "--timeout", tt.timeout, "--dir", proofDir)
+
+			if err != nil {
+				t.Fatalf("claim command failed: %v", err)
+			}
+
+			if !strings.Contains(output, tt.expectedContain) {
+				t.Errorf("expected output to contain %q for timeout %q, got: %q", tt.expectedContain, tt.timeout, output)
+			}
+
+			if !strings.Contains(output, "Expires at") {
+				t.Errorf("expected output to show 'Expires at', got: %q", output)
+			}
+		})
 	}
 }
 

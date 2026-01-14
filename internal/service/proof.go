@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
@@ -22,6 +23,12 @@ import (
 // concurrent modification of the proof state. Callers should retry the
 // operation after reloading the current state.
 var ErrConcurrentModification = errors.New("concurrent modification detected")
+
+// ErrMaxDepthExceeded is returned when an operation would exceed the configured MaxDepth.
+var ErrMaxDepthExceeded = errors.New("maximum proof depth exceeded")
+
+// ErrMaxChildrenExceeded is returned when an operation would exceed the configured MaxChildren.
+var ErrMaxChildrenExceeded = errors.New("maximum children per node exceeded")
 
 // wrapSequenceMismatch converts ledger.ErrSequenceMismatch to ErrConcurrentModification
 // with additional context for the caller.
@@ -36,6 +43,7 @@ func wrapSequenceMismatch(err error, operation string) error {
 // It provides a high-level facade for proof manipulation operations.
 type ProofService struct {
 	path string
+	cfg  *config.Config // cached config, loaded lazily
 }
 
 // NewProofService creates a new ProofService for the given proof directory.
@@ -60,6 +68,74 @@ func NewProofService(path string) (*ProofService, error) {
 	}
 
 	return &ProofService{path: path}, nil
+}
+
+// LoadConfig loads and caches the config from meta.json.
+// Returns the cached config if already loaded.
+// Returns a default config if meta.json doesn't exist yet (proof not initialized).
+func (s *ProofService) LoadConfig() (*config.Config, error) {
+	if s.cfg != nil {
+		return s.cfg, nil
+	}
+
+	metaPath := filepath.Join(s.path, "meta.json")
+	cfg, err := config.Load(metaPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Return default config if meta.json doesn't exist
+			s.cfg = config.Default()
+			return s.cfg, nil
+		}
+		return nil, err
+	}
+
+	s.cfg = cfg
+	return s.cfg, nil
+}
+
+// Config returns the current config, loading it if necessary.
+// This is a convenience method for internal use.
+func (s *ProofService) Config() *config.Config {
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		// Return default config on error
+		return config.Default()
+	}
+	return cfg
+}
+
+// LockTimeout returns the configured lock timeout.
+// Falls back to the default if config is not available.
+func (s *ProofService) LockTimeout() time.Duration {
+	return s.Config().LockTimeout
+}
+
+// validateDepth checks if a node at the given depth would exceed MaxDepth.
+func (s *ProofService) validateDepth(depth int) error {
+	cfg := s.Config()
+	if depth > cfg.MaxDepth {
+		return fmt.Errorf("%w: depth %d exceeds max %d", ErrMaxDepthExceeded, depth, cfg.MaxDepth)
+	}
+	return nil
+}
+
+// validateChildCount checks if adding a child would exceed MaxChildren for the parent.
+func (s *ProofService) validateChildCount(st *state.State, parentID types.NodeID) error {
+	cfg := s.Config()
+
+	// Count existing children
+	childCount := 0
+	for _, n := range st.AllNodes() {
+		parent, hasParent := n.ID.Parent()
+		if hasParent && parent.String() == parentID.String() {
+			childCount++
+		}
+	}
+
+	if childCount >= cfg.MaxChildren {
+		return fmt.Errorf("%w: node %s already has %d children (max %d)", ErrMaxChildrenExceeded, parentID.String(), childCount, cfg.MaxChildren)
+	}
+	return nil
 }
 
 // Init initializes a new proof with the given conjecture and author.
@@ -214,6 +290,8 @@ func (s *ProofService) isInitialized() (bool, error) {
 // CreateNode creates a new proof node with the given parameters.
 // The node is initially in available workflow state and pending epistemic state.
 //
+// Returns ErrMaxDepthExceeded if the node's depth would exceed config.MaxDepth.
+// Returns ErrMaxChildrenExceeded if the parent node already has config.MaxChildren children.
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType) error {
@@ -226,6 +304,11 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 		return errors.New("proof not initialized")
 	}
 
+	// Validate depth against config
+	if err := s.validateDepth(id.Depth()); err != nil {
+		return err
+	}
+
 	// Load state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
@@ -236,6 +319,13 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 	// Check if node already exists
 	if st.GetNode(id) != nil {
 		return errors.New("node already exists")
+	}
+
+	// Validate child count for parent (if not root)
+	if parentID, hasParent := id.Parent(); hasParent {
+		if err := s.validateChildCount(st, parentID); err != nil {
+			return err
+		}
 	}
 
 	// Create the node
@@ -347,9 +437,16 @@ func (s *ProofService) ReleaseNode(id types.NodeID, owner string) error {
 // RefineNode adds a child node to a claimed parent node.
 // Returns an error if the parent is not claimed by the owner or validation fails.
 //
+// Returns ErrMaxDepthExceeded if the child node's depth would exceed config.MaxDepth.
+// Returns ErrMaxChildrenExceeded if the parent node already has config.MaxChildren children.
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType) error {
+	// Validate depth against config
+	if err := s.validateDepth(childID.Depth()); err != nil {
+		return err
+	}
+
 	// Load current state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
@@ -376,6 +473,11 @@ func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID t
 	// Check if child already exists
 	if st.GetNode(childID) != nil {
 		return errors.New("child node already exists")
+	}
+
+	// Validate child count for parent
+	if err := s.validateChildCount(st, parentID); err != nil {
+		return err
 	}
 
 	// Create the child node
@@ -779,11 +881,19 @@ func (s *ProofService) AllocateChildID(parentID types.NodeID) (types.NodeID, err
 // Child IDs are allocated sequentially starting from the next available child number.
 //
 // Returns the IDs of the created children in order, or an error if any validation fails.
+// Returns ErrMaxDepthExceeded if any child node's depth would exceed config.MaxDepth.
+// Returns ErrMaxChildrenExceeded if adding all children would exceed config.MaxChildren.
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, children []ChildSpec) ([]types.NodeID, error) {
 	if len(children) == 0 {
 		return nil, errors.New("at least one child specification is required")
+	}
+
+	// Validate depth for children (all children will have parent depth + 1)
+	childDepth := parentID.Depth() + 1
+	if err := s.validateDepth(childDepth); err != nil {
+		return nil, err
 	}
 
 	// Load current state and capture sequence for CAS
@@ -807,6 +917,20 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 	// Check if owner matches
 	if parent.ClaimedBy != owner {
 		return nil, errors.New("owner does not match")
+	}
+
+	// Count existing children and validate that we can add all new children
+	cfg := s.Config()
+	existingChildCount := 0
+	for _, n := range st.AllNodes() {
+		p, hasParent := n.ID.Parent()
+		if hasParent && p.String() == parentID.String() {
+			existingChildCount++
+		}
+	}
+	if existingChildCount+len(children) > cfg.MaxChildren {
+		return nil, fmt.Errorf("%w: node %s has %d children, adding %d would exceed max %d",
+			ErrMaxChildrenExceeded, parentID.String(), existingChildCount, len(children), cfg.MaxChildren)
 	}
 
 	// Find next available child number

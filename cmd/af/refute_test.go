@@ -332,8 +332,14 @@ func TestRefuteCmd_DirFlag(t *testing.T) {
 	}
 
 	// Verify node was refuted
-	svc, _ := service.NewProofService(tmpDir)
-	st, _ := svc.LoadState()
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
 	n := st.GetNode(mustParseRefuteNodeID(t, "1"))
 	if n == nil || n.EpistemicState != schema.EpistemicRefuted {
 		t.Error("node not refuted with -d short flag")
@@ -818,8 +824,14 @@ func TestRefuteCmd_DirFlagShortForm(t *testing.T) {
 	}
 
 	// Verify node was refuted
-	svc, _ := service.NewProofService(tmpDir)
-	st, _ := svc.LoadState()
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
 	n := st.GetNode(mustParseRefuteNodeID(t, "1"))
 	if n == nil || n.EpistemicState != schema.EpistemicRefuted {
 		t.Error("node not refuted with -d short flag")
@@ -838,8 +850,14 @@ func TestRefuteCmd_DirFlagLongForm(t *testing.T) {
 	}
 
 	// Verify node was refuted
-	svc, _ := service.NewProofService(tmpDir)
-	st, _ := svc.LoadState()
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
 	n := st.GetNode(mustParseRefuteNodeID(t, "1"))
 	if n == nil || n.EpistemicState != schema.EpistemicRefuted {
 		t.Error("node not refuted with --dir long flag")
@@ -915,7 +933,10 @@ func TestRefuteCmd_RelativeDirectory(t *testing.T) {
 	}
 
 	// Verify refutation
-	st, _ := svc.LoadState()
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
 	n := st.GetNode(nodeID)
 	if n == nil || n.EpistemicState != schema.EpistemicRefuted {
 		t.Error("node not refuted with relative directory path")
@@ -952,7 +973,10 @@ func TestRefuteCmd_CannotRefuteValidatedNode(t *testing.T) {
 	}
 
 	// Verify the node is still validated
-	st, _ := svc.LoadState()
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
 	n := st.GetNode(nodeID)
 	if n != nil && n.EpistemicState == schema.EpistemicRefuted {
 		t.Error("node should not be refuted after being validated")
@@ -985,7 +1009,10 @@ func TestRefuteCmd_CannotRefuteAdmittedNode(t *testing.T) {
 	}
 
 	// Verify the node is still admitted
-	st, _ := svc.LoadState()
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
 	n := st.GetNode(nodeID)
 	if n != nil && n.EpistemicState == schema.EpistemicRefuted {
 		t.Error("node should not be refuted after being admitted")

@@ -5,6 +5,8 @@
 package service
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -2048,5 +2050,385 @@ func TestProofService_RefineNodeBulk_SingleChild(t *testing.T) {
 	expectedID := mustParseNodeID(t, "1.1")
 	if childIDs[0].String() != expectedID.String() {
 		t.Errorf("Child ID = %q, want %q", childIDs[0].String(), expectedID.String())
+	}
+}
+
+// =============================================================================
+// Config Integration Tests (vibefeld-de47)
+// =============================================================================
+
+// TestProofService_LoadConfig verifies that config is loaded correctly.
+func TestProofService_LoadConfig(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	// LoadConfig should return default config before meta.json exists
+	cfg, err := svc.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() unexpected error: %v", err)
+	}
+
+	if cfg == nil {
+		t.Fatal("LoadConfig() returned nil config")
+	}
+
+	// Verify default values
+	if cfg.MaxDepth != 20 {
+		t.Errorf("Default MaxDepth = %d, want 20", cfg.MaxDepth)
+	}
+	if cfg.MaxChildren != 10 {
+		t.Errorf("Default MaxChildren = %d, want 10", cfg.MaxChildren)
+	}
+	if cfg.LockTimeout != 5*time.Minute {
+		t.Errorf("Default LockTimeout = %v, want 5m", cfg.LockTimeout)
+	}
+}
+
+// TestProofService_LockTimeout verifies the LockTimeout helper method.
+func TestProofService_LockTimeout(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	timeout := svc.LockTimeout()
+	if timeout != 5*time.Minute {
+		t.Errorf("LockTimeout() = %v, want 5m", timeout)
+	}
+}
+
+// TestProofService_CreateNode_MaxDepthExceeded verifies depth validation in CreateNode.
+func TestProofService_CreateNode_MaxDepthExceeded(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Default MaxDepth is 20, try to create a node at depth 21
+	// Build an ID at depth 21: "1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1"
+	deepID := "1"
+	for i := 1; i <= 20; i++ {
+		deepID += ".1"
+	}
+
+	nodeID := mustParseNodeID(t, deepID)
+	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Deep node", schema.InferenceAssumption)
+
+	if err == nil {
+		t.Error("CreateNode() at depth 21 should fail with MaxDepthExceeded")
+	}
+	if err != nil && !errors.Is(err, ErrMaxDepthExceeded) {
+		t.Errorf("CreateNode() error = %v, want ErrMaxDepthExceeded", err)
+	}
+}
+
+// TestProofService_CreateNode_AtMaxDepth verifies nodes at exactly MaxDepth are allowed.
+func TestProofService_CreateNode_AtMaxDepth(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Default MaxDepth is 20, create a node at exactly depth 20
+	// Build an ID at depth 20: "1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1"
+	deepID := "1"
+	for i := 1; i < 20; i++ {
+		deepID += ".1"
+	}
+
+	nodeID := mustParseNodeID(t, deepID)
+	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Max depth node", schema.InferenceAssumption)
+
+	if err != nil {
+		t.Errorf("CreateNode() at max depth should succeed, got error: %v", err)
+	}
+}
+
+// TestProofService_CreateNode_MaxChildrenExceeded verifies children limit in CreateNode.
+func TestProofService_CreateNode_MaxChildrenExceeded(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Default MaxChildren is 10, create 10 children of root
+	for i := 1; i <= 10; i++ {
+		idStr := fmt.Sprintf("1.%d", i)
+		childID := mustParseNodeID(t, idStr)
+		err = svc.CreateNode(childID, schema.NodeTypeClaim, fmt.Sprintf("Child %d", i), schema.InferenceAssumption)
+		if err != nil {
+			t.Fatalf("CreateNode(%s) unexpected error: %v", idStr, err)
+		}
+	}
+
+	// 11th child should fail
+	childID := mustParseNodeID(t, "1.11")
+	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Child 11", schema.InferenceAssumption)
+
+	if err == nil {
+		t.Error("CreateNode() with 11th child should fail with MaxChildrenExceeded")
+	}
+	if err != nil && !errors.Is(err, ErrMaxChildrenExceeded) {
+		t.Errorf("CreateNode() error = %v, want ErrMaxChildrenExceeded", err)
+	}
+}
+
+// TestProofService_RefineNode_MaxDepthExceeded verifies depth validation in RefineNode.
+func TestProofService_RefineNode_MaxDepthExceeded(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Create nodes up to depth 19, claim node at depth 19
+	parentID := "1"
+	for i := 1; i < 19; i++ {
+		nextID := parentID + ".1"
+		nodeID := mustParseNodeID(t, nextID)
+		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Node at depth", schema.InferenceAssumption)
+		if err != nil {
+			t.Fatalf("CreateNode(%s) unexpected error: %v", nextID, err)
+		}
+		parentID = nextID
+	}
+
+	// Create node at depth 20
+	depth20ID := parentID + ".1"
+	nodeID := mustParseNodeID(t, depth20ID)
+	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Node at depth 20", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode(%s) unexpected error: %v", depth20ID, err)
+	}
+
+	// Claim node at depth 20
+	owner := "agent-001"
+	err = svc.ClaimNode(nodeID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Try to refine (add child at depth 21)
+	childID := mustParseNodeID(t, depth20ID+".1")
+	err = svc.RefineNode(nodeID, owner, childID, schema.NodeTypeClaim, "Child", schema.InferenceAssumption)
+
+	if err == nil {
+		t.Error("RefineNode() at depth 21 should fail with MaxDepthExceeded")
+	}
+	if err != nil && !errors.Is(err, ErrMaxDepthExceeded) {
+		t.Errorf("RefineNode() error = %v, want ErrMaxDepthExceeded", err)
+	}
+}
+
+// TestProofService_RefineNode_MaxChildrenExceeded verifies children limit in RefineNode.
+func TestProofService_RefineNode_MaxChildrenExceeded(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Create 10 children of root directly
+	for i := 1; i <= 10; i++ {
+		idStr := fmt.Sprintf("1.%d", i)
+		childID := mustParseNodeID(t, idStr)
+		err = svc.CreateNode(childID, schema.NodeTypeClaim, fmt.Sprintf("Child %d", i), schema.InferenceAssumption)
+		if err != nil {
+			t.Fatalf("CreateNode(%s) unexpected error: %v", idStr, err)
+		}
+	}
+
+	// Claim root
+	parentID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+	err = svc.ClaimNode(parentID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Try to refine (add 11th child)
+	childID := mustParseNodeID(t, "1.11")
+	err = svc.RefineNode(parentID, owner, childID, schema.NodeTypeClaim, "Child 11", schema.InferenceAssumption)
+
+	if err == nil {
+		t.Error("RefineNode() with 11th child should fail with MaxChildrenExceeded")
+	}
+	if err != nil && !errors.Is(err, ErrMaxChildrenExceeded) {
+		t.Errorf("RefineNode() error = %v, want ErrMaxChildrenExceeded", err)
+	}
+}
+
+// TestProofService_RefineNodeBulk_MaxDepthExceeded verifies depth validation in RefineNodeBulk.
+func TestProofService_RefineNodeBulk_MaxDepthExceeded(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Create nodes up to depth 20
+	parentID := "1"
+	for i := 1; i < 20; i++ {
+		nextID := parentID + ".1"
+		nodeID := mustParseNodeID(t, nextID)
+		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Node at depth", schema.InferenceAssumption)
+		if err != nil {
+			t.Fatalf("CreateNode(%s) unexpected error: %v", nextID, err)
+		}
+		parentID = nextID
+	}
+
+	// Claim node at depth 20
+	nodeID := mustParseNodeID(t, parentID)
+	owner := "agent-001"
+	err = svc.ClaimNode(nodeID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Try to bulk refine (add children at depth 21)
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 1", Inference: schema.InferenceAssumption},
+	}
+
+	_, err = svc.RefineNodeBulk(nodeID, owner, children)
+
+	if err == nil {
+		t.Error("RefineNodeBulk() at depth 21 should fail with MaxDepthExceeded")
+	}
+	if err != nil && !errors.Is(err, ErrMaxDepthExceeded) {
+		t.Errorf("RefineNodeBulk() error = %v, want ErrMaxDepthExceeded", err)
+	}
+}
+
+// TestProofService_RefineNodeBulk_MaxChildrenExceeded verifies children limit in RefineNodeBulk.
+func TestProofService_RefineNodeBulk_MaxChildrenExceeded(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Create 8 children of root directly
+	for i := 1; i <= 8; i++ {
+		idStr := fmt.Sprintf("1.%d", i)
+		childID := mustParseNodeID(t, idStr)
+		err = svc.CreateNode(childID, schema.NodeTypeClaim, fmt.Sprintf("Child %d", i), schema.InferenceAssumption)
+		if err != nil {
+			t.Fatalf("CreateNode(%s) unexpected error: %v", idStr, err)
+		}
+	}
+
+	// Claim root
+	parentID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+	err = svc.ClaimNode(parentID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Try to bulk add 3 more children (would make 11, exceeding max 10)
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 9", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 10", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 11", Inference: schema.InferenceAssumption},
+	}
+
+	_, err = svc.RefineNodeBulk(parentID, owner, children)
+
+	if err == nil {
+		t.Error("RefineNodeBulk() adding 3 children to parent with 8 should fail with MaxChildrenExceeded")
+	}
+	if err != nil && !errors.Is(err, ErrMaxChildrenExceeded) {
+		t.Errorf("RefineNodeBulk() error = %v, want ErrMaxChildrenExceeded", err)
+	}
+}
+
+// TestProofService_RefineNodeBulk_AtMaxChildren verifies bulk refine at exactly max children.
+func TestProofService_RefineNodeBulk_AtMaxChildren(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Create 8 children of root directly
+	for i := 1; i <= 8; i++ {
+		idStr := fmt.Sprintf("1.%d", i)
+		childID := mustParseNodeID(t, idStr)
+		err = svc.CreateNode(childID, schema.NodeTypeClaim, fmt.Sprintf("Child %d", i), schema.InferenceAssumption)
+		if err != nil {
+			t.Fatalf("CreateNode(%s) unexpected error: %v", idStr, err)
+		}
+	}
+
+	// Claim root
+	parentID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+	err = svc.ClaimNode(parentID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Add exactly 2 more children (makes 10, exactly at max)
+	children := []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 9", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 10", Inference: schema.InferenceAssumption},
+	}
+
+	childIDs, err := svc.RefineNodeBulk(parentID, owner, children)
+
+	if err != nil {
+		t.Errorf("RefineNodeBulk() at exactly max children should succeed, got error: %v", err)
+	}
+	if len(childIDs) != 2 {
+		t.Errorf("RefineNodeBulk() returned %d IDs, want 2", len(childIDs))
 	}
 }
