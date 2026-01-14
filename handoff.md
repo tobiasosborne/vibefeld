@@ -1,90 +1,94 @@
-# Handoff - 2026-01-14 (Session 31)
+# Handoff - 2026-01-14 (Session 32)
 
 ## What Was Accomplished This Session
 
-### 4 Issues via 4 Parallel Agents
+### Fixed Init Bug Across All Integration Tests
 
-| Issue | Type | Description | Files Changed |
-|-------|------|-------------|---------------|
-| vibefeld-gpl0 | Implementation | `af reap` command - stale lock cleanup | `cmd/af/reap.go` (~190 LOC) |
-| vibefeld-tcra | Implementation | `af recompute-taint` command | `cmd/af/recompute_taint.go` (~260 LOC) |
-| vibefeld-eoo8 | Implementation | `af def-add` command | `cmd/af/def_add.go` (~140 LOC) |
-| vibefeld-vxa3 | TDD Tests | 80+ tests for `af def-reject` command | `cmd/af/def_reject_test.go` (~1450 LOC) |
+**Root Cause:** `service.Init()` creates node 1 with the conjecture, but test setup helpers were trying to create node 1 again, causing "node already exists" errors across 200+ integration tests.
 
-### Implementation Details
+**Fix Applied to 14 Test Files:**
+- Simplified `setupXxxTestWithNode` helpers to use base setup (node 1 already exists)
+- Removed redundant `CreateNode` calls for node 1
+- Updated `NodeNotFound` tests to use node "2" instead of "1"
+- Cleaned up unused imports
 
-#### `af reap` (vibefeld-gpl0)
-- `af reap` - Clean up stale/expired locks from claimed nodes
-- Flags: `--dir/-d`, `--format/-f` (text/json), `--dry-run`, `--all`
-- Finds nodes with expired `ClaimedAt` timestamps and releases them
-- Test status: 12/36 pass (24 failures due to test setup bug - tests try to create node "1" which already exists from Init)
+| File | Changes |
+|------|---------|
+| `cmd/af/get_test.go` | Fixed + updated assertions |
+| `cmd/af/accept_test.go` | Fixed setup helpers |
+| `cmd/af/admit_test.go` | Fixed setup helpers |
+| `cmd/af/archive_test.go` | Fixed setup helpers |
+| `cmd/af/challenge_test.go` | Fixed setup helpers |
+| `cmd/af/claim_test.go` | Fixed setup helpers |
+| `cmd/af/integration_test.go` | Fixed setup helpers |
+| `cmd/af/jobs_test.go` | Fixed setup helpers |
+| `cmd/af/reap_test.go` | Fixed setup helpers |
+| `cmd/af/refine_test.go` | Fixed setup helpers |
+| `cmd/af/refute_test.go` | Fixed setup helpers |
+| `cmd/af/release_test.go` | Fixed setup helpers |
+| `cmd/af/resolve_challenge_test.go` | Fixed setup helpers |
+| `cmd/af/withdraw_challenge_test.go` | Fixed setup helpers |
 
-#### `af recompute-taint` (vibefeld-tcra)
-- `af recompute-taint` - Recompute taint state for all nodes
-- Flags: `--dir/-d`, `--format/-f`, `--dry-run`, `--verbose/-v`
-- Uses `taint.ComputeTaint()` to recalculate taint propagation
-- Persists changes via `TaintRecomputed` ledger events
-- Test status: ALL 36 tests PASS
+### Created Issues for Remaining Test Failures
 
-#### `af def-add` (vibefeld-eoo8)
-- `af def-add <name> [content]` - Add a definition for human operators
-- Flags: `--dir/-d`, `--format/-f`, `--file` (read content from file)
-- Validates name and content (not empty/whitespace)
-- Uses existing `service.AddDefinition()` method
-- Test status: ALL 40 tests PASS
-
-#### `af def-reject` TDD Tests (vibefeld-vxa3)
-- 80+ comprehensive tests for the upcoming `def-reject` command
-- Test patterns: help/usage, flags, argument validation, success cases, error handling
-- Includes table-driven tests, edge cases, and integration tests
-- Created stub `def_reject.go` for test compilation
-
-### Supporting Changes
-
-- `internal/state/state.go`: Added `GetDefinitionByName(name string)` method
-- `cmd/af/def_reject.go`: Stub implementation (allows tests to compile)
+| Issue | Type | Description |
+|-------|------|-------------|
+| `vibefeld-yxhf` | bug | Epistemic state commands lack pre-transition validation (7 tests) |
+| `vibefeld-dwdh` | bug | TestRefuteCmd_CannotRefuteValidatedNode panics with nil pointer |
+| `vibefeld-bzvr` | bug | **CLOSED** - get_test.go setup helpers (fixed this session) |
 
 ## Current State
 
 ### Test Status
 ```bash
 go build ./cmd/af           # PASSES
-go test ./...               # ALL 17 packages PASS
+go test ./...               # ALL 17 packages PASS (unit tests)
+go test -tags=integration   # Integration tests: 0 "node already exists" errors
 ```
 
-### Working Commands
-All core CLI commands functional: `init`, `status`, `claim`, `release`, `accept`, `refine`, `challenge`, `resolve-challenge`, `withdraw-challenge`, `jobs`, `get`, `add-external`, `request-def`, `defs`, `def`, `assumptions`, `assumption`, `externals`, `external`, `lemmas`, `lemma`, `schema`, `pending-defs`, `pending-def`, `pending-refs`, `pending-ref`, `admit`, `refute`, `log`, `replay`, `archive`, **`reap`**, **`recompute-taint`**, **`def-add`**
+### Remaining Test Failures (Not Init-Related)
+- **37 DefReject tests** - Expected (TDD tests, command not implemented yet) - covered by `vibefeld-i065`
+- **7 state validation tests** - Commands allow invalid state transitions - covered by `vibefeld-yxhf`
+- **1 panic test** - Nil pointer in refute test - covered by `vibefeld-dwdh`
 
-### TDD Tests (Awaiting Implementation)
-- `cmd/af/reap_test.go`: 36 tests, 12 pass (needs test setup fixes)
-- `cmd/af/def_reject_test.go`: 80+ tests for `newDefRejectCmd()` - needs `def_reject.go` implementation
+### Working Commands
+All core CLI commands functional: `init`, `status`, `claim`, `release`, `accept`, `refine`, `challenge`, `resolve-challenge`, `withdraw-challenge`, `jobs`, `get`, `add-external`, `request-def`, `defs`, `def`, `assumptions`, `assumption`, `externals`, `external`, `lemmas`, `lemma`, `schema`, `pending-defs`, `pending-def`, `pending-refs`, `pending-ref`, `admit`, `refute`, `log`, `replay`, `archive`, `reap`, `recompute-taint`, `def-add`
 
 ## Next Steps (Priority Order)
+
+### P2 - Bug Fixes
+1. **vibefeld-yxhf** - Add state validation to accept/admit/archive/refute commands
+2. **vibefeld-dwdh** - Fix nil pointer panic in refute test
 
 ### P2 - TDD Tests Ready
 1. **vibefeld-i065** - Implement `af def-reject` (80+ tests ready)
 2. **vibefeld-jfgg** - Write tests for `af verify-external` command
 3. **vibefeld-swn9** - Implement `af verify-external` with status transitions
-4. **vibefeld-godq** - Write tests for `af extract-lemma` command
-5. **vibefeld-hmnt** - Implement `af extract-lemma` with independence validation
-6. **vibefeld-kmev** - Implement DEPTH_EXCEEDED error
-
-### Bug Fix Needed
-- Fix `reap_test.go` test setup functions (node "1" already created by Init)
 
 ## Files Changed This Session
 
-| File | Type | Lines |
-|------|------|-------|
-| `cmd/af/reap.go` | NEW | ~190 |
-| `cmd/af/recompute_taint.go` | NEW | ~260 |
-| `cmd/af/def_add.go` | NEW | ~140 |
-| `cmd/af/def_reject_test.go` | NEW | ~1450 |
-| `cmd/af/def_reject.go` | NEW | ~20 (stub) |
-| `internal/state/state.go` | MODIFIED | +15 |
+| File | Type | Lines Changed |
+|------|------|---------------|
+| `cmd/af/get_test.go` | MODIFIED | -20, +8 |
+| `cmd/af/accept_test.go` | MODIFIED | -25 |
+| `cmd/af/admit_test.go` | MODIFIED | -25 |
+| `cmd/af/archive_test.go` | MODIFIED | -25 |
+| `cmd/af/challenge_test.go` | MODIFIED | -15 |
+| `cmd/af/claim_test.go` | MODIFIED | -20 |
+| `cmd/af/integration_test.go` | MODIFIED | -15 |
+| `cmd/af/jobs_test.go` | MODIFIED | -25 |
+| `cmd/af/reap_test.go` | MODIFIED | -20 |
+| `cmd/af/refine_test.go` | MODIFIED | -20 |
+| `cmd/af/refute_test.go` | MODIFIED | -25 |
+| `cmd/af/release_test.go` | MODIFIED | -25 |
+| `cmd/af/resolve_challenge_test.go` | MODIFIED | -20 |
+| `cmd/af/withdraw_challenge_test.go` | MODIFIED | -20 |
+
+**Total:** 14 files, -331 lines removed, +89 lines added
 
 ## Session History
 
+**Session 32:** Fixed init bug across 14 test files, created 2 issues for remaining failures
 **Session 31:** 4 issues via 4 parallel agents
 **Session 30:** 11 issues total (7 via 5 agents + 4 via 4 agents)
 **Session 29:** 7 issues total (5 via parallel agents + 2 P0 bug fixes)
