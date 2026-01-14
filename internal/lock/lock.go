@@ -66,11 +66,15 @@ func (l *Lock) AcquiredAt() types.Timestamp {
 
 // ExpiresAt returns the timestamp when the lock expires.
 func (l *Lock) ExpiresAt() types.Timestamp {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	return types.FromTime(l.expiresAt)
 }
 
 // IsExpired returns true if the lock has expired.
 func (l *Lock) IsExpired() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	return time.Now().UTC().After(l.expiresAt)
 }
 
@@ -86,6 +90,8 @@ func (l *Lock) Refresh(timeout time.Duration) error {
 		return errors.New("invalid timeout: must be positive")
 	}
 
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.expiresAt = time.Now().UTC().Add(timeout)
 	return nil
 }
@@ -107,6 +113,8 @@ type lockJSON struct {
 
 // MarshalJSON implements json.Marshaler.
 func (l *Lock) MarshalJSON() ([]byte, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	return json.Marshal(lockJSON{
 		NodeID:     l.nodeID.String(),
 		Owner:      l.owner,

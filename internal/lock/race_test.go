@@ -10,43 +10,9 @@ import (
 	"github.com/tobias/vibefeld/internal/types"
 )
 
-// TestLockRefreshRace documents and tests for the known race condition in Lock.Refresh().
-//
-// KNOWN ISSUE: Lock.Refresh() at lock.go:89 writes to l.expiresAt without
-// holding the mutex. This test will fail with -race flag until fixed.
-//
-// FIX REQUIRED in lock.go:
-//
-//	func (l *Lock) Refresh(timeout time.Duration) error {
-//	    if timeout <= 0 {
-//	        return errors.New("invalid timeout: must be positive")
-//	    }
-//	    l.mu.Lock()
-//	    defer l.mu.Unlock()
-//	    l.expiresAt = time.Now().UTC().Add(timeout)
-//	    return nil
-//	}
-//
-// Additionally, IsExpired() and all other methods that read expiresAt
-// should also be protected by the mutex for consistency.
+// TestLockRefreshRace verifies that Lock.Refresh() is now thread-safe.
+// This test was previously skipped due to a race condition that has been fixed.
 func TestLockRefreshRace(t *testing.T) {
-	// This test documents a race condition in Lock.Refresh()
-	// It is expected to FAIL with -race flag until the underlying code is fixed
-	t.Skip("KNOWN RACE: Lock.Refresh() needs mutex protection - run without -race to see test logic")
-}
-
-// TestLockRefreshRaceDetection is a helper test that can be run to trigger
-// the race detector. It's separated from the main test to allow selective execution.
-// Run with: go test -race -run TestLockRefreshRaceDetection ./internal/lock
-func TestLockRefreshRaceDetection(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping race detection test in short mode")
-	}
-
-	// This test is expected to trigger a race when run with -race flag
-	// It documents the bug in Lock.Refresh()
-	t.Skip("This test intentionally triggers a race - unskip to verify race exists")
-
 	nodeID, err := types.Parse("1")
 	if err != nil {
 		t.Fatalf("failed to parse node ID: %v", err)
@@ -59,7 +25,7 @@ func TestLockRefreshRaceDetection(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	// Concurrent refreshers - will race on expiresAt
+	// Concurrent refreshers - should be safe now with mutex protection
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
@@ -71,16 +37,107 @@ func TestLockRefreshRaceDetection(t *testing.T) {
 	}
 
 	wg.Wait()
+	// If we reach here without race detector complaints, the fix is working
 }
 
-// TestExpiresAtRace documents that IsExpired() also races with Refresh()
-// because IsExpired reads expiresAt without synchronization.
+// TestLockRefreshRaceDetection verifies concurrent Refresh() and IsExpired() calls
+// are now safe. Run with: go test -race ./internal/lock
+func TestLockRefreshRaceDetection(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("failed to parse node ID: %v", err)
+	}
+
+	lock, err := NewLock(nodeID, "agent", 5*time.Second)
+	if err != nil {
+		t.Fatalf("failed to create lock: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	// Concurrent refreshers
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_ = lock.Refresh(5 * time.Second)
+				}
+			}
+		}()
+	}
+
+	// Concurrent readers
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_ = lock.IsExpired()
+					_ = lock.ExpiresAt()
+				}
+			}
+		}()
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+}
+
+// TestExpiresAtRace verifies IsExpired() is now thread-safe with Refresh().
 func TestExpiresAtRace(t *testing.T) {
-	t.Skip("KNOWN RACE: IsExpired() needs mutex protection - run without -race to see test logic")
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("failed to parse node ID: %v", err)
+	}
+
+	lock, err := NewLock(nodeID, "agent", 100*time.Millisecond)
+	if err != nil {
+		t.Fatalf("failed to create lock: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	var expiredCount, refreshCount atomic.Int32
+
+	// Goroutine checking expiration
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			if lock.IsExpired() {
+				expiredCount.Add(1)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	// Goroutine refreshing
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			_ = lock.Refresh(100 * time.Millisecond)
+			refreshCount.Add(1)
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
+
+	t.Logf("expired checks: %d, refreshes: %d", expiredCount.Load(), refreshCount.Load())
 }
 
 // TestLockFieldRaces tests for races between various Lock methods.
-// This documents that the Lock struct has synchronization issues.
 func TestLockFieldRaces(t *testing.T) {
 	nodeID, err := types.Parse("1")
 	if err != nil {
@@ -95,10 +152,9 @@ func TestLockFieldRaces(t *testing.T) {
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
 
-	var readCount atomic.Int32
+	var readCount, refreshCount atomic.Int32
 
-	// Reader checking expiration (should be safe with proper mutex use)
-	// This tests concurrent reads of expiresAt
+	// Reader checking expiration
 	for i := 0; i < 3; i++ {
 		wg.Add(1)
 		go func() {
@@ -108,7 +164,6 @@ func TestLockFieldRaces(t *testing.T) {
 				case <-stop:
 					return
 				default:
-					// These methods read expiresAt
 					_ = lock.IsExpired()
 					_ = lock.ExpiresAt()
 					readCount.Add(1)
@@ -117,19 +172,28 @@ func TestLockFieldRaces(t *testing.T) {
 		}()
 	}
 
-	// Note: We don't test Refresh() here because it has a known race.
-	// This test focuses on read-only operations which should be safe.
+	// Writer refreshing
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_ = lock.Refresh(time.Second)
+					refreshCount.Add(1)
+				}
+			}
+		}()
+	}
 
 	time.Sleep(20 * time.Millisecond)
 	close(stop)
 	wg.Wait()
 
-	// Read-only operations should be safe
-	if count := readCount.Load(); count == 0 {
-		t.Error("expected some read operations to complete")
-	}
-
-	t.Logf("completed %d concurrent read operations", readCount.Load())
+	t.Logf("completed %d reads, %d refreshes", readCount.Load(), refreshCount.Load())
 }
 
 // TestLockMutexConsistency verifies that Lock's mutex is consistently used
@@ -158,6 +222,9 @@ func TestLockMutexConsistency(t *testing.T) {
 			_ = lock.NodeID()
 			_ = lock.Owner()
 			_ = lock.AcquiredAt()
+			_ = lock.ExpiresAt()
+			_ = lock.IsExpired()
+			_ = lock.Refresh(time.Second)
 
 			createCount.Add(1)
 		}()
@@ -168,4 +235,52 @@ func TestLockMutexConsistency(t *testing.T) {
 	if got := createCount.Load(); got != 10 {
 		t.Errorf("expected 10 locks created, got %d", got)
 	}
+}
+
+// TestLockMarshalJSONRace verifies MarshalJSON is thread-safe with Refresh.
+func TestLockMarshalJSONRace(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("failed to parse node ID: %v", err)
+	}
+
+	lock, err := NewLock(nodeID, "agent", time.Second)
+	if err != nil {
+		t.Fatalf("failed to create lock: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	// Marshaler
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = lock.MarshalJSON()
+			}
+		}
+	}()
+
+	// Refresher
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = lock.Refresh(time.Second)
+			}
+		}
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	close(stop)
+	wg.Wait()
 }

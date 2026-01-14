@@ -458,19 +458,8 @@ func TestConcurrentInfo(t *testing.T) {
 }
 
 // TestConcurrentLockRefresh tests that lock refresh is safe under concurrent access.
-// NOTE: This test intentionally exercises a race condition in Lock.Refresh().
-// The Lock.Refresh() method currently has unsynchronized access to expiresAt.
-// This test documents this known issue that should be fixed in lock.go.
-// When run with -race flag, this test will report the race, which is expected
-// until the underlying issue in lock.go is addressed.
-//
-// To fix, Lock.Refresh() should use the existing mutex (l.mu) to protect
-// the write to l.expiresAt.
+// Lock.Refresh() now uses mutex protection for thread-safe access to expiresAt.
 func TestConcurrentLockRefresh(t *testing.T) {
-	// Skip with a note about the known race when run with -race flag
-	// The test still documents the expected behavior
-	t.Skip("KNOWN ISSUE: Lock.Refresh() has a data race on expiresAt field - see lock.go:89")
-
 	nodeID, err := types.Parse("1")
 	if err != nil {
 		t.Fatalf("failed to parse node ID: %v", err)
