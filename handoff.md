@@ -20,6 +20,42 @@
 | vibefeld-jfgg | task | Write verify-external tests | CLOSED - 39 TDD test functions |
 | vibefeld-godq | task | Write extract-lemma tests | CLOSED - comprehensive TDD tests |
 
+### Readiness Assessment Completed
+
+Analyzed AF tool readiness for experimentation:
+- **Verdict**: Ready for experimentation (8.5/10)
+- **35 commands implemented** - full proof workflow functional
+- **No critical gaps** - core adversarial cycle complete
+- **Concurrency safe** - CAS semantics, POSIX atomics, file-based locking
+
+### √2 Irrationality Proof - End-to-End Test
+
+Successfully ran complete proof session demonstrating full workflow:
+
+| Metric | Value |
+|--------|-------|
+| Nodes | 11 (all validated, all clean) |
+| Challenges Raised | 2 |
+| Challenges Resolved | 2 |
+| Definitions | 3 (rational, coprime, even) |
+| External Lemmas | 1 (even-square-lemma) |
+| Ledger Events | 47 |
+
+**Proof tree:**
+```
+1 [validated/clean] √2 is irrational
+├── 1.1 [validated/clean] Assume √2 = p/q with gcd(p,q)=1
+│   ├── 1.1.1-1.1.8 [validated/clean] Algebraic derivation → contradiction
+└── 1.2 [validated/clean] QED
+```
+
+### Supervisor Prompts Created
+
+| File | Description |
+|------|-------------|
+| `prompts/sqrt2-supervisor.md` | Full supervisor prompt (7KB) with detailed instructions |
+| `prompts/sqrt2-supervisor-compact.md` | Compact operational version (2.5KB) |
+
 ### Files Changed
 
 | File | Type | Description |
@@ -33,6 +69,9 @@
 | `internal/node/refinement_limit_test.go` | NEW | 25 TDD test functions |
 | `cmd/af/verify_external_test.go` | NEW | 39 TDD test functions |
 | `cmd/af/extract_lemma_test.go` | NEW | Comprehensive TDD tests (1530 lines) |
+| `prompts/sqrt2-supervisor.md` | NEW | Supervisor agent prompt |
+| `prompts/sqrt2-supervisor-compact.md` | NEW | Compact supervisor prompt |
+| `sqrt2-proof/` | NEW | Complete proof workspace (47 ledger events) |
 
 ## Current State
 
@@ -44,14 +83,22 @@ go test -tags=integration ./cmd/af -run DefReject  # 56 tests PASS
 go test ./internal/node -run "ChallengeLim|RefinementLim"  # 41 tests PASS
 ```
 
+### AF Tool Readiness
+- **Core workflow**: COMPLETE (init → claim → refine → challenge → accept)
+- **Concurrency**: SAFE (CAS + file locks + atomic writes)
+- **Multi-agent**: READY (requires retry logic for ErrConcurrentModification)
+
 ### TDD Tests Awaiting Implementation
 - `cmd/af/verify_external_test.go` - needs `newVerifyExternalCmd` function
 - `cmd/af/extract_lemma_test.go` - needs `newExtractLemmaCmd` function
 
-### Working Commands
-All core CLI commands functional: `init`, `status`, `claim`, `release`, `accept`, `refine`, `challenge`, `resolve-challenge`, `withdraw-challenge`, `jobs`, `get`, `add-external`, `request-def`, `defs`, `def`, `assumptions`, `assumption`, `externals`, `external`, `lemmas`, `lemma`, `schema`, `pending-defs`, `pending-def`, `pending-refs`, `pending-ref`, `admit`, `refute`, `log`, `replay`, `archive`, `reap`, `recompute-taint`, `def-add`, **`def-reject`**
+### Working Commands (35 total)
+`init`, `status`, `claim`, `release`, `accept`, `refine`, `challenge`, `resolve-challenge`, `withdraw-challenge`, `jobs`, `get`, `add-external`, `request-def`, `defs`, `def`, `assumptions`, `assumption`, `externals`, `external`, `lemmas`, `lemma`, `schema`, `pending-defs`, `pending-def`, `pending-refs`, `pending-ref`, `admit`, `refute`, `log`, `replay`, `archive`, `reap`, `recompute-taint`, `def-add`, `def-reject`
 
 ## Next Steps (Priority Order)
+
+### P1 - Ready for Multi-Agent Experiments
+The tool is ready. Use `prompts/sqrt2-supervisor.md` to run multi-agent proof sessions.
 
 ### P2 - Implementation for TDD Tests Ready
 1. **vibefeld-swn9** - Implement af verify-external (tests ready)
@@ -69,7 +116,7 @@ All core CLI commands functional: `init`, `status`, `claim`, `release`, `accept`
 
 ## Session History
 
-**Session 33:** 8 issues via 2 rounds of 4 parallel agents
+**Session 33:** 8 issues + readiness assessment + √2 proof demo + supervisor prompts
 **Session 32:** Fixed init bug across 14 test files, created 2 issues for remaining failures
 **Session 31:** 4 issues via 4 parallel agents
 **Session 30:** 11 issues total (7 via 5 agents + 4 via 4 agents)

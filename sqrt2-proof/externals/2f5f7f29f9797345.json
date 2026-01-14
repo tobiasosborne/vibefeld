@@ -1,0 +1,8 @@
+{
+  "id": "2f5f7f29f9797345",
+  "name": "even-square-lemma",
+  "source": "For any integer n: if n² is even, then n is even. Proof: contrapositive - if n=2k+1 is odd, then n²=4k²+4k+1=2(2k²+2k)+1 is odd.",
+  "content_hash": "0b3fe985e772fc49eca71ee8a75fe565dd79e68054a99e76f49874b0c5ed8033",
+  "created": "2026-01-14T12:42:31Z",
+  "notes": ""
+}
