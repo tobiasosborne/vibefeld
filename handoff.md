@@ -2,15 +2,15 @@
 
 ## What Was Accomplished This Session
 
-### Session 38 Summary: Fixed 15 Issues Total
+### Session 38 Summary: Fixed 19 Issues Total
 
 | Part | Issues Fixed | Priority | Description |
 |------|-------------|----------|-------------|
 | Part 1 | 5 | 2 P0, 3 P1 | Validation invariant, truncation bugs |
 | Part 2 | 4 | 2 P0, 2 P1 | Breadth-first job detection, claim context |
 | Part 3 | 5 | 1 P0, 4 P1 | State machine, concurrency, context enhancements |
-| Part 4 | 1 | 1 P1 | Challenge text in prover context |
-| **Total** | **15** | **5 P0, 10 P1** | |
+| Part 4 | 5 | 5 P1 | Challenge context, E2E test, taint opt, health cmd |
+| **Total** | **19** | **5 P0, 14 P1** | |
 
 ### All P0 Issues Resolved
 | Issue | Fix |
@@ -36,6 +36,10 @@
 | vibefeld-gu49 | Jobs JSON includes full context |
 | vibefeld-hrap | AllocateChildID() for race-free IDs |
 | vibefeld-77pp | Challenge text shown in prover context on claim |
+| vibefeld-9tth | E2E adversarial breadth-first workflow test (4 test cases) |
+| vibefeld-vi3c | O(n²) -> O(n) taint propagation with ancestor caching |
+| vibefeld-k1a6 | Sequence validation in state replay (gap/duplicate detection) |
+| vibefeld-v15c | New `af health` command for stuck detection |
 
 ### Key Architectural Changes
 
@@ -50,6 +54,9 @@
 ### New Files Created
 - `cmd/af/challenges.go` - New command to list challenges
 - `cmd/af/challenges_test.go`
+- `cmd/af/health.go` - New command for stuck detection
+- `cmd/af/health_test.go`
+- `e2e/adversarial_workflow_test.go` - E2E adversarial breadth-first tests
 - `docs/challenge-workflow.md` - Challenge system documentation
 - `docs/role-workflow.md` - Prover/verifier role guides
 
@@ -75,15 +82,14 @@ Build succeeds: `go build ./cmd/af`
 
 With all P0s fixed, focus on remaining P1 issues:
 1. **vibefeld-g58b**: Challenge supersession (auto-supersede on archive/refute)
-2. **vibefeld-v15c**: Stuck detection when proof makes no progress
-3. **vibefeld-pbtp**: Claim timeout visibility to agents
-4. **vibefeld-1jo3**: Validation scope entry check
+2. **vibefeld-pbtp**: Claim timeout visibility to agents
+3. **vibefeld-1jo3**: Validation scope entry check
 
 Run `bd ready` to see current priority list.
 
 ## Session History
 
-**Session 38:** Fixed 15 issues (5 P0, 10 P1) - all P0s resolved, breadth-first model implemented
+**Session 38:** Fixed 19 issues (5 P0, 14 P1) - all P0s resolved, breadth-first model, health cmd, taint opt
 **Session 37:** Deep architectural analysis + remediation plan + 8 new issues
 **Session 36:** Dobinski proof attempt → discovered fundamental flaws → 46 issues filed
 **Session 35:** Fixed vibefeld-99ab - verifier jobs not showing for released refined nodes
