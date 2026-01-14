@@ -651,3 +651,114 @@ func TestRefineMultiCmd_DefaultType(t *testing.T) {
 		t.Errorf("expected default type to be claim, got: %s", child.Type)
 	}
 }
+
+// TestRefineMultiCmd_DefCitationValid tests that valid definition citations pass validation.
+func TestRefineMultiCmd_DefCitationValid(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	// Add required definitions
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.AddDefinition("group", "A group is a set with a binary operation")
+	if err != nil {
+		t.Fatalf("failed to add definition 'group': %v", err)
+	}
+
+	_, err = svc.AddDefinition("homomorphism", "A structure-preserving map")
+	if err != nil {
+		t.Fatalf("failed to add definition 'homomorphism': %v", err)
+	}
+
+	cmd := newRefineMultiTestCmd()
+	// Children citing the definitions
+	childrenJSON := `[{"statement":"By def:group, we have a structure"},{"statement":"Using def:homomorphism, we map"}]`
+
+	output, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--children", childrenJSON,
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error for valid def citations, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.1") || !strings.Contains(output, "1.2") {
+		t.Errorf("expected output to contain 1.1 and 1.2, got: %q", output)
+	}
+}
+
+// TestRefineMultiCmd_DefCitationNotFound tests that missing definition citation fails.
+func TestRefineMultiCmd_DefCitationNotFound(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	// Do NOT add any definitions - citations will fail
+
+	cmd := newRefineMultiTestCmd()
+	// Child citing a missing definition
+	childrenJSON := `[{"statement":"By def:missing-def, we have..."}]`
+
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--children", childrenJSON,
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for missing definition citation, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "missing-def") {
+		t.Errorf("expected error to mention the missing definition name, got: %q", errStr)
+	}
+	if !strings.Contains(errStr, "not found") && !strings.Contains(errStr, "citation") {
+		t.Errorf("expected error about definition not found, got: %q", errStr)
+	}
+}
+
+// TestRefineMultiCmd_DefCitationSecondChildFails tests that validation catches errors in second child.
+func TestRefineMultiCmd_DefCitationSecondChildFails(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	// Add only one definition
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.AddDefinition("group", "A group is a set with a binary operation")
+	if err != nil {
+		t.Fatalf("failed to add definition 'group': %v", err)
+	}
+	// Note: NOT adding 'ring' definition
+
+	cmd := newRefineMultiTestCmd()
+	// First child is valid, second child cites missing definition
+	childrenJSON := `[{"statement":"By def:group, we have..."},{"statement":"Using def:ring, we show..."}]`
+
+	_, err = executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--children", childrenJSON,
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for missing definition citation in second child, got nil")
+	}
+
+	errStr := err.Error()
+	// Error should mention which child has the issue and the missing definition
+	if !strings.Contains(errStr, "ring") {
+		t.Errorf("expected error to mention missing 'ring' definition, got: %q", errStr)
+	}
+	if !strings.Contains(errStr, "child 2") {
+		t.Errorf("expected error to mention 'child 2', got: %q", errStr)
+	}
+}

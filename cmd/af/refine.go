@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/lemma"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
@@ -51,7 +52,12 @@ Examples:
 	cmd.Flags().StringVarP(&owner, "owner", "o", "", "Agent/owner name (required, must match claim owner)")
 	cmd.Flags().StringVarP(&statement, "statement", "s", "", "Child node statement (required for single child)")
 	cmd.Flags().StringVarP(&nodeType, "type", "T", "claim", "Child node type (claim/local_assume/local_discharge/case/qed)")
-	cmd.Flags().StringVarP(&inference, "inference", "i", "assumption", "Inference type")
+	cmd.Flags().StringVarP(&inference, "inference", "i", "assumption",
+		"Inference type\n"+
+			"Valid: modus_ponens, modus_tollens, by_definition,\n"+
+			"assumption, local_assume, local_discharge, contradiction,\n"+
+			"universal_instantiation, existential_instantiation,\n"+
+			"universal_generalization, existential_generalization")
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "Proof directory")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format (text/json)")
 	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of child specifications (mutually exclusive with --statement)")
@@ -123,6 +129,11 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 		return fmt.Errorf("invalid inference type %q: %v", inferenceStr, err)
 	}
 	inferenceType := schema.InferenceType(inferenceStr)
+
+	// Validate definition citations in statement
+	if err := lemma.ValidateDefCitations(statement, st); err != nil {
+		return fmt.Errorf("invalid definition citation: %v", err)
+	}
 
 	// Find next available child ID
 	childNum := 1
@@ -222,6 +233,11 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 		}
 		if err := schema.ValidateInference(childInference); err != nil {
 			return fmt.Errorf("child %d: invalid inference type %q: %v", i+1, childInference, err)
+		}
+
+		// Validate definition citations in statement
+		if err := lemma.ValidateDefCitations(child.Statement, st); err != nil {
+			return fmt.Errorf("child %d: invalid definition citation: %v", i+1, err)
 		}
 
 		specs[i] = service.ChildSpec{

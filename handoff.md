@@ -1,53 +1,62 @@
-# Handoff - 2026-01-14 (Session 39)
+# Handoff - 2026-01-14 (Session 40)
 
 ## What Was Accomplished This Session
 
-### Session 39 Summary: Fixed 4 Issues in Parallel
+### Session 40 Summary: Fixed 4 Issues in Parallel
 
 | Issue | Priority | Type | Description |
 |-------|----------|------|-------------|
-| vibefeld-g58b | P1 | Bug | Challenge supersession - auto-supersede open challenges on archive/refute |
-| vibefeld-435t | P2 | Feature | New `af inferences` command to list valid inference types |
-| vibefeld-23e6 | P2 | Feature | New `af types` command to list valid node types |
-| vibefeld-2q5j | P2 | Task | NodeID.String() caching - 0 allocations on repeated calls |
+| vibefeld-nsr2 | P2 | Task | Added 38 concurrent access tests for ledger/lock/fs packages |
+| vibefeld-rimp | P2 | Task | Added inference types to `af refine --help` output |
+| vibefeld-am4u | P2 | Bug | Added validation for def:NAME citations in statements |
+| vibefeld-amjk | P2 | Bug | Removed formula truncation - math expressions now shown in full |
 
 ### Details
 
-**vibefeld-g58b (P1)**: Challenge Supersession
-- Added `ChallengeSuperseded` event type in `internal/ledger/event.go`
-- Added `applyChallengeSuperseded()` handler in `internal/state/apply.go`
-- Modified `applyNodeArchived()` and `applyNodeRefuted()` to auto-supersede open challenges
-- Per PRD p.177: challenges become moot when parent node is archived/refuted
+**vibefeld-nsr2**: Concurrent Access Tests
+- Created `internal/ledger/concurrent_test.go` (9 tests)
+- Created `internal/lock/concurrent_test.go` (14 tests)
+- Created `internal/lock/race_test.go` (5 tests)
+- Created `internal/fs/concurrent_test.go` (10 tests)
+- Tests cover: concurrent appends, lock acquisition races, CAS operations, mixed operations
+- Discovered race condition in `Lock.Refresh()` (documented, not fixed - separate issue)
+- All tests pass with `-race` flag
 
-**vibefeld-435t**: `af inferences` Command
-- New `cmd/af/inferences.go` - lists 11 inference types (modus_ponens, assumption, etc.)
-- Supports `--format json` for machine-readable output
-- 509 lines of tests in `cmd/af/inferences_test.go`
+**vibefeld-rimp**: Refine Help Inference Types
+- Modified `cmd/af/refine.go` to show all 11 valid inference types in help
+- Added test `TestRefineCmd_HelpShowsInferenceTypes` to verify
+- Help now shows: modus_ponens, modus_tollens, by_definition, assumption, local_assume, local_discharge, contradiction, universal_instantiation, existential_instantiation, universal_generalization, existential_generalization
 
-**vibefeld-23e6**: `af types` Command
-- New `cmd/af/types.go` - lists 5 node types (claim, local_assume, etc.)
-- Shows scope information (opens/closes scope)
-- Supports `--format json` for machine-readable output
-- 546 lines of tests in `cmd/af/types_test.go`
+**vibefeld-am4u**: Definition Citation Validation
+- Created `internal/lemma/defcite.go` with:
+  - `ParseDefCitations()` - extracts def:NAME citations using regex
+  - `ValidateDefCitations()` - checks cited definitions exist in state
+  - `CollectMissingDefCitations()` - reports all missing definitions
+- Created `internal/lemma/defcite_test.go` with 14 test cases
+- Wired validation into `cmd/af/refine.go` for both single and multi-child modes
+- Added 9 integration tests in refine_test.go and refine_multi_test.go
 
-**vibefeld-2q5j**: NodeID Performance
-- Added `cached string` field to NodeID struct
-- `String()` now returns cached value (0 allocations after initial parse)
-- `Parent()` and `Child()` propagate cached strings efficiently
-- Benchmarks: ~2 ns/op with 0 B/op for repeated String() calls
+**vibefeld-amjk**: Formula Truncation Fix
+- Removed `maxStatementLen` constant and `truncateStatement()` function from render package
+- Updated `RenderNode()`, `RenderNodeTree()`, and `formatNode()` to never truncate
+- Mathematical expressions now shown in full (critical for proof verification)
+- Added test `TestRenderNode_NoTruncationForMathFormulas` with 5 math formula cases
 
 ### New Files Created
-- `cmd/af/inferences.go` (132 lines)
-- `cmd/af/inferences_test.go` (509 lines)
-- `cmd/af/types.go` (125 lines)
-- `cmd/af/types_test.go` (546 lines)
+- `internal/ledger/concurrent_test.go` (~650 lines)
+- `internal/lock/concurrent_test.go` (~750 lines)
+- `internal/lock/race_test.go` (~150 lines)
+- `internal/fs/concurrent_test.go` (~700 lines)
+- `internal/lemma/defcite.go` (90 lines)
+- `internal/lemma/defcite_test.go` (~200 lines)
 
 ### Files Modified
-- `internal/ledger/event.go` - Added ChallengeSuperseded event
-- `internal/state/apply.go` - Added supersession logic
-- `internal/state/apply_test.go` - 6 new test cases
-- `internal/types/id.go` - Added string caching
-- `internal/types/id_test.go` - 9 new tests + 6 benchmarks
+- `cmd/af/refine.go` - Added lemma import, validation calls, help text
+- `cmd/af/refine_test.go` - Added 7 new tests
+- `cmd/af/refine_multi_test.go` - Added 3 new tests
+- `internal/render/node.go` - Removed truncation
+- `internal/render/tree.go` - Removed truncation
+- `internal/render/node_test.go` - Updated and added tests
 
 ## Current State
 
@@ -55,42 +64,43 @@
 All critical bugs remain fixed.
 
 ### P1 Issues: 0 remaining
-vibefeld-g58b was the last P1 issue.
+All high priority issues resolved.
+
+### P2 Issues: 6 remaining
+Run `bd ready` to see available work.
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
 ok  github.com/tobias/vibefeld/internal/ledger
-ok  github.com/tobias/vibefeld/internal/state
-ok  github.com/tobias/vibefeld/internal/types
+ok  github.com/tobias/vibefeld/internal/lock
+ok  github.com/tobias/vibefeld/internal/fs
+ok  github.com/tobias/vibefeld/internal/lemma
+ok  github.com/tobias/vibefeld/internal/render
 ... (all packages pass)
 ```
 
 Build succeeds: `go build ./cmd/af`
 
-### New CLI Commands
-```bash
-$ af inferences              # List 11 valid inference types
-$ af types                   # List 5 valid node types
-$ af inferences -f json      # JSON output for scripting
-$ af types -f json           # JSON output for scripting
-```
+### Known Issue Discovered
+Race condition in `Lock.Refresh()` at `internal/lock/lock.go:89` - writes to `expiresAt` without mutex protection. Documented in race_test.go, should be filed as separate issue.
 
 ## Next Steps
 
 Run `bd ready` to see 6 remaining P2 issues:
 1. **vibefeld-rccv**: Two lock systems with confusing naming
 2. **vibefeld-ugfn**: Duplicated allChildrenValidated logic
-3. **vibefeld-nsr2**: Missing concurrent access tests
-4. **vibefeld-yxhf**: Epistemic state pre-transition validation
-5. **vibefeld-o9op**: Auto-compute taint after validation events
-6. **vibefeld-rimp**: Show inference types in refine --help
+3. **vibefeld-yxhf**: Epistemic state pre-transition validation
+4. **vibefeld-o9op**: Auto-compute taint after validation events
+5. **vibefeld-r89m**: Help text doesn't match actual CLI behavior
+6. **vibefeld-uxm1**: Inconsistent flag names across commands
 
 ## Session History
 
+**Session 40:** Fixed 4 issues in parallel (4 P2) - concurrent tests, refine help, def validation, no truncation
 **Session 39:** Fixed 4 issues in parallel (1 P1, 3 P2) - challenge supersession, af inferences/types commands, NodeID caching
 **Session 38:** Fixed 23 issues (5 P0, 15 P1, 3 P2) - all P0s resolved, breadth-first model, config integration
 **Session 37:** Deep architectural analysis + remediation plan + 8 new issues
-**Session 36:** Dobinski proof attempt → discovered fundamental flaws → 46 issues filed
+**Session 36:** Dobinski proof attempt -> discovered fundamental flaws -> 46 issues filed
 **Session 35:** Fixed vibefeld-99ab - verifier jobs not showing for released refined nodes

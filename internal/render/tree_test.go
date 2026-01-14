@@ -473,10 +473,11 @@ func TestRenderTree_ConsistentFormat(t *testing.T) {
 	}
 }
 
-// TestRenderTree_LongStatement tests that long statements are handled appropriately
+// TestRenderTree_LongStatement tests that long statements are NOT truncated
+// Mathematical proofs require precision - formulas must be shown in full
 func TestRenderTree_LongStatement(t *testing.T) {
 	s := state.NewState()
-	longStmt := "This is a very long mathematical statement that exceeds the normal display width and should probably be truncated with an ellipsis to maintain readable tree structure"
+	longStmt := "B_n = (1/e) * sum_{k=0}^{infinity} (k^n / k!) where B_n is the n-th Bell number representing set partitions"
 	addTestNode(t, s, "1", schema.NodeTypeClaim, longStmt)
 
 	result := RenderTree(s, nil)
@@ -490,12 +491,14 @@ func TestRenderTree_LongStatement(t *testing.T) {
 		t.Errorf("RenderTree missing node ID, got: %q", result)
 	}
 
-	// Output should be reasonably sized (not excessively long per line)
-	lines := strings.Split(result, "\n")
-	for _, line := range lines {
-		if len(line) > 200 {
-			t.Logf("Note: tree line may be too long (%d chars), consider truncation: %q", len(line), line[:100]+"...")
-		}
+	// Mathematical formulas should NOT be truncated - shown in full
+	if strings.Contains(result, "...") {
+		t.Errorf("Mathematical statements should not be truncated, got: %q", result)
+	}
+
+	// The full formula should be present
+	if !strings.Contains(result, "B_n = (1/e) * sum_{k=0}^{infinity}") {
+		t.Errorf("RenderTree should show full formula, got: %q", result)
 	}
 }
 

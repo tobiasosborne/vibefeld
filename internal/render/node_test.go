@@ -99,9 +99,10 @@ func TestRenderNode_Basic(t *testing.T) {
 	}
 }
 
-// TestRenderNode_LongStatement tests that long statements are truncated
+// TestRenderNode_LongStatement tests that long statements are NOT truncated
+// Mathematical proofs require precision - formulas must be shown in full
 func TestRenderNode_LongStatement(t *testing.T) {
-	longStatement := "This is a very long mathematical statement that exceeds the normal display width and should be truncated with an ellipsis to fit within the single line format"
+	longStatement := "B_n = (1/e) * sum_{k=0}^{infinity} (k^n / k!) where B_n is the n-th Bell number"
 	n := makeTestNode("1", schema.NodeTypeClaim, longStatement, schema.InferenceModusPonens)
 
 	result := RenderNode(n)
@@ -115,13 +116,14 @@ func TestRenderNode_LongStatement(t *testing.T) {
 		t.Errorf("RenderNode should return single line, got: %q", result)
 	}
 
-	// Should contain ellipsis if statement is truncated
-	// The exact truncation point depends on implementation, but it should be reasonable
-	if len(result) > 150 {
-		// If output is long, it should have been truncated
-		if !strings.Contains(result, "...") {
-			t.Logf("Note: long statement may need truncation, result: %q", result)
-		}
+	// Mathematical formulas should NOT be truncated - shown in full
+	if strings.Contains(result, "...") {
+		t.Errorf("Mathematical statements should not be truncated, got: %q", result)
+	}
+
+	// The full formula should be present
+	if !strings.Contains(result, "B_n = (1/e) * sum_{k=0}^{infinity}") {
+		t.Errorf("RenderNode should show full formula, got: %q", result)
 	}
 
 	// Should still contain the ID
@@ -556,4 +558,52 @@ func mustParse(s string) types.NodeID {
 		panic("invalid NodeID in test: " + s)
 	}
 	return id
+}
+
+// TestRenderNode_NoTruncationForMathFormulas verifies that mathematical formulas
+// are never truncated mid-expression (issue vibefeld-amjk)
+func TestRenderNode_NoTruncationForMathFormulas(t *testing.T) {
+	mathFormulas := []struct {
+		name    string
+		formula string
+	}{
+		{
+			name:    "Dobinski formula",
+			formula: "B_n = (1/e) * sum_{k=0}^{infinity} (k^n / k!)",
+		},
+		{
+			name:    "quadratic formula",
+			formula: "x = (-b +/- sqrt(b^2 - 4ac)) / (2a)",
+		},
+		{
+			name:    "Euler identity",
+			formula: "e^{i*pi} + 1 = 0 is the most beautiful equation in mathematics",
+		},
+		{
+			name:    "integral",
+			formula: "integral_{0}^{infinity} x^n * e^{-x} dx = n! (Gamma function definition)",
+		},
+		{
+			name:    "series expansion",
+			formula: "e^x = sum_{n=0}^{infinity} x^n/n! = 1 + x + x^2/2! + x^3/3! + ...",
+		},
+	}
+
+	for _, tc := range mathFormulas {
+		t.Run(tc.name, func(t *testing.T) {
+			n := makeTestNode("1", schema.NodeTypeClaim, tc.formula, schema.InferenceModusPonens)
+			result := RenderNode(n)
+
+			// Formula must appear in full, not truncated
+			if !strings.Contains(result, tc.formula) {
+				t.Errorf("Formula should not be truncated.\nExpected to contain: %q\nGot: %q", tc.formula, result)
+			}
+
+			// Should not have ellipsis indicating truncation
+			// (Note: ellipsis in the original formula itself is OK)
+			if strings.HasSuffix(result, `..."`) && !strings.HasSuffix(tc.formula, "...") {
+				t.Errorf("Formula appears to be truncated with ellipsis: %q", result)
+			}
+		})
+	}
 }

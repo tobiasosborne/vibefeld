@@ -11,8 +11,6 @@ import (
 )
 
 const (
-	// maxStatementLen is the maximum length for statement display in single-line output.
-	maxStatementLen = 60
 	// indentSize is the number of spaces per indentation level.
 	indentSize = 2
 )
@@ -20,14 +18,15 @@ const (
 // RenderNode renders a node as a single-line human-readable summary.
 // Format: [ID] type (state): "statement"
 // Returns empty string for nil node.
+// Mathematical statements are shown in full without truncation to preserve precision.
 func RenderNode(n *node.Node) string {
 	if n == nil {
 		return ""
 	}
 
-	// Sanitize and truncate the statement
+	// Sanitize the statement (normalize whitespace) but do NOT truncate
+	// Mathematical proofs require precision - truncation is unacceptable
 	stmt := sanitizeStatement(n.Statement)
-	stmt = truncateStatement(stmt, maxStatementLen)
 
 	return fmt.Sprintf("[%s] %s (%s): %q",
 		n.ID.String(),
@@ -114,8 +113,8 @@ func RenderNodeTree(nodes []*node.Node) string {
 		indent := strings.Repeat(" ", (n.Depth()-1)*indentSize)
 
 		// Render single line for each node
+		// Sanitize but do NOT truncate - mathematical formulas must be shown in full
 		stmt := sanitizeStatement(n.Statement)
-		stmt = truncateStatement(stmt, maxStatementLen)
 
 		sb.WriteString(fmt.Sprintf("%s[%s] %s (%s): %q",
 			indent,
@@ -161,14 +160,6 @@ func sanitizeStatement(s string) string {
 	return result
 }
 
-// truncateStatement truncates a statement to the given maximum length,
-// adding ellipsis if truncation occurs.
-func truncateStatement(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
-}
 
 // compareNodeIDs compares two node ID strings for sorting.
 // Returns true if a should come before b.

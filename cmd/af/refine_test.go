@@ -436,6 +436,36 @@ func TestRefineCmd_Help(t *testing.T) {
 	}
 }
 
+func TestRefineCmd_HelpShowsInferenceTypes(t *testing.T) {
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "--help")
+
+	if err != nil {
+		t.Fatalf("expected no error for help, got: %v", err)
+	}
+
+	// Should show valid inference types in the help output
+	inferenceTypes := []string{
+		"modus_ponens",
+		"modus_tollens",
+		"by_definition",
+		"assumption",
+		"local_assume",
+		"local_discharge",
+		"contradiction",
+		"universal_instantiation",
+		"existential_instantiation",
+		"universal_generalization",
+		"existential_generalization",
+	}
+
+	for _, infType := range inferenceTypes {
+		if !strings.Contains(output, infType) {
+			t.Errorf("expected help to show inference type %q, got: %q", infType, output)
+		}
+	}
+}
+
 func TestRefineCmd_InvalidParentID(t *testing.T) {
 	tmpDir, cleanup := setupRefineTest(t)
 	defer cleanup()
@@ -643,5 +673,186 @@ func TestRefineCmd_FuzzyCommandMatching(t *testing.T) {
 	errStr := err.Error()
 	if !strings.Contains(errStr, "refine") {
 		t.Errorf("expected suggestion for 'refine', got: %q", errStr)
+	}
+}
+
+func TestRefineCmd_DefCitationValid(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Add a definition first
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.AddDefinition("group", "A group is a set with a binary operation")
+	if err != nil {
+		t.Fatalf("failed to add definition: %v", err)
+	}
+
+	// Now refine with a statement that cites the definition
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "By def:group, we have a binary operation",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error for valid def citation, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain child ID, got: %q", output)
+	}
+}
+
+func TestRefineCmd_DefCitationNotFound(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Do NOT add the definition - statement will cite a missing def
+
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "By def:nonexistent-definition, we have...",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for missing definition citation, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "nonexistent-definition") {
+		t.Errorf("expected error to mention the missing definition name, got: %q", errStr)
+	}
+	if !strings.Contains(errStr, "not found") && !strings.Contains(errStr, "citation") {
+		t.Errorf("expected error about definition not found, got: %q", errStr)
+	}
+}
+
+func TestRefineCmd_DefCitationMultipleValid(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Add multiple definitions
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.AddDefinition("group", "A group is a set with a binary operation")
+	if err != nil {
+		t.Fatalf("failed to add definition 'group': %v", err)
+	}
+
+	_, err = svc.AddDefinition("homomorphism", "A structure-preserving map")
+	if err != nil {
+		t.Fatalf("failed to add definition 'homomorphism': %v", err)
+	}
+
+	// Refine with a statement citing both definitions
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Using def:group and def:homomorphism, we can construct...",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error for valid multi-def citation, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain child ID, got: %q", output)
+	}
+}
+
+func TestRefineCmd_DefCitationOneInvalid(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Add only one of the cited definitions
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.AddDefinition("group", "A group is a set with a binary operation")
+	if err != nil {
+		t.Fatalf("failed to add definition 'group': %v", err)
+	}
+	// Note: NOT adding 'ring' definition
+
+	cmd := newRefineTestCmd()
+	_, err = executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Using def:group and def:ring, we show...",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for partially invalid def citation, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "ring") {
+		t.Errorf("expected error to mention the missing definition 'ring', got: %q", errStr)
+	}
+}
+
+func TestRefineCmd_DefCitationNoCitations(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Statement without any def: citations should be fine
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "This statement has no definition citations",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error for statement without citations, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain child ID, got: %q", output)
+	}
+}
+
+func TestRefineCmd_DefCitationHyphenatedName(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Add a definition with a hyphenated name
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.AddDefinition("Stirling-second-kind", "Stirling numbers of the second kind count...")
+	if err != nil {
+		t.Fatalf("failed to add definition: %v", err)
+	}
+
+	// Refine with a statement citing the hyphenated definition
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "By def:Stirling-second-kind, the number of partitions...",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error for valid hyphenated def citation, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain child ID, got: %q", output)
 	}
 }
