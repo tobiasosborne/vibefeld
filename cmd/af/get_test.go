@@ -81,34 +81,17 @@ func setupGetTest(t *testing.T) (string, func()) {
 
 // setupGetTestWithNode creates a test environment with an initialized proof
 // and a single node at ID "1".
+// Note: service.Init already creates node 1 with the conjecture, so we just
+// return the result of setupGetTest. Node 1 has statement "Test conjecture".
 func setupGetTestWithNode(t *testing.T) (string, func()) {
 	t.Helper()
-
-	tmpDir, cleanup := setupGetTest(t)
-
-	// Create a proof service and add a node
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	nodeID, err := types.Parse("1")
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	return tmpDir, cleanup
+	// service.Init already creates node 1 with the conjecture "Test conjecture"
+	return setupGetTest(t)
 }
 
 // setupGetTestWithHierarchy creates a test environment with a multi-level node hierarchy.
-// Creates nodes: 1, 1.1, 1.2, 1.1.1, 1.1.2
+// Node 1 already exists from Init with statement "Test conjecture".
+// Creates additional child nodes: 1.1, 1.2, 1.1.1, 1.1.2
 func setupGetTestWithHierarchy(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -120,12 +103,11 @@ func setupGetTestWithHierarchy(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Create hierarchical nodes
+	// Create child nodes (node 1 already exists from Init with statement "Test conjecture")
 	nodes := []struct {
 		id        string
 		statement string
 	}{
-		{"1", "Root statement"},
 		{"1.1", "First child statement"},
 		{"1.2", "Second child statement"},
 		{"1.1.1", "First grandchild statement"},
@@ -167,8 +149,8 @@ func TestGetCmd_SingleNode(t *testing.T) {
 		t.Errorf("expected output to contain node ID '1', got: %q", output)
 	}
 
-	// Output should contain the statement
-	if !strings.Contains(output, "Test goal statement") {
+	// Output should contain the statement (node 1 has "Test conjecture" from Init)
+	if !strings.Contains(output, "Test conjecture") {
 		t.Errorf("expected output to contain node statement, got: %q", output)
 	}
 }
@@ -289,8 +271,8 @@ func TestGetCmd_WithSubtree(t *testing.T) {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	// Output should contain root
-	if !strings.Contains(output, "Root statement") {
+	// Output should contain root (node 1 has "Test conjecture" from Init)
+	if !strings.Contains(output, "Test conjecture") {
 		t.Errorf("expected output to contain root statement, got: %q", output)
 	}
 
@@ -467,9 +449,10 @@ func TestGetCmd_NodeNotFound(t *testing.T) {
 	tmpDir, cleanup := setupGetTest(t)
 	defer cleanup()
 
-	output, err := executeGetCommand(t, "1", "-d", tmpDir)
+	// Note: Node 1 exists from Init, so test with a non-existent node
+	output, err := executeGetCommand(t, "2", "-d", tmpDir)
 
-	// Should produce error - node 1 doesn't exist
+	// Should produce error - node 2 doesn't exist
 	combined := output
 	if err != nil {
 		combined += err.Error()
@@ -944,10 +927,7 @@ func TestGetCmd_RelativeDirectory(t *testing.T) {
 	if err := service.Init(proofDir, "Test conjecture", "author"); err != nil {
 		t.Fatal(err)
 	}
-
-	svc, _ := service.NewProofService(proofDir)
-	nodeID, _ := types.Parse("1")
-	_ = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test", schema.InferenceAssumption)
+	// Note: service.Init already creates node 1 with the conjecture
 
 	// Change to base directory
 	oldDir, _ := os.Getwd()
@@ -1131,9 +1111,9 @@ func TestGetCmd_OutputContainsNodeStatement(t *testing.T) {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	// Output should contain the node's statement
-	if !strings.Contains(output, "Test goal statement") {
-		t.Errorf("expected output to contain node statement 'Test goal statement', got: %q", output)
+	// Output should contain the node's statement (node 1 has "Test conjecture" from Init)
+	if !strings.Contains(output, "Test conjecture") {
+		t.Errorf("expected output to contain node statement 'Test conjecture', got: %q", output)
 	}
 }
 
