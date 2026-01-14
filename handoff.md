@@ -1,117 +1,133 @@
-# Handoff - 2026-01-14 (Session 36)
+# Handoff - 2026-01-14 (Session 37)
 
 ## What Was Accomplished This Session
 
-### Critical Discovery: AF Tool Architecture is Fundamentally Flawed
+### Deep Architectural Analysis Completed
 
-Attempted to prove Dobinski's Formula using the AF tool with parallel prover/verifier subagents. The attempt revealed that the tool's core workflow is **inverted** and **unusable**.
+Performed comprehensive analysis comparing PRD against implementation, using Dobinski failure report as evidence. Used 4 parallel exploration subagents to examine:
+- Jobs package (verifier/prover detection logic)
+- Claim/release/refine workflow
+- CLI self-documentation implementation
+- State machine implementations
 
-### Key Finding: Session 35's Fix Made the Wrong Model Work
+### Key Discovery: Implementation Disconnected from Infrastructure
 
-Session 35 fixed vibefeld-99ab so verifier jobs appear when "all children are validated." But this **bottom-up model is wrong**. The correct adversarial model is **breadth-first**:
+Found **extensive rendering infrastructure that was built, tested, but never wired to CLI**:
 
-| Model | Flow | Problem |
-|-------|------|---------|
-| **Current (Bottom-up)** | Validate leaves → parents become verifier jobs → validate parents → ... | Provers can refine forever without verification. Verifiers see nothing until subtree is complete. |
-| **Correct (Breadth-first)** | New node created → immediately a verifier job → challenged or accepted → if challenged, becomes prover job | Adversarial verification at every step. No unchecked expansion. |
+| Component | Lines | Tests | Called from CLI |
+|-----------|-------|-------|-----------------|
+| `render/prover_context.go` | 465 | 27KB | **NEVER** |
+| `render/verifier_context.go` | 490 | 31KB | **NEVER** |
+| `render/error.go` | 292 | 14KB | **NEVER** |
 
-**New Critical Issue**: vibefeld-9jgk documents this fundamental inversion.
+This is a classic build-test-but-never-integrate anti-pattern.
 
-### Artifacts Created
+### Validation Invariant Only 25% Implemented
 
-1. **`/prompts/dobinski-supervisor.md`** - Supervisor prompt for Dobinski proof
-   - Emphasizes parallel subagent spawning
-   - Hostile verifier disposition ("DO NOT BE AGREEABLE")
-   - Extreme mathematical rigor requirements
+PRD specifies 4 requirements for node validation. Implementation only checks 1:
 
-2. **`/dobinski-proof/`** - Proof workspace
-   - 8 definitions, 8 external references
-   - 9 nodes across 4 branches
-   - 3 open challenges raised by verifiers
+| Requirement | Implemented | Bug |
+|-------------|-------------|-----|
+| 1. All challenges resolved/withdrawn/superseded | ❌ | - |
+| 2. Resolved challenges have validated addressed_by | ❌ | - |
+| 3. All children validated OR admitted | ⚠️ | Rejects admitted (escape hatch broken) |
+| 4. All scope entries closed | ❌ | - |
 
-3. **`/dobinski-proof/FAILURE_REPORT.md`** - Comprehensive analysis
-   - 80 distinct failures documented
-   - Rating: **1/10** - architectural redesign required
+### Comprehensive Remediation Plan Created
 
-4. **46 New Beads Issues** - Covering all failures
-   - 4 P0 (Critical)
-   - 11 P1 (High)
-   - 24 P2 (Medium)
-   - 7 P3 (Low)
+**Location**: `docs/af-remediation-plan.md` (530+ lines)
 
-## The Two Critical Failures
+6 phases with dependency graph:
+- Phase 0: Workflow Model Correction (critical path)
+- Phase 1: Validation Invariant Completion
+- Phase 2: CLI-Rendering Integration
+- Phase 3: State Machine Completion
+- Phase 4: Concurrency Hardening
+- Phase 5: Challenge Workflow Clarity
+- Phase 6: Integration Testing
 
-### 1. Workflow is Inverted (vibefeld-9jgk)
+### 8 New Issues Created
 
-**Current**: `internal/jobs/verifier.go` says:
-```go
-// Leaf nodes (no children) are NOT verifier jobs - they are prover jobs that need refinement.
-```
+| Issue ID | Priority | Title |
+|----------|----------|-------|
+| vibefeld-y0pf | **P0** | Validation invariant rejects admitted children |
+| vibefeld-ru2t | **P0** | Validation invariant missing challenge state check |
+| vibefeld-1jo3 | P1 | Validation invariant missing scope entry check |
+| vibefeld-g58b | P1 | Challenge supersession not implemented |
+| vibefeld-f353 | P1 | Workflow transitions not validated during replay |
+| vibefeld-9tth | P1 | E2E test for adversarial workflow |
+| vibefeld-wzwp | P2 | Comprehensive E2E test suite |
+| vibefeld-om5f | P2 | Dobinski regression test |
 
-**Required**: Every new node should immediately be a verifier job. Verifier challenges or accepts. Only if challenged does it become a prover job.
+### 12 Existing Issues Updated
 
-### 2. Agents Lack Context (vibefeld-h0ck)
-
-**Current**: `af jobs` output:
-```
-[1.1] claim: "Establish the combinatorial foundation: The Bell number B..."
-```
-
-**Required**: Full statement, justification, parent context, referenced definitions, referenced externals, open challenges - ALL IN ONE OUTPUT.
+Updated with plan references and enhanced descriptions:
+- All P0s: vibefeld-9jgk, vibefeld-h0ck, vibefeld-heir, vibefeld-9ayl
+- Key P1s: vibefeld-lyz0, vibefeld-ccvo, vibefeld-wuo4, vibefeld-04p8, vibefeld-vyus, vibefeld-hrap, vibefeld-q9ez
 
 ## Current State
 
-### Statistics
-- 104 open issues (46 created this session)
-- 4 critical issues blocking all use
-- Tool rating: 1/10
+### Issue Statistics
+- **P0 Issues**: 6 (added 2 for validation invariant)
+- **P1 Issues**: 15
+- **Total Open**: 112
+- **Blocked**: 4 (by dependencies)
+- **Ready to Work**: 108
 
-### Open Challenges in Dobinski Proof
-| Challenge ID | Node | Issue |
-|--------------|------|-------|
-| ch-2e3785232b284295 | 1.1.1 | "addition principle" not registered as external |
-| ch-b7618d4f33ec34bc | 1.2.1 | Bell recurrence used but not in externals |
-| ch-f0f6c91251e9d260 | 1.4.1 | Ambiguous algebraic notation |
+### The 6 P0 Issues (Must Fix First)
 
-## Next Steps (Priority Order)
+| Issue | Problem | Fix |
+|-------|---------|-----|
+| vibefeld-9jgk | Job detection inverted | Breadth-first model |
+| vibefeld-h0ck | No context on claim | Wire RenderProverContext() |
+| vibefeld-heir | No mark-complete | May close after 9jgk |
+| vibefeld-9ayl | Claim contention | Bulk refinement |
+| vibefeld-y0pf | Rejects admitted children | Fix line 47 condition |
+| vibefeld-ru2t | No challenge check | Add validation |
 
-### P0 - Must Fix Before Tool is Usable
+### Dependency Chain
 
-1. **vibefeld-9jgk** - Fix verifier job detection
-   - Change from "all children validated" to "has statement, not claimed, no unresolved challenges"
-   - Location: `internal/jobs/verifier.go`
+```
+vibefeld-9jgk (job detection) ← CRITICAL PATH
+    ↓
+vibefeld-9tth (E2E test)
+    ↓
+vibefeld-wzwp (full E2E suite) ← also needs y0pf, ru2t
+    ↓
+vibefeld-om5f (Dobinski regression)
+```
 
-2. **vibefeld-h0ck** - Add full context to job output
-   - Include definitions, externals, challenges inline
-   - Location: `internal/render/jobs.go`
+## Next Session: Recommended Action
 
-3. **vibefeld-heir** - Add node completion marking
-   - `af mark-complete` or `--terminal` flag
+### Option A: Fix Workflow Model (Recommended)
+Start with vibefeld-9jgk - redefine verifier/prover job detection:
+```go
+// New verifier job: has statement, pending, not claimed, no unresolved challenges
+// New prover job: has unaddressed challenges requiring response
+```
+This unlocks everything else.
 
-4. **vibefeld-9ayl** - Fix claim contention
-   - Add `af refine-bulk` or remove claim requirement
+### Option B: Quick Win - Wire Rendering
+If workflow decision needs more thought, can wire existing infrastructure:
+- `af claim` → call `render.RenderProverContext()`
+- Error handling → call `render.FormatCLI()`
 
-### P1 - High Priority Workflow Fixes
+This improves UX without model change.
 
-5. **vibefeld-ccvo** - Document challenge resolution workflow
-6. **vibefeld-vyus** - Add `af challenges` command
-7. **vibefeld-we4t** - Fix job output truncation
-8. **vibefeld-lyz0** - Fix taint system (always shows "unresolved")
+## Architectural Decision Confirmed
 
-## Architectural Decision Required
+**Breadth-first adversarial model is correct.** Bottom-up allows unchecked expansion. Plan documents full rationale.
 
-**Question**: Should the adversarial workflow be:
-- **A) Bottom-up** (current): Validate leaves first, parents become verifiable when children done
-- **B) Breadth-first** (recommended): Every new node immediately verifiable, challenged nodes get refined
+## Files Changed This Session
 
-**Recommendation**: Option B. Bottom-up allows unchecked proof expansion. Breadth-first enforces adversarial verification at every step.
+- **Created**: `docs/af-remediation-plan.md`
+- **Updated**: `handoff.md`
 
 ## Session History
 
+**Session 37:** Deep architectural analysis → remediation plan → 8 new issues → 12 updated
 **Session 36:** Dobinski proof attempt → discovered fundamental flaws → 46 issues filed → 1/10 rating
 **Session 35:** Fixed vibefeld-99ab - verifier jobs not showing for released refined nodes
 **Session 34:** √2 proof with adversarial agents + 5 improvement issues filed
 **Session 33:** 8 issues + readiness assessment + √2 proof demo + supervisor prompts
 **Session 32:** Fixed init bug across 14 test files, created 2 issues for remaining failures
-**Session 31:** 4 issues via 4 parallel agents
-**Session 30:** 11 issues total (7 via 5 agents + 4 via 4 agents)
