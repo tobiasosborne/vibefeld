@@ -2,6 +2,7 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -66,19 +67,65 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 	return state, nil
 }
 
-// parseEvent parses raw JSON bytes into a typed Event.
-// Returns an error if the JSON is invalid or the event type is unknown.
-func parseEvent(data []byte) (ledger.Event, error) {
-	// First, parse just the type field
-	var base struct {
-		Type ledger.EventType `json:"type"`
-	}
-	if err := json.Unmarshal(data, &base); err != nil {
-		return nil, fmt.Errorf("invalid JSON: %w", err)
+// extractEventType extracts the event type from JSON data using fast byte scanning.
+// This avoids a full JSON unmarshal just to read the "type" field, eliminating
+// the overhead of double JSON parsing.
+// Returns the type string and an error if the type field cannot be found.
+func extractEventType(data []byte) (ledger.EventType, error) {
+	// Look for "type": or "type" : (with potential whitespace)
+	typeKey := []byte(`"type"`)
+	idx := bytes.Index(data, typeKey)
+	if idx == -1 {
+		return "", fmt.Errorf("invalid JSON: missing type field")
 	}
 
-	// Now parse the full event based on type
-	switch base.Type {
+	// Skip past "type" and find the colon
+	pos := idx + len(typeKey)
+	for pos < len(data) && (data[pos] == ' ' || data[pos] == '\t' || data[pos] == '\n' || data[pos] == '\r') {
+		pos++
+	}
+	if pos >= len(data) || data[pos] != ':' {
+		return "", fmt.Errorf("invalid JSON: malformed type field")
+	}
+	pos++ // skip colon
+
+	// Skip whitespace after colon
+	for pos < len(data) && (data[pos] == ' ' || data[pos] == '\t' || data[pos] == '\n' || data[pos] == '\r') {
+		pos++
+	}
+	if pos >= len(data) || data[pos] != '"' {
+		return "", fmt.Errorf("invalid JSON: type value must be a string")
+	}
+	pos++ // skip opening quote
+
+	// Find the closing quote (handle escaped quotes)
+	start := pos
+	for pos < len(data) {
+		if data[pos] == '\\' && pos+1 < len(data) {
+			pos += 2 // skip escaped character
+			continue
+		}
+		if data[pos] == '"' {
+			return ledger.EventType(data[start:pos]), nil
+		}
+		pos++
+	}
+
+	return "", fmt.Errorf("invalid JSON: unterminated type string")
+}
+
+// parseEvent parses raw JSON bytes into a typed Event.
+// Returns an error if the JSON is invalid or the event type is unknown.
+// Uses optimized byte scanning to extract the type field, avoiding double JSON parsing.
+func parseEvent(data []byte) (ledger.Event, error) {
+	// Extract event type using fast byte scanning (no JSON unmarshal)
+	eventType, err := extractEventType(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Now parse the full event based on type (single unmarshal)
+	switch eventType {
 	case ledger.EventProofInitialized:
 		var e ledger.ProofInitialized
 		if err := json.Unmarshal(data, &e); err != nil {
@@ -178,6 +225,6 @@ func parseEvent(data []byte) (ledger.Event, error) {
 		return e, nil
 
 	default:
-		return nil, fmt.Errorf("unknown event type: %s", base.Type)
+		return nil, fmt.Errorf("unknown event type: %s", eventType)
 	}
 }

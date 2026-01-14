@@ -1,0 +1,98 @@
+// Package main contains the af refute command implementation.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/types"
+)
+
+func newRefuteCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "refute <node-id>",
+		Short: "Refute a proof node (mark as disproven)",
+		Long: `Refute marks a proof node as disproven or incorrect.
+
+This is a verifier action that indicates the node's claim is false.
+The node's epistemic state changes from pending to refuted.
+
+Examples:
+  af refute 1          Refute the root node
+  af refute 1.2.3      Refute a specific child node
+  af refute 1 -d ./proof  Refute using specific directory
+  af refute 1 --reason "Contradicts theorem 3.2"  Refute with explanation`,
+		Args: cobra.ExactArgs(1),
+		RunE: runRefute,
+	}
+
+	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
+	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
+	cmd.Flags().String("reason", "", "Reason for refutation")
+
+	return cmd
+}
+
+func runRefute(cmd *cobra.Command, args []string) error {
+	// Parse node ID
+	nodeIDStr := args[0]
+	nodeID, err := types.Parse(nodeIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid node ID %q: %w", nodeIDStr, err)
+	}
+
+	// Get flags
+	dir, err := cmd.Flags().GetString("dir")
+	if err != nil {
+		return err
+	}
+	format, err := cmd.Flags().GetString("format")
+	if err != nil {
+		return err
+	}
+	reason, err := cmd.Flags().GetString("reason")
+	if err != nil {
+		return err
+	}
+
+	// Create proof service
+	svc, err := service.NewProofService(dir)
+	if err != nil {
+		return fmt.Errorf("error accessing proof directory: %w", err)
+	}
+
+	// Refute the node
+	if err := svc.RefuteNode(nodeID); err != nil {
+		return fmt.Errorf("error refuting node: %w", err)
+	}
+
+	// Output result based on format
+	switch strings.ToLower(format) {
+	case "json":
+		result := map[string]interface{}{
+			"node_id": nodeID.String(),
+			"status":  "refuted",
+			"refuted": true,
+		}
+		if reason != "" {
+			result["reason"] = reason
+		}
+		output, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("error marshaling JSON: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(output))
+	default:
+		// Text format
+		fmt.Fprintf(cmd.OutOrStdout(), "Node %s refuted.\n", nodeID.String())
+	}
+
+	return nil
+}
+
+func init() {
+	rootCmd.AddCommand(newRefuteCmd())
+}
