@@ -1,0 +1,101 @@
+// Package main contains the af archive command implementation.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/types"
+)
+
+func newArchiveCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "archive <node-id>",
+		Short: "Archive a proof node (abandon the branch)",
+		Long: `Archive marks a proof node as archived, abandoning the branch.
+
+This action indicates the proof branch is no longer being pursued.
+The node's epistemic state changes from pending to archived.
+
+Use this when you want to abandon a proof path without marking it as
+incorrect. Archived nodes are preserved in the ledger history.
+
+Examples:
+  af archive 1          Archive the root node
+  af archive 1.2.3      Archive a specific child node
+  af archive 1 -d ./proof  Archive using specific directory
+  af archive 1 --reason "Taking different approach"  Archive with explanation`,
+		Args: cobra.ExactArgs(1),
+		RunE: runArchive,
+	}
+
+	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
+	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
+	cmd.Flags().String("reason", "", "Reason for archiving")
+
+	return cmd
+}
+
+func runArchive(cmd *cobra.Command, args []string) error {
+	// Parse node ID
+	nodeIDStr := args[0]
+	nodeID, err := types.Parse(nodeIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid node ID %q: %w", nodeIDStr, err)
+	}
+
+	// Get flags
+	dir, err := cmd.Flags().GetString("dir")
+	if err != nil {
+		return err
+	}
+	format, err := cmd.Flags().GetString("format")
+	if err != nil {
+		return err
+	}
+	reason, err := cmd.Flags().GetString("reason")
+	if err != nil {
+		return err
+	}
+
+	// Create proof service
+	svc, err := service.NewProofService(dir)
+	if err != nil {
+		return fmt.Errorf("error accessing proof directory: %w", err)
+	}
+
+	// Archive the node
+	if err := svc.ArchiveNode(nodeID); err != nil {
+		return fmt.Errorf("error archiving node: %w", err)
+	}
+
+	// Output result based on format
+	switch strings.ToLower(format) {
+	case "json":
+		result := map[string]interface{}{
+			"node_id":  nodeID.String(),
+			"status":   "archived",
+			"archived": true,
+		}
+		if reason != "" {
+			result["reason"] = reason
+		}
+		output, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("error marshaling JSON: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(output))
+	default:
+		// Text format
+		fmt.Fprintf(cmd.OutOrStdout(), "Node %s archived.\n", nodeID.String())
+	}
+
+	return nil
+}
+
+func init() {
+	rootCmd.AddCommand(newArchiveCmd())
+}

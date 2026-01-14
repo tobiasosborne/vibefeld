@@ -485,6 +485,36 @@ func (s *ProofService) RefuteNode(id types.NodeID) error {
 	return wrapSequenceMismatch(err, "RefuteNode")
 }
 
+// ArchiveNode archives a node, abandoning the branch.
+// Returns an error if the node doesn't exist.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) ArchiveNode(id types.NodeID) error {
+	// Load current state and capture sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Check if node exists
+	n := st.GetNode(id)
+	if n == nil {
+		return errors.New("node not found")
+	}
+
+	// Get ledger and append archive event with CAS
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewNodeArchived(id)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "ArchiveNode")
+}
+
 // AddDefinition adds a new definition to the proof.
 // Returns the definition ID and any error.
 //

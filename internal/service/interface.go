@@ -73,6 +73,13 @@ type ProofOperations interface {
 	// since state was loaded. Callers should retry after reloading state.
 	RefuteNode(id types.NodeID) error
 
+	// ArchiveNode archives a node, abandoning the branch.
+	// Returns an error if the node doesn't exist.
+	//
+	// Returns ErrConcurrentModification if the proof was modified by another process
+	// since state was loaded. Callers should retry after reloading state.
+	ArchiveNode(id types.NodeID) error
+
 	// AddDefinition adds a new definition to the proof.
 	// Returns the definition ID and any error.
 	//
