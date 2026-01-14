@@ -78,6 +78,17 @@ func (s *State) GetDefinition(id string) *node.Definition {
 	return s.definitions[id]
 }
 
+// GetDefinitionByName returns the definition with the given name, or nil if not found.
+// If multiple definitions have the same name, returns the first one found (arbitrary order).
+func (s *State) GetDefinitionByName(name string) *node.Definition {
+	for _, d := range s.definitions {
+		if d.Name == name {
+			return d
+		}
+	}
+	return nil
+}
+
 // AddAssumption adds an assumption to the state.
 // If an assumption with the same ID already exists, it is overwritten.
 func (s *State) AddAssumption(a *node.Assumption) {
