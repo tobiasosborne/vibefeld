@@ -1,0 +1,1 @@
+{"type":"def_added","timestamp":"2026-01-14T13:41:55Z","definition":{"id":"dbbd1bc216867351","name":"falling-factorial","definition":"k^{underline{j}} = k(k-1)(k-2)...(k-j+1) for j\u003e=1, and k^{underline{0}} = 1. Equivalently, k^{underline{j}} = k!/(k-j)! for k\u003e=j, and 0 for k\u003cj.","created":"2026-01-14T13:41:55Z"}}

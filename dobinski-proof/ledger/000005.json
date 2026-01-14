@@ -1,0 +1,1 @@
+{"type":"def_added","timestamp":"2026-01-14T13:41:54Z","definition":{"id":"421945a50f6faaf5","name":"Stirling-second-kind","definition":"S(n,k) is the number of ways to partition an n-element set into exactly k non-empty blocks. S(0,0)=1, S(n,0)=0 for n\u003e0, S(n,k)=0 for k\u003en.","created":"2026-01-14T13:41:54Z"}}

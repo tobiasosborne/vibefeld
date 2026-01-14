@@ -1,0 +1,1 @@
+{"type":"def_added","timestamp":"2026-01-14T13:41:58Z","definition":{"id":"2dce87840a26a071","name":"Poisson-distribution","definition":"X ~ Poisson(lambda) means P(X=k) = e^{-lambda} * lambda^k / k! for k=0,1,2,... The n-th moment is E[X^n].","created":"2026-01-14T13:41:58Z"}}

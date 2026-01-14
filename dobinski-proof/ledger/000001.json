@@ -1,0 +1,1 @@
+{"type":"proof_initialized","timestamp":"2026-01-14T13:41:34Z","conjecture":"Dobinski's Formula: For all n \u003e= 0, B_n = (1/e) * sum_{k=0}^{infty} k^n / k\\! where B_n is the n-th Bell number (the number of partitions of an n-element set)","author":"supervisor"}

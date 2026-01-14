@@ -1,0 +1,8 @@
+{
+  "id": "10a4b56d89162c09",
+  "name": "ratio-test",
+  "source": "If lim |a_{n+1}/a_n| = L \u003c 1, then sum a_n converges absolutely",
+  "content_hash": "6e80139a0087fc325a10632887b8a06df8d3551d0d0cc7f8ee897ee48ff8ef4c",
+  "created": "2026-01-14T13:42:58Z",
+  "notes": ""
+}

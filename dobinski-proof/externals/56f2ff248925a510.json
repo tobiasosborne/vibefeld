@@ -1,0 +1,8 @@
+{
+  "id": "56f2ff248925a510",
+  "name": "falling-factorial-sum",
+  "source": "sum_{k\u003e=j} k^{underline{j}}/k! = sum_{k\u003e=j} 1/(k-j)! = e for all j\u003e=0",
+  "content_hash": "68c2a5b6e894a85c1fe11775e8a6eb1f8d70920cd0db66262518f825cd11b731",
+  "created": "2026-01-14T13:43:02Z",
+  "notes": ""
+}

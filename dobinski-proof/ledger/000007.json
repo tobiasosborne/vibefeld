@@ -1,0 +1,1 @@
+{"type":"def_added","timestamp":"2026-01-14T13:41:57Z","definition":{"id":"2bb295e337d61490","name":"exponential-generating-function","definition":"The EGF of a sequence {a_n} is F(x) = sum_{n\u003e=0} a_n x^n / n!","created":"2026-01-14T13:41:57Z"}}

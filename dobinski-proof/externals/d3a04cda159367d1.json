@@ -1,0 +1,8 @@
+{
+  "id": "d3a04cda159367d1",
+  "name": "poisson-moments",
+  "source": "All moments of Poisson(lambda) exist and E[X^n] = sum_{k\u003e=0} k^n * e^{-lambda} * lambda^k / k!",
+  "content_hash": "d8902c2cd99759f61dbb9cdde4e843e96dc5c920ecbce8833bcb3c1d211b2977",
+  "created": "2026-01-14T13:43:02Z",
+  "notes": ""
+}
