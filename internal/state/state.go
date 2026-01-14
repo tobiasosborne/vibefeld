@@ -111,6 +111,16 @@ func (s *State) GetLemma(id string) *node.Lemma {
 	return s.lemmas[id]
 }
 
+// AllLemmas returns a slice of all lemmas in the state.
+// The order of lemmas is not guaranteed.
+func (s *State) AllLemmas() []*node.Lemma {
+	lemmas := make([]*node.Lemma, 0, len(s.lemmas))
+	for _, l := range s.lemmas {
+		lemmas = append(lemmas, l)
+	}
+	return lemmas
+}
+
 // AddChallenge adds a challenge to the state.
 // If a challenge with the same ID already exists, it is overwritten.
 func (s *State) AddChallenge(c *Challenge) {

@@ -1424,11 +1424,3 @@ func TestLemmasCmd_FilterBySourceNode(t *testing.T) {
 		t.Logf("Filtered output: %q", output)
 	}
 }
-
-// min returns the minimum of two integers.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

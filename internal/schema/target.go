@@ -3,6 +3,7 @@ package schema
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -73,11 +74,16 @@ func GetChallengeTargetInfo(t ChallengeTarget) (ChallengeTargetInfo, bool) {
 }
 
 // AllChallengeTargets returns a list of all valid challenge targets with their descriptions.
+// Results are sorted by ID for deterministic output.
 func AllChallengeTargets() []ChallengeTargetInfo {
 	result := make([]ChallengeTargetInfo, 0, len(challengeTargetRegistry))
 	for _, info := range challengeTargetRegistry {
 		result = append(result, info)
 	}
+	// Sort by ID for consistent output
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
 	return result
 }
 
