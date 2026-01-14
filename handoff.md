@@ -1,95 +1,89 @@
-# Handoff - 2026-01-14 (Session 38 - Part 3)
+# Handoff - 2026-01-14 (Session 38)
 
 ## What Was Accomplished This Session
 
-### Session 38 Summary: Fixed 10 Issues Total
+### Session 38 Summary: Fixed 15 Issues Total
 
-| Part | Issues Fixed | Priority | Lines Changed |
-|------|-------------|----------|---------------|
-| Part 1 | 5 | 2 P0, 3 P1 | +956, -164 |
-| Part 2 | 4 | 2 P0, 2 P1 | +2540, -820 |
-| Part 3 | 5 | 1 P0, 4 P1 | +1909, -61 |
-| **Total** | **14** | **5 P0, 9 P1** | **+5405, -1045** |
+| Part | Issues Fixed | Priority | Description |
+|------|-------------|----------|-------------|
+| Part 1 | 5 | 2 P0, 3 P1 | Validation invariant, truncation bugs |
+| Part 2 | 4 | 2 P0, 2 P1 | Breadth-first job detection, claim context |
+| Part 3 | 5 | 1 P0, 4 P1 | State machine, concurrency, context enhancements |
+| Part 4 | 1 | 1 P1 | Challenge text in prover context |
+| **Total** | **15** | **5 P0, 10 P1** | |
 
-### Part 3: 5 More Fixes (This Commit)
+### All P0 Issues Resolved
+| Issue | Fix |
+|-------|-----|
+| vibefeld-y0pf | Validation accepts admitted children |
+| vibefeld-ru2t | Validation checks challenge states |
+| vibefeld-9jgk | Breadth-first job detection implemented |
+| vibefeld-h0ck | Claim shows full prover/verifier context |
+| vibefeld-heir | Closed (addressed by breadth-first model) |
+| vibefeld-9ayl | RefineNodeBulk() for atomic multi-child creation |
 
-| Issue | Priority | Files Changed | Description |
-|-------|----------|---------------|-------------|
-| vibefeld-heir | P0 | (closed) | Addressed by breadth-first model |
-| vibefeld-lyz0 | P1 | `internal/state/apply.go` | Auto-trigger taint on epistemic changes |
-| vibefeld-f353 | P1 | `internal/state/apply.go` | Workflow validation during replay |
-| vibefeld-uevz | P1 | `cmd/af/get.go` | Challenge details in node view |
-| vibefeld-gu49 | P1 | `internal/render/jobs.go` | Jobs JSON with full context |
-| vibefeld-9ayl | **P0** | `internal/service/proof.go` | RefineNodeBulk() for atomic multi-child |
-| vibefeld-hrap | P1 | `internal/service/proof.go` | AllocateChildID() for race-free IDs |
+### P1 Issues Fixed
+| Issue | Fix |
+|-------|-----|
+| vibefeld-we4t | Jobs output shows full statements (no truncation) |
+| vibefeld-p2ry | Get command defaults to verbose output |
+| vibefeld-ccvo | Challenge workflow documentation created |
+| vibefeld-vyus | New `af challenges` command |
+| vibefeld-jm5b | Role-specific workflow documentation |
+| vibefeld-lyz0 | Taint auto-triggers on epistemic changes |
+| vibefeld-f353 | Workflow validation during state replay |
+| vibefeld-uevz | Challenge details shown in node view |
+| vibefeld-gu49 | Jobs JSON includes full context |
+| vibefeld-hrap | AllocateChildID() for race-free IDs |
+| vibefeld-77pp | Challenge text shown in prover context on claim |
 
-### Detailed Changes
+### Key Architectural Changes
 
-**1. State Machine Fixes (vibefeld-lyz0 + vibefeld-f353)**
-- Added workflow validation in `applyNodesClaimed()` and `applyNodesReleased()`
-- Added taint auto-trigger in all epistemic state change functions
-- New `recomputeTaintForNode()` helper that computes and propagates taint
-- 8 new tests added
+1. **Breadth-First Adversarial Model**: Every new node is immediately a verifier job. Challenges create prover jobs. This replaces the old bottom-up model.
 
-**2. Challenge Details in Get (vibefeld-uevz)**
-- `af get NODE` now shows challenges in text and JSON output
-- Text format: "Challenges (N): ch-xxx [status] target: reason"
-- JSON format: "challenges" array with id, status, target, reason
-- 5 new tests added
+2. **Validation Invariant**: Now checks both children states (validated OR admitted) and challenge states (resolved/withdrawn/superseded).
 
-**3. Jobs JSON Context (vibefeld-gu49)**
-- New `RenderJobsJSONWithContext()` function
-- Adds: parent info, definitions, externals, challenges
-- Full context for agents to work without extra queries
-- 14 new tests added
+3. **Concurrency**: New atomic operations - `RefineNodeBulk()` and `AllocateChildID()` prevent race conditions.
 
-**4. Concurrency Fixes (vibefeld-9ayl + vibefeld-hrap)**
-- `ProofService.AllocateChildID()` - atomic ID allocation within ledger lock
-- `ProofService.RefineNodeBulk()` - create multiple children in single operation
-- `ChildSpec` type for bulk refinement input
-- Updated `cmd/af/refine.go` to use bulk method
-- 11 integration tests added
+4. **Full Context on Claim**: `af claim` now renders complete prover context including challenges, definitions, externals, scope.
+
+### New Files Created
+- `cmd/af/challenges.go` - New command to list challenges
+- `cmd/af/challenges_test.go`
+- `docs/challenge-workflow.md` - Challenge system documentation
+- `docs/role-workflow.md` - Prover/verifier role guides
 
 ## Current State
 
-### P0 Issues: 0 remaining!
-All 6 original P0 issues have been fixed:
-- vibefeld-y0pf ✓ (validation accepts admitted)
-- vibefeld-ru2t ✓ (validation checks challenges)
-- vibefeld-9jgk ✓ (breadth-first job detection)
-- vibefeld-h0ck ✓ (claim context wiring)
-- vibefeld-heir ✓ (closed - addressed by model)
-- vibefeld-9ayl ✓ (bulk refinement)
+### P0 Issues: 0 remaining
+All critical bugs have been fixed.
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
-ok  github.com/tobias/vibefeld/internal/state
+ok  github.com/tobias/vibefeld/internal/jobs
+ok  github.com/tobias/vibefeld/internal/node
 ok  github.com/tobias/vibefeld/internal/render
+ok  github.com/tobias/vibefeld/internal/state
 ... (all packages pass)
 ```
 
-## Files Changed This Session (All Parts)
-
-**Part 1:** validation, render/jobs, cmd/af/get, docs/challenge-workflow
-**Part 2:** internal/jobs/*, cmd/af/claim, cmd/af/challenges (NEW), docs/role-workflow (NEW)
-**Part 3:** internal/state/apply, cmd/af/get, internal/render/jobs, internal/service/proof, cmd/af/refine
+Build succeeds: `go build ./cmd/af`
 
 ## Next Steps
 
-With all P0s fixed, focus shifts to P1 issues. Top candidates:
+With all P0s fixed, focus on remaining P1 issues:
 1. **vibefeld-g58b**: Challenge supersession (auto-supersede on archive/refute)
-2. **vibefeld-v15c**: Stuck detection
-3. **vibefeld-pbtp**: Claim timeout visibility
+2. **vibefeld-v15c**: Stuck detection when proof makes no progress
+3. **vibefeld-pbtp**: Claim timeout visibility to agents
 4. **vibefeld-1jo3**: Validation scope entry check
 
 Run `bd ready` to see current priority list.
 
 ## Session History
 
-**Session 38 (Part 3):** 5 fixes (1 P0, 4 P1), state machine + concurrency
-**Session 38 (Part 2):** 4 fixes (2 P0, 2 P1), breadth-first job detection
-**Session 38 (Part 1):** 5 fixes (2 P0, 3 P1), validation invariant
-**Session 37:** Deep architectural analysis + remediation plan
-**Session 36:** Dobinski proof attempt → 46 issues filed
+**Session 38:** Fixed 15 issues (5 P0, 10 P1) - all P0s resolved, breadth-first model implemented
+**Session 37:** Deep architectural analysis + remediation plan + 8 new issues
+**Session 36:** Dobinski proof attempt → discovered fundamental flaws → 46 issues filed
+**Session 35:** Fixed vibefeld-99ab - verifier jobs not showing for released refined nodes
