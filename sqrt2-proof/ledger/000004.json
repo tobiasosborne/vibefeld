@@ -1,1 +1,1 @@
-{"type":"def_added","timestamp":"2026-01-14T12:42:24Z","definition":{"id":"e510d95a784f6189","name":"coprime","definition":"Integers p, q are coprime (gcd(p,q) = 1) iff their only common positive divisor is 1","created":"2026-01-14T12:42:24Z"}}
+{"type":"def_added","timestamp":"2026-01-14T12:55:06Z","definition":{"id":"9dd750bc2f89a263","name":"irrational","definition":"A real number is irrational iff it is not rational","created":"2026-01-14T12:55:06Z"}}

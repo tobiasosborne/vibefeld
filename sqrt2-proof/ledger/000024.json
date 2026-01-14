@@ -1,1 +1,1 @@
-{"type":"challenge_raised","timestamp":"2026-01-14T12:45:06Z","challenge_id":"ch-801c6228b77557b4","node_id":"1.1.8","target":"statement","reason":"The claim '2 divides gcd(p,q)' needs explicit justification. You need to show: if 2|p and 2|q, then 2|gcd(p,q). This follows from the definition of gcd as the greatest common divisor."}
+{"type":"nodes_released","timestamp":"2026-01-14T12:59:02Z","node_ids":["1"]}

@@ -1,0 +1,8 @@
+{
+  "id": "3e63da0c805c9b8a",
+  "name": "gcd-exists",
+  "source": "For any integers p, q with q ≠ 0, there exist p', q' with gcd(p',q') = 1 and p/q = p'/q'",
+  "content_hash": "16b5571b6e6412c9d99fe4d8953f8e2a531ebe26feeb74dc536d2890679a53fb",
+  "created": "2026-01-14T12:55:37Z",
+  "notes": ""
+}

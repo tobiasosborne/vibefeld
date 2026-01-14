@@ -1,1 +1,1 @@
-{"type":"node_created","timestamp":"2026-01-14T12:43:29Z","node":{"id":"1.1.1","type":"claim","statement":"From √2 = p/q, squaring both sides: 2 = p²/q². Multiplying by q² (valid since q ≠ 0): p² = 2q².","inference":"modus_ponens","workflow_state":"available","epistemic_state":"pending","taint_state":"unresolved","content_hash":"99b1f26ec076f88e1d9f5362c1896735afd1c2273af7b4f373b0f7634b39774c","created":"2026-01-14T12:43:29Z","claimed_at":"0001-01-01T00:00:00Z"}}
+{"type":"nodes_released","timestamp":"2026-01-14T12:57:02Z","node_ids":["1"]}

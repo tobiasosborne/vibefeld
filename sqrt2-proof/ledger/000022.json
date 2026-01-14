@@ -1,1 +1,1 @@
-{"type":"challenge_raised","timestamp":"2026-01-14T12:44:52Z","challenge_id":"ch-841bb6e74c46f403","node_id":"1.1.1","target":"statement","reason":"The step 'multiplying by q²' requires justification that q² ≠ 0. While q ≠ 0 was stated, explicitly note that q ≠ 0 implies q² ≠ 0 (since q² = 0 iff q = 0 for integers)."}
+{"type":"nodes_claimed","timestamp":"2026-01-14T12:58:51Z","node_ids":["1"],"owner":"prover1","timeout":"2026-01-14T13:58:51.60393805Z"}

@@ -1,1 +1,1 @@
-{"type":"def_added","timestamp":"2026-01-14T12:42:22Z","definition":{"id":"a7ffbe5c3d3e277f","name":"rational","definition":"A real number r is rational iff there exist integers p, q with q ≠ 0 such that r = p/q","created":"2026-01-14T12:42:22Z"}}
+{"type":"def_added","timestamp":"2026-01-14T12:55:05Z","definition":{"id":"9670219d413f990f","name":"rational","definition":"A real number r is rational iff there exist integers p, q with q ≠ 0 such that r = p/q","created":"2026-01-14T12:55:05Z"}}
