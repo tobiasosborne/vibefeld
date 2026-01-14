@@ -2,7 +2,7 @@
 
 ## What Was Accomplished This Session
 
-### Session 38 Summary: Fixed 19 Issues Total
+### Session 38 Summary: Fixed 23 Issues Total
 
 | Part | Issues Fixed | Priority | Description |
 |------|-------------|----------|-------------|
@@ -10,7 +10,8 @@
 | Part 2 | 4 | 2 P0, 2 P1 | Breadth-first job detection, claim context |
 | Part 3 | 5 | 1 P0, 4 P1 | State machine, concurrency, context enhancements |
 | Part 4 | 5 | 5 P1 | Challenge context, E2E test, taint opt, health cmd |
-| **Total** | **19** | **5 P0, 14 P1** | |
+| Part 5 | 4 | 1 P1, 3 P2 | Test fixes, FS error tests, config integration, timeout |
+| **Total** | **23** | **5 P0, 15 P1, 3 P2** | |
 
 ### All P0 Issues Resolved
 | Issue | Fix |
@@ -40,6 +41,10 @@
 | vibefeld-vi3c | O(n²) -> O(n) taint propagation with ancestor caching |
 | vibefeld-k1a6 | Sequence validation in state replay (gap/duplicate detection) |
 | vibefeld-v15c | New `af health` command for stuck detection |
+| vibefeld-dwdh | Fixed refute_test.go nil pointer panic |
+| vibefeld-cf46 | 58 filesystem error injection tests added |
+| vibefeld-de47 | Config integrated with ProofService (depth/children limits) |
+| vibefeld-pbtp | Claim timeout visible to agents (timeout + expires_at) |
 
 ### Key Architectural Changes
 
@@ -57,6 +62,7 @@
 - `cmd/af/health.go` - New command for stuck detection
 - `cmd/af/health_test.go`
 - `e2e/adversarial_workflow_test.go` - E2E adversarial breadth-first tests
+- `internal/fs/error_injection_test.go` - 58 filesystem error injection tests
 - `docs/challenge-workflow.md` - Challenge system documentation
 - `docs/role-workflow.md` - Prover/verifier role guides
 
@@ -89,7 +95,7 @@ Run `bd ready` to see current priority list.
 
 ## Session History
 
-**Session 38:** Fixed 19 issues (5 P0, 14 P1) - all P0s resolved, breadth-first model, health cmd, taint opt
+**Session 38:** Fixed 23 issues (5 P0, 15 P1, 3 P2) - all P0s resolved, breadth-first model, config integration
 **Session 37:** Deep architectural analysis + remediation plan + 8 new issues
 **Session 36:** Dobinski proof attempt → discovered fundamental flaws → 46 issues filed
 **Session 35:** Fixed vibefeld-99ab - verifier jobs not showing for released refined nodes
