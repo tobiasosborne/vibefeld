@@ -21,6 +21,7 @@ import (
 // =============================================================================
 
 // setupClaimTest creates a temp directory with an initialized proof and a node to claim.
+// Note: service.Init() already creates node 1 with the conjecture, so no need to create it again.
 func setupClaimTest(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -37,27 +38,8 @@ func setupClaimTest(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Initialize proof with conjecture
+	// Initialize proof with conjecture - this creates node 1 automatically
 	err = service.Init(proofDir, "Test conjecture: P implies Q", "test-author")
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	// Create a node to claim
-	svc, err := service.NewProofService(proofDir)
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	rootID, err := types.Parse("1")
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Root goal statement", schema.InferenceAssumption)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
@@ -68,6 +50,7 @@ func setupClaimTest(t *testing.T) (string, func()) {
 }
 
 // setupClaimTestWithMultipleNodes creates a proof with multiple nodes for testing.
+// Note: service.Init() already creates node 1 with the conjecture, so we only create child nodes.
 func setupClaimTestWithMultipleNodes(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -84,23 +67,19 @@ func setupClaimTestWithMultipleNodes(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Initialize proof with conjecture
+	// Initialize proof with conjecture - this creates node 1 automatically
 	err = service.Init(proofDir, "Complex conjecture", "test-author")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
 
-	// Create multiple nodes
+	// Create child nodes (node 1 already exists from Init)
 	svc, err := service.NewProofService(proofDir)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
-
-	// Create root node
-	rootID, _ := types.Parse("1")
-	svc.CreateNode(rootID, schema.NodeTypeClaim, "Root statement", schema.InferenceAssumption)
 
 	// Create child nodes
 	child1ID, _ := types.Parse("1.1")

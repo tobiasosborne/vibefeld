@@ -30,6 +30,7 @@ func newTestReleaseCmd() *cobra.Command {
 
 // setupReleaseTest creates a temporary proof directory with an initialized proof,
 // a node, and claims that node for testing release operations.
+// Note: service.Init() already creates node 1 with the conjecture.
 func setupReleaseTest(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -38,34 +39,26 @@ func setupReleaseTest(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Initialize proof
+	// Initialize proof - this creates node 1 with the conjecture
 	err = service.Init(tmpDir, "Test conjecture for release tests", "test-author")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
 
-	// Create and claim a node
+	// Claim node 1 (already created by Init)
 	svc, err := service.NewProofService(tmpDir)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
 
-	// Create a root node
 	rootID, err := types.Parse("1")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
 
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	// Claim the node
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
 		os.RemoveAll(tmpDir)
@@ -77,6 +70,7 @@ func setupReleaseTest(t *testing.T) (string, func()) {
 }
 
 // setupReleaseTestWithUnclaimedNode creates a proof with an available (unclaimed) node.
+// Note: service.Init() already creates node 1 with the conjecture in available state.
 func setupReleaseTestWithUnclaimedNode(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -85,27 +79,8 @@ func setupReleaseTestWithUnclaimedNode(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Initialize proof
+	// Initialize proof - this creates node 1 with the conjecture (unclaimed/available)
 	err = service.Init(tmpDir, "Test conjecture for release tests", "test-author")
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	// Create a node but don't claim it
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	rootID, err := types.Parse("1")
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)

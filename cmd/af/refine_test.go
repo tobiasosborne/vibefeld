@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
 // setupRefineTest creates a temporary proof directory with an initialized proof
 // and a claimed node for testing the refine command.
+// Note: service.Init() already creates node 1 with the conjecture, so we just
+// need to claim it for the test agent.
 func setupRefineTest(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -24,14 +25,14 @@ func setupRefineTest(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Initialize proof
+	// Initialize proof - this creates node 1 with "Test conjecture"
 	err = service.Init(tmpDir, "Test conjecture", "test-author")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
 
-	// Create and claim a node
+	// Claim node 1 (already created by Init)
 	svc, err := service.NewProofService(tmpDir)
 	if err != nil {
 		os.RemoveAll(tmpDir)
@@ -39,12 +40,6 @@ func setupRefineTest(t *testing.T) (string, func()) {
 	}
 
 	rootID, err := types.Parse("1")
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Test goal", schema.InferenceAssumption)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
@@ -174,6 +169,7 @@ func TestRefineCmd_ParentNotFound(t *testing.T) {
 
 func TestRefineCmd_ParentNotClaimed(t *testing.T) {
 	// Create a proof with an unclaimed node
+	// Note: service.Init() creates node 1, which is unclaimed by default
 	tmpDir, err := os.MkdirTemp("", "af-refine-unclaimed-*")
 	if err != nil {
 		t.Fatal(err)
@@ -184,18 +180,7 @@ func TestRefineCmd_ParentNotClaimed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rootID, _ := types.Parse("1")
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Test goal", schema.InferenceAssumption)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Note: node is NOT claimed
+	// Note: node 1 is created by Init but NOT claimed
 
 	cmd := newRefineTestCmd()
 	_, err = executeCommand(cmd, "refine", "1",

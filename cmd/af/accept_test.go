@@ -61,27 +61,13 @@ func setupAcceptTest(t *testing.T) (string, func()) {
 }
 
 // setupAcceptTestWithNode creates a test environment with an initialized proof
-// and a single pending node at ID "1".
+// and a single node at ID "1".
+// Note: service.Init already creates node 1 with the conjecture, so we just
+// return the result of setupAcceptTest. Node 1 has statement "Test conjecture".
 func setupAcceptTestWithNode(t *testing.T) (string, func()) {
 	t.Helper()
-
-	tmpDir, cleanup := setupAcceptTest(t)
-
-	// Create a proof service and add a node
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	nodeID := mustParseNodeID(t, "1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	return tmpDir, cleanup
+	// service.Init already creates node 1 with the conjecture "Test conjecture"
+	return setupAcceptTest(t)
 }
 
 // executeAcceptCommand creates and executes an accept command with the given arguments.
@@ -166,8 +152,8 @@ func TestAcceptCmd_NodeNotFound(t *testing.T) {
 	tmpDir, cleanup := setupAcceptTest(t)
 	defer cleanup()
 
-	// Execute with non-existent node
-	output, err := executeAcceptCommand(t, "1", "-d", tmpDir)
+	// Execute with non-existent node (node 1 exists from Init, so use node 2)
+	output, err := executeAcceptCommand(t, "2", "-d", tmpDir)
 
 	// Should error or output should mention not found
 	if err == nil {
@@ -639,8 +625,9 @@ func TestAcceptCmd_TableDrivenNodeIDs(t *testing.T) {
 			tmpDir, cleanup := setupAcceptTest(t)
 			defer cleanup()
 
-			if tc.setupNode && tc.nodeID != "" {
-				// Only create node if it's a valid ID and setupNode is true
+			if tc.setupNode && tc.nodeID != "" && tc.nodeID != "1" {
+				// Only create node if it's a valid ID, setupNode is true, and it's not node 1
+				// (node 1 already exists from Init with statement "Test conjecture")
 				id, err := types.Parse(tc.nodeID)
 				if err == nil {
 					svc, _ := service.NewProofService(tmpDir)
@@ -857,9 +844,9 @@ func TestAcceptCmd_RelativeDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Note: service.Init already creates node 1 with the conjecture "Test conjecture"
 	svc, _ := service.NewProofService(proofDir)
 	nodeID := mustParseNodeID(t, "1")
-	_ = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test", schema.InferenceAssumption)
 
 	// Change to base directory
 	oldDir, _ := os.Getwd()

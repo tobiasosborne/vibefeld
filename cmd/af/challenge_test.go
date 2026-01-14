@@ -22,7 +22,7 @@ import (
 // =============================================================================
 
 // setupChallengeTest creates a temporary directory with an initialized proof
-// and a pending node for testing the challenge command.
+// for testing the challenge command. Node 1 is created by Init with the conjecture.
 func setupChallengeTest(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -33,27 +33,8 @@ func setupChallengeTest(t *testing.T) (string, func()) {
 
 	cleanup := func() { os.RemoveAll(tmpDir) }
 
-	// Initialize proof
+	// Initialize proof - this creates node 1 with the conjecture
 	err = service.Init(tmpDir, "Test conjecture", "test-author")
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	// Create a pending node
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	rootID, err := types.Parse("1")
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
 	if err != nil {
 		cleanup()
 		t.Fatal(err)

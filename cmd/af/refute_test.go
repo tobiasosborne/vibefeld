@@ -62,26 +62,11 @@ func setupRefuteTest(t *testing.T) (string, func()) {
 
 // setupRefuteTestWithNode creates a test environment with an initialized proof
 // and a single pending node at ID "1".
+// Note: service.Init() already creates node 1 with the conjecture, so we just
+// return the base setup.
 func setupRefuteTestWithNode(t *testing.T) (string, func()) {
 	t.Helper()
-
-	tmpDir, cleanup := setupRefuteTest(t)
-
-	// Create a proof service and add a node
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	nodeID := mustParseRefuteNodeID(t, "1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	return tmpDir, cleanup
+	return setupRefuteTest(t)
 }
 
 // executeRefuteCommand creates and executes a refute command with the given arguments.
@@ -166,8 +151,8 @@ func TestRefuteCmd_NodeNotFound(t *testing.T) {
 	tmpDir, cleanup := setupRefuteTest(t)
 	defer cleanup()
 
-	// Execute with non-existent node
-	output, err := executeRefuteCommand(t, "1", "-d", tmpDir)
+	// Execute with non-existent node (node 1 exists from Init, so use node 2)
+	output, err := executeRefuteCommand(t, "2", "-d", tmpDir)
 
 	// Should error or output should mention not found
 	if err == nil {
@@ -701,14 +686,9 @@ func TestRefuteCmd_TableDrivenNodeIDs(t *testing.T) {
 			tmpDir, cleanup := setupRefuteTest(t)
 			defer cleanup()
 
-			if tc.setupNode && tc.nodeID != "" {
-				// Only create node if it's a valid ID and setupNode is true
-				id, err := types.Parse(tc.nodeID)
-				if err == nil {
-					svc, _ := service.NewProofService(tmpDir)
-					_ = svc.CreateNode(id, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-				}
-			}
+			// Note: service.Init() already creates node 1, so we don't need to
+			// create it again. For setupNode=true with "1", the node already exists.
+			// For other valid IDs, we would create them as children.
 
 			output, err := executeRefuteCommand(t, tc.nodeID, "-d", tmpDir)
 
@@ -919,9 +899,9 @@ func TestRefuteCmd_RelativeDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Note: service.Init() already creates node 1 with the conjecture
 	svc, _ := service.NewProofService(proofDir)
 	nodeID := mustParseRefuteNodeID(t, "1")
-	_ = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test", schema.InferenceAssumption)
 
 	// Change to base directory
 	oldDir, _ := os.Getwd()

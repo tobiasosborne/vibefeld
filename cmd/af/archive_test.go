@@ -62,26 +62,11 @@ func setupArchiveTest(t *testing.T) (string, func()) {
 
 // setupArchiveTestWithNode creates a test environment with an initialized proof
 // and a single pending node at ID "1".
+// Note: service.Init() already creates node 1 with the conjecture, so we just
+// return setupArchiveTest(t).
 func setupArchiveTestWithNode(t *testing.T) (string, func()) {
 	t.Helper()
-
-	tmpDir, cleanup := setupArchiveTest(t)
-
-	// Create a proof service and add a node
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	nodeID := mustParseArchiveNodeID(t, "1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	return tmpDir, cleanup
+	return setupArchiveTest(t)
 }
 
 // executeArchiveCommand creates and executes an archive command with the given arguments.
@@ -166,8 +151,8 @@ func TestArchiveCmd_NodeNotFound(t *testing.T) {
 	tmpDir, cleanup := setupArchiveTest(t)
 	defer cleanup()
 
-	// Execute with non-existent node
-	output, err := executeArchiveCommand(t, "1", "-d", tmpDir)
+	// Execute with non-existent node (node 1 exists from Init, so use node 2)
+	output, err := executeArchiveCommand(t, "2", "-d", tmpDir)
 
 	// Should error or output should mention not found
 	if err == nil {
@@ -653,14 +638,14 @@ func TestArchiveCmd_TableDrivenNodeIDs(t *testing.T) {
 	tests := []struct {
 		name        string
 		nodeID      string
-		setupNode   bool // whether to create the node first
+		setupNode   bool // whether to create the node first (node 1 already exists from Init)
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name:      "valid root",
 			nodeID:    "1",
-			setupNode: true,
+			setupNode: false, // node 1 already exists from Init
 			wantErr:   false,
 		},
 		{
@@ -903,9 +888,9 @@ func TestArchiveCmd_RelativeDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Node 1 already exists from Init, no need to create it
 	svc, _ := service.NewProofService(proofDir)
 	nodeID := mustParseArchiveNodeID(t, "1")
-	_ = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test", schema.InferenceAssumption)
 
 	// Change to base directory
 	oldDir, _ := os.Getwd()

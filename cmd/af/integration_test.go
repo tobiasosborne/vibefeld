@@ -10,10 +10,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -66,8 +63,8 @@ func setupIntegrationTest(t *testing.T) (string, func()) {
 }
 
 // setupIntegrationTestWithRoot creates a proof with an initialized root node.
-// This is the standard setup for tracer bullet tests since af init only creates
-// the proof metadata, not the root node.
+// service.Init() creates both the proof metadata and the root node (node 1)
+// with the conjecture as its statement.
 func setupIntegrationTestWithRoot(t *testing.T, conjecture string) (string, func()) {
 	t.Helper()
 
@@ -78,34 +75,8 @@ func setupIntegrationTestWithRoot(t *testing.T, conjecture string) (string, func
 
 	proofDir := filepath.Join(tmpDir, "proof")
 
-	// Initialize proof directory structure
-	if err := fs.InitProofDir(proofDir); err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	// Initialize proof with conjecture
+	// Initialize proof with conjecture - this also creates node 1
 	if err := service.Init(proofDir, conjecture, "integration-test"); err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	// Create root node (the conjecture becomes the root goal)
-	svc, err := service.NewProofService(proofDir)
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	rootID, err := types.Parse("1")
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	// Root node is the conjecture to prove (treated as an assumption/goal)
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, conjecture, schema.InferenceAssumption)
-	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}

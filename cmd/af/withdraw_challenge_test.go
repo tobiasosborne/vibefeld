@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -39,27 +38,15 @@ func setupWithdrawChallengeTest(t *testing.T) (string, string, func()) {
 		t.Fatal(err)
 	}
 
-	// Initialize proof with conjecture
+	// Initialize proof with conjecture (this creates node 1 automatically)
 	err = service.Init(proofDir, "Test conjecture: P implies Q", "test-author")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
 
-	// Create a node to challenge
-	svc, err := service.NewProofService(proofDir)
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
+	// Node 1 already exists from Init, create a challenge on it
 	rootID, err := types.Parse("1")
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	err = svc.CreateNode(rootID, schema.NodeTypeClaim, "Root goal statement", schema.InferenceAssumption)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
@@ -102,22 +89,15 @@ func setupWithdrawChallengeTestNoChallenge(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Initialize proof with conjecture
+	// Initialize proof with conjecture (this creates node 1 automatically)
 	err = service.Init(proofDir, "Test conjecture", "test-author")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
 
-	// Create a node but no challenge
-	svc, err := service.NewProofService(proofDir)
-	if err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatal(err)
-	}
-
-	rootID, _ := types.Parse("1")
-	svc.CreateNode(rootID, schema.NodeTypeClaim, "Root statement", schema.InferenceAssumption)
+	// Node 1 already exists from Init, no need to create it again
+	// No challenge is created here
 
 	cleanup := func() { os.RemoveAll(tmpDir) }
 	return proofDir, cleanup

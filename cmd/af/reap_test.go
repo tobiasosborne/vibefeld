@@ -63,26 +63,12 @@ func setupReapTest(t *testing.T) (string, func()) {
 
 // setupReapTestWithNode creates a test environment with an initialized proof
 // and a single pending node at ID "1".
+// Note: service.Init() already creates node 1 with the conjecture, so we just
+// return the base setup.
 func setupReapTestWithNode(t *testing.T) (string, func()) {
 	t.Helper()
-
-	tmpDir, cleanup := setupReapTest(t)
-
-	// Create a proof service and add a node
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	nodeID := mustParseReapNodeID(t, "1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	return tmpDir, cleanup
+	// Init already creates node 1 with "Test conjecture for reap"
+	return setupReapTest(t)
 }
 
 // setupReapTestWithClaim creates a test environment with an initialized proof

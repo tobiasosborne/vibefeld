@@ -63,26 +63,11 @@ func setupAdmitTest(t *testing.T) (string, func()) {
 
 // setupAdmitTestWithNode creates a test environment with an initialized proof
 // and a single pending node at ID "1".
+// Note: service.Init() already creates node 1 with the conjecture, so we just
+// return the base setup.
 func setupAdmitTestWithNode(t *testing.T) (string, func()) {
 	t.Helper()
-
-	tmpDir, cleanup := setupAdmitTest(t)
-
-	// Create a proof service and add a node
-	svc, err := service.NewProofService(tmpDir)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	nodeID := mustParseNodeIDAdmit(t, "1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test goal statement", schema.InferenceAssumption)
-	if err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	return tmpDir, cleanup
+	return setupAdmitTest(t)
 }
 
 // executeAdmitCommand creates and executes an admit command with the given arguments.
@@ -167,8 +152,8 @@ func TestAdmitCmd_NodeNotFound(t *testing.T) {
 	tmpDir, cleanup := setupAdmitTest(t)
 	defer cleanup()
 
-	// Execute with non-existent node
-	output, err := executeAdmitCommand(t, "1", "-d", tmpDir)
+	// Execute with non-existent node (node 1 already exists from Init, so use node 2)
+	output, err := executeAdmitCommand(t, "2", "-d", tmpDir)
 
 	// Should error or output should mention not found
 	if err == nil {
@@ -675,7 +660,7 @@ func TestAdmitCmd_TableDrivenNodeIDs(t *testing.T) {
 		{
 			name:      "valid root",
 			nodeID:    "1",
-			setupNode: true,
+			setupNode: false, // node 1 already exists from Init
 			wantErr:   false,
 		},
 		{
@@ -898,9 +883,9 @@ func TestAdmitCmd_RelativeDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Node 1 already exists from Init, no need to create it
 	svc, _ := service.NewProofService(proofDir)
 	nodeID := mustParseNodeIDAdmit(t, "1")
-	_ = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test", schema.InferenceAssumption)
 
 	// Change to base directory
 	oldDir, _ := os.Getwd()

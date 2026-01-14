@@ -72,18 +72,15 @@ func setupJobsTestWithNodes(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Create multiple nodes in different states
+	// Create additional nodes in different states
+	// Note: service.Init() already creates node 1 with the conjecture
 	svc, err := service.NewProofService(proofDir)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
 
-	// Create root node (available for prover)
-	rootID, _ := types.Parse("1")
-	svc.CreateNode(rootID, schema.NodeTypeClaim, "Root statement", schema.InferenceAssumption)
-
-	// Create child nodes
+	// Create child nodes (node 1 already exists from Init)
 	child1ID, _ := types.Parse("1.1")
 	svc.CreateNode(child1ID, schema.NodeTypeClaim, "First child", schema.InferenceModusPonens)
 
@@ -196,12 +193,12 @@ func TestJobsCmd_DirFlagIsFile(t *testing.T) {
 // Happy Path Tests
 // =============================================================================
 
-// TestJobsCmd_NoJobsAvailable verifies output when no jobs are available.
-func TestJobsCmd_NoJobsAvailable(t *testing.T) {
+// TestJobsCmd_InitializedProof verifies output for a freshly initialized proof.
+func TestJobsCmd_InitializedProof(t *testing.T) {
 	proofDir, cleanup := setupJobsTest(t)
 	defer cleanup()
 
-	// No nodes created yet, so no jobs available
+	// Node 1 (conjecture) already exists from Init, so there should be a prover job
 
 	cmd := newTestJobsCmd()
 	output, err := executeCommand(cmd, "jobs", "--dir", proofDir)
@@ -212,11 +209,11 @@ func TestJobsCmd_NoJobsAvailable(t *testing.T) {
 		return
 	}
 
-	// Output should indicate no jobs available
+	// Output should show prover job for node 1
 	lowerOutput := strings.ToLower(output)
-	if !strings.Contains(lowerOutput, "no jobs") &&
-		!strings.Contains(lowerOutput, "0") {
-		t.Errorf("expected output to indicate no jobs, got: %q", output)
+	if !strings.Contains(lowerOutput, "prover") &&
+		!strings.Contains(lowerOutput, "1") {
+		t.Errorf("expected output to show prover job for node 1, got: %q", output)
 	}
 }
 
@@ -628,7 +625,7 @@ func TestJobsCmd_FullWorkflow(t *testing.T) {
 	proofDir, cleanup := setupJobsTest(t)
 	defer cleanup()
 
-	// Step 1: Check jobs when no nodes exist
+	// Step 1: Check jobs - node 1 already exists from Init
 	cmd1 := newTestJobsCmd()
 	output1, err1 := executeCommand(cmd1, "jobs", "--dir", proofDir)
 
@@ -638,27 +635,9 @@ func TestJobsCmd_FullWorkflow(t *testing.T) {
 		return
 	}
 
-	if !strings.Contains(strings.ToLower(output1), "no jobs") &&
-		!strings.Contains(output1, "0") {
-		t.Logf("Expected to indicate no jobs available")
-	}
-
-	// Step 2: Create a node using service
-	svc, _ := service.NewProofService(proofDir)
-	rootID, _ := types.Parse("1")
-	svc.CreateNode(rootID, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
-
-	// Step 3: Check jobs again - should show prover job
-	cmd2 := newTestJobsCmd()
-	output2, err2 := executeCommand(cmd2, "jobs", "--dir", proofDir)
-
-	if err2 != nil {
-		t.Logf("Expected to fail until jobs command is implemented: %v", err2)
-		return
-	}
-
-	if !strings.Contains(strings.ToLower(output2), "prover") {
-		t.Errorf("expected to show prover jobs after creating node, got: %q", output2)
+	// Node 1 (the conjecture) should show as a prover job
+	if !strings.Contains(strings.ToLower(output1), "prover") {
+		t.Errorf("expected to show prover jobs for node 1, got: %q", output1)
 	}
 }
 
@@ -754,8 +733,8 @@ func TestJobsCmd_OutputIncludesGuidance(t *testing.T) {
 // Edge Case Tests
 // =============================================================================
 
-// TestJobsCmd_EmptyProofDirectory verifies handling of empty proof.
-func TestJobsCmd_EmptyProofDirectory(t *testing.T) {
+// TestJobsCmd_InitializedProofWithConjecture verifies handling of initialized proof with conjecture.
+func TestJobsCmd_InitializedProofWithConjecture(t *testing.T) {
 	proofDir, cleanup := setupJobsTest(t)
 	defer cleanup()
 
@@ -768,11 +747,11 @@ func TestJobsCmd_EmptyProofDirectory(t *testing.T) {
 		return
 	}
 
-	// Should handle empty proof gracefully
+	// Should show prover job for the conjecture node (node 1)
 	lowerOutput := strings.ToLower(output)
-	if !strings.Contains(lowerOutput, "no jobs") &&
-		!strings.Contains(lowerOutput, "0") {
-		t.Logf("Expected indication of no jobs available")
+	if !strings.Contains(lowerOutput, "prover") &&
+		!strings.Contains(lowerOutput, "1") {
+		t.Logf("Expected prover job for node 1 (conjecture)")
 	}
 }
 
