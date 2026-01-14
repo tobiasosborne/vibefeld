@@ -389,7 +389,12 @@ func TestTaint_PropagateTaintFunction(t *testing.T) {
 	// Set root's taint to self_admitted (as it should be after admission)
 	rootNode.TaintState = node.TaintSelfAdmitted
 
-	// Initially child and grandchild have default taint (unresolved from creation)
+	// Reset children's taint to TaintClean to verify PropagateTaint works correctly.
+	// Note: In normal operation, taint is auto-propagated during state transitions.
+	// This test verifies the PropagateTaint function in isolation.
+	childNode.TaintState = node.TaintClean
+	grandchildNode.TaintState = node.TaintClean
+
 	// Now use PropagateTaint to propagate from root
 	allNodes := []*node.Node{rootNode, childNode, grandchildNode}
 	changed := taint.PropagateTaint(rootNode, allNodes)

@@ -30,8 +30,20 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 
 	state := NewState()
 
+	// Track expected sequence number for validation (starts at 1)
+	expectedSeq := 1
+
 	// Scan through all events and apply them, tracking sequence numbers
 	err := ldg.Scan(func(seq int, data []byte) error {
+		// Validate sequence numbers are consecutive starting from 1
+		if seq != expectedSeq {
+			if seq < expectedSeq {
+				return fmt.Errorf("duplicate sequence number detected: got %d, expected %d", seq, expectedSeq)
+			}
+			return fmt.Errorf("sequence gap detected: got %d, expected %d", seq, expectedSeq)
+		}
+		expectedSeq++
+
 		// Parse the event type first
 		event, err := parseEvent(data)
 		if err != nil {

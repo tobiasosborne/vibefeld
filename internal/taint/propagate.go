@@ -46,9 +46,20 @@ func PropagateTaint(root *node.Node, allNodes []*node.Node) []*node.Node {
 
 	var changed []*node.Node
 
+	// Optimization: Build ancestors incrementally as we process nodes.
+	// Since nodes are sorted by depth (shallower first), when we process a node,
+	// its parent has already been processed. We cache: node -> ancestors list.
+	// Each node's ancestors = parent's ancestors + parent.
+	// This reduces complexity from O(N*D) to O(N) where D is tree depth.
+	ancestorCache := make(map[string][]*node.Node)
+
+	// Pre-populate cache with root's ancestors (computed once)
+	rootAncestors := getAncestors(root, nodeMap)
+	ancestorCache[root.ID.String()] = rootAncestors
+
 	for _, desc := range descendants {
-		// Build ancestor list for this descendant
-		ancestors := getAncestors(desc, nodeMap)
+		// Get ancestors from cache using parent lookup
+		ancestors := getAncestorsCached(desc, nodeMap, ancestorCache)
 
 		// Compute correct taint
 		newTaint := ComputeTaint(desc, ancestors)
@@ -64,6 +75,8 @@ func PropagateTaint(root *node.Node, allNodes []*node.Node) []*node.Node {
 }
 
 // getAncestors returns all ancestor nodes for the given node from the nodeMap.
+// This walks the tree from node to root - O(D) where D is depth.
+// Used for initial computation or when cache is not available.
 func getAncestors(n *node.Node, nodeMap map[string]*node.Node) []*node.Node {
 	var ancestors []*node.Node
 	parentID, hasParent := n.ID.Parent()
@@ -73,6 +86,55 @@ func getAncestors(n *node.Node, nodeMap map[string]*node.Node) []*node.Node {
 		}
 		parentID, hasParent = parentID.Parent()
 	}
+	return ancestors
+}
+
+// getAncestorsCached returns ancestors for a node using cached results.
+// Since nodes are processed in depth order (shallower first), the parent's
+// ancestors are always computed before the child's.
+//
+// Algorithm: node's ancestors = [parent] + parent's ancestors
+// This gives O(1) lookup per node after parent is cached.
+//
+// Falls back to getAncestors if parent not in cache (handles sparse trees).
+func getAncestorsCached(n *node.Node, nodeMap map[string]*node.Node, cache map[string][]*node.Node) []*node.Node {
+	nodeKey := n.ID.String()
+
+	// Check if already computed
+	if cached, ok := cache[nodeKey]; ok {
+		return cached
+	}
+
+	parentID, hasParent := n.ID.Parent()
+	if !hasParent {
+		// Node is a root, no ancestors
+		cache[nodeKey] = nil
+		return nil
+	}
+
+	parentKey := parentID.String()
+	parent, parentInNodeMap := nodeMap[parentKey]
+
+	// If parent's ancestors are cached, build from them
+	if parentAncestors, parentCached := cache[parentKey]; parentCached {
+		var ancestors []*node.Node
+		if parentInNodeMap {
+			// ancestors = [parent] + parent's ancestors
+			ancestors = make([]*node.Node, 0, len(parentAncestors)+1)
+			ancestors = append(ancestors, parent)
+			ancestors = append(ancestors, parentAncestors...)
+		} else {
+			// Parent not in nodeMap, just use parent's ancestors
+			ancestors = parentAncestors
+		}
+		cache[nodeKey] = ancestors
+		return ancestors
+	}
+
+	// Fallback: parent not cached (shouldn't happen with depth-order processing)
+	// Compute directly and cache
+	ancestors := getAncestors(n, nodeMap)
+	cache[nodeKey] = ancestors
 	return ancestors
 }
 
