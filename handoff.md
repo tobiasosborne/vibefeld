@@ -1,100 +1,95 @@
-# Handoff - 2026-01-14 (Session 38)
+# Handoff - 2026-01-14 (Session 39)
 
 ## What Was Accomplished This Session
 
-### Session 38 Summary: Fixed 23 Issues Total
+### Session 39 Summary: Fixed 4 Issues in Parallel
 
-| Part | Issues Fixed | Priority | Description |
-|------|-------------|----------|-------------|
-| Part 1 | 5 | 2 P0, 3 P1 | Validation invariant, truncation bugs |
-| Part 2 | 4 | 2 P0, 2 P1 | Breadth-first job detection, claim context |
-| Part 3 | 5 | 1 P0, 4 P1 | State machine, concurrency, context enhancements |
-| Part 4 | 5 | 5 P1 | Challenge context, E2E test, taint opt, health cmd |
-| Part 5 | 4 | 1 P1, 3 P2 | Test fixes, FS error tests, config integration, timeout |
-| **Total** | **23** | **5 P0, 15 P1, 3 P2** | |
+| Issue | Priority | Type | Description |
+|-------|----------|------|-------------|
+| vibefeld-g58b | P1 | Bug | Challenge supersession - auto-supersede open challenges on archive/refute |
+| vibefeld-435t | P2 | Feature | New `af inferences` command to list valid inference types |
+| vibefeld-23e6 | P2 | Feature | New `af types` command to list valid node types |
+| vibefeld-2q5j | P2 | Task | NodeID.String() caching - 0 allocations on repeated calls |
 
-### All P0 Issues Resolved
-| Issue | Fix |
-|-------|-----|
-| vibefeld-y0pf | Validation accepts admitted children |
-| vibefeld-ru2t | Validation checks challenge states |
-| vibefeld-9jgk | Breadth-first job detection implemented |
-| vibefeld-h0ck | Claim shows full prover/verifier context |
-| vibefeld-heir | Closed (addressed by breadth-first model) |
-| vibefeld-9ayl | RefineNodeBulk() for atomic multi-child creation |
+### Details
 
-### P1 Issues Fixed
-| Issue | Fix |
-|-------|-----|
-| vibefeld-we4t | Jobs output shows full statements (no truncation) |
-| vibefeld-p2ry | Get command defaults to verbose output |
-| vibefeld-ccvo | Challenge workflow documentation created |
-| vibefeld-vyus | New `af challenges` command |
-| vibefeld-jm5b | Role-specific workflow documentation |
-| vibefeld-lyz0 | Taint auto-triggers on epistemic changes |
-| vibefeld-f353 | Workflow validation during state replay |
-| vibefeld-uevz | Challenge details shown in node view |
-| vibefeld-gu49 | Jobs JSON includes full context |
-| vibefeld-hrap | AllocateChildID() for race-free IDs |
-| vibefeld-77pp | Challenge text shown in prover context on claim |
-| vibefeld-9tth | E2E adversarial breadth-first workflow test (4 test cases) |
-| vibefeld-vi3c | O(n²) -> O(n) taint propagation with ancestor caching |
-| vibefeld-k1a6 | Sequence validation in state replay (gap/duplicate detection) |
-| vibefeld-v15c | New `af health` command for stuck detection |
-| vibefeld-dwdh | Fixed refute_test.go nil pointer panic |
-| vibefeld-cf46 | 58 filesystem error injection tests added |
-| vibefeld-de47 | Config integrated with ProofService (depth/children limits) |
-| vibefeld-pbtp | Claim timeout visible to agents (timeout + expires_at) |
+**vibefeld-g58b (P1)**: Challenge Supersession
+- Added `ChallengeSuperseded` event type in `internal/ledger/event.go`
+- Added `applyChallengeSuperseded()` handler in `internal/state/apply.go`
+- Modified `applyNodeArchived()` and `applyNodeRefuted()` to auto-supersede open challenges
+- Per PRD p.177: challenges become moot when parent node is archived/refuted
 
-### Key Architectural Changes
+**vibefeld-435t**: `af inferences` Command
+- New `cmd/af/inferences.go` - lists 11 inference types (modus_ponens, assumption, etc.)
+- Supports `--format json` for machine-readable output
+- 509 lines of tests in `cmd/af/inferences_test.go`
 
-1. **Breadth-First Adversarial Model**: Every new node is immediately a verifier job. Challenges create prover jobs. This replaces the old bottom-up model.
+**vibefeld-23e6**: `af types` Command
+- New `cmd/af/types.go` - lists 5 node types (claim, local_assume, etc.)
+- Shows scope information (opens/closes scope)
+- Supports `--format json` for machine-readable output
+- 546 lines of tests in `cmd/af/types_test.go`
 
-2. **Validation Invariant**: Now checks both children states (validated OR admitted) and challenge states (resolved/withdrawn/superseded).
-
-3. **Concurrency**: New atomic operations - `RefineNodeBulk()` and `AllocateChildID()` prevent race conditions.
-
-4. **Full Context on Claim**: `af claim` now renders complete prover context including challenges, definitions, externals, scope.
+**vibefeld-2q5j**: NodeID Performance
+- Added `cached string` field to NodeID struct
+- `String()` now returns cached value (0 allocations after initial parse)
+- `Parent()` and `Child()` propagate cached strings efficiently
+- Benchmarks: ~2 ns/op with 0 B/op for repeated String() calls
 
 ### New Files Created
-- `cmd/af/challenges.go` - New command to list challenges
-- `cmd/af/challenges_test.go`
-- `cmd/af/health.go` - New command for stuck detection
-- `cmd/af/health_test.go`
-- `e2e/adversarial_workflow_test.go` - E2E adversarial breadth-first tests
-- `internal/fs/error_injection_test.go` - 58 filesystem error injection tests
-- `docs/challenge-workflow.md` - Challenge system documentation
-- `docs/role-workflow.md` - Prover/verifier role guides
+- `cmd/af/inferences.go` (132 lines)
+- `cmd/af/inferences_test.go` (509 lines)
+- `cmd/af/types.go` (125 lines)
+- `cmd/af/types_test.go` (546 lines)
+
+### Files Modified
+- `internal/ledger/event.go` - Added ChallengeSuperseded event
+- `internal/state/apply.go` - Added supersession logic
+- `internal/state/apply_test.go` - 6 new test cases
+- `internal/types/id.go` - Added string caching
+- `internal/types/id_test.go` - 9 new tests + 6 benchmarks
 
 ## Current State
 
 ### P0 Issues: 0 remaining
-All critical bugs have been fixed.
+All critical bugs remain fixed.
+
+### P1 Issues: 0 remaining
+vibefeld-g58b was the last P1 issue.
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
-ok  github.com/tobias/vibefeld/internal/jobs
-ok  github.com/tobias/vibefeld/internal/node
-ok  github.com/tobias/vibefeld/internal/render
+ok  github.com/tobias/vibefeld/internal/ledger
 ok  github.com/tobias/vibefeld/internal/state
+ok  github.com/tobias/vibefeld/internal/types
 ... (all packages pass)
 ```
 
 Build succeeds: `go build ./cmd/af`
 
+### New CLI Commands
+```bash
+$ af inferences              # List 11 valid inference types
+$ af types                   # List 5 valid node types
+$ af inferences -f json      # JSON output for scripting
+$ af types -f json           # JSON output for scripting
+```
+
 ## Next Steps
 
-With all P0s fixed, focus on remaining P1 issues:
-1. **vibefeld-g58b**: Challenge supersession (auto-supersede on archive/refute)
-2. **vibefeld-pbtp**: Claim timeout visibility to agents
-3. **vibefeld-1jo3**: Validation scope entry check
-
-Run `bd ready` to see current priority list.
+Run `bd ready` to see 6 remaining P2 issues:
+1. **vibefeld-rccv**: Two lock systems with confusing naming
+2. **vibefeld-ugfn**: Duplicated allChildrenValidated logic
+3. **vibefeld-nsr2**: Missing concurrent access tests
+4. **vibefeld-yxhf**: Epistemic state pre-transition validation
+5. **vibefeld-o9op**: Auto-compute taint after validation events
+6. **vibefeld-rimp**: Show inference types in refine --help
 
 ## Session History
 
+**Session 39:** Fixed 4 issues in parallel (1 P1, 3 P2) - challenge supersession, af inferences/types commands, NodeID caching
 **Session 38:** Fixed 23 issues (5 P0, 15 P1, 3 P2) - all P0s resolved, breadth-first model, config integration
 **Session 37:** Deep architectural analysis + remediation plan + 8 new issues
 **Session 36:** Dobinski proof attempt → discovered fundamental flaws → 46 issues filed
