@@ -1,4 +1,4 @@
-# Handoff - 2026-01-14 (Session 27)
+# Handoff - 2026-01-14 (Session 28)
 
 ## What Was Accomplished This Session
 
@@ -6,49 +6,61 @@
 
 | Issue | Type | Description | Files Changed |
 |-------|------|-------------|---------------|
-| vibefeld-8tzp | Implementation | `af defs` and `af def` commands | `cmd/af/defs.go` (317 LOC) |
-| vibefeld-4q50 | Implementation | `af assumptions` and `af assumption` commands | `cmd/af/assumptions.go` (307 LOC) |
-| vibefeld-lsc9 | TDD Tests | 52 tests for `af externals` and `af external` | `cmd/af/externals_test.go` |
-| vibefeld-bvbu | TDD Tests | 45 tests for `af lemmas` and `af lemma` | `cmd/af/lemmas_test.go` |
-| vibefeld-8gp4 | TDD Tests | 46 tests for `af schema` | `cmd/af/schema_test.go` |
+| vibefeld-wpjq | Implementation | `af externals` and `af external` commands | `cmd/af/externals.go` (294 LOC) |
+| vibefeld-3qea | Implementation | `af lemmas` and `af lemma` commands | `cmd/af/lemmas.go` (312 LOC) |
+| vibefeld-er4s | Implementation | `af schema` command | `cmd/af/schema.go` (342 LOC) |
+| vibefeld-2qyd | TDD Tests | 60+ tests for `af pending-defs/pending-def` | `cmd/af/pending_defs_test.go` |
+| vibefeld-f6ds | TDD Tests | 57 tests for `af pending-refs/pending-ref` | `cmd/af/pending_refs_test.go` |
+
+### Additional Fixes Made
+
+1. **Lemmas architecture fix**: Changed lemmas.go to read from state (via ledger replay) instead of filesystem. Added `AllLemmas()` method to `internal/state/state.go`.
+
+2. **Schema determinism fix**: Fixed `AllChallengeTargets()` in `internal/schema/target.go` to sort results for deterministic output.
+
+3. **Test cleanup**: Removed duplicate `min()` functions from `lemmas_test.go` and `schema_test.go` (Go 1.22 has built-in `min`).
 
 ### Implementation Details
 
-#### `af defs` / `af def` (43 tests in defs_test.go)
-- `af defs` - Lists all definitions with count, supports `--format json`
-- `af def <name>` - Shows specific definition by name
-- Flags: `--dir/-d`, `--format/-f`, `--full/-F`, `--verbose`
-- Full JSON output support
+#### `af externals` / `af external` (52 tests pass)
+- `af externals` - Lists all external references with count
+- `af external <name>` - Shows specific external by name
+- Flags: `--dir/-d`, `--format/-f`, `--full/-F`
+- JSON output support
 
-#### `af assumptions` / `af assumption` (44 tests in assumptions_test.go)
-- `af assumptions [node-id]` - Lists all or scoped assumptions
-- `af assumption <id>` - Shows specific assumption by ID (supports partial match)
-- Flags: `--dir/-d`, `--format/-f`
-- Scope tracking for node-specific assumptions
+#### `af lemmas` / `af lemma` (45 tests pass)
+- `af lemmas` - Lists all lemmas from state (replayed from ledger)
+- `af lemma <id>` - Shows specific lemma by ID (supports partial match)
+- Flags: `--dir/-d`, `--format/-f`, `--full/-F`
+- Reads from service state, not filesystem
+
+#### `af schema` (46 tests pass)
+- Shows schema information (inference types, node types, states, targets)
+- Supports `--format json` for JSON output
+- Supports `--section` flag to filter sections
+- Works without proof directory (schema is static data)
 
 ### TDD Test Files Created
 
 | File | Tests | Coverage |
 |------|-------|----------|
-| `externals_test.go` | 52 | List/show externals, JSON output, error cases, fuzzy matching |
-| `lemmas_test.go` | 45 | List/show lemmas, source nodes, JSON output, partial ID |
-| `schema_test.go` | 46 | All schema sections, JSON output, section filtering |
+| `pending_defs_test.go` | 60+ | List/show pending defs, JSON output, error cases, fuzzy matching |
+| `pending_refs_test.go` | 57 | List/show pending refs, JSON output, error cases, partial names |
 
 ## Current State
 
 ### Test Status
 ```bash
-go build ./...                        # PASSES
-go test ./internal/...                # PASSES (all 17 packages)
+go build ./cmd/af/...           # PASSES
+go test ./internal/...          # PASSES (all 17 packages)
 ```
 
 ### Working Commands
-All core CLI commands functional: `init`, `status`, `claim`, `release`, `accept`, `refine`, `challenge`, `resolve-challenge`, `withdraw-challenge`, `jobs`, `get`, `add-external`, `request-def`, `defs`, `def`, `assumptions`, `assumption`
+All core CLI commands functional: `init`, `status`, `claim`, `release`, `accept`, `refine`, `challenge`, `resolve-challenge`, `withdraw-challenge`, `jobs`, `get`, `add-external`, `request-def`, `defs`, `def`, `assumptions`, `assumption`, `externals`, `external`, `lemmas`, `lemma`, `schema`
 
 ### TDD Tests (Awaiting Implementation)
-- `cmd/af/externals_test.go`: 52 tests for `newExternalsCmd()` and `newExternalCmd()`
-- `cmd/af/lemmas_test.go`: 45 tests for `newLemmasCmd()` and `newLemmaCmd()`
-- `cmd/af/schema_test.go`: 46 tests for `newSchemaCmd()`
+- `cmd/af/pending_defs_test.go`: 60+ tests for `newPendingDefsCmd()` and `newPendingDefCmd()`
+- `cmd/af/pending_refs_test.go`: 57 tests for `newPendingRefsCmd()` and `newPendingRefCmd()`
 
 ## Next Steps (Priority Order)
 
@@ -60,27 +72,27 @@ All core CLI commands functional: `init`, `status`, `claim`, `release`, `accept`
 3. **vibefeld-icii** - Double JSON unmarshaling (15-25% perf gain)
 
 ### P2 - CLI Implementation (TDD tests ready)
-4. Implement `af externals` and `af external` commands (52 tests ready)
-5. Implement `af lemmas` and `af lemma` commands (45 tests ready)
-6. Implement `af schema` command (46 tests ready)
-7. **vibefeld-bzvr** - Fix `get_test.go` setup helpers
+4. **vibefeld-s3e9** - Implement `af pending-defs` command (60+ tests ready)
+5. **vibefeld-tyr2** - Implement `af pending-refs` command (57 tests ready)
 
 ## Files Changed This Session
 
 | File | Type | Lines |
 |------|------|-------|
-| `cmd/af/defs.go` | NEW | 317 |
-| `cmd/af/assumptions.go` | NEW | 307 |
-| `cmd/af/externals_test.go` | NEW | ~800 |
-| `cmd/af/lemmas_test.go` | NEW | ~1400 |
-| `cmd/af/schema_test.go` | NEW | ~1100 |
+| `cmd/af/externals.go` | NEW | 294 |
+| `cmd/af/lemmas.go` | NEW | 312 |
+| `cmd/af/schema.go` | NEW | 342 |
+| `cmd/af/pending_defs_test.go` | NEW | ~1600 |
+| `cmd/af/pending_refs_test.go` | NEW | ~1700 |
+| `cmd/af/lemmas_test.go` | MODIFIED | -8 (removed dup min) |
+| `cmd/af/schema_test.go` | MODIFIED | -8 (removed dup min) |
+| `internal/state/state.go` | MODIFIED | +10 (AllLemmas) |
+| `internal/schema/target.go` | MODIFIED | +6 (sort fix) |
 
 ## Session History
 
+**Session 28:** 5 issues via 5 parallel agents (3 implementations + 2 TDD test files) + architecture fix for lemmas
 **Session 27:** 5 issues via 5 parallel agents (2 implementations + 3 TDD test files)
 **Session 26:** 5 issues via 5 parallel agents (2 implementations + 2 TDD test files + lock manager fix)
 **Session 25:** 9 issues via parallel agents (interface + state + implementations + TDD tests + build tags)
 **Session 24:** 5 E2E test files via parallel agents (42 new tests)
-**Session 23:** Code review (5 agents) + 24 issues created + TOCTOU fix
-**Session 22:** 6 issues (status cmd + 5 E2E tests via parallel agents)
-**Session 21:** 1 bug fix + full proof walkthrough + 2 bugs filed
