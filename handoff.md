@@ -1,77 +1,57 @@
-# Handoff - 2026-01-14 (Session 33)
+# Handoff - 2026-01-14 (Session 34)
 
 ## What Was Accomplished This Session
 
-### 8 Issues Completed via 2 Rounds of 4 Parallel Agents
+### √2 Irrationality Proof - Full Adversarial Agent Run
 
-**Round 1:**
-| Issue | Type | Description | Status |
-|-------|------|-------------|--------|
-| vibefeld-i065 | task | Implement af def-reject command | CLOSED - 56 integration tests pass |
-| vibefeld-kmev | task | Implement DEPTH_EXCEEDED error | CLOSED - 46 test cases pass |
-| vibefeld-9q18 | task | Write challenge limit tests | CLOSED - 22 TDD test functions |
-| vibefeld-gle2 | task | Write refinement limit tests | CLOSED - 25 TDD test functions |
-
-**Round 2:**
-| Issue | Type | Description | Status |
-|-------|------|-------------|--------|
-| vibefeld-0hyw | task | Implement CHALLENGE_LIMIT_EXCEEDED | CLOSED - 19 tests pass |
-| vibefeld-8geq | task | Implement REFINEMENT_LIMIT_EXCEEDED | CLOSED - 22 tests pass |
-| vibefeld-jfgg | task | Write verify-external tests | CLOSED - 39 TDD test functions |
-| vibefeld-godq | task | Write extract-lemma tests | CLOSED - comprehensive TDD tests |
-
-### Readiness Assessment Completed
-
-Analyzed AF tool readiness for experimentation:
-- **Verdict**: Ready for experimentation (8.5/10)
-- **35 commands implemented** - full proof workflow functional
-- **No critical gaps** - core adversarial cycle complete
-- **Concurrency safe** - CAS semantics, POSIX atomics, file-based locking
-
-### √2 Irrationality Proof - End-to-End Test
-
-Successfully ran complete proof session demonstrating full workflow:
+Executed the complete √2 proof using **spawned Prover and Verifier subagents** following the supervisor protocol in `prompts/sqrt2-supervisor.md`.
 
 | Metric | Value |
 |--------|-------|
-| Nodes | 11 (all validated, all clean) |
-| Challenges Raised | 2 |
-| Challenges Resolved | 2 |
-| Definitions | 3 (rational, coprime, even) |
-| External Lemmas | 1 (even-square-lemma) |
-| Ledger Events | 47 |
+| Nodes | 12 (all validated) |
+| Challenges Raised | 0 |
+| Definitions | 5 (rational, irrational, coprime, even, odd) |
+| External References | 4 (even-square-lemma, parity-dichotomy, gcd-exists, integers-closed-multiplication) |
+| Ledger Events | 36 |
+| Duration | ~7 minutes |
 
 **Proof tree:**
 ```
-1 [validated/clean] √2 is irrational
-├── 1.1 [validated/clean] Assume √2 = p/q with gcd(p,q)=1
-│   ├── 1.1.1-1.1.8 [validated/clean] Algebraic derivation → contradiction
-└── 1.2 [validated/clean] QED
+1 [validated] √2 is irrational
+├── 1.1 [validated] Assume for contradiction √2 is rational
+│   ├── 1.1.1 [validated] WLOG gcd(p,q) = 1
+│   ├── 1.1.2 [validated] Derive p² = 2q²
+│   ├── 1.1.3 [validated] p² is even
+│   ├── 1.1.4 [validated] p is even
+│   ├── 1.1.5 [validated] p = 2m
+│   ├── 1.1.6 [validated] Derive 2m² = q²
+│   ├── 1.1.7 [validated] q² is even
+│   ├── 1.1.8 [validated] q is even
+│   └── 1.1.9 [validated] Contradiction
+└── 1.2 [validated] QED
 ```
 
-### Supervisor Prompts Created
+### Artifacts Created
 
 | File | Description |
 |------|-------------|
-| `prompts/sqrt2-supervisor.md` | Full supervisor prompt (7KB) with detailed instructions |
-| `prompts/sqrt2-supervisor-compact.md` | Compact operational version (2.5KB) |
+| `sqrt2-proof/EXPERIENCE_REPORT.md` | Detailed report of protocol execution, observations, and lessons learned |
+| `sqrt2-proof/LEDGER_FORMATTED.md` | Human-readable formatted ledger with full proof text |
 
-### Files Changed
+### Issues Filed from Experience (5 new + 1 existing)
 
-| File | Type | Description |
-|------|------|-------------|
-| `cmd/af/def_reject.go` | MODIFIED | Full implementation of def-reject command |
-| `internal/node/depth.go` | MODIFIED | ValidateDepth, CheckDepth functions |
-| `internal/node/depth_test.go` | MODIFIED | 15 test functions, 46 test cases |
-| `internal/node/challenge_limit.go` | NEW | ValidateChallengeLimit implementation |
-| `internal/node/challenge_limit_test.go` | NEW | 22 TDD test functions |
-| `internal/node/refinement_limit.go` | NEW | ValidateRefinementCount implementation |
-| `internal/node/refinement_limit_test.go` | NEW | 25 TDD test functions |
-| `cmd/af/verify_external_test.go` | NEW | 39 TDD test functions |
-| `cmd/af/extract_lemma_test.go` | NEW | Comprehensive TDD tests (1530 lines) |
-| `prompts/sqrt2-supervisor.md` | NEW | Supervisor agent prompt |
-| `prompts/sqrt2-supervisor-compact.md` | NEW | Compact supervisor prompt |
-| `sqrt2-proof/` | NEW | Complete proof workspace (47 ledger events) |
+Analyzed friction points during proof execution and filed actionable improvements:
+
+| Issue | Priority | Type | Problem |
+|-------|----------|------|---------|
+| **vibefeld-435t** | P2 | feature | Add `af inferences` command - no way to discover valid inference types |
+| **vibefeld-23e6** | P2 | feature | Add `af types` command - no way to discover valid node types |
+| **vibefeld-o9op** | P2 | feature | Auto-compute taint after validation - nodes showed "unresolved" after completion |
+| **vibefeld-rimp** | P2 | task | Show valid inferences in `af refine --help` |
+| **vibefeld-99ab** | P2 | bug | (existing) Verifier jobs not shown in `af jobs` |
+| **vibefeld-v0ux** | P3 | task | Better error messages when refining unclaimed nodes |
+
+**Closed**: vibefeld-ejuz - node types already shown in help text
 
 ## Current State
 
@@ -79,26 +59,21 @@ Successfully ran complete proof session demonstrating full workflow:
 ```bash
 go build ./cmd/af                          # PASSES
 go test ./...                              # Unit tests PASS
-go test -tags=integration ./cmd/af -run DefReject  # 56 tests PASS
-go test ./internal/node -run "ChallengeLim|RefinementLim"  # 41 tests PASS
 ```
 
-### AF Tool Readiness
-- **Core workflow**: COMPLETE (init → claim → refine → challenge → accept)
-- **Concurrency**: SAFE (CAS + file locks + atomic writes)
-- **Multi-agent**: READY (requires retry logic for ErrConcurrentModification)
+### √2 Proof Status
+- All 12 nodes validated
+- Taint state: unresolved (known issue - vibefeld-o9op filed)
+- Proof is complete and rigorous
 
-### TDD Tests Awaiting Implementation
-- `cmd/af/verify_external_test.go` - needs `newVerifyExternalCmd` function
-- `cmd/af/extract_lemma_test.go` - needs `newExtractLemmaCmd` function
-
-### Working Commands (35 total)
-`init`, `status`, `claim`, `release`, `accept`, `refine`, `challenge`, `resolve-challenge`, `withdraw-challenge`, `jobs`, `get`, `add-external`, `request-def`, `defs`, `def`, `assumptions`, `assumption`, `externals`, `external`, `lemmas`, `lemma`, `schema`, `pending-defs`, `pending-def`, `pending-refs`, `pending-ref`, `admit`, `refute`, `log`, `replay`, `archive`, `reap`, `recompute-taint`, `def-add`, `def-reject`
+### Key Finding
+The adversarial agent protocol works. Spawned Prover and Verifier subagents successfully constructed and validated a complete mathematical proof with explicit justifications and no logical gaps.
 
 ## Next Steps (Priority Order)
 
-### P1 - Ready for Multi-Agent Experiments
-The tool is ready. Use `prompts/sqrt2-supervisor.md` to run multi-agent proof sessions.
+### P1 - Discoverability Improvements (from √2 proof experience)
+1. **vibefeld-435t** - Add `af inferences` command (agents need this)
+2. **vibefeld-99ab** - Fix verifier jobs in `af jobs` (verifiers can't find work)
 
 ### P2 - Implementation for TDD Tests Ready
 1. **vibefeld-swn9** - Implement af verify-external (tests ready)
@@ -107,15 +82,17 @@ The tool is ready. Use `prompts/sqrt2-supervisor.md` to run multi-agent proof se
 ### P2 - Bug Fixes
 1. **vibefeld-yxhf** - Add state validation to accept/admit/archive/refute commands
 2. **vibefeld-dwdh** - Fix nil pointer panic in refute test
+3. **vibefeld-o9op** - Auto-compute taint after validation events
 
 ### P2 - Additional Work
-1. **vibefeld-b0yc** - Write tests for lemma independence criteria
-2. **vibefeld-t1io** - Implement lemma independence validation
-3. **vibefeld-q8g0** - Write tests for definition blocking propagation
-4. **vibefeld-x3vd** - Implement definition blocking and unblocking
+1. **vibefeld-23e6** - Add `af types` command
+2. **vibefeld-rimp** - Show valid inferences in `af refine --help`
+3. **vibefeld-b0yc** - Write tests for lemma independence criteria
+4. **vibefeld-t1io** - Implement lemma independence validation
 
 ## Session History
 
+**Session 34:** √2 proof with adversarial agents + 5 improvement issues filed
 **Session 33:** 8 issues + readiness assessment + √2 proof demo + supervisor prompts
 **Session 32:** Fixed init bug across 14 test files, created 2 issues for remaining failures
 **Session 31:** 4 issues via 4 parallel agents
