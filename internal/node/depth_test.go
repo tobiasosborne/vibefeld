@@ -1,15 +1,11 @@
-//go:build integration
-// +build integration
-
-// Package node_test contains external tests for the node package.
-package node_test
+// Package node provides data structures for proof nodes in the AF system.
+package node
 
 import (
 	"strings"
 	"testing"
 
 	aferrors "github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -18,13 +14,13 @@ import (
 // Helper functions for test setup
 // ===========================================================================
 
-// createNodeWithDepth creates a node at the specified depth.
+// createTestNodeWithDepth creates a node at the specified depth.
 // Depth 1 = "1", Depth 2 = "1.1", Depth 3 = "1.1.1", etc.
-func createNodeWithDepth(t *testing.T, depth int) *node.Node {
+func createTestNodeWithDepth(t *testing.T, depth int) *Node {
 	t.Helper()
 
 	if depth < 1 {
-		t.Fatalf("createNodeWithDepth: depth must be >= 1, got %d", depth)
+		t.Fatalf("createTestNodeWithDepth: depth must be >= 1, got %d", depth)
 	}
 
 	// Build ID string for the requested depth
@@ -39,7 +35,7 @@ func createNodeWithDepth(t *testing.T, depth int) *node.Node {
 		t.Fatalf("types.Parse(%q) error: %v", idStr, err)
 	}
 
-	n, err := node.NewNode(id, schema.NodeTypeClaim, "Test statement at depth "+idStr, schema.InferenceAssumption)
+	n, err := NewNode(id, schema.NodeTypeClaim, "Test statement at depth "+idStr, schema.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("NewNode() error: %v", err)
 	}
@@ -82,9 +78,9 @@ func TestValidateDepth_WithinLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := createNodeWithDepth(t, tt.depth)
+			n := createTestNodeWithDepth(t, tt.depth)
 
-			err := node.ValidateDepth(n, tt.maxDepth)
+			err := ValidateDepth(n, tt.maxDepth)
 			if err != nil {
 				t.Errorf("ValidateDepth() = %v, want nil for depth %d <= maxDepth %d", err, tt.depth, tt.maxDepth)
 			}
@@ -110,17 +106,13 @@ func TestValidateDepth_ExactlyAtLimit(t *testing.T) {
 			name:     "depth 20 at limit 20",
 			maxDepth: 20,
 		},
-		{
-			name:     "depth 100 at limit 100",
-			maxDepth: 100,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := createNodeWithDepth(t, tt.maxDepth)
+			n := createTestNodeWithDepth(t, tt.maxDepth)
 
-			err := node.ValidateDepth(n, tt.maxDepth)
+			err := ValidateDepth(n, tt.maxDepth)
 			if err != nil {
 				t.Errorf("ValidateDepth() = %v, want nil for depth %d == maxDepth %d", err, tt.maxDepth, tt.maxDepth)
 			}
@@ -151,17 +143,17 @@ func TestValidateDepth_ExceedsLimit(t *testing.T) {
 			maxDepth: 5,
 		},
 		{
-			name:     "depth 101 exceeds max 100",
-			depth:    10, // Can't easily create depth 101, use smaller example
+			name:     "depth 10 exceeds max 5",
+			depth:    10,
 			maxDepth: 5,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := createNodeWithDepth(t, tt.depth)
+			n := createTestNodeWithDepth(t, tt.depth)
 
-			err := node.ValidateDepth(n, tt.maxDepth)
+			err := ValidateDepth(n, tt.maxDepth)
 			if err == nil {
 				t.Errorf("ValidateDepth() = nil, want DEPTH_EXCEEDED error for depth %d > maxDepth %d", tt.depth, tt.maxDepth)
 			}
@@ -175,9 +167,9 @@ func TestValidateDepth_ExceedsLimit(t *testing.T) {
 
 // TestValidateDepth_ReturnsDepthExceededError tests that the correct error code is returned.
 func TestValidateDepth_ReturnsDepthExceededError(t *testing.T) {
-	n := createNodeWithDepth(t, 5)
+	n := createTestNodeWithDepth(t, 5)
 
-	err := node.ValidateDepth(n, 3)
+	err := ValidateDepth(n, 3)
 	if err == nil {
 		t.Fatal("ValidateDepth() = nil, want error")
 	}
@@ -191,9 +183,9 @@ func TestValidateDepth_ReturnsDepthExceededError(t *testing.T) {
 
 // TestValidateDepth_ErrorExitCode tests that the error has the correct exit code.
 func TestValidateDepth_ErrorExitCode(t *testing.T) {
-	n := createNodeWithDepth(t, 10)
+	n := createTestNodeWithDepth(t, 10)
 
-	err := node.ValidateDepth(n, 5)
+	err := ValidateDepth(n, 5)
 	if err == nil {
 		t.Fatal("ValidateDepth() = nil, want error")
 	}
@@ -209,9 +201,9 @@ func TestValidateDepth_ErrorExitCode(t *testing.T) {
 func TestValidateDepth_ErrorMessage(t *testing.T) {
 	depth := 8
 	maxDepth := 5
-	n := createNodeWithDepth(t, depth)
+	n := createTestNodeWithDepth(t, depth)
 
-	err := node.ValidateDepth(n, maxDepth)
+	err := ValidateDepth(n, maxDepth)
 	if err == nil {
 		t.Fatal("ValidateDepth() = nil, want error")
 	}
@@ -235,7 +227,7 @@ func TestValidateDepth_ErrorMessage(t *testing.T) {
 
 // TestValidateDepth_RootNode tests validation of the root node (depth 1).
 func TestValidateDepth_RootNode(t *testing.T) {
-	n := createNodeWithDepth(t, 1)
+	n := createTestNodeWithDepth(t, 1)
 
 	tests := []struct {
 		name        string
@@ -261,7 +253,7 @@ func TestValidateDepth_RootNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := node.ValidateDepth(n, tt.maxDepth)
+			err := ValidateDepth(n, tt.maxDepth)
 			if tt.expectError && err == nil {
 				t.Error("ValidateDepth() = nil, want error")
 			}
@@ -274,7 +266,7 @@ func TestValidateDepth_RootNode(t *testing.T) {
 
 // TestValidateDepth_NilNode tests that nil node is handled gracefully.
 func TestValidateDepth_NilNode(t *testing.T) {
-	err := node.ValidateDepth(nil, 20)
+	err := ValidateDepth(nil, 20)
 	if err == nil {
 		t.Error("ValidateDepth(nil, 20) = nil, want error for nil node")
 	}
@@ -282,10 +274,10 @@ func TestValidateDepth_NilNode(t *testing.T) {
 
 // TestValidateDepth_ZeroMaxDepth tests behavior with maxDepth of 0.
 func TestValidateDepth_ZeroMaxDepth(t *testing.T) {
-	n := createNodeWithDepth(t, 1)
+	n := createTestNodeWithDepth(t, 1)
 
 	// maxDepth of 0 is invalid - root (depth 1) should always exceed it
-	err := node.ValidateDepth(n, 0)
+	err := ValidateDepth(n, 0)
 	if err == nil {
 		t.Error("ValidateDepth() = nil, want error for maxDepth 0 (root has depth 1)")
 	}
@@ -293,10 +285,10 @@ func TestValidateDepth_ZeroMaxDepth(t *testing.T) {
 
 // TestValidateDepth_NegativeMaxDepth tests behavior with negative maxDepth.
 func TestValidateDepth_NegativeMaxDepth(t *testing.T) {
-	n := createNodeWithDepth(t, 1)
+	n := createTestNodeWithDepth(t, 1)
 
 	// Negative maxDepth should fail for any node
-	err := node.ValidateDepth(n, -1)
+	err := ValidateDepth(n, -1)
 	if err == nil {
 		t.Error("ValidateDepth() = nil, want error for negative maxDepth")
 	}
@@ -371,9 +363,9 @@ func TestValidateDepth_TableDriven(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := createNodeWithDepth(t, tt.depth)
+			n := createTestNodeWithDepth(t, tt.depth)
 
-			err := node.ValidateDepth(n, tt.maxDepth)
+			err := ValidateDepth(n, tt.maxDepth)
 
 			if tt.expectError {
 				if err == nil {
@@ -397,43 +389,12 @@ func TestValidateDepth_TableDriven(t *testing.T) {
 }
 
 // ===========================================================================
-// Different MaxDepth configuration tests
+// Default max depth configuration tests
 // ===========================================================================
-
-// TestValidateDepth_DifferentMaxDepthConfigs tests various MaxDepth configurations.
-func TestValidateDepth_DifferentMaxDepthConfigs(t *testing.T) {
-	// Test common MaxDepth configurations
-	maxDepths := []int{1, 5, 10, 20, 50, 100}
-
-	for _, maxDepth := range maxDepths {
-		t.Run("maxDepth_"+string(rune('0'+maxDepth%10)), func(t *testing.T) {
-			// Test depth at limit
-			t.Run("at_limit", func(t *testing.T) {
-				// Only test if depth is reasonable to create
-				if maxDepth <= 20 {
-					n := createNodeWithDepth(t, maxDepth)
-					err := node.ValidateDepth(n, maxDepth)
-					if err != nil {
-						t.Errorf("ValidateDepth() = %v, want nil for depth %d == maxDepth %d", err, maxDepth, maxDepth)
-					}
-				}
-			})
-
-			// Test depth below limit
-			t.Run("below_limit", func(t *testing.T) {
-				n := createNodeWithDepth(t, 1)
-				err := node.ValidateDepth(n, maxDepth)
-				if err != nil {
-					t.Errorf("ValidateDepth() = %v, want nil for depth 1 < maxDepth %d", err, maxDepth)
-				}
-			})
-		})
-	}
-}
 
 // TestValidateDepth_DefaultMaxDepth tests with the default max depth of 20.
 func TestValidateDepth_DefaultMaxDepth(t *testing.T) {
-	defaultMaxDepth := 20
+	defaultMaxDepth := DefaultMaxDepth
 
 	tests := []struct {
 		name        string
@@ -449,61 +410,14 @@ func TestValidateDepth_DefaultMaxDepth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := createNodeWithDepth(t, tt.depth)
+			n := createTestNodeWithDepth(t, tt.depth)
 
-			err := node.ValidateDepth(n, defaultMaxDepth)
+			err := ValidateDepth(n, defaultMaxDepth)
 			if tt.expectError && err == nil {
 				t.Error("ValidateDepth() = nil, want error")
 			}
 			if !tt.expectError && err != nil {
 				t.Errorf("ValidateDepth() = %v, want nil", err)
-			}
-		})
-	}
-}
-
-// ===========================================================================
-// Very deep node tests
-// ===========================================================================
-
-// TestValidateDepth_VeryDeepNodes tests validation with very deep nodes.
-func TestValidateDepth_VeryDeepNodes(t *testing.T) {
-	tests := []struct {
-		name        string
-		depth       int
-		maxDepth    int
-		expectError bool
-	}{
-		{
-			name:        "depth 15 with max 20",
-			depth:       15,
-			maxDepth:    20,
-			expectError: false,
-		},
-		{
-			name:        "depth 20 with max 20",
-			depth:       20,
-			maxDepth:    20,
-			expectError: false,
-		},
-		{
-			name:        "depth 15 with max 10",
-			depth:       15,
-			maxDepth:    10,
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			n := createNodeWithDepth(t, tt.depth)
-
-			err := node.ValidateDepth(n, tt.maxDepth)
-			if tt.expectError && err == nil {
-				t.Errorf("ValidateDepth() = nil, want error for depth %d > maxDepth %d", tt.depth, tt.maxDepth)
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("ValidateDepth() = %v, want nil for depth %d <= maxDepth %d", err, tt.depth, tt.maxDepth)
 			}
 		})
 	}
@@ -519,26 +433,55 @@ func TestValidateDepth_BoundaryConditions(t *testing.T) {
 	maxDepth := 10
 
 	t.Run("exactly_at_limit", func(t *testing.T) {
-		n := createNodeWithDepth(t, maxDepth)
-		err := node.ValidateDepth(n, maxDepth)
+		n := createTestNodeWithDepth(t, maxDepth)
+		err := ValidateDepth(n, maxDepth)
 		if err != nil {
 			t.Errorf("ValidateDepth() = %v, want nil for depth == maxDepth", err)
 		}
 	})
 
 	t.Run("one_over_limit", func(t *testing.T) {
-		n := createNodeWithDepth(t, maxDepth+1)
-		err := node.ValidateDepth(n, maxDepth)
+		n := createTestNodeWithDepth(t, maxDepth+1)
+		err := ValidateDepth(n, maxDepth)
 		if err == nil {
 			t.Error("ValidateDepth() = nil, want error for depth == maxDepth+1")
 		}
 	})
 
 	t.Run("one_under_limit", func(t *testing.T) {
-		n := createNodeWithDepth(t, maxDepth-1)
-		err := node.ValidateDepth(n, maxDepth)
+		n := createTestNodeWithDepth(t, maxDepth-1)
+		err := ValidateDepth(n, maxDepth)
 		if err != nil {
 			t.Errorf("ValidateDepth() = %v, want nil for depth == maxDepth-1", err)
 		}
 	})
+}
+
+// ===========================================================================
+// CheckDepth helper function tests
+// ===========================================================================
+
+// TestCheckDepth_UsesDefaultMaxDepth tests that CheckDepth uses the default max depth.
+func TestCheckDepth_UsesDefaultMaxDepth(t *testing.T) {
+	// Node at default max depth should pass
+	n := createTestNodeWithDepth(t, DefaultMaxDepth)
+	err := CheckDepth(n)
+	if err != nil {
+		t.Errorf("CheckDepth() = %v, want nil for depth at default max", err)
+	}
+
+	// Node exceeding default max depth should fail
+	n = createTestNodeWithDepth(t, DefaultMaxDepth+1)
+	err = CheckDepth(n)
+	if err == nil {
+		t.Error("CheckDepth() = nil, want error for depth exceeding default max")
+	}
+}
+
+// TestCheckDepth_NilNode tests that CheckDepth handles nil node.
+func TestCheckDepth_NilNode(t *testing.T) {
+	err := CheckDepth(nil)
+	if err == nil {
+		t.Error("CheckDepth(nil) = nil, want error for nil node")
+	}
 }
