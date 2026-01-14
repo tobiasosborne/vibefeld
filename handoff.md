@@ -45,8 +45,8 @@ go test ./cmd/af/... -run "AddExternal|Refine|Request|Init|Status|Claim|Release|
 - `cmd/af/defs_test.go`: 43 tests for `newDefsCmd()` and `newDefCmd()`
 - `cmd/af/assumptions_test.go`: 44 tests for `newAssumptionsCmd()` and `newAssumptionCmd()`
 
-### Test Setup Bug
-The `get_test.go` file has a bug in `setupGetTestWithNode()` - it tries to create node "1" after calling `service.Init()`, but Init already creates node "1". This causes "node already exists" errors. The implementation is correct.
+### Test Setup Bug (vibefeld-bzvr)
+The `get_test.go` file has a bug in `setupGetTestWithNode()` - it tries to create node "1" after calling `service.Init()`, but Init already creates node "1". This causes "node already exists" errors. The implementation is correct. Filed as **vibefeld-bzvr**.
 
 ## Next Steps (Priority Order)
 
@@ -60,7 +60,7 @@ The `get_test.go` file has a bug in `setupGetTestWithNode()` - it tries to creat
 ### P2 - CLI Implementation
 4. Implement `af defs` and `af def` commands (tests ready)
 5. Implement `af assumptions` and `af assumption` commands (tests ready)
-6. Fix `get_test.go` setup helpers
+6. **vibefeld-bzvr** - Fix `get_test.go` setup helpers (node "1" already exists after Init)
 
 ## Files Changed This Session
 
