@@ -165,19 +165,9 @@ func collectSubtree(st interface {
 
 // outputJSON outputs nodes in JSON format.
 func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool) error {
-	if len(nodes) == 1 && !full {
-		// Single node, basic output
-		output := nodeToJSONBasic(nodes[0])
-		data, err := json.Marshal(output)
-		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
-		}
-		cmd.Println(string(data))
-		return nil
-	}
-
 	if len(nodes) == 1 {
-		// Single node, full output
+		// Single node: always show full output by default.
+		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
 		output := nodeToJSONFull(nodes[0])
 		data, err := json.Marshal(output)
 		if err != nil {
@@ -260,14 +250,9 @@ func nodeToJSONFull(n *node.Node) map[string]interface{} {
 
 // outputText outputs nodes in text format.
 func outputText(cmd *cobra.Command, nodes []*node.Node, full bool) error {
-	if len(nodes) == 1 && !full {
-		// Single node, basic output
-		cmd.Println(render.RenderNode(nodes[0]))
-		return nil
-	}
-
 	if len(nodes) == 1 {
-		// Single node, full output
+		// Single node: always show full/verbose output by default.
+		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
 		cmd.Print(render.RenderNodeVerbose(nodes[0]))
 		return nil
 	}

@@ -24,7 +24,7 @@ func TestCheckValidationInvariant_NoChildren(t *testing.T) {
 		return nil
 	}
 
-	err = node.CheckValidationInvariant(n, getChildren)
+	err = node.CheckValidationInvariant(n, getChildren, nil)
 	if err != nil {
 		t.Errorf("CheckValidationInvariant() = %v, want nil for node with no children", err)
 	}
@@ -63,7 +63,7 @@ func TestCheckValidationInvariant_AllChildrenValidated(t *testing.T) {
 		return nil
 	}
 
-	err = node.CheckValidationInvariant(parent, getChildren)
+	err = node.CheckValidationInvariant(parent, getChildren, nil)
 	if err != nil {
 		t.Errorf("CheckValidationInvariant() = %v, want nil for node with all validated children", err)
 	}
@@ -95,7 +95,7 @@ func TestCheckValidationInvariant_UnvalidatedChild(t *testing.T) {
 		return nil
 	}
 
-	err = node.CheckValidationInvariant(parent, getChildren)
+	err = node.CheckValidationInvariant(parent, getChildren, nil)
 	if err == nil {
 		t.Error("CheckValidationInvariant() = nil, want error for node with unvalidated child")
 	}
@@ -118,8 +118,8 @@ func TestCheckValidationInvariant_MixedChildStates(t *testing.T) {
 		{
 			name:         "one validated one admitted",
 			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicAdmitted},
-			expectError:  true,
-			description:  "admitted is not validated",
+			expectError:  false,
+			description:  "admitted is acceptable like validated",
 		},
 		{
 			name:         "one validated one refuted",
@@ -144,6 +144,18 @@ func TestCheckValidationInvariant_MixedChildStates(t *testing.T) {
 			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicValidated, schema.EpistemicValidated},
 			expectError:  false,
 			description:  "all three validated is OK",
+		},
+		{
+			name:         "all admitted",
+			childStates:  []schema.EpistemicState{schema.EpistemicAdmitted, schema.EpistemicAdmitted},
+			expectError:  false,
+			description:  "all admitted is OK (escape hatch)",
+		},
+		{
+			name:         "mixed validated and admitted",
+			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicAdmitted, schema.EpistemicValidated},
+			expectError:  false,
+			description:  "mixed validated and admitted is OK",
 		},
 	}
 
@@ -177,7 +189,7 @@ func TestCheckValidationInvariant_MixedChildStates(t *testing.T) {
 				return nil
 			}
 
-			err = node.CheckValidationInvariant(parent, getChildren)
+			err = node.CheckValidationInvariant(parent, getChildren, nil)
 			if tt.expectError && err == nil {
 				t.Errorf("CheckValidationInvariant() = nil, want error for %s", tt.description)
 			}
@@ -194,7 +206,7 @@ func TestCheckValidationInvariant_NilNode(t *testing.T) {
 		return nil
 	}
 
-	err := node.CheckValidationInvariant(nil, getChildren)
+	err := node.CheckValidationInvariant(nil, getChildren, nil)
 	if err != nil {
 		t.Errorf("CheckValidationInvariant(nil, ...) = %v, want nil", err)
 	}
@@ -235,7 +247,7 @@ func TestCheckValidationInvariant_NodeNotValidated(t *testing.T) {
 			}
 
 			// The check should not apply to non-validated nodes
-			err = node.CheckValidationInvariant(n, getChildren)
+			err = node.CheckValidationInvariant(n, getChildren, nil)
 			if err != nil {
 				t.Errorf("CheckValidationInvariant() = %v, want nil for non-validated node in state %q", err, state)
 			}
@@ -268,7 +280,7 @@ func TestCheckValidationInvariant_ErrorMessage(t *testing.T) {
 		return nil
 	}
 
-	err = node.CheckValidationInvariant(parent, getChildren)
+	err = node.CheckValidationInvariant(parent, getChildren, nil)
 	if err == nil {
 		t.Fatal("Expected error but got nil")
 	}
@@ -324,13 +336,13 @@ func TestCheckValidationInvariant_DeepHierarchy(t *testing.T) {
 	}
 
 	// Root should pass - it only checks direct children which are validated
-	err = node.CheckValidationInvariant(root, getChildren)
+	err = node.CheckValidationInvariant(root, getChildren, nil)
 	if err != nil {
 		t.Errorf("CheckValidationInvariant(root) = %v, want nil (direct child 1.1 is validated)", err)
 	}
 
 	// Child should fail - its direct child (grandchild) is pending
-	err = node.CheckValidationInvariant(child, getChildren)
+	err = node.CheckValidationInvariant(child, getChildren, nil)
 	if err == nil {
 		t.Error("CheckValidationInvariant(child) = nil, want error (grandchild 1.1.1 is pending)")
 	}
@@ -348,4 +360,220 @@ func containsSubstringHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestCheckValidationInvariant_AdmittedChild tests that a node with an admitted child can be validated.
+func TestCheckValidationInvariant_AdmittedChild(t *testing.T) {
+	// Create parent node
+	parentID, _ := types.Parse("1")
+	parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	parent.EpistemicState = schema.EpistemicValidated
+
+	// Create an admitted child (escape hatch)
+	childID, _ := types.Parse("1.1")
+	child, err := node.NewNode(childID, schema.NodeTypeClaim, "Admitted child", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	child.EpistemicState = schema.EpistemicAdmitted
+
+	// getChildren returns the admitted child
+	getChildren := func(id types.NodeID) []*node.Node {
+		if id.String() == "1" {
+			return []*node.Node{child}
+		}
+		return nil
+	}
+
+	// Admitted children should be allowed (escape hatch per PRD)
+	err = node.CheckValidationInvariant(parent, getChildren, nil)
+	if err != nil {
+		t.Errorf("CheckValidationInvariant() = %v, want nil for node with admitted child (escape hatch)", err)
+	}
+}
+
+// TestCheckValidationInvariant_ChallengeStates tests that challenges must be in acceptable states.
+func TestCheckValidationInvariant_ChallengeStates(t *testing.T) {
+	// Create a validated node
+	nodeID, _ := types.Parse("1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	n.EpistemicState = schema.EpistemicValidated
+
+	// No children
+	getChildren := func(id types.NodeID) []*node.Node {
+		return nil
+	}
+
+	tests := []struct {
+		name           string
+		challengeState node.ChallengeStatus
+		expectError    bool
+	}{
+		{
+			name:           "open challenge should fail",
+			challengeState: node.ChallengeStatusOpen,
+			expectError:    true,
+		},
+		{
+			name:           "resolved challenge should pass",
+			challengeState: node.ChallengeStatusResolved,
+			expectError:    false,
+		},
+		{
+			name:           "withdrawn challenge should pass",
+			challengeState: node.ChallengeStatusWithdrawn,
+			expectError:    false,
+		},
+		{
+			name:           "superseded challenge should pass",
+			challengeState: node.ChallengeStatusSuperseded,
+			expectError:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a challenge with the given status
+			challenge := &node.Challenge{
+				ID:       "ch-001",
+				TargetID: nodeID,
+				Status:   tt.challengeState,
+				Reason:   "Test challenge",
+			}
+
+			getChallenges := func(id types.NodeID) []*node.Challenge {
+				if id.String() == "1" {
+					return []*node.Challenge{challenge}
+				}
+				return nil
+			}
+
+			err := node.CheckValidationInvariant(n, getChildren, getChallenges)
+			if tt.expectError && err == nil {
+				t.Errorf("CheckValidationInvariant() = nil, want error for %s", tt.name)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("CheckValidationInvariant() = %v, want nil for %s", err, tt.name)
+			}
+		})
+	}
+}
+
+// TestCheckValidationInvariant_NoChallenges tests that a node with no challenges can be validated.
+func TestCheckValidationInvariant_NoChallenges(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	n.EpistemicState = schema.EpistemicValidated
+
+	getChildren := func(id types.NodeID) []*node.Node {
+		return nil
+	}
+
+	getChallenges := func(id types.NodeID) []*node.Challenge {
+		return nil
+	}
+
+	err = node.CheckValidationInvariant(n, getChildren, getChallenges)
+	if err != nil {
+		t.Errorf("CheckValidationInvariant() = %v, want nil for node with no challenges", err)
+	}
+}
+
+// TestCheckValidationInvariant_MultipleChallenges tests validation with multiple challenges.
+func TestCheckValidationInvariant_MultipleChallenges(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	n.EpistemicState = schema.EpistemicValidated
+
+	getChildren := func(id types.NodeID) []*node.Node {
+		return nil
+	}
+
+	tests := []struct {
+		name        string
+		statuses    []node.ChallengeStatus
+		expectError bool
+	}{
+		{
+			name:        "all resolved",
+			statuses:    []node.ChallengeStatus{node.ChallengeStatusResolved, node.ChallengeStatusResolved},
+			expectError: false,
+		},
+		{
+			name:        "mixed resolved and withdrawn",
+			statuses:    []node.ChallengeStatus{node.ChallengeStatusResolved, node.ChallengeStatusWithdrawn},
+			expectError: false,
+		},
+		{
+			name:        "one open among resolved",
+			statuses:    []node.ChallengeStatus{node.ChallengeStatusResolved, node.ChallengeStatusOpen},
+			expectError: true,
+		},
+		{
+			name:        "all acceptable states",
+			statuses:    []node.ChallengeStatus{node.ChallengeStatusResolved, node.ChallengeStatusWithdrawn, node.ChallengeStatusSuperseded},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			challenges := make([]*node.Challenge, len(tt.statuses))
+			for i, status := range tt.statuses {
+				challenges[i] = &node.Challenge{
+					ID:       "ch-00" + string(rune('1'+i)),
+					TargetID: nodeID,
+					Status:   status,
+					Reason:   "Test challenge",
+				}
+			}
+
+			getChallenges := func(id types.NodeID) []*node.Challenge {
+				if id.String() == "1" {
+					return challenges
+				}
+				return nil
+			}
+
+			err := node.CheckValidationInvariant(n, getChildren, getChallenges)
+			if tt.expectError && err == nil {
+				t.Errorf("CheckValidationInvariant() = nil, want error for %s", tt.name)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("CheckValidationInvariant() = %v, want nil for %s", err, tt.name)
+			}
+		})
+	}
+}
+
+// TestCheckValidationInvariant_NilChallengesFunc tests that nil getChallenges func is handled gracefully.
+func TestCheckValidationInvariant_NilChallengesFunc(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("NewNode() error: %v", err)
+	}
+	n.EpistemicState = schema.EpistemicValidated
+
+	getChildren := func(id types.NodeID) []*node.Node {
+		return nil
+	}
+
+	// Passing nil for getChallenges should be handled gracefully (skips challenge check)
+	err = node.CheckValidationInvariant(n, getChildren, nil)
+	if err != nil {
+		t.Errorf("CheckValidationInvariant() = %v, want nil for nil getChallenges", err)
+	}
 }

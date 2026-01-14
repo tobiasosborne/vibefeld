@@ -391,11 +391,12 @@ func TestRenderJobs_SortedByID(t *testing.T) {
 	}
 }
 
-// TestRenderJobs_LongStatementTruncation tests that long statements are truncated.
-func TestRenderJobs_LongStatementTruncation(t *testing.T) {
-	longStatement := "This is a very long mathematical statement that describes a complex proof step " +
-		"involving multiple variables and quantifiers that exceeds reasonable display width and should " +
-		"be truncated with an ellipsis for better readability in terminal output"
+// TestRenderJobs_LongStatementNotTruncated tests that long statements are NOT truncated.
+// Mathematical proofs require precision - truncation makes statements useless for agents.
+func TestRenderJobs_LongStatementNotTruncated(t *testing.T) {
+	longStatement := "The Bell number B_n counts the number of ways to partition a set of n elements. " +
+		"By Dobinski's formula, B_n = (1/e) * sum_{k=0}^{infinity} k^n / k!. This statement requires " +
+		"the complete text for mathematical verification."
 
 	proverNode := makeJobsTestNode("1.1", longStatement, schema.WorkflowAvailable, schema.EpistemicPending)
 
@@ -406,14 +407,23 @@ func TestRenderJobs_LongStatementTruncation(t *testing.T) {
 
 	result := RenderJobs(jobResult)
 
-	// Result should not be excessively long (statement should be truncated)
-	if len(result) > 500 && !strings.Contains(result, "...") {
-		t.Logf("Note: RenderJobs may want to truncate long statements, result length: %d", len(result))
+	// Statement should NOT be truncated - agents need full text for proofs
+	if !strings.Contains(result, "Dobinski's formula") {
+		t.Errorf("RenderJobs truncated statement - expected full 'Dobinski's formula', got: %q", result)
+	}
+	if !strings.Contains(result, "mathematical verification") {
+		t.Errorf("RenderJobs truncated statement - expected 'mathematical verification', got: %q", result)
+	}
+
+	// Should NOT contain truncation ellipsis in the statement
+	// Note: we check for the specific pattern of truncation (word...") not just "..."
+	if strings.Contains(result, "...\"") && !strings.Contains(result, longStatement) {
+		t.Errorf("RenderJobs incorrectly truncated long statement with ellipsis, got: %q", result)
 	}
 
 	// Should still contain node ID
 	if !strings.Contains(result, "1.1") {
-		t.Errorf("RenderJobs missing node ID even with long statement, got: %q", result)
+		t.Errorf("RenderJobs missing node ID, got: %q", result)
 	}
 }
 

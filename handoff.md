@@ -1,133 +1,96 @@
-# Handoff - 2026-01-14 (Session 37)
+# Handoff - 2026-01-14 (Session 38)
 
 ## What Was Accomplished This Session
 
-### Deep Architectural Analysis Completed
+### 4 Parallel Bug Fixes Using Subagents
 
-Performed comprehensive analysis comparing PRD against implementation, using Dobinski failure report as evidence. Used 4 parallel exploration subagents to examine:
-- Jobs package (verifier/prover detection logic)
-- Claim/release/refine workflow
-- CLI self-documentation implementation
-- State machine implementations
+Used 4 parallel subagents to fix distinct bugs without file conflicts:
 
-### Key Discovery: Implementation Disconnected from Infrastructure
+| Issue | Priority | Files Changed | Description |
+|-------|----------|---------------|-------------|
+| vibefeld-y0pf | **P0** | `internal/node/validate_invariant.go` | Fixed validation to accept admitted children (PRD escape hatch) |
+| vibefeld-ru2t | **P0** | `internal/node/validate_invariant.go` | Added challenge state validation to CheckValidationInvariant() |
+| vibefeld-we4t | P1 | `internal/render/jobs.go` | Removed truncation from jobs output |
+| vibefeld-p2ry | P1 | `cmd/af/get.go` | Changed default to show full output |
+| vibefeld-ccvo | P1 | `docs/challenge-workflow.md` (NEW) | Created comprehensive challenge documentation |
 
-Found **extensive rendering infrastructure that was built, tested, but never wired to CLI**:
+### Detailed Changes
 
-| Component | Lines | Tests | Called from CLI |
-|-----------|-------|-------|-----------------|
-| `render/prover_context.go` | 465 | 27KB | **NEVER** |
-| `render/verifier_context.go` | 490 | 31KB | **NEVER** |
-| `render/error.go` | 292 | 14KB | **NEVER** |
+**1. Validation Invariant (P0 Bugs Fixed)**
+- Changed `CheckValidationInvariant()` to accept both `validated` AND `admitted` children
+- Added new parameter `getChallenges func(types.NodeID) []*Challenge`
+- Now validates all challenges are in acceptable state (resolved/withdrawn/superseded)
+- Added 250+ lines of new tests
 
-This is a classic build-test-but-never-integrate anti-pattern.
+**2. Jobs Output (No More Truncation)**
+- Removed `truncateStatement()` call in `renderJobNode()`
+- Mathematical statements now shown in full for agent precision
+- Updated test to verify no truncation
 
-### Validation Invariant Only 25% Implemented
+**3. Get Command (Full Output Default)**
+- Single node view now uses `RenderNodeVerbose()` by default
+- Shows full statement + all fields (Type, Workflow, Epistemic)
+- `--full` flag is now no-op for single node (backwards compatible)
+- Added 2 new test cases
 
-PRD specifies 4 requirements for node validation. Implementation only checks 1:
-
-| Requirement | Implemented | Bug |
-|-------------|-------------|-----|
-| 1. All challenges resolved/withdrawn/superseded | ❌ | - |
-| 2. Resolved challenges have validated addressed_by | ❌ | - |
-| 3. All children validated OR admitted | ⚠️ | Rejects admitted (escape hatch broken) |
-| 4. All scope entries closed | ❌ | - |
-
-### Comprehensive Remediation Plan Created
-
-**Location**: `docs/af-remediation-plan.md` (530+ lines)
-
-6 phases with dependency graph:
-- Phase 0: Workflow Model Correction (critical path)
-- Phase 1: Validation Invariant Completion
-- Phase 2: CLI-Rendering Integration
-- Phase 3: State Machine Completion
-- Phase 4: Concurrency Hardening
-- Phase 5: Challenge Workflow Clarity
-- Phase 6: Integration Testing
-
-### 8 New Issues Created
-
-| Issue ID | Priority | Title |
-|----------|----------|-------|
-| vibefeld-y0pf | **P0** | Validation invariant rejects admitted children |
-| vibefeld-ru2t | **P0** | Validation invariant missing challenge state check |
-| vibefeld-1jo3 | P1 | Validation invariant missing scope entry check |
-| vibefeld-g58b | P1 | Challenge supersession not implemented |
-| vibefeld-f353 | P1 | Workflow transitions not validated during replay |
-| vibefeld-9tth | P1 | E2E test for adversarial workflow |
-| vibefeld-wzwp | P2 | Comprehensive E2E test suite |
-| vibefeld-om5f | P2 | Dobinski regression test |
-
-### 12 Existing Issues Updated
-
-Updated with plan references and enhanced descriptions:
-- All P0s: vibefeld-9jgk, vibefeld-h0ck, vibefeld-heir, vibefeld-9ayl
-- Key P1s: vibefeld-lyz0, vibefeld-ccvo, vibefeld-wuo4, vibefeld-04p8, vibefeld-vyus, vibefeld-hrap, vibefeld-q9ez
+**4. Challenge Workflow Documentation (NEW)**
+- Created `docs/challenge-workflow.md` (comprehensive)
+- Covers: lifecycle, states, prover/verifier actions, supersession
+- Includes complete example workflow
+- Documents validation invariant requirements
 
 ## Current State
 
-### Issue Statistics
-- **P0 Issues**: 6 (added 2 for validation invariant)
-- **P1 Issues**: 15
-- **Total Open**: 112
-- **Blocked**: 4 (by dependencies)
-- **Ready to Work**: 108
+### P0 Issues: 4 remaining (down from 6)
+| Issue | Problem | Status |
+|-------|---------|--------|
+| vibefeld-9jgk | Job detection inverted | Open - needs workflow model change |
+| vibefeld-h0ck | No context on claim | Open - needs CLI wiring |
+| vibefeld-heir | No mark-complete | Open - may close after 9jgk |
+| vibefeld-9ayl | Claim contention | Open - needs bulk refinement |
 
-### The 6 P0 Issues (Must Fix First)
+### Validation Invariant Progress
+| Requirement | Status |
+|-------------|--------|
+| 1. All challenges resolved/withdrawn/superseded | **FIXED** (this session) |
+| 2. Resolved challenges have validated addressed_by | Partial - checks state but not addressed_by |
+| 3. All children validated OR admitted | **FIXED** (this session) |
+| 4. All scope entries closed | Not implemented |
 
-| Issue | Problem | Fix |
-|-------|---------|-----|
-| vibefeld-9jgk | Job detection inverted | Breadth-first model |
-| vibefeld-h0ck | No context on claim | Wire RenderProverContext() |
-| vibefeld-heir | No mark-complete | May close after 9jgk |
-| vibefeld-9ayl | Claim contention | Bulk refinement |
-| vibefeld-y0pf | Rejects admitted children | Fix line 47 condition |
-| vibefeld-ru2t | No challenge check | Add validation |
+## Test Status
 
-### Dependency Chain
-
+All tests pass:
 ```
-vibefeld-9jgk (job detection) ← CRITICAL PATH
-    ↓
-vibefeld-9tth (E2E test)
-    ↓
-vibefeld-wzwp (full E2E suite) ← also needs y0pf, ru2t
-    ↓
-vibefeld-om5f (Dobinski regression)
+ok  github.com/tobias/vibefeld/cmd/af
+ok  github.com/tobias/vibefeld/internal/node
+ok  github.com/tobias/vibefeld/internal/render
+... (all packages pass)
 ```
 
-## Next Session: Recommended Action
-
-### Option A: Fix Workflow Model (Recommended)
-Start with vibefeld-9jgk - redefine verifier/prover job detection:
-```go
-// New verifier job: has statement, pending, not claimed, no unresolved challenges
-// New prover job: has unaddressed challenges requiring response
-```
-This unlocks everything else.
-
-### Option B: Quick Win - Wire Rendering
-If workflow decision needs more thought, can wire existing infrastructure:
-- `af claim` → call `render.RenderProverContext()`
-- Error handling → call `render.FormatCLI()`
-
-This improves UX without model change.
-
-## Architectural Decision Confirmed
-
-**Breadth-first adversarial model is correct.** Bottom-up allows unchecked expansion. Plan documents full rationale.
+Build succeeds: `go build ./cmd/af`
 
 ## Files Changed This Session
 
-- **Created**: `docs/af-remediation-plan.md`
+- **Modified**: `cmd/af/get.go`, `cmd/af/get_test.go`
+- **Modified**: `internal/node/validate_invariant.go`, `internal/node/validate_invariant_test.go`
+- **Modified**: `internal/render/jobs.go`, `internal/render/jobs_test.go`
+- **Created**: `docs/challenge-workflow.md`
 - **Updated**: `handoff.md`
+
+## Next Steps
+
+1. **vibefeld-9jgk** (P0): Fix job detection inversion (breadth-first model)
+   - This is the critical path blocker for the remediation plan
+
+2. **vibefeld-h0ck** (P0): Wire render context to claim command
+   - Use existing `RenderProverContext()` / `RenderVerifierContext()`
+
+3. **vibefeld-ru2t follow-up**: Add `addressed_by` validation
+   - Currently checks challenge state but not that resolved challenges have validated addressed_by nodes
 
 ## Session History
 
-**Session 37:** Deep architectural analysis → remediation plan → 8 new issues → 12 updated
-**Session 36:** Dobinski proof attempt → discovered fundamental flaws → 46 issues filed → 1/10 rating
+**Session 38:** 4 parallel bug fixes (2 P0, 3 P1), 366 lines added, 58 deleted
+**Session 37:** Deep architectural analysis + remediation plan + 8 new issues
+**Session 36:** Dobinski proof attempt → discovered fundamental flaws → 46 issues filed
 **Session 35:** Fixed vibefeld-99ab - verifier jobs not showing for released refined nodes
-**Session 34:** √2 proof with adversarial agents + 5 improvement issues filed
-**Session 33:** 8 issues + readiness assessment + √2 proof demo + supervisor prompts
-**Session 32:** Fixed init bug across 14 test files, created 2 issues for remaining failures

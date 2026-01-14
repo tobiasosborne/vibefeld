@@ -1132,3 +1132,63 @@ func TestGetCmd_OutputContainsNodeID(t *testing.T) {
 		t.Errorf("expected output to contain node ID '1.1.2', got: %q", output)
 	}
 }
+
+// TestGetCmd_SingleNodeShowsFullTextByDefault tests that single node output shows
+// full text by default (not truncated). This is the expected behavior for viewing
+// a single node - users should not need --full flag to see complete statement.
+func TestGetCmd_SingleNodeShowsFullTextByDefault(t *testing.T) {
+	tmpDir, cleanup := setupGetTest(t)
+	defer cleanup()
+
+	// Create a node with a long statement that would be truncated at 60 chars
+	longStatement := "This is a very long statement that exceeds the sixty character limit and should be shown in full by default when viewing a single node"
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodeID, _ := types.Parse("1.1")
+	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, longStatement, schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := executeGetCommand(t, "1.1", "-d", tmpDir)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// The full statement should be present, not truncated with "..."
+	if !strings.Contains(output, longStatement) {
+		t.Errorf("expected single node output to contain full statement, got: %q", output)
+	}
+
+	// Should NOT contain truncation ellipsis for the statement
+	if strings.Contains(output, "sixty character limit...") {
+		t.Errorf("single node output should NOT truncate statement by default, got: %q", output)
+	}
+}
+
+// TestGetCmd_SingleNodeShowsVerboseFieldsByDefault tests that single node view
+// shows verbose fields (type, workflow, epistemic state, etc.) by default.
+func TestGetCmd_SingleNodeShowsVerboseFieldsByDefault(t *testing.T) {
+	tmpDir, cleanup := setupGetTestWithNode(t)
+	defer cleanup()
+
+	output, err := executeGetCommand(t, "1", "-d", tmpDir)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Default single node output should include verbose fields
+	// These fields are only shown in verbose output, not in the truncated summary
+	if !strings.Contains(strings.ToLower(output), "type:") {
+		t.Errorf("expected single node output to contain 'Type:' field by default, got: %q", output)
+	}
+	if !strings.Contains(strings.ToLower(output), "workflow:") {
+		t.Errorf("expected single node output to contain 'Workflow:' field by default, got: %q", output)
+	}
+	if !strings.Contains(strings.ToLower(output), "epistemic:") {
+		t.Errorf("expected single node output to contain 'Epistemic:' field by default, got: %q", output)
+	}
+}

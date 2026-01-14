@@ -64,12 +64,13 @@ func RenderJobs(jobList *jobs.JobResult) string {
 }
 
 // renderJobNode renders a single job node entry.
+// Note: Statements are NOT truncated because mathematical proofs require precision.
+// Agents need the full statement text to work with.
 func renderJobNode(sb *strings.Builder, n *node.Node) {
-	// Sanitize and truncate statement
+	// Sanitize statement (remove control chars, normalize whitespace) but do NOT truncate
 	stmt := sanitizeStatement(n.Statement)
-	stmt = truncateStatement(stmt, maxStatementLen)
 
-	// Render node line with ID, type, and statement
+	// Render node line with ID, type, and full statement
 	sb.WriteString(fmt.Sprintf("  [%s] %s: %q\n", n.ID.String(), string(n.Type), stmt))
 
 	// Show claimed-by info for verifier jobs
