@@ -9,6 +9,9 @@ import (
 	"testing"
 
 	"github.com/tobias/vibefeld/internal/errors"
+	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/types"
 )
 
 // JSONOutput represents the expected JSON structure for testing round-trips
@@ -752,5 +755,141 @@ func TestFormatJSON_RecoveryArrayType(t *testing.T) {
 				t.Errorf("Recovery is type %T, want array", v)
 			}
 		})
+	}
+}
+
+// TestRenderNodeJSON_NoHTMLEscape tests that HTML characters are not escaped in JSON output.
+// This addresses issue vibefeld-9cd0 where 'k>=0' was being rendered as 'k\u003e=0'.
+func TestRenderNodeJSON_NoHTMLEscape(t *testing.T) {
+	tests := []struct {
+		name      string
+		statement string
+		wantIn    string   // substring that should be present in output
+		wantNotIn []string // substrings that should NOT be present (escaped forms)
+	}{
+		{
+			name:      "greater than symbol",
+			statement: "k>=0",
+			wantIn:    `"statement":"k>=0"`,
+			wantNotIn: []string{`\u003e`, `\u003E`},
+		},
+		{
+			name:      "less than symbol",
+			statement: "x<10",
+			wantIn:    `"statement":"x<10"`,
+			wantNotIn: []string{`\u003c`, `\u003C`},
+		},
+		{
+			name:      "ampersand symbol",
+			statement: "a && b",
+			wantIn:    `"statement":"a && b"`,
+			wantNotIn: []string{`\u0026`},
+		},
+		{
+			name:      "mixed HTML characters",
+			statement: "x<10 && y>5",
+			wantIn:    `"statement":"x<10 && y>5"`,
+			wantNotIn: []string{`\u003c`, `\u003e`, `\u0026`},
+		},
+		{
+			name:      "HTML tag-like content",
+			statement: "for all <T> where T implements Comparable",
+			wantIn:    "<T>",
+			wantNotIn: []string{`\u003c`, `\u003e`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeID, err := types.Parse("1")
+			if err != nil {
+				t.Fatalf("failed to parse node ID: %v", err)
+			}
+			n, err := node.NewNode(nodeID, schema.NodeTypeClaim, tt.statement, schema.InferenceModusPonens)
+			if err != nil {
+				t.Fatalf("failed to create node: %v", err)
+			}
+
+			result := RenderNodeJSON(n)
+
+			// Should be valid JSON
+			var parsed map[string]interface{}
+			if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+				t.Fatalf("RenderNodeJSON produced invalid JSON: %v\nOutput: %s", err, result)
+			}
+
+			// Should contain the unescaped version
+			if !strings.Contains(result, tt.wantIn) {
+				t.Errorf("JSON output missing expected content %q\ngot: %s", tt.wantIn, result)
+			}
+
+			// Should NOT contain escaped forms
+			for _, notWant := range tt.wantNotIn {
+				if strings.Contains(result, notWant) {
+					t.Errorf("JSON output should not contain escaped form %q\ngot: %s", notWant, result)
+				}
+			}
+
+			// Verify the statement round-trips correctly
+			if statement, ok := parsed["statement"].(string); ok {
+				if statement != tt.statement {
+					t.Errorf("Statement = %q, want %q", statement, tt.statement)
+				}
+			} else {
+				t.Error("Missing or invalid statement field in JSON")
+			}
+		})
+	}
+}
+
+// TestRenderNodeListJSON_NoHTMLEscape tests that HTML characters are not escaped in node list JSON.
+func TestRenderNodeListJSON_NoHTMLEscape(t *testing.T) {
+	nodeID1, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("failed to parse node ID: %v", err)
+	}
+	nodeID2, err := types.Parse("1.1")
+	if err != nil {
+		t.Fatalf("failed to parse node ID: %v", err)
+	}
+
+	n1, err := node.NewNode(nodeID1, schema.NodeTypeClaim, "x >= 0", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("failed to create node 1: %v", err)
+	}
+	n2, err := node.NewNode(nodeID2, schema.NodeTypeClaim, "y < 10 && z > 0", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("failed to create node 2: %v", err)
+	}
+
+	nodes := []*node.Node{n1, n2}
+
+	result := RenderNodeListJSON(nodes)
+
+	// Should be valid JSON
+	var parsed []map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatalf("RenderNodeListJSON produced invalid JSON: %v\nOutput: %s", err, result)
+	}
+
+	// Should NOT contain any Unicode-escaped HTML characters
+	escapedForms := []string{`\u003c`, `\u003e`, `\u0026`, `\u003C`, `\u003E`}
+	for _, escaped := range escapedForms {
+		if strings.Contains(result, escaped) {
+			t.Errorf("JSON output should not contain escaped form %q\ngot: %s", escaped, result)
+		}
+	}
+
+	// Verify statements round-trip correctly
+	if len(parsed) != 2 {
+		t.Fatalf("Expected 2 nodes, got %d", len(parsed))
+	}
+
+	if statement := parsed[0]["statement"].(string); statement != "x >= 0" {
+		t.Errorf("Node 1 statement = %q, want %q", statement, "x >= 0")
+	}
+
+	if statement := parsed[1]["statement"].(string); statement != "y < 10 && z > 0" {
+		t.Errorf("Node 2 statement = %q, want %q", statement, "y < 10 && z > 0")
 	}
 }

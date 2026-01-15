@@ -3,6 +3,7 @@
 package render
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -11,6 +12,24 @@ import (
 	"github.com/tobias/vibefeld/internal/state"
 	"github.com/tobias/vibefeld/internal/types"
 )
+
+// marshalJSON marshals v to JSON without escaping HTML characters.
+// This prevents characters like <, >, and & from being escaped to
+// \u003c, \u003e, and \u0026.
+func marshalJSON(v interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	// Encode adds a trailing newline, so remove it
+	b := buf.Bytes()
+	if len(b) > 0 && b[len(b)-1] == '\n' {
+		b = b[:len(b)-1]
+	}
+	return b, nil
+}
 
 // JSONNode represents a node in JSON format.
 type JSONNode struct {
@@ -73,7 +92,7 @@ func RenderNodeJSON(n *node.Node) string {
 
 	jn := nodeToJSON(n)
 
-	data, err := json.Marshal(jn)
+	data, err := marshalJSON(jn)
 	if err != nil {
 		// Fallback to minimal JSON on marshal error
 		return fmt.Sprintf(`{"id":%q,"error":"failed to marshal node"}`, n.ID.String())
@@ -96,7 +115,7 @@ func RenderNodeListJSON(nodes []*node.Node) string {
 		}
 	}
 
-	data, err := json.Marshal(jsonNodes)
+	data, err := marshalJSON(jsonNodes)
 	if err != nil {
 		return "[]"
 	}
@@ -119,7 +138,7 @@ func RenderStatusJSON(s *state.State) string {
 
 	status := statusToJSON(s, nodes)
 
-	data, err := json.Marshal(status)
+	data, err := marshalJSON(status)
 	if err != nil {
 		return `{"error":"failed to marshal status"}`
 	}
@@ -158,7 +177,7 @@ func RenderJobsJSON(jobList *jobs.JobResult) string {
 		})
 	}
 
-	data, err := json.Marshal(jl)
+	data, err := marshalJSON(jl)
 	if err != nil {
 		return `{"prover_jobs":[],"verifier_jobs":[]}`
 	}
@@ -322,7 +341,7 @@ func RenderProverContextJSON(s *state.State, nodeID types.NodeID) string {
 	ctx["siblings"] = siblings
 	ctx["children"] = children
 
-	data, err := json.Marshal(ctx)
+	data, err := marshalJSON(ctx)
 	if err != nil {
 		return fmt.Sprintf(`{"error":"failed to marshal context for node %s"}`, nodeID.String())
 	}
@@ -355,7 +374,7 @@ func RenderVerifierContextJSON(s *state.State, challenge *node.Challenge) string
 		ctx["node"] = nodeToJSON(n)
 	}
 
-	data, err := json.Marshal(ctx)
+	data, err := marshalJSON(ctx)
 	if err != nil {
 		return `{"error":"failed to marshal verifier context"}`
 	}
