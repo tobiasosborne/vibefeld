@@ -37,7 +37,7 @@ func TestGetLockInfo_Valid(t *testing.T) {
 				t.Fatalf("types.Parse(%q) unexpected error: %v", tt.nodeID, err)
 			}
 
-			lk, err := lock.NewLock(nodeID, tt.owner, tt.timeout)
+			lk, err := lock.NewClaimLock(nodeID, tt.owner, tt.timeout)
 			if err != nil {
 				t.Fatalf("NewLock() unexpected error: %v", err)
 			}
@@ -114,7 +114,7 @@ func TestLockInfo_RemainingTime(t *testing.T) {
 				t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 			}
 
-			lk, err := lock.NewLock(nodeID, "agent-001", tt.timeout)
+			lk, err := lock.NewClaimLock(nodeID, "agent-001", tt.timeout)
 			if err != nil {
 				t.Fatalf("NewLock() unexpected error: %v", err)
 			}
@@ -157,7 +157,7 @@ func TestLockInfo_RemainingTime_Expired(t *testing.T) {
 	}
 
 	// Create lock with very short timeout
-	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Nanosecond)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestLockInfo_Stringer(t *testing.T) {
 				t.Fatalf("types.Parse(%q) unexpected error: %v", tt.nodeID, err)
 			}
 
-			lk, err := lock.NewLock(nodeID, tt.owner, tt.timeout)
+			lk, err := lock.NewClaimLock(nodeID, tt.owner, tt.timeout)
 			if err != nil {
 				t.Fatalf("NewLock() unexpected error: %v", err)
 			}
@@ -252,7 +252,7 @@ func TestLockInfo_Stringer_Expired(t *testing.T) {
 	}
 
 	// Create lock with very short timeout
-	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Nanosecond)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestLockInfo_JSON(t *testing.T) {
 				t.Fatalf("types.Parse(%q) unexpected error: %v", tt.nodeID, err)
 			}
 
-			lk, err := lock.NewLock(nodeID, tt.owner, 5*time.Minute)
+			lk, err := lock.NewClaimLock(nodeID, tt.owner, 5*time.Minute)
 			if err != nil {
 				t.Fatalf("NewLock() unexpected error: %v", err)
 			}
@@ -345,7 +345,7 @@ func TestLockInfo_JSON_Roundtrip(t *testing.T) {
 		t.Fatalf("types.Parse(\"1.2.3\") unexpected error: %v", err)
 	}
 
-	lk, err := lock.NewLock(nodeID, "roundtrip-agent", 30*time.Minute)
+	lk, err := lock.NewClaimLock(nodeID, "roundtrip-agent", 30*time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestLockInfo_JSON_ExpiredLock(t *testing.T) {
 	}
 
 	// Create lock with very short timeout
-	lk, err := lock.NewLock(nodeID, "expired-agent", 1*time.Nanosecond)
+	lk, err := lock.NewClaimLock(nodeID, "expired-agent", 1*time.Nanosecond)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -445,7 +445,7 @@ func TestGetLockInfo_PreservesData(t *testing.T) {
 	owner := "test-preservation-agent"
 	timeout := 15 * time.Minute
 
-	lk, err := lock.NewLock(nodeID, owner, timeout)
+	lk, err := lock.NewClaimLock(nodeID, owner, timeout)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -476,7 +476,7 @@ func TestGetLockInfo_MultipleCalls(t *testing.T) {
 		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 	}
 
-	lk, err := lock.NewLock(nodeID, "multi-call-agent", 1*time.Hour)
+	lk, err := lock.NewClaimLock(nodeID, "multi-call-agent", 1*time.Hour)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}

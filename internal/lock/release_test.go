@@ -36,7 +36,7 @@ func TestRelease_Valid(t *testing.T) {
 				t.Fatalf("types.Parse(%q) unexpected error: %v", tt.nodeID, err)
 			}
 
-			lk, err := lock.NewLock(nodeID, tt.owner, tt.timeout)
+			lk, err := lock.NewClaimLock(nodeID, tt.owner, tt.timeout)
 			if err != nil {
 				t.Fatalf("NewLock() unexpected error: %v", err)
 			}
@@ -74,7 +74,7 @@ func TestRelease_NotOwner(t *testing.T) {
 				t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 			}
 
-			lk, err := lock.NewLock(nodeID, tt.lockOwner, 5*time.Minute)
+			lk, err := lock.NewClaimLock(nodeID, tt.lockOwner, 5*time.Minute)
 			if err != nil {
 				t.Fatalf("NewLock() unexpected error: %v", err)
 			}
@@ -96,7 +96,7 @@ func TestRelease_ExpiredLock(t *testing.T) {
 	}
 
 	// Create lock with very short timeout
-	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Nanosecond)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestRelease_ExpiredLock_NotOwner(t *testing.T) {
 	}
 
 	// Create lock with very short timeout
-	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Nanosecond)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestRelease_ExpiredLock_NotOwner(t *testing.T) {
 
 // TestRelease_NilLock verifies releasing nil lock handles gracefully
 func TestRelease_NilLock(t *testing.T) {
-	var lk *lock.Lock = nil
+	var lk *lock.ClaimLock = nil
 
 	// Releasing a nil lock should not panic and should return an error
 	// This uses the package-level Release function if it exists
@@ -172,7 +172,7 @@ func TestRelease_EmptyOwner(t *testing.T) {
 				t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 			}
 
-			lk, err := lock.NewLock(nodeID, "agent-001", 5*time.Minute)
+			lk, err := lock.NewClaimLock(nodeID, "agent-001", 5*time.Minute)
 			if err != nil {
 				t.Fatalf("NewLock() unexpected error: %v", err)
 			}
@@ -193,7 +193,7 @@ func TestRelease_DoubleRelease(t *testing.T) {
 		t.Fatalf("types.Parse(\"1.2\") unexpected error: %v", err)
 	}
 
-	lk, err := lock.NewLock(nodeID, "agent-001", 5*time.Minute)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 5*time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestRelease_TableDriven(t *testing.T) {
 				t.Fatalf("types.Parse(%q) unexpected error: %v", tt.nodeID, err)
 			}
 
-			lk, err := lock.NewLock(nodeID, tt.lockOwner, tt.timeout)
+			lk, err := lock.NewClaimLock(nodeID, tt.lockOwner, tt.timeout)
 			if err != nil {
 				t.Fatalf("NewLock() unexpected error: %v", err)
 			}
@@ -301,7 +301,7 @@ func TestRelease_PreservesLockInfo(t *testing.T) {
 		t.Fatalf("types.Parse(\"1.3.2\") unexpected error: %v", err)
 	}
 
-	lk, err := lock.NewLock(nodeID, "agent-owner", 1*time.Hour)
+	lk, err := lock.NewClaimLock(nodeID, "agent-owner", 1*time.Hour)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestRelease_AfterRefresh(t *testing.T) {
 		t.Fatalf("types.Parse(\"1.1\") unexpected error: %v", err)
 	}
 
-	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Minute)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -371,7 +371,7 @@ func TestRelease_ConcurrentAttempts(t *testing.T) {
 		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 	}
 
-	lk, err := lock.NewLock(nodeID, "agent-001", 1*time.Hour)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Hour)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestRelease_ErrorMessages(t *testing.T) {
 		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 	}
 
-	lk, err := lock.NewLock(nodeID, "agent-001", 5*time.Minute)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 5*time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -447,7 +447,7 @@ func TestReleaseFunc_EmptyOwner(t *testing.T) {
 		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 	}
 
-	lk, err := lock.NewLock(nodeID, "agent-001", 5*time.Minute)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 5*time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
@@ -466,7 +466,7 @@ func TestReleaseFunc_Valid(t *testing.T) {
 		t.Fatalf("types.Parse(\"1.2\") unexpected error: %v", err)
 	}
 
-	lk, err := lock.NewLock(nodeID, "prover-alpha", 10*time.Minute)
+	lk, err := lock.NewClaimLock(nodeID, "prover-alpha", 10*time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}

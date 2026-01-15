@@ -24,7 +24,7 @@ import (
 func createLockFile(t *testing.T, locksDir string, nodeID types.NodeID, owner string, timeout time.Duration) string {
 	t.Helper()
 
-	lk, err := lock.NewLock(nodeID, owner, timeout)
+	lk, err := lock.NewClaimLock(nodeID, owner, timeout)
 	if err != nil {
 		t.Fatalf("NewLock(%s, %s, %v) failed: %v", nodeID, owner, timeout, err)
 	}
@@ -48,7 +48,7 @@ func createStaleLockFile(t *testing.T, locksDir string, nodeID types.NodeID, own
 	t.Helper()
 
 	// Create lock with very short timeout
-	lk, err := lock.NewLock(nodeID, owner, 1*time.Nanosecond)
+	lk, err := lock.NewClaimLock(nodeID, owner, 1*time.Nanosecond)
 	if err != nil {
 		t.Fatalf("NewLock(%s, %s) failed: %v", nodeID, owner, err)
 	}
