@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/lemma"
+	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
@@ -66,9 +67,11 @@ Examples:
 }
 
 func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, inferenceStr, dir, format, childrenJSON string) error {
+	examples := render.GetExamples("af refine")
+
 	// Validate owner is not empty
 	if strings.TrimSpace(owner) == "" {
-		return fmt.Errorf("owner is required")
+		return render.MissingFlagError("af refine", "owner", examples)
 	}
 
 	// Check for mutually exclusive flags
@@ -76,17 +79,19 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 	hasChildren := strings.TrimSpace(childrenJSON) != ""
 
 	if hasStatement && hasChildren {
-		return fmt.Errorf("--statement and --children are mutually exclusive; use one or the other")
+		return render.NewUsageError("af refine",
+			"--statement and --children are mutually exclusive; use one or the other",
+			examples)
 	}
 
 	if !hasStatement && !hasChildren {
-		return fmt.Errorf("statement is required and cannot be empty")
+		return render.MissingFlagError("af refine", "statement", examples)
 	}
 
 	// Parse parent ID
 	parentID, err := types.Parse(parentIDStr)
 	if err != nil {
-		return fmt.Errorf("invalid parent ID: %v", err)
+		return render.InvalidNodeIDError("af refine", parentIDStr, examples)
 	}
 
 	// Create service
@@ -119,14 +124,13 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 	// Single-child mode (original behavior)
 	// Validate node type
 	if err := schema.ValidateNodeType(nodeTypeStr); err != nil {
-		validTypes := []string{"claim", "local_assume", "local_discharge", "case", "qed"}
-		return fmt.Errorf("invalid node type %q. Valid types: %s", nodeTypeStr, strings.Join(validTypes, ", "))
+		return render.InvalidValueError("af refine", "type", nodeTypeStr, render.ValidNodeTypes, examples)
 	}
 	nodeType := schema.NodeType(nodeTypeStr)
 
 	// Validate inference type
 	if err := schema.ValidateInference(inferenceStr); err != nil {
-		return fmt.Errorf("invalid justification type %q: %v", inferenceStr, err)
+		return render.InvalidValueError("af refine", "justification", inferenceStr, render.ValidInferenceTypes, examples)
 	}
 	inferenceType := schema.InferenceType(inferenceStr)
 
@@ -198,22 +202,30 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 // This uses the atomic RefineNodeBulk method to create all children in a single operation,
 // preventing race conditions where other agents could grab the node between individual refines.
 func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owner, childrenJSON, dir, format string, svc *service.ProofService, st *state.State) error {
+	examples := render.GetExamples("af refine")
+
 	// Parse children JSON
 	var children []childSpec
 	if err := json.Unmarshal([]byte(childrenJSON), &children); err != nil {
-		return fmt.Errorf("invalid JSON for --children: %v", err)
+		return render.NewUsageError("af refine",
+			fmt.Sprintf("invalid JSON for --children: %v", err),
+			[]string{"af refine 1 --owner agent1 --children '[{\"statement\":\"Step 1\"},{\"statement\":\"Step 2\",\"type\":\"case\"}]'"})
 	}
 
 	// Validate that children array is not empty
 	if len(children) == 0 {
-		return fmt.Errorf("--children requires at least one child specification")
+		return render.NewUsageError("af refine",
+			"--children requires at least one child specification",
+			examples)
 	}
 
 	// Convert to service.ChildSpec and validate each child specification
 	specs := make([]service.ChildSpec, len(children))
 	for i, child := range children {
 		if strings.TrimSpace(child.Statement) == "" {
-			return fmt.Errorf("child %d: statement is required and cannot be empty", i+1)
+			return render.NewUsageError("af refine",
+				fmt.Sprintf("child %d: statement is required and cannot be empty", i+1),
+				examples)
 		}
 
 		// Validate and apply default type
@@ -222,8 +234,8 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 			childType = "claim" // default
 		}
 		if err := schema.ValidateNodeType(childType); err != nil {
-			validTypes := []string{"claim", "local_assume", "local_discharge", "case", "qed"}
-			return fmt.Errorf("child %d: invalid node type %q. Valid types: %s", i+1, childType, strings.Join(validTypes, ", "))
+			return render.InvalidValueError("af refine", "type",
+				fmt.Sprintf("child %d: %s", i+1, childType), render.ValidNodeTypes, examples)
 		}
 
 		// Validate and apply default inference
@@ -232,7 +244,8 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 			childInference = "assumption" // default
 		}
 		if err := schema.ValidateInference(childInference); err != nil {
-			return fmt.Errorf("child %d: invalid justification type %q: %v", i+1, childInference, err)
+			return render.InvalidValueError("af refine", "justification",
+				fmt.Sprintf("child %d: %s", i+1, childInference), render.ValidInferenceTypes, examples)
 		}
 
 		// Validate definition citations in statement

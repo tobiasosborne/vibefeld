@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -35,11 +36,13 @@ Examples:
 }
 
 func runAccept(cmd *cobra.Command, args []string) error {
+	examples := render.GetExamples("af accept")
+
 	// Parse node ID
 	nodeIDStr := args[0]
 	nodeID, err := types.Parse(nodeIDStr)
 	if err != nil {
-		return fmt.Errorf("invalid node ID %q: %w", nodeIDStr, err)
+		return render.InvalidNodeIDError("af accept", nodeIDStr, examples)
 	}
 
 	// Get flags

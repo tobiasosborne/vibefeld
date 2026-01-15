@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/ledger"
+	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
@@ -48,11 +49,13 @@ Examples:
 
 // runChallenge executes the challenge command.
 func runChallenge(cmd *cobra.Command, args []string) error {
+	examples := render.GetExamples("af challenge")
+
 	// Parse node ID from positional argument
 	nodeIDStr := args[0]
 	nodeID, err := types.Parse(nodeIDStr)
 	if err != nil {
-		return fmt.Errorf("invalid node ID %q: %w", nodeIDStr, err)
+		return render.InvalidNodeIDError("af challenge", nodeIDStr, examples)
 	}
 
 	// Get flags
@@ -75,13 +78,13 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 
 	// Validate reason is provided and not empty/whitespace
 	if strings.TrimSpace(reason) == "" {
-		return fmt.Errorf("reason is required and cannot be empty")
+		return render.MissingFlagError("af challenge", "reason", examples)
 	}
 
 	// Validate target if provided and non-empty
 	if target != "" {
 		if err := schema.ValidateChallengeTarget(target); err != nil {
-			return fmt.Errorf("invalid target %q: %w", target, err)
+			return render.InvalidValueError("af challenge", "target", target, render.ValidChallengeTargets, examples)
 		}
 	}
 

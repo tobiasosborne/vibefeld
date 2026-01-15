@@ -449,6 +449,74 @@ func TestRefineMultiCmd_MissingStatement(t *testing.T) {
 	}
 }
 
+// TestRefineMultiCmd_EmptyStatement tests that children with empty statements fail.
+func TestRefineMultiCmd_EmptyStatement(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	// Children with empty statement should fail
+	childrenJSON := `[{"statement":""},{"statement":"Valid child"}]`
+
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--children", childrenJSON,
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for child with empty statement, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "statement") && !strings.Contains(errStr, "empty") {
+		t.Errorf("expected error about empty statement, got: %q", errStr)
+	}
+}
+
+// TestRefineMultiCmd_WhitespaceOnlyStatement tests that children with whitespace-only statements fail.
+func TestRefineMultiCmd_WhitespaceOnlyStatement(t *testing.T) {
+	tests := []struct {
+		name      string
+		statement string
+	}{
+		{"spaces only", "   "},
+		{"tabs only", "\t\t"},
+		{"newlines only", "\n\n"},
+		{"mixed whitespace", " \t\n "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, cleanup := setupRefineMultiTest(t)
+			defer cleanup()
+
+			cmd := newRefineMultiTestCmd()
+			// JSON-encode the whitespace properly
+			childSpec := []map[string]string{{"statement": tt.statement}}
+			childrenBytes, err := json.Marshal(childSpec)
+			if err != nil {
+				t.Fatalf("failed to marshal JSON: %v", err)
+			}
+
+			_, err = executeCommand(cmd, "refine", "1",
+				"--owner", "test-agent",
+				"--children", string(childrenBytes),
+				"--dir", tmpDir,
+			)
+
+			if err == nil {
+				t.Fatalf("expected error for whitespace-only statement, got nil")
+			}
+
+			errStr := err.Error()
+			if !strings.Contains(errStr, "statement") && !strings.Contains(errStr, "empty") {
+				t.Errorf("expected error about empty/whitespace statement, got: %q", errStr)
+			}
+		})
+	}
+}
+
 // TestRefineMultiCmd_InvalidChildType tests that invalid child type returns error.
 func TestRefineMultiCmd_InvalidChildType(t *testing.T) {
 	tmpDir, cleanup := setupRefineMultiTest(t)

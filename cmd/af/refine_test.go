@@ -262,6 +262,41 @@ func TestRefineCmd_EmptyStatement(t *testing.T) {
 	}
 }
 
+func TestRefineCmd_WhitespaceOnlyStatement(t *testing.T) {
+	tests := []struct {
+		name      string
+		statement string
+	}{
+		{"spaces only", "   "},
+		{"tabs only", "\t\t"},
+		{"newlines only", "\n\n"},
+		{"mixed whitespace", " \t\n "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, cleanup := setupRefineTest(t)
+			defer cleanup()
+
+			cmd := newRefineTestCmd()
+			_, err := executeCommand(cmd, "refine", "1",
+				"--owner", "test-agent",
+				"--statement", tt.statement,
+				"--dir", tmpDir,
+			)
+
+			if err == nil {
+				t.Fatalf("expected error for whitespace-only statement %q, got nil", tt.statement)
+			}
+
+			errStr := err.Error()
+			if !strings.Contains(errStr, "statement") && !strings.Contains(errStr, "empty") {
+				t.Errorf("expected error about empty/whitespace statement, got: %q", errStr)
+			}
+		})
+	}
+}
+
 func TestRefineCmd_InvalidNodeType(t *testing.T) {
 	tmpDir, cleanup := setupRefineTest(t)
 	defer cleanup()

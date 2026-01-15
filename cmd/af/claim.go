@@ -46,10 +46,12 @@ Examples:
 
 // runClaim executes the claim command.
 func runClaim(cmd *cobra.Command, args []string) error {
+	examples := render.GetExamples("af claim")
+
 	// Parse node ID from positional argument
 	nodeID, err := types.Parse(args[0])
 	if err != nil {
-		return fmt.Errorf("invalid node ID %q: %w", args[0], err)
+		return render.InvalidNodeIDError("af claim", args[0], examples)
 	}
 
 	// Get flags
@@ -61,24 +63,24 @@ func runClaim(cmd *cobra.Command, args []string) error {
 
 	// Validate owner is not empty or whitespace
 	if strings.TrimSpace(owner) == "" {
-		return fmt.Errorf("owner cannot be empty")
+		return render.EmptyValueError("af claim", "owner", examples)
 	}
 
 	// Parse timeout duration
 	timeout, err := time.ParseDuration(timeoutStr)
 	if err != nil {
-		return fmt.Errorf("invalid timeout %q: %w", timeoutStr, err)
+		return render.InvalidDurationError("af claim", "timeout", timeoutStr, examples)
 	}
 
 	// Validate timeout is positive
 	if timeout <= 0 {
-		return fmt.Errorf("timeout must be positive, got %v", timeout)
+		return render.NewUsageError("af claim", fmt.Sprintf("--timeout must be positive, got %v", timeout), examples)
 	}
 
 	// Validate role
 	role = strings.ToLower(strings.TrimSpace(role))
 	if role != "prover" && role != "verifier" {
-		return fmt.Errorf("invalid role %q: must be 'prover' or 'verifier'", role)
+		return render.InvalidValueError("af claim", "role", role, render.ValidRoles, examples)
 	}
 
 	// Create proof service

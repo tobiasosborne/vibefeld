@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -47,6 +48,8 @@ type releaseResult struct {
 }
 
 func runRelease(cmd *cobra.Command, args []string) error {
+	examples := render.GetExamples("af release")
+
 	// Get flags
 	owner, _ := cmd.Flags().GetString("owner")
 	dir, _ := cmd.Flags().GetString("dir")
@@ -54,17 +57,17 @@ func runRelease(cmd *cobra.Command, args []string) error {
 
 	// Validate owner is provided and not empty
 	if owner == "" {
-		return fmt.Errorf("--owner flag is required")
+		return render.MissingFlagError("af release", "owner", examples)
 	}
 	if strings.TrimSpace(owner) == "" {
-		return fmt.Errorf("owner cannot be empty")
+		return render.EmptyValueError("af release", "owner", examples)
 	}
 
 	// Parse node ID
 	nodeIDStr := args[0]
 	nodeID, err := types.Parse(nodeIDStr)
 	if err != nil {
-		return fmt.Errorf("invalid node ID %q: %v", nodeIDStr, err)
+		return render.InvalidNodeIDError("af release", nodeIDStr, examples)
 	}
 
 	// Create proof service
