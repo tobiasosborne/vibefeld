@@ -40,8 +40,8 @@ Child IDs are auto-generated (e.g., 1.1, 1.2 for children of node 1).
 
 Examples:
   af refine 1 --owner agent1 --statement "First subgoal"
-  af refine 1 --owner agent1 -s "Case 1" --type case --inference local_assume
-  af refine 1.1 -o agent1 -s "Deeper refinement" -T claim -i modus_ponens
+  af refine 1 --owner agent1 -s "Case 1" --type case --justification local_assume
+  af refine 1.1 -o agent1 -s "Deeper refinement" -t claim -j modus_ponens
   af refine 1 --owner agent1 --children '[{"statement":"Child 1"},{"statement":"Child 2","type":"case"}]'`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,9 +51,9 @@ Examples:
 
 	cmd.Flags().StringVarP(&owner, "owner", "o", "", "Agent/owner name (required, must match claim owner)")
 	cmd.Flags().StringVarP(&statement, "statement", "s", "", "Child node statement (required for single child)")
-	cmd.Flags().StringVarP(&nodeType, "type", "T", "claim", "Child node type (claim/local_assume/local_discharge/case/qed)")
-	cmd.Flags().StringVarP(&inference, "inference", "i", "assumption",
-		"Inference type\n"+
+	cmd.Flags().StringVarP(&nodeType, "type", "t", "claim", "Child node type (claim/local_assume/local_discharge/case/qed)")
+	cmd.Flags().StringVarP(&inference, "justification", "j", "assumption",
+		"Justification/inference type\n"+
 			"Valid: modus_ponens, modus_tollens, by_definition,\n"+
 			"assumption, local_assume, local_discharge, contradiction,\n"+
 			"universal_instantiation, existential_instantiation,\n"+
@@ -126,7 +126,7 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 
 	// Validate inference type
 	if err := schema.ValidateInference(inferenceStr); err != nil {
-		return fmt.Errorf("invalid inference type %q: %v", inferenceStr, err)
+		return fmt.Errorf("invalid justification type %q: %v", inferenceStr, err)
 	}
 	inferenceType := schema.InferenceType(inferenceStr)
 
@@ -232,7 +232,7 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 			childInference = "assumption" // default
 		}
 		if err := schema.ValidateInference(childInference); err != nil {
-			return fmt.Errorf("child %d: invalid inference type %q: %v", i+1, childInference, err)
+			return fmt.Errorf("child %d: invalid justification type %q: %v", i+1, childInference, err)
 		}
 
 		// Validate definition citations in statement

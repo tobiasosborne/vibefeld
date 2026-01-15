@@ -306,18 +306,18 @@ func TestRefineCmd_InvalidInferenceType(t *testing.T) {
 	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
 		"--statement", "Some statement",
-		"--inference", "invalid_inference",
+		"--justification", "invalid_justification",
 		"--dir", tmpDir,
 	)
 
 	if err == nil {
-		t.Fatal("expected error for invalid inference type, got nil")
+		t.Fatal("expected error for invalid justification type, got nil")
 	}
 
 	errStr := err.Error()
-	// Should mention the invalid inference
-	if !strings.Contains(errStr, "inference") && !strings.Contains(errStr, "invalid") {
-		t.Errorf("expected error about invalid inference type, got: %q", errStr)
+	// Should mention the invalid justification
+	if !strings.Contains(errStr, "justification") && !strings.Contains(errStr, "invalid") {
+		t.Errorf("expected error about invalid justification type, got: %q", errStr)
 	}
 }
 
@@ -533,7 +533,7 @@ func TestRefineCmd_WithValidInferenceTypes(t *testing.T) {
 			output, err := executeCommand(cmd, "refine", "1",
 				"--owner", "test-agent",
 				"--statement", "Statement with "+inference,
-				"--inference", inference,
+				"--justification", inference,
 				"--dir", tmpDir,
 			)
 
@@ -622,8 +622,8 @@ func TestRefineCmd_ShortFlags(t *testing.T) {
 	output, err := executeCommand(cmd, "refine", "1",
 		"-o", "test-agent",
 		"-s", "Short flag statement",
-		"-T", "claim",
-		"-i", "assumption",
+		"-t", "claim",
+		"-j", "assumption",
 		"-d", tmpDir,
 	)
 
