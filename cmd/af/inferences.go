@@ -15,10 +15,10 @@ func newInferencesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "inferences",
 		Short: "List all valid inference types",
-		Long: `List all valid inference types for use with 'af refine -i TYPE'.
+		Long: `List all valid inference types for use with 'af refine -j TYPE'.
 
 Inference types are the logical rules used to justify proof steps. Each
-inference type has an ID (used with -i flag), a human-readable name, and
+inference type has an ID (used with -j flag), a human-readable name, and
 a logical form showing its structure.
 
 Examples:
@@ -64,7 +64,7 @@ func runInferences(cmd *cobra.Command, args []string) error {
 	// Add next steps
 	fmt.Fprintln(cmd.OutOrStdout())
 	fmt.Fprintln(cmd.OutOrStdout(), "Next steps:")
-	fmt.Fprintln(cmd.OutOrStdout(), "  af refine -i <type> ...  - Use an inference type in a refinement")
+	fmt.Fprintln(cmd.OutOrStdout(), "  af refine -j <type> ...  - Use an inference type in a refinement")
 
 	return nil
 }

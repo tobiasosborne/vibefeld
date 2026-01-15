@@ -15,7 +15,7 @@ func newTypesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "types",
 		Short: "List valid node types for proof refinement",
-		Long: `List all valid node types that can be used with 'af refine -T TYPE'.
+		Long: `List all valid node types that can be used with 'af refine -t TYPE'.
 
 Node types define the role of each step in a proof:
 
@@ -115,7 +115,7 @@ func outputTypesText(cmd *cobra.Command, nodeTypes []schema.NodeTypeInfo) error 
 
 	fmt.Fprintln(cmd.OutOrStdout())
 	fmt.Fprintln(cmd.OutOrStdout(), "Usage:")
-	fmt.Fprintln(cmd.OutOrStdout(), "  af refine -T <type> <node> <statement>")
+	fmt.Fprintln(cmd.OutOrStdout(), "  af refine -t <type> <node> <statement>")
 
 	return nil
 }
