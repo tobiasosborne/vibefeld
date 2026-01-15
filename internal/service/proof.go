@@ -516,6 +516,11 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 		return errors.New("node not found")
 	}
 
+	// Validate epistemic state transition (only pending -> validated allowed)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
+		return err
+	}
+
 	// Get ledger and append validation event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
@@ -544,6 +549,11 @@ func (s *ProofService) AdmitNode(id types.NodeID) error {
 	n := st.GetNode(id)
 	if n == nil {
 		return errors.New("node not found")
+	}
+
+	// Validate epistemic state transition (only pending -> admitted allowed)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicAdmitted); err != nil {
+		return err
 	}
 
 	// Get ledger and append admit event with CAS
@@ -576,6 +586,11 @@ func (s *ProofService) RefuteNode(id types.NodeID) error {
 		return errors.New("node not found")
 	}
 
+	// Validate epistemic state transition (only pending -> refuted allowed)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicRefuted); err != nil {
+		return err
+	}
+
 	// Get ledger and append refute event with CAS
 	ldg, err := s.getLedger()
 	if err != nil {
@@ -604,6 +619,11 @@ func (s *ProofService) ArchiveNode(id types.NodeID) error {
 	n := st.GetNode(id)
 	if n == nil {
 		return errors.New("node not found")
+	}
+
+	// Validate epistemic state transition (only pending -> archived allowed)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicArchived); err != nil {
+		return err
 	}
 
 	// Get ledger and append archive event with CAS
