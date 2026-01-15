@@ -16,9 +16,9 @@ type LockInfo struct {
 	IsExpired bool          `json:"is_expired"`
 }
 
-// GetLockInfo retrieves lock information from a Lock.
+// GetLockInfo retrieves lock information from a ClaimLock.
 // Returns an error if the lock is nil.
-func GetLockInfo(lk *Lock) (*LockInfo, error) {
+func GetLockInfo(lk *ClaimLock) (*LockInfo, error) {
 	if lk == nil {
 		return nil, errors.New("lock is nil")
 	}
@@ -38,7 +38,7 @@ func GetLockInfo(lk *Lock) (*LockInfo, error) {
 }
 
 // Info returns lock information for this lock.
-func (l *Lock) Info() (*LockInfo, error) {
+func (l *ClaimLock) Info() (*LockInfo, error) {
 	return GetLockInfo(l)
 }
 
@@ -49,6 +49,6 @@ func (li *LockInfo) String() string {
 		status = "expired"
 	}
 
-	return fmt.Sprintf("Lock{node=%s, owner=%s, status=%s, remaining=%s}",
+	return fmt.Sprintf("ClaimLock{node=%s, owner=%s, status=%s, remaining=%s}",
 		li.NodeID, li.Owner, status, li.Remaining.Round(time.Millisecond))
 }

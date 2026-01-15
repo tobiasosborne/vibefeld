@@ -29,7 +29,7 @@ var ErrAlreadyReleased = errors.New("lock already released")
 // - the lock has already been released
 //
 // This method is thread-safe.
-func (l *Lock) Release(owner string) error {
+func (l *ClaimLock) Release(owner string) error {
 	// Validate owner is not empty or whitespace
 	if owner == "" || strings.TrimSpace(owner) == "" {
 		return ErrEmptyOwner
@@ -65,7 +65,7 @@ func (l *Lock) Release(owner string) error {
 // - owner does not match the lock's owner
 // - the lock has expired
 // - the lock has already been released
-func Release(l *Lock, owner string) error {
+func Release(l *ClaimLock, owner string) error {
 	if l == nil {
 		return ErrNilLock
 	}
