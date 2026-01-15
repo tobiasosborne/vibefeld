@@ -28,12 +28,20 @@ This is a verifier action that identifies an issue with a node's
 statement, inference, context, dependencies, scope, or other aspect.
 The prover must address the challenge before the node can be validated.
 
+Severity levels:
+  critical - Fundamental error that must be fixed (blocks acceptance)
+  major    - Significant issue that should be addressed (blocks acceptance)
+  minor    - Minor issue that could be improved (does NOT block acceptance)
+  note     - Clarification request or suggestion (does NOT block acceptance)
+
 Valid targets: statement, inference, context, dependencies, scope,
                gap, type_error, domain, completeness
 
 Examples:
   af challenge 1 --reason "The inference is invalid"
   af challenge 1.2 --reason "Missing case" --target completeness
+  af challenge 1 --severity critical --reason "This is fundamentally wrong"
+  af challenge 1 --severity note --reason "Consider clarifying this step"
   af challenge 1 -r "Statement is unclear" -t statement -d ./proof`,
 		Args: cobra.ExactArgs(1),
 		RunE: runChallenge,
@@ -43,6 +51,7 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
 	cmd.Flags().StringP("target", "t", "statement", "Challenge target aspect")
 	cmd.Flags().StringP("reason", "r", "", "Reason for the challenge (required)")
+	cmd.Flags().StringP("severity", "s", "major", "Challenge severity (critical, major, minor, note)")
 
 	return cmd
 }
@@ -75,6 +84,10 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	severity, err := cmd.Flags().GetString("severity")
+	if err != nil {
+		return err
+	}
 
 	// Validate reason is provided and not empty/whitespace
 	if strings.TrimSpace(reason) == "" {
@@ -86,6 +99,11 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 		if err := schema.ValidateChallengeTarget(target); err != nil {
 			return render.InvalidValueError("af challenge", "target", target, render.ValidChallengeTargets, examples)
 		}
+	}
+
+	// Validate severity
+	if err := schema.ValidateChallengeSeverity(severity); err != nil {
+		return render.InvalidValueError("af challenge", "severity", severity, []string{"critical", "major", "minor", "note"}, examples)
 	}
 
 	// Create proof service to check state
@@ -116,8 +134,8 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error accessing ledger: %w", err)
 	}
 
-	// Append challenge raised event
-	event := ledger.NewChallengeRaised(challengeID, nodeID, target, reason)
+	// Append challenge raised event with severity
+	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity)
 	_, err = ldg.Append(event)
 	if err != nil {
 		return fmt.Errorf("error raising challenge: %w", err)
@@ -126,19 +144,20 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 	// Output result based on format
 	switch strings.ToLower(format) {
 	case "json":
-		return outputChallengeJSON(cmd, nodeID, challengeID, target, reason)
+		return outputChallengeJSON(cmd, nodeID, challengeID, target, reason, severity)
 	default:
-		return outputChallengeText(cmd, nodeID, challengeID, target, reason)
+		return outputChallengeText(cmd, nodeID, challengeID, target, reason, severity)
 	}
 }
 
 // outputChallengeJSON outputs the challenge result in JSON format.
-func outputChallengeJSON(cmd *cobra.Command, nodeID types.NodeID, challengeID, target, reason string) error {
+func outputChallengeJSON(cmd *cobra.Command, nodeID types.NodeID, challengeID, target, reason, severity string) error {
 	result := map[string]interface{}{
 		"node_id":      nodeID.String(),
 		"challenge_id": challengeID,
 		"target":       target,
 		"reason":       reason,
+		"severity":     severity,
 		"status":       "raised",
 	}
 
@@ -152,11 +171,20 @@ func outputChallengeJSON(cmd *cobra.Command, nodeID types.NodeID, challengeID, t
 }
 
 // outputChallengeText outputs the challenge result in human-readable text format.
-func outputChallengeText(cmd *cobra.Command, nodeID types.NodeID, challengeID, target, reason string) error {
+func outputChallengeText(cmd *cobra.Command, nodeID types.NodeID, challengeID, target, reason, severity string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "Challenge raised against node %s\n", nodeID.String())
 	fmt.Fprintf(cmd.OutOrStdout(), "  Challenge ID: %s\n", challengeID)
 	fmt.Fprintf(cmd.OutOrStdout(), "  Target:       %s\n", target)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Severity:     %s\n", severity)
 	fmt.Fprintf(cmd.OutOrStdout(), "  Reason:       %s\n", reason)
+
+	// Add note about whether this blocks acceptance
+	if schema.SeverityBlocksAcceptance(schema.ChallengeSeverity(severity)) {
+		fmt.Fprintln(cmd.OutOrStdout(), "  [This challenge blocks acceptance]")
+	} else {
+		fmt.Fprintln(cmd.OutOrStdout(), "  [This challenge does NOT block acceptance]")
+	}
+
 	fmt.Fprintln(cmd.OutOrStdout())
 	fmt.Fprintln(cmd.OutOrStdout(), "Next steps:")
 	fmt.Fprintln(cmd.OutOrStdout(), "  af resolve-challenge  - Resolve this challenge with an explanation")

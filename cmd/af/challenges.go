@@ -174,8 +174,8 @@ func renderChallengesText(challenges []*state.Challenge) string {
 	var sb strings.Builder
 
 	// Header
-	sb.WriteString(fmt.Sprintf("%-16s %-10s %-12s %-14s %s\n",
-		"CHALLENGE", "NODE", "STATUS", "TARGET", "REASON"))
+	sb.WriteString(fmt.Sprintf("%-16s %-10s %-12s %-10s %-14s %s\n",
+		"CHALLENGE", "NODE", "STATUS", "SEVERITY", "TARGET", "REASON"))
 
 	// Rows
 	for _, c := range challenges {
@@ -185,14 +185,20 @@ func renderChallengesText(challenges []*state.Challenge) string {
 			displayID = displayID[:14]
 		}
 
-		// Truncate reason for display (show first 40 chars)
+		// Truncate reason for display (show first 35 chars to make room for severity)
 		displayReason := c.Reason
-		if len(displayReason) > 40 {
-			displayReason = displayReason[:37] + "..."
+		if len(displayReason) > 35 {
+			displayReason = displayReason[:32] + "..."
 		}
 
-		sb.WriteString(fmt.Sprintf("%-16s %-10s %-12s %-14s %s\n",
-			displayID, c.NodeID.String(), c.Status, c.Target, displayReason))
+		// Default severity to "major" if not set (backward compatibility)
+		severity := c.Severity
+		if severity == "" {
+			severity = "major"
+		}
+
+		sb.WriteString(fmt.Sprintf("%-16s %-10s %-12s %-10s %-14s %s\n",
+			displayID, c.NodeID.String(), c.Status, severity, c.Target, displayReason))
 	}
 
 	return sb.String()
@@ -200,12 +206,13 @@ func renderChallengesText(challenges []*state.Challenge) string {
 
 // challengeJSON is the JSON representation of a challenge.
 type challengeJSON struct {
-	ID      string `json:"id"`
-	NodeID  string `json:"node_id"`
-	Status  string `json:"status"`
-	Target  string `json:"target"`
-	Reason  string `json:"reason"`
-	Created string `json:"created,omitempty"`
+	ID       string `json:"id"`
+	NodeID   string `json:"node_id"`
+	Status   string `json:"status"`
+	Severity string `json:"severity"`
+	Target   string `json:"target"`
+	Reason   string `json:"reason"`
+	Created  string `json:"created,omitempty"`
 }
 
 // challengesResultJSON is the JSON wrapper for challenges output.
@@ -222,13 +229,19 @@ func renderChallengesJSON(challenges []*state.Challenge) string {
 	}
 
 	for _, c := range challenges {
+		// Default severity to "major" if not set (backward compatibility)
+		severity := c.Severity
+		if severity == "" {
+			severity = "major"
+		}
 		cj := challengeJSON{
-			ID:      c.ID,
-			NodeID:  c.NodeID.String(),
-			Status:  c.Status,
-			Target:  c.Target,
-			Reason:  c.Reason,
-			Created: c.Created.String(),
+			ID:       c.ID,
+			NodeID:   c.NodeID.String(),
+			Status:   c.Status,
+			Severity: severity,
+			Target:   c.Target,
+			Reason:   c.Reason,
+			Created:  c.Created.String(),
 		}
 		result.Challenges = append(result.Challenges, cj)
 	}
