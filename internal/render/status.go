@@ -117,7 +117,7 @@ func renderJobs(sb *strings.Builder, s *state.State, nodes []*node.Node) {
 
 		// Verifier jobs: claimed + pending + all children validated (or no children)
 		if n.WorkflowState == schema.WorkflowClaimed && n.EpistemicState == schema.EpistemicPending {
-			if allChildrenValidated(s, n, nodes) {
+			if s.AllChildrenValidated(n.ID) {
 				verifierJobs++
 			}
 		}
@@ -125,29 +125,6 @@ func renderJobs(sb *strings.Builder, s *state.State, nodes []*node.Node) {
 
 	sb.WriteString(fmt.Sprintf("  Prover: %d nodes awaiting refinement\n", proverJobs))
 	sb.WriteString(fmt.Sprintf("  Verifier: %d nodes ready for review\n", verifierJobs))
-}
-
-// allChildrenValidated returns true if all direct children of the node are validated.
-// Returns true if the node has no children.
-func allChildrenValidated(s *state.State, parent *node.Node, allNodes []*node.Node) bool {
-	parentStr := parent.ID.String()
-
-	for _, n := range allNodes {
-		// Check if n is a direct child of parent
-		p, hasParent := n.ID.Parent()
-		if !hasParent {
-			continue
-		}
-
-		if p.String() == parentStr {
-			if n.EpistemicState != schema.EpistemicValidated {
-				return false
-			}
-		}
-	}
-
-	// If we got here, either no children exist or all children are validated
-	return true
 }
 
 // renderLegend writes the legend section to the builder.

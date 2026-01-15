@@ -242,7 +242,7 @@ func statusToJSON(s *state.State, nodes []*node.Node) JSONStatus {
 			proverJobs++
 		}
 		if n.WorkflowState == "claimed" && n.EpistemicState == "pending" {
-			if allChildrenValidatedForJSON(s, n, nodes) {
+			if s.AllChildrenValidated(n.ID) {
 				verifierJobs++
 			}
 		}
@@ -266,26 +266,6 @@ func statusToJSON(s *state.State, nodes []*node.Node) JSONStatus {
 		},
 		Nodes: jsonNodes,
 	}
-}
-
-// allChildrenValidatedForJSON checks if all children are validated (helper for JSON rendering).
-func allChildrenValidatedForJSON(s *state.State, parent *node.Node, allNodes []*node.Node) bool {
-	parentStr := parent.ID.String()
-
-	for _, n := range allNodes {
-		p, hasParent := n.ID.Parent()
-		if !hasParent {
-			continue
-		}
-
-		if p.String() == parentStr {
-			if n.EpistemicState != "validated" {
-				return false
-			}
-		}
-	}
-
-	return true
 }
 
 // RenderProverContextJSON renders prover context as JSON.

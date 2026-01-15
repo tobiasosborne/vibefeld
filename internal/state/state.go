@@ -3,6 +3,7 @@ package state
 
 import (
 	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -186,4 +187,28 @@ func (s *State) LatestSeq() int {
 // This should only be called by the replay mechanism.
 func (s *State) SetLatestSeq(seq int) {
 	s.latestSeq = seq
+}
+
+// AllChildrenValidated returns true if all direct children of the node are validated.
+// Returns true if the node has no children.
+// This is used to determine if a node is ready for verifier review.
+func (s *State) AllChildrenValidated(parentID types.NodeID) bool {
+	parentStr := parentID.String()
+
+	for _, n := range s.nodes {
+		// Check if n is a direct child of parent
+		p, hasParent := n.ID.Parent()
+		if !hasParent {
+			continue
+		}
+
+		if p.String() == parentStr {
+			if n.EpistemicState != schema.EpistemicValidated {
+				return false
+			}
+		}
+	}
+
+	// If we got here, either no children exist or all children are validated
+	return true
 }
