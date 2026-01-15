@@ -534,3 +534,160 @@ func mustParseNodeID(t *testing.T, s string) types.NodeID {
 	}
 	return id
 }
+
+// TestAllChildrenValidated verifies the AllChildrenValidated method.
+func TestAllChildrenValidated(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupNodes     func(s *State, t *testing.T) types.NodeID // returns parent ID to check
+		expectedResult bool
+	}{
+		{
+			name: "no children returns true",
+			setupNodes: func(s *State, t *testing.T) types.NodeID {
+				parentID := mustParseNodeID(t, "1")
+				n, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create node: %v", err)
+				}
+				s.AddNode(n)
+				return parentID
+			},
+			expectedResult: true,
+		},
+		{
+			name: "all children validated returns true",
+			setupNodes: func(s *State, t *testing.T) types.NodeID {
+				// Add parent
+				parentID := mustParseNodeID(t, "1")
+				parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create parent: %v", err)
+				}
+				s.AddNode(parent)
+
+				// Add validated child 1.1
+				child1ID := mustParseNodeID(t, "1.1")
+				child1, err := node.NewNode(child1ID, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create child1: %v", err)
+				}
+				child1.EpistemicState = schema.EpistemicValidated
+				s.AddNode(child1)
+
+				// Add validated child 1.2
+				child2ID := mustParseNodeID(t, "1.2")
+				child2, err := node.NewNode(child2ID, schema.NodeTypeClaim, "Child 2", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create child2: %v", err)
+				}
+				child2.EpistemicState = schema.EpistemicValidated
+				s.AddNode(child2)
+
+				return parentID
+			},
+			expectedResult: true,
+		},
+		{
+			name: "one pending child returns false",
+			setupNodes: func(s *State, t *testing.T) types.NodeID {
+				// Add parent
+				parentID := mustParseNodeID(t, "1")
+				parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create parent: %v", err)
+				}
+				s.AddNode(parent)
+
+				// Add validated child 1.1
+				child1ID := mustParseNodeID(t, "1.1")
+				child1, err := node.NewNode(child1ID, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create child1: %v", err)
+				}
+				child1.EpistemicState = schema.EpistemicValidated
+				s.AddNode(child1)
+
+				// Add pending child 1.2 (default state)
+				child2ID := mustParseNodeID(t, "1.2")
+				child2, err := node.NewNode(child2ID, schema.NodeTypeClaim, "Child 2", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create child2: %v", err)
+				}
+				// child2 is pending by default
+				s.AddNode(child2)
+
+				return parentID
+			},
+			expectedResult: false,
+		},
+		{
+			name: "grandchildren do not affect parent check",
+			setupNodes: func(s *State, t *testing.T) types.NodeID {
+				// Add parent
+				parentID := mustParseNodeID(t, "1")
+				parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create parent: %v", err)
+				}
+				s.AddNode(parent)
+
+				// Add validated child 1.1
+				child1ID := mustParseNodeID(t, "1.1")
+				child1, err := node.NewNode(child1ID, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create child1: %v", err)
+				}
+				child1.EpistemicState = schema.EpistemicValidated
+				s.AddNode(child1)
+
+				// Add pending grandchild 1.1.1 (should not affect check on parent 1)
+				grandchildID := mustParseNodeID(t, "1.1.1")
+				grandchild, err := node.NewNode(grandchildID, schema.NodeTypeClaim, "Grandchild", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create grandchild: %v", err)
+				}
+				// grandchild is pending by default
+				s.AddNode(grandchild)
+
+				return parentID
+			},
+			expectedResult: true,
+		},
+		{
+			name: "admitted child returns false",
+			setupNodes: func(s *State, t *testing.T) types.NodeID {
+				// Add parent
+				parentID := mustParseNodeID(t, "1")
+				parent, err := node.NewNode(parentID, schema.NodeTypeClaim, "Parent", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create parent: %v", err)
+				}
+				s.AddNode(parent)
+
+				// Add admitted child (not validated)
+				child1ID := mustParseNodeID(t, "1.1")
+				child1, err := node.NewNode(child1ID, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+				if err != nil {
+					t.Fatalf("Failed to create child1: %v", err)
+				}
+				child1.EpistemicState = schema.EpistemicAdmitted
+				s.AddNode(child1)
+
+				return parentID
+			},
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewState()
+			parentID := tc.setupNodes(s, t)
+			got := s.AllChildrenValidated(parentID)
+			if got != tc.expectedResult {
+				t.Errorf("AllChildrenValidated(%s) = %v, want %v", parentID, got, tc.expectedResult)
+			}
+		})
+	}
+}
