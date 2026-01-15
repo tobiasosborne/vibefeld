@@ -31,6 +31,7 @@ func newRefineCmd() *cobra.Command {
 	var format string
 	var childrenJSON string
 	var depends string
+	var requiresValidated string
 
 	cmd := &cobra.Command{
 		Use:   "refine <parent-id> [statement]...",
@@ -47,6 +48,10 @@ This creates 1.1, 1.2, and 1.3 atomically.
 Use --depends to declare logical dependencies on other nodes (cross-references).
 This tracks which steps a proof relies on and validates they exist.
 
+Use --requires-validated to declare validation dependencies. A node with validation
+dependencies cannot be accepted until all its validation dependencies are validated.
+This enables cross-branch dependency tracking in proofs.
+
 Examples:
   af refine 1 --owner agent1 --statement "First subgoal"
   af refine 1 "Step A" "Step B" --owner agent1  (creates 1.1, 1.2)
@@ -54,7 +59,8 @@ Examples:
   af refine 1.1 -o agent1 -s "Deeper refinement" -t claim -j modus_ponens
   af refine 1 --owner agent1 --children '[{"statement":"Child 1"},{"statement":"Child 2","type":"case"}]'
   af refine 1 --owner agent1 -s "By step 1.1, we have..." --depends 1.1
-  af refine 1 --owner agent1 -s "Combining steps 1.1 and 1.2..." --depends 1.1,1.2`,
+  af refine 1 --owner agent1 -s "Combining steps 1.1 and 1.2..." --depends 1.1,1.2
+  af refine 1.5 --owner agent1 -s "Step 1.5" --requires-validated 1.1,1.2,1.3,1.4`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// args[0] is the parent ID, args[1:] are optional positional statements
@@ -62,7 +68,7 @@ Examples:
 			if len(args) > 1 {
 				positionalStatements = args[1:]
 			}
-			return runRefine(cmd, args[0], owner, statement, nodeType, inference, dir, format, childrenJSON, depends, positionalStatements)
+			return runRefine(cmd, args[0], owner, statement, nodeType, inference, dir, format, childrenJSON, depends, requiresValidated, positionalStatements)
 		},
 	}
 
@@ -79,11 +85,12 @@ Examples:
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format (text/json)")
 	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of child specifications (mutually exclusive with --statement)")
 	cmd.Flags().StringVar(&depends, "depends", "", "Comma-separated list of node IDs this node depends on (e.g., 1.1,1.2)")
+	cmd.Flags().StringVar(&requiresValidated, "requires-validated", "", "Comma-separated list of node IDs that must be validated before this node can be accepted (e.g., 1.1,1.2,1.3,1.4)")
 
 	return cmd
 }
 
-func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends string, positionalStatements []string) error {
+func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends, requiresValidated string, positionalStatements []string) error {
 	examples := render.GetExamples("af refine")
 
 	// Validate owner is not empty
@@ -174,7 +181,7 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 		return fmt.Errorf("invalid definition citation: %v", err)
 	}
 
-	// Parse and validate dependencies
+	// Parse and validate reference dependencies
 	var dependencies []types.NodeID
 	if strings.TrimSpace(depends) != "" {
 		depStrings := strings.Split(depends, ",")
@@ -192,6 +199,27 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 				return fmt.Errorf("invalid dependency: node %s does not exist", depStr)
 			}
 			dependencies = append(dependencies, depID)
+		}
+	}
+
+	// Parse and validate validation dependencies
+	var validationDeps []types.NodeID
+	if strings.TrimSpace(requiresValidated) != "" {
+		valDepStrings := strings.Split(requiresValidated, ",")
+		for _, valDepStr := range valDepStrings {
+			valDepStr = strings.TrimSpace(valDepStr)
+			if valDepStr == "" {
+				continue
+			}
+			valDepID, err := types.Parse(valDepStr)
+			if err != nil {
+				return fmt.Errorf("invalid validation dependency ID %q: %v", valDepStr, err)
+			}
+			// Validate that the validation dependency node exists
+			if st.GetNode(valDepID) == nil {
+				return fmt.Errorf("invalid validation dependency: node %s does not exist", valDepStr)
+			}
+			validationDeps = append(validationDeps, valDepID)
 		}
 	}
 
@@ -213,9 +241,9 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 		return fmt.Errorf("failed to generate child ID: %v", err)
 	}
 
-	// Call RefineNodeWithDeps if we have dependencies, otherwise use RefineNode
-	if len(dependencies) > 0 {
-		err = svc.RefineNodeWithDeps(parentID, owner, childID, nodeType, statement, inferenceType, dependencies)
+	// Call the appropriate refine method based on dependencies
+	if len(dependencies) > 0 || len(validationDeps) > 0 {
+		err = svc.RefineNodeWithAllDeps(parentID, owner, childID, nodeType, statement, inferenceType, dependencies, validationDeps)
 	} else {
 		err = svc.RefineNode(parentID, owner, childID, nodeType, statement, inferenceType)
 	}
@@ -246,6 +274,13 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 			}
 			result["depends_on"] = depStrs
 		}
+		if len(validationDeps) > 0 {
+			valDepStrs := make([]string, len(validationDeps))
+			for i, dep := range validationDeps {
+				valDepStrs[i] = dep.String()
+			}
+			result["requires_validated"] = valDepStrs
+		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %v", err)
@@ -263,6 +298,13 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 				depStrs[i] = dep.String()
 			}
 			cmd.Printf("  Depends on: %s\n", strings.Join(depStrs, ", "))
+		}
+		if len(validationDeps) > 0 {
+			valDepStrs := make([]string, len(validationDeps))
+			for i, dep := range validationDeps {
+				valDepStrs[i] = dep.String()
+			}
+			cmd.Printf("  Requires validated: %s\n", strings.Join(valDepStrs, ", "))
 		}
 		cmd.Println("\nNext steps:")
 		cmd.Printf("  af refine %s    - Add more children to this node\n", childID.String())

@@ -73,6 +73,14 @@ func RenderNodeVerbose(n *node.Node) string {
 		sb.WriteString(fmt.Sprintf("Depends on: %s\n", strings.Join(deps, ", ")))
 	}
 
+	if len(n.ValidationDeps) > 0 {
+		deps := make([]string, len(n.ValidationDeps))
+		for i, dep := range n.ValidationDeps {
+			deps[i] = dep.String()
+		}
+		sb.WriteString(fmt.Sprintf("Requires validated: %s\n", strings.Join(deps, ", ")))
+	}
+
 	if len(n.Scope) > 0 {
 		sb.WriteString(fmt.Sprintf("Scope:      %s\n", strings.Join(n.Scope, ", ")))
 	}

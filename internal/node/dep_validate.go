@@ -41,3 +41,30 @@ func ValidateDepExistence(n *Node, s NodeLookup) error {
 
 	return nil
 }
+
+// ValidateValidationDepExistence checks that all validation dependencies of a node exist in state.
+// Returns error if any validation dependency does not exist.
+// Returns error if node is nil or state is nil.
+// Does NOT check if the deps are validated - only that they exist.
+func ValidateValidationDepExistence(n *Node, s NodeLookup) error {
+	if n == nil {
+		return errors.New("node cannot be nil")
+	}
+	if s == nil {
+		return errors.New("state cannot be nil")
+	}
+
+	// No validation dependencies means validation passes
+	if len(n.ValidationDeps) == 0 {
+		return nil
+	}
+
+	// Check each validation dependency exists in state
+	for _, depID := range n.ValidationDeps {
+		if s.GetNode(depID) == nil {
+			return fmt.Errorf("invalid validation dependency: node %s not found", depID.String())
+		}
+	}
+
+	return nil
+}

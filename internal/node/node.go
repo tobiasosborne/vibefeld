@@ -44,8 +44,12 @@ type Node struct {
 	// Context contains references to definitions, assumptions, externals used.
 	Context []string `json:"context,omitempty"`
 
-	// Dependencies lists the NodeIDs this node depends on.
+	// Dependencies lists the NodeIDs this node depends on (reference dependencies).
 	Dependencies []types.NodeID `json:"dependencies,omitempty"`
+
+	// ValidationDeps lists the NodeIDs that must be validated before this node
+	// can be accepted. This enables cross-branch dependency tracking.
+	ValidationDeps []types.NodeID `json:"validation_deps,omitempty"`
 
 	// WorkflowState is the current workflow state (available, claimed, blocked).
 	WorkflowState schema.WorkflowState `json:"workflow_state"`
@@ -86,10 +90,11 @@ func NewNode(
 
 // NodeOptions contains optional parameters for node creation.
 type NodeOptions struct {
-	Latex        string
-	Context      []string
-	Dependencies []types.NodeID
-	Scope        []string
+	Latex          string
+	Context        []string
+	Dependencies   []types.NodeID
+	ValidationDeps []types.NodeID
+	Scope          []string
 }
 
 // NewNodeWithOptions creates a new Node with the given parameters and options.
@@ -126,6 +131,7 @@ func NewNodeWithOptions(
 		Inference:      inference,
 		Context:        opts.Context,
 		Dependencies:   opts.Dependencies,
+		ValidationDeps: opts.ValidationDeps,
 		WorkflowState:  schema.WorkflowAvailable,
 		EpistemicState: schema.EpistemicPending,
 		TaintState:     TaintUnresolved,
@@ -182,6 +188,17 @@ func (n *Node) ComputeContentHash() string {
 		sort.Strings(depStrings)
 		sb.WriteString("|dependencies:")
 		sb.WriteString(strings.Join(depStrings, ","))
+	}
+
+	// Add sorted validation dependencies
+	if len(n.ValidationDeps) > 0 {
+		valDepStrings := make([]string, len(n.ValidationDeps))
+		for i, dep := range n.ValidationDeps {
+			valDepStrings[i] = dep.String()
+		}
+		sort.Strings(valDepStrings)
+		sb.WriteString("|validation_deps:")
+		sb.WriteString(strings.Join(valDepStrings, ","))
 	}
 
 	// Compute hash from the built string

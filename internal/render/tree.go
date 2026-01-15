@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/state"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -66,7 +67,7 @@ func RenderTree(s *state.State, customRoot *types.NodeID) string {
 	// Build the tree output
 	var sb strings.Builder
 	for i, root := range rootNodes {
-		renderSubtree(&sb, root, nodeMap, allNodes, "", i == len(rootNodes)-1, true, customRoot)
+		renderSubtree(&sb, s, root, nodeMap, allNodes, "", i == len(rootNodes)-1, true, customRoot)
 	}
 
 	return sb.String()
@@ -76,6 +77,7 @@ func RenderTree(s *state.State, customRoot *types.NodeID) string {
 // isRoot indicates if this is the rendering root (the node we started rendering from).
 func renderSubtree(
 	sb *strings.Builder,
+	s *state.State,
 	n *node.Node,
 	nodeMap map[string]*node.Node,
 	allNodes []*node.Node,
@@ -84,8 +86,8 @@ func renderSubtree(
 	isRoot bool,
 	customRoot *types.NodeID,
 ) {
-	// Render this node
-	nodeStr := formatNode(n)
+	// Render this node with state context for validation dependency info
+	nodeStr := formatNodeWithState(n, s)
 
 	// For the root node, just write the node line (no branch characters)
 	if isRoot {
@@ -121,7 +123,7 @@ func renderSubtree(
 	// Render children
 	for i, child := range children {
 		childIsLast := i == len(children)-1
-		renderSubtree(sb, child, nodeMap, allNodes, childPrefix, childIsLast, false, customRoot)
+		renderSubtree(sb, s, child, nodeMap, allNodes, childPrefix, childIsLast, false, customRoot)
 	}
 }
 
@@ -171,6 +173,15 @@ func isDescendantOrEqual(nodeID, ancestorID types.NodeID) bool {
 // Mathematical statements are shown in full without truncation to preserve precision.
 // Uses color coding for epistemic and taint states when color is enabled.
 func formatNode(n *node.Node) string {
+	return formatNodeWithState(n, nil)
+}
+
+// formatNodeWithState formats a single node for tree display with state context.
+// When state is provided, includes validation dependency status.
+// Format: ID [epistemic/taint] statement [deps] (if has validation deps)
+// Mathematical statements are shown in full without truncation to preserve precision.
+// Uses color coding for epistemic and taint states when color is enabled.
+func formatNodeWithState(n *node.Node, s *state.State) string {
 	var sb strings.Builder
 
 	// Node ID
@@ -188,7 +199,41 @@ func formatNode(n *node.Node) string {
 	stmt := sanitizeStatement(n.Statement)
 	sb.WriteString(stmt)
 
+	// Show validation dependency status if node has validation deps and state is provided
+	if s != nil && len(n.ValidationDeps) > 0 {
+		blockedCount := countUnvalidatedDeps(n, s)
+		if blockedCount > 0 {
+			blockedStr := "[BLOCKED: " + formatBlockedDeps(n, s) + "]"
+			sb.WriteString(" ")
+			sb.WriteString(Red(blockedStr))
+		}
+	}
+
 	return sb.String()
+}
+
+// countUnvalidatedDeps counts how many validation dependencies are not yet validated.
+func countUnvalidatedDeps(n *node.Node, s *state.State) int {
+	count := 0
+	for _, depID := range n.ValidationDeps {
+		depNode := s.GetNode(depID)
+		if depNode == nil || (depNode.EpistemicState != schema.EpistemicValidated && depNode.EpistemicState != schema.EpistemicAdmitted) {
+			count++
+		}
+	}
+	return count
+}
+
+// formatBlockedDeps formats the list of blocking validation dependencies.
+func formatBlockedDeps(n *node.Node, s *state.State) string {
+	var blocked []string
+	for _, depID := range n.ValidationDeps {
+		depNode := s.GetNode(depID)
+		if depNode == nil || (depNode.EpistemicState != schema.EpistemicValidated && depNode.EpistemicState != schema.EpistemicAdmitted) {
+			blocked = append(blocked, depID.String())
+		}
+	}
+	return strings.Join(blocked, ", ")
 }
 
 // sortNodesByID sorts nodes by their hierarchical ID in numeric order.
