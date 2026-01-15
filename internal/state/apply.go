@@ -58,6 +58,12 @@ func Apply(s *State, event ledger.Event) error {
 		return applyChallengeWithdrawn(s, e)
 	case ledger.ChallengeSuperseded:
 		return applyChallengeSuperseded(s, e)
+	case ledger.NodeAmended:
+		return applyNodeAmended(s, e)
+	case ledger.ScopeOpened:
+		return applyScopeOpened(s, e)
+	case ledger.ScopeClosed:
+		return applyScopeClosed(s, e)
 	default:
 		return fmt.Errorf("unknown event type: %s", event.Type())
 	}
@@ -241,13 +247,19 @@ func applyLemmaExtracted(s *State, e ledger.LemmaExtracted) error {
 // applyChallengeRaised handles the ChallengeRaised event.
 // This adds a new challenge to the state with status "open".
 func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
+	// Default to "major" if severity not set (backward compatibility)
+	severity := e.Severity
+	if severity == "" {
+		severity = "major"
+	}
 	c := &Challenge{
-		ID:      e.ChallengeID,
-		NodeID:  e.NodeID,
-		Target:  e.Target,
-		Reason:  e.Reason,
-		Status:  "open",
-		Created: e.EventTime,
+		ID:       e.ChallengeID,
+		NodeID:   e.NodeID,
+		Target:   e.Target,
+		Reason:   e.Reason,
+		Status:   "open",
+		Severity: severity,
+		Created:  e.EventTime,
 	}
 	s.AddChallenge(c)
 	return nil
@@ -336,4 +348,42 @@ func recomputeTaintForNode(s *State, n *node.Node) {
 
 	// Propagate taint to descendants
 	taint.PropagateTaint(n, allNodes)
+}
+
+// applyNodeAmended handles the NodeAmended event.
+// This updates a node's statement and records the amendment in history.
+func applyNodeAmended(s *State, e ledger.NodeAmended) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+
+	// Record the amendment in history
+	amendment := Amendment{
+		Timestamp:         e.EventTime,
+		PreviousStatement: e.PreviousStatement,
+		NewStatement:      e.NewStatement,
+		Owner:             e.Owner,
+	}
+	s.AddAmendment(e.NodeID, amendment)
+
+	// Update the node's statement
+	n.Statement = e.NewStatement
+
+	// Recompute content hash since statement changed
+	n.ContentHash = n.ComputeContentHash()
+
+	return nil
+}
+
+// applyScopeOpened handles the ScopeOpened event.
+// This opens a new assumption scope at the given node.
+func applyScopeOpened(s *State, e ledger.ScopeOpened) error {
+	return s.OpenScope(e.NodeID, e.Statement)
+}
+
+// applyScopeClosed handles the ScopeClosed event.
+// This closes the assumption scope at the given node.
+func applyScopeClosed(s *State, e ledger.ScopeClosed) error {
+	return s.CloseScope(e.NodeID)
 }

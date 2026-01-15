@@ -4,6 +4,7 @@ package state
 import (
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/scope"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -15,8 +16,17 @@ type Challenge struct {
 	Target     string          // What aspect of the node is challenged
 	Reason     string          // Explanation of the challenge
 	Status     string          // "open", "resolved", or "withdrawn"
+	Severity   string          // "critical", "major", "minor", or "note"
 	Created    types.Timestamp // When the challenge was raised
 	Resolution string          // Resolution text (populated when status is "resolved")
+}
+
+// Amendment represents a single amendment to a node's statement.
+type Amendment struct {
+	Timestamp         types.Timestamp // When the amendment occurred
+	PreviousStatement string          // The statement before this amendment
+	NewStatement      string          // The statement after this amendment
+	Owner             string          // Who made the amendment
 }
 
 // State represents the current derived state of a proof.
@@ -40,6 +50,13 @@ type State struct {
 	// challenges maps challenge ID to Challenge instances.
 	challenges map[string]*Challenge
 
+	// amendments maps NodeID string to a slice of Amendment records.
+	// This tracks the history of all amendments made to each node.
+	amendments map[string][]Amendment
+
+	// scopeTracker tracks assumption scopes and which nodes are inside them.
+	scopeTracker *scope.Tracker
+
 	// latestSeq is the sequence number of the last event applied to this state.
 	// Used for optimistic concurrency control (CAS) when appending new events.
 	// A value of 0 means no events have been applied yet.
@@ -49,12 +66,14 @@ type State struct {
 // NewState creates a new empty State with all maps initialized.
 func NewState() *State {
 	return &State{
-		nodes:       make(map[string]*node.Node),
-		definitions: make(map[string]*node.Definition),
-		assumptions: make(map[string]*node.Assumption),
-		externals:   make(map[string]*node.External),
-		lemmas:      make(map[string]*node.Lemma),
-		challenges:  make(map[string]*Challenge),
+		nodes:        make(map[string]*node.Node),
+		definitions:  make(map[string]*node.Definition),
+		assumptions:  make(map[string]*node.Assumption),
+		externals:    make(map[string]*node.External),
+		lemmas:       make(map[string]*node.Lemma),
+		challenges:   make(map[string]*Challenge),
+		amendments:   make(map[string][]Amendment),
+		scopeTracker: scope.NewTracker(),
 	}
 }
 
@@ -223,4 +242,56 @@ func (s *State) AllChildrenValidated(parentID types.NodeID) bool {
 
 	// If we got here, either no children exist or all children are validated
 	return true
+}
+
+// AddAmendment adds an amendment record for a node.
+func (s *State) AddAmendment(nodeID types.NodeID, amendment Amendment) {
+	key := nodeID.String()
+	s.amendments[key] = append(s.amendments[key], amendment)
+}
+
+// GetAmendmentHistory returns the amendment history for a node.
+// Returns an empty slice if no amendments have been made.
+func (s *State) GetAmendmentHistory(nodeID types.NodeID) []Amendment {
+	return s.amendments[nodeID.String()]
+}
+
+// OpenScope opens a new assumption scope at the given node.
+// This should be called when a local_assume node is created.
+func (s *State) OpenScope(nodeID types.NodeID, statement string) error {
+	return s.scopeTracker.OpenScope(nodeID, statement)
+}
+
+// CloseScope closes the assumption scope at the given node.
+// This should be called when the assumption is discharged.
+func (s *State) CloseScope(nodeID types.NodeID) error {
+	return s.scopeTracker.CloseScope(nodeID)
+}
+
+// GetScopeInfo returns scope information for a node.
+// This includes the number of active scopes containing this node
+// and the list of those scopes.
+func (s *State) GetScopeInfo(nodeID types.NodeID) *scope.ScopeInfo {
+	return s.scopeTracker.GetScopeInfo(nodeID)
+}
+
+// GetActiveScopes returns all currently active (open) assumption scopes.
+func (s *State) GetActiveScopes() []*scope.Entry {
+	return s.scopeTracker.GetActiveScopes()
+}
+
+// GetAllScopes returns all scopes (both active and closed).
+func (s *State) GetAllScopes() []*scope.Entry {
+	return s.scopeTracker.AllScopes()
+}
+
+// GetScope returns the scope entry for the given assumption node.
+func (s *State) GetScope(nodeID types.NodeID) *scope.Entry {
+	return s.scopeTracker.GetScope(nodeID)
+}
+
+// ScopeTracker returns the underlying scope tracker.
+// This provides access to more advanced scope operations.
+func (s *State) ScopeTracker() *scope.Tracker {
+	return s.scopeTracker
 }

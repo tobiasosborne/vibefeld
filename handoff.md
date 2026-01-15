@@ -1,114 +1,103 @@
-# Handoff - 2026-01-15 (Session 45)
+# Handoff - 2026-01-15 (Session 46)
 
 ## What Was Accomplished This Session
 
-### Session 45 Summary: 4 Features Implemented in Parallel
+### Session 46 Summary: Implemented `af amend` Command
 
 | Issue | Type | Description |
 |-------|------|-------------|
-| vibefeld-8nmv | Feature | Added `af tutorial` command with step-by-step workflow guide |
-| vibefeld-q9ez | Feature | Bulk operations: positional args for refine, bulk accept with --all |
-| vibefeld-f64f | Feature | Cross-reference validation: --depends flag for node dependencies |
-| vibefeld-2c0t | Feature | Proof templates: af init --template contradiction/induction/cases |
+| vibefeld-v63b | Feature | Added `af amend` command for prover corrections (undo/rollback) |
 
 ### Key Changes by Area
 
 **New Files:**
-- `cmd/af/tutorial.go` - Tutorial command implementation
-- `cmd/af/tutorial_test.go` - 21 tests for tutorial
-- `cmd/af/accept_bulk_test.go` - 16 tests for bulk accept
-- `cmd/af/extract_lemma.go` - Stub for integration tests
-- `cmd/af/verify_external.go` - Stub for integration tests
-- `internal/templates/templates.go` - Template definitions
-- `internal/templates/templates_test.go` - Template tests
+- `cmd/af/amend.go` - Amend command implementation
+- `cmd/af/amend_test.go` - Integration tests for amend command
+- `internal/service/amend_test.go` - Service layer tests for AmendNode (6 tests)
 
 **Modified Files:**
-- `cmd/af/accept.go` - Added bulk accept (multiple IDs, --all flag)
-- `cmd/af/init.go` - Added --template and --list-templates flags
-- `cmd/af/init_test.go` - Added 7 template tests
-- `cmd/af/refine.go` - Added --depends flag and positional argument support
-- `cmd/af/refine_test.go` - Added dependency validation tests
-- `cmd/af/refine_multi_test.go` - Added 11 positional argument tests
-- `internal/service/interface.go` - Added AcceptNodeBulk, GetPendingNodes, RefineNodeWithDeps
-- `internal/service/proof.go` - Implemented bulk and dependency methods
-- `internal/service/proof_test.go` - Added 3 dependency tests
+- `internal/ledger/event.go` - Added `NodeAmended` event type and constructor
+- `internal/state/state.go` - Added `Amendment` type and amendment history tracking
+- `internal/state/apply.go` - Added `applyNodeAmended` handler
+- `internal/state/replay.go` - Registered `NodeAmended` in event factory
+- `internal/service/proof.go` - Added `AmendNode` and `GetAmendmentHistory` methods
+- `cmd/af/get.go` - Updated to display amendment history in `--full` output
+- `cmd/af/accept.go` - Fixed `--with-note` parameter integration (concurrent change)
 
 ### New Behaviors
 
-**Workflow Tutorial**
+**Node Amendment**
 ```bash
-af tutorial          # Shows step-by-step proof workflow guide
+# Amend a node's statement (prover correction)
+af amend 1.1 --owner agent1 --statement "Corrected claim about X"
+af amend 1.2 -o agent1 -s "Fixed typo in the proof step"
+
+# JSON output
+af amend 1.1 --owner agent1 --statement "Clarified statement" --format json
 ```
 
-**Bulk Refine with Positional Arguments**
+**View Amendment History**
 ```bash
-af refine 1 "Step A" "Step B" "Step C" --owner agent1
-# Creates 1.1, 1.2, 1.3 atomically
+af get 1.1 --full
+# Shows amendment history section:
+# Amendment History (2):
+#   [1] 2026-01-15T12:00:00Z by agent1
+#       Previous: Original statement
+#       New:      First correction
+#   [2] 2026-01-15T12:05:00Z by agent1
+#       Previous: First correction
+#       New:      Second correction
 ```
 
-**Bulk Accept**
-```bash
-af accept 1.1 1.2 1.3      # Accept multiple nodes
-af accept --all            # Accept all pending nodes
-```
+**Requirements for Amendment:**
+- Node must exist
+- Node must be in 'pending' epistemic state (not yet validated/refuted)
+- Either the node is unclaimed, or the owner matches the current claim holder
+- New statement must be non-empty
 
-**Node Dependencies**
-```bash
-af refine 1 --owner agent1 --statement "By step 1.1, we have..." --depends 1.1
-af refine 1 --owner agent1 --statement "Combining steps..." --depends 1.1,1.2
-```
-
-**Proof Templates**
-```bash
-af init --list-templates   # Show available templates
-
-af init -c "Sum is n(n+1)/2" -a "Claude" --template induction
-# Creates:
-#   1: Root conjecture
-#   1.1: Base case
-#   1.2: Inductive step
-
-af init -c "No largest prime" -a "Claude" -t contradiction
-# Creates:
-#   1: Root conjecture
-#   1.1: Assume the negation
-#   1.2: Derive contradiction
-
-af init -c "Every integer even/odd" -a "Claude" --template cases
-# Creates:
-#   1: Root conjecture
-#   1.1: Case 1
-#   1.2: Case 2
-```
+**Event Preservation:**
+- Original statement preserved in `NodeAmended` event's `previous_statement` field
+- Full history tracked in state's `amendments` map
+- Content hash automatically recomputed after amendment
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** ~48 (4 closed this session)
+- **Open:** ~47 (1 closed this session)
 - **Ready to Work:** 6+
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
-ok  github.com/tobias/vibefeld/internal/templates
+ok  github.com/tobias/vibefeld/internal/service
 ... (all packages pass)
 ```
 
 Build succeeds: `go build ./cmd/af`
 
+### Service Layer Tests Added
+```
+TestAmendNode_Basic
+TestAmendNode_MultipleAmendments
+TestAmendNode_ValidatedNodeFails
+TestAmendNode_WrongOwnerFails
+TestAmendNode_EmptyStatementFails
+TestAmendNode_NodeNotFoundFails
+```
+
 ## Next Steps
 
 Run `bd ready` to see remaining issues. Remaining priorities:
 1. **vibefeld-6um6**: Add assumption scope tracking
-2. **vibefeld-v63b**: Add undo/rollback for prover mistakes
-3. **vibefeld-cm6n**: Add partial acceptance or challenge severity levels
-4. **vibefeld-1jc9**: Add cross-branch dependency tracking
-5. **vibefeld-asq3**: Fix prover-centric tool (verifiers second-class)
-6. **vibefeld-86r0**: Add role isolation enforcement
+2. **vibefeld-cm6n**: Add partial acceptance or challenge severity levels
+3. **vibefeld-1jc9**: Add cross-branch dependency tracking
+4. **vibefeld-asq3**: Fix prover-centric tool (verifiers second-class)
+5. **vibefeld-86r0**: Add role isolation enforcement
 
 ## Session History
 
+**Session 46:** Implemented `af amend` command for prover corrections (undo/rollback)
 **Session 45:** Implemented 4 features (4 parallel subagents) - tutorial command, bulk operations, cross-reference validation, proof templates
 **Session 44:** Implemented 8 features (2 batches of 4 parallel subagents) - timestamp fix, challenge visibility, confirmations, NodeID.Less(), af progress, panic->error, event registry, help examples
 **Session 43:** Implemented 4 features (4 parallel subagents) - agents command, export command, error message improvements, validation tests

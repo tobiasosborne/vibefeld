@@ -116,10 +116,10 @@ func runGet(cmd *cobra.Command, nodeIDStr, dir, format string, ancestors, subtre
 
 	// Output based on format
 	if format == "json" {
-		return outputJSON(cmd, nodes, full, allChallenges)
+		return outputJSON(cmd, nodes, full, allChallenges, st)
 	}
 
-	return outputText(cmd, nodes, full, allChallenges)
+	return outputText(cmd, nodes, full, allChallenges, st)
 }
 
 // collectAncestors collects the target node and all its ancestors.
@@ -168,12 +168,14 @@ func collectSubtree(st interface {
 }
 
 // outputJSON outputs nodes in JSON format.
-func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*state.Challenge) error {
+func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*state.Challenge, st *state.State) error {
 	if len(nodes) == 1 {
 		// Single node: always show full output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
 		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)
-		output := nodeToJSONFull(nodes[0], nodeChallenges)
+		amendments := st.GetAmendmentHistory(nodes[0].ID)
+		scopeInfo := getScopeInfoJSON(st, nodes[0].ID)
+		output := nodeToJSONFull(nodes[0], nodeChallenges, amendments, scopeInfo)
 		data, err := json.Marshal(output)
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %v", err)
@@ -187,7 +189,9 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		jsonNodes := make([]map[string]interface{}, 0, len(nodes))
 		for _, n := range nodes {
 			nodeChallenges := filterChallengesForNode(challenges, n.ID)
-			jsonNodes = append(jsonNodes, nodeToJSONFull(n, nodeChallenges))
+			amendments := st.GetAmendmentHistory(n.ID)
+			scopeInfo := getScopeInfoJSON(st, n.ID)
+			jsonNodes = append(jsonNodes, nodeToJSONFull(n, nodeChallenges, amendments, scopeInfo))
 		}
 		data, err := json.Marshal(jsonNodes)
 		if err != nil {
@@ -209,6 +213,33 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 	return nil
 }
 
+// getScopeInfoJSON returns scope information for a node as a JSON-friendly map.
+// Returns nil if the node is not in any scope.
+func getScopeInfoJSON(st *state.State, nodeID types.NodeID) map[string]interface{} {
+	info := st.GetScopeInfo(nodeID)
+	if info == nil || !info.IsInAnyScope() {
+		return nil
+	}
+
+	result := map[string]interface{}{
+		"depth": info.Depth,
+	}
+
+	if len(info.ContainingScopes) > 0 {
+		scopes := make([]map[string]interface{}, len(info.ContainingScopes))
+		for i, s := range info.ContainingScopes {
+			scopes[i] = map[string]interface{}{
+				"node_id":   s.NodeID.String(),
+				"statement": s.Statement,
+				"active":    s.IsActive(),
+			}
+		}
+		result["containing_scopes"] = scopes
+	}
+
+	return result
+}
+
 // nodeToJSONBasic creates a basic JSON representation of a node.
 func nodeToJSONBasic(n *node.Node) map[string]interface{} {
 	return map[string]interface{}{
@@ -218,7 +249,7 @@ func nodeToJSONBasic(n *node.Node) map[string]interface{} {
 }
 
 // nodeToJSONFull creates a full JSON representation of a node.
-func nodeToJSONFull(n *node.Node, challenges []*state.Challenge) map[string]interface{} {
+func nodeToJSONFull(n *node.Node, challenges []*state.Challenge, amendments []state.Amendment, scopeInfo map[string]interface{}) map[string]interface{} {
 	result := map[string]interface{}{
 		"id":              n.ID.String(),
 		"type":            string(n.Type),
@@ -265,11 +296,30 @@ func nodeToJSONFull(n *node.Node, challenges []*state.Challenge) map[string]inte
 		result["challenges"] = challengeList
 	}
 
+	// Add amendment history if present
+	if len(amendments) > 0 {
+		amendmentList := make([]map[string]interface{}, len(amendments))
+		for i, a := range amendments {
+			amendmentList[i] = map[string]interface{}{
+				"timestamp":          a.Timestamp.String(),
+				"previous_statement": a.PreviousStatement,
+				"new_statement":      a.NewStatement,
+				"owner":              a.Owner,
+			}
+		}
+		result["amendment_history"] = amendmentList
+	}
+
+	// Add scope info if present
+	if scopeInfo != nil && len(scopeInfo) > 0 {
+		result["scope_info"] = scopeInfo
+	}
+
 	return result
 }
 
 // outputText outputs nodes in text format.
-func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*state.Challenge) error {
+func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*state.Challenge, st *state.State) error {
 	if len(nodes) == 1 {
 		// Single node: always show full/verbose output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
@@ -280,6 +330,30 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 			cmd.Printf("\nChallenges (%d):\n", len(nodeChallenges))
 			for _, c := range nodeChallenges {
 				cmd.Printf("  %s [%s] %s: %s\n", c.ID, c.Status, c.Target, c.Reason)
+			}
+		}
+		// Show amendment history for this node
+		amendments := st.GetAmendmentHistory(nodes[0].ID)
+		if len(amendments) > 0 {
+			cmd.Printf("\nAmendment History (%d):\n", len(amendments))
+			for i, a := range amendments {
+				cmd.Printf("  [%d] %s by %s\n", i+1, a.Timestamp.String(), a.Owner)
+				cmd.Printf("      Previous: %s\n", truncateForDisplay(a.PreviousStatement, 50))
+				cmd.Printf("      New:      %s\n", truncateForDisplay(a.NewStatement, 50))
+			}
+		}
+		// Show scope information
+		scopeInfo := st.GetScopeInfo(nodes[0].ID)
+		if scopeInfo != nil && scopeInfo.IsInAnyScope() {
+			cmd.Printf("\nScope Info:\n")
+			cmd.Printf("  Depth: %d\n", scopeInfo.Depth)
+			cmd.Println("  Containing scopes:")
+			for _, s := range scopeInfo.ContainingScopes {
+				status := "active"
+				if !s.IsActive() {
+					status = "closed"
+				}
+				cmd.Printf("    [%s] %s: %q\n", s.NodeID.String(), status, s.Statement)
 			}
 		}
 		return nil
@@ -300,12 +374,44 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 					cmd.Printf("  %s [%s] %s: %s\n", c.ID, c.Status, c.Target, c.Reason)
 				}
 			}
+			// Show amendment history for this node
+			amendments := st.GetAmendmentHistory(n.ID)
+			if len(amendments) > 0 {
+				cmd.Printf("\nAmendment History (%d):\n", len(amendments))
+				for j, a := range amendments {
+					cmd.Printf("  [%d] %s by %s\n", j+1, a.Timestamp.String(), a.Owner)
+					cmd.Printf("      Previous: %s\n", truncateForDisplay(a.PreviousStatement, 50))
+					cmd.Printf("      New:      %s\n", truncateForDisplay(a.NewStatement, 50))
+				}
+			}
+			// Show scope information
+			scopeInfo := st.GetScopeInfo(n.ID)
+			if scopeInfo != nil && scopeInfo.IsInAnyScope() {
+				cmd.Printf("\nScope Info:\n")
+				cmd.Printf("  Depth: %d\n", scopeInfo.Depth)
+				cmd.Println("  Containing scopes:")
+				for _, s := range scopeInfo.ContainingScopes {
+					status := "active"
+					if !s.IsActive() {
+						status = "closed"
+					}
+					cmd.Printf("    [%s] %s: %q\n", s.NodeID.String(), status, s.Statement)
+				}
+			}
 		}
 	} else {
 		cmd.Println(render.RenderNodeTree(nodes))
 	}
 
 	return nil
+}
+
+// truncateForDisplay truncates a string for display, adding "..." if truncated.
+func truncateForDisplay(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // filterChallengesForNode returns challenges that target the given node.

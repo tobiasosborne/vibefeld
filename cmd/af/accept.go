@@ -14,6 +14,7 @@ import (
 
 func newAcceptCmd() *cobra.Command {
 	var acceptAll bool
+	var withNote string
 
 	cmd := &cobra.Command{
 		Use:   "accept [node-id]...",
@@ -29,27 +30,35 @@ You can accept multiple nodes at once:
 Use --all to accept all pending nodes:
   af accept --all          Accept all pending nodes
 
+Use --with-note for partial acceptance (accept with a recorded note):
+  af accept 1 --with-note "Minor issue but acceptable"
+
+Notes are recorded in the ledger for the audit trail but do not
+block acceptance. This allows verifiers to express nuanced feedback.
+
 Examples:
   af accept 1              Accept the root node
   af accept 1.2.3          Accept a specific child node
   af accept 1.1 1.2        Accept multiple nodes at once
   af accept --all          Accept all pending nodes
   af accept -a             Accept all pending nodes (short form)
+  af accept 1 --with-note "Consider clarifying step 2"
   af accept 1 -d ./proof   Accept using specific directory`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAccept(cmd, args, acceptAll)
+			return runAccept(cmd, args, acceptAll, withNote)
 		},
 	}
 
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
 	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
 	cmd.Flags().BoolVarP(&acceptAll, "all", "a", false, "Accept all pending nodes")
+	cmd.Flags().StringVar(&withNote, "with-note", "", "Optional acceptance note for partial acceptance")
 
 	return cmd
 }
 
-func runAccept(cmd *cobra.Command, args []string, acceptAll bool) error {
+func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string) error {
 	examples := render.GetExamples("af accept")
 
 	// Get flags
@@ -75,6 +84,13 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool) error {
 		return render.NewUsageError("af accept",
 			"either specify node IDs or use --all to accept all pending nodes",
 			[]string{"af accept 1.1", "af accept 1.1 1.2 1.3", "af accept --all"})
+	}
+
+	// --with-note is only valid for single node acceptance
+	if withNote != "" && (acceptAll || len(args) > 1) {
+		return render.NewUsageError("af accept",
+			"--with-note can only be used when accepting a single node",
+			[]string{"af accept 1 --with-note \"Minor issue but acceptable\""})
 	}
 
 	// Create proof service
@@ -126,10 +142,16 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool) error {
 		}
 	}
 
-	// Single node: use AcceptNode for backward compatibility
+	// Single node: use AcceptNodeWithNote (or AcceptNode if no note)
 	if len(nodeIDs) == 1 {
-		if err := svc.AcceptNode(nodeIDs[0]); err != nil {
-			return fmt.Errorf("error accepting node: %w", err)
+		var acceptErr error
+		if withNote != "" {
+			acceptErr = svc.AcceptNodeWithNote(nodeIDs[0], withNote)
+		} else {
+			acceptErr = svc.AcceptNode(nodeIDs[0])
+		}
+		if acceptErr != nil {
+			return fmt.Errorf("error accepting node: %w", acceptErr)
 		}
 
 		// Output result based on format
@@ -140,13 +162,20 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool) error {
 				"status":   "validated",
 				"accepted": true,
 			}
+			if withNote != "" {
+				result["note"] = withNote
+			}
 			output, err := json.Marshal(result)
 			if err != nil {
 				return fmt.Errorf("error marshaling JSON: %w", err)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), string(output))
 		default:
-			fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated.\n", nodeIDs[0].String())
+			if withNote != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated (with note: %q).\n", nodeIDs[0].String(), withNote)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated.\n", nodeIDs[0].String())
+			}
 		}
 		return nil
 	}

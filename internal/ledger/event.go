@@ -24,10 +24,13 @@ const (
 	EventNodeAdmitted         EventType = "node_admitted"
 	EventNodeRefuted          EventType = "node_refuted"
 	EventNodeArchived         EventType = "node_archived"
+	EventNodeAmended          EventType = "node_amended"
 	EventTaintRecomputed      EventType = "taint_recomputed"
 	EventDefAdded             EventType = "def_added"
 	EventLemmaExtracted       EventType = "lemma_extracted"
 	EventLockReaped           EventType = "lock_reaped"
+	EventScopeOpened          EventType = "scope_opened"
+	EventScopeClosed          EventType = "scope_closed"
 )
 
 // Event is the base interface for all ledger events.
@@ -89,6 +92,7 @@ type ChallengeRaised struct {
 	NodeID      types.NodeID `json:"node_id"`
 	Target      string       `json:"target"`
 	Reason      string       `json:"reason"`
+	Severity    string       `json:"severity"` // "critical", "major", "minor", or "note"
 }
 
 // ChallengeResolved is emitted when a challenge is resolved (answered).
@@ -115,6 +119,7 @@ type ChallengeSuperseded struct {
 type NodeValidated struct {
 	BaseEvent
 	NodeID types.NodeID `json:"node_id"`
+	Note   string       `json:"note,omitempty"` // Optional acceptance note (partial acceptance)
 }
 
 // NodeAdmitted is emitted when a verifier admits a node without full verification.
@@ -177,6 +182,16 @@ type LockReaped struct {
 	Owner  string       `json:"owner"`
 }
 
+// NodeAmended is emitted when a prover corrects the statement of a node they own.
+// The original statement is preserved in the PreviousStatement field for history.
+type NodeAmended struct {
+	BaseEvent
+	NodeID            types.NodeID `json:"node_id"`
+	PreviousStatement string       `json:"previous_statement"`
+	NewStatement      string       `json:"new_statement"`
+	Owner             string       `json:"owner"`
+}
+
 // NewProofInitialized creates a ProofInitialized event.
 func NewProofInitialized(conjecture, author string) ProofInitialized {
 	return ProofInitialized{
@@ -224,8 +239,13 @@ func NewNodesReleased(nodeIDs []types.NodeID) NodesReleased {
 	}
 }
 
-// NewChallengeRaised creates a ChallengeRaised event.
+// NewChallengeRaised creates a ChallengeRaised event with default severity (major).
 func NewChallengeRaised(challengeID string, nodeID types.NodeID, target, reason string) ChallengeRaised {
+	return NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, "major")
+}
+
+// NewChallengeRaisedWithSeverity creates a ChallengeRaised event with the specified severity.
+func NewChallengeRaisedWithSeverity(challengeID string, nodeID types.NodeID, target, reason, severity string) ChallengeRaised {
 	return ChallengeRaised{
 		BaseEvent: BaseEvent{
 			EventType: EventChallengeRaised,
@@ -235,6 +255,7 @@ func NewChallengeRaised(challengeID string, nodeID types.NodeID, target, reason 
 		NodeID:      nodeID,
 		Target:      target,
 		Reason:      reason,
+		Severity:    severity,
 	}
 }
 
@@ -275,12 +296,20 @@ func NewChallengeSuperseded(challengeID string, nodeID types.NodeID) ChallengeSu
 
 // NewNodeValidated creates a NodeValidated event.
 func NewNodeValidated(nodeID types.NodeID) NodeValidated {
+	return NewNodeValidatedWithNote(nodeID, "")
+}
+
+// NewNodeValidatedWithNote creates a NodeValidated event with an optional acceptance note.
+// The note is used for partial acceptance where the verifier accepts the node
+// but wants to record a minor issue or clarification.
+func NewNodeValidatedWithNote(nodeID types.NodeID, note string) NodeValidated {
 	return NodeValidated{
 		BaseEvent: BaseEvent{
 			EventType: EventNodeValidated,
 			EventTime: types.Now(),
 		},
 		NodeID: nodeID,
+		Note:   note,
 	}
 }
 
@@ -362,5 +391,60 @@ func NewLockReaped(nodeID types.NodeID, owner string) LockReaped {
 		},
 		NodeID: nodeID,
 		Owner:  owner,
+	}
+}
+
+// NewNodeAmended creates a NodeAmended event.
+func NewNodeAmended(nodeID types.NodeID, previousStatement, newStatement, owner string) NodeAmended {
+	return NodeAmended{
+		BaseEvent: BaseEvent{
+			EventType: EventNodeAmended,
+			EventTime: types.Now(),
+		},
+		NodeID:            nodeID,
+		PreviousStatement: previousStatement,
+		NewStatement:      newStatement,
+		Owner:             owner,
+	}
+}
+
+// ScopeOpened is emitted when a local_assume node opens a new assumption scope.
+// All descendant nodes of the assumption node are considered "inside" the scope
+// until the scope is closed.
+type ScopeOpened struct {
+	BaseEvent
+	NodeID    types.NodeID `json:"node_id"`   // The local_assume node that opens the scope
+	Statement string       `json:"statement"` // The assumption statement
+}
+
+// ScopeClosed is emitted when an assumption scope is discharged (closed).
+// This occurs when a contradiction is derived or the assumption is otherwise discharged.
+type ScopeClosed struct {
+	BaseEvent
+	NodeID          types.NodeID `json:"node_id"`           // The local_assume node whose scope is being closed
+	DischargeNodeID types.NodeID `json:"discharge_node_id"` // The node that discharged the scope
+}
+
+// NewScopeOpened creates a ScopeOpened event.
+func NewScopeOpened(nodeID types.NodeID, statement string) ScopeOpened {
+	return ScopeOpened{
+		BaseEvent: BaseEvent{
+			EventType: EventScopeOpened,
+			EventTime: types.Now(),
+		},
+		NodeID:    nodeID,
+		Statement: statement,
+	}
+}
+
+// NewScopeClosed creates a ScopeClosed event.
+func NewScopeClosed(nodeID types.NodeID, dischargeNodeID types.NodeID) ScopeClosed {
+	return ScopeClosed{
+		BaseEvent: BaseEvent{
+			EventType: EventScopeClosed,
+			EventTime: types.Now(),
+		},
+		NodeID:          nodeID,
+		DischargeNodeID: dischargeNodeID,
 	}
 }

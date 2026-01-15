@@ -585,6 +585,96 @@ func (s *ProofService) RefineNodeWithDeps(parentID types.NodeID, owner string, c
 	return wrapSequenceMismatch(err, "RefineNodeWithDeps")
 }
 
+// RefineNodeWithAllDeps adds a child node with both reference dependencies and validation dependencies
+// to a claimed parent node.
+// Reference dependencies are logical cross-references to other nodes (e.g., "by step 1.2").
+// Validation dependencies specify nodes that must be validated before this node can be accepted.
+// Returns an error if the parent is not claimed by the owner, any dependency doesn't exist,
+// or validation fails.
+//
+// Returns ErrMaxDepthExceeded if the child node's depth would exceed config.MaxDepth.
+// Returns ErrMaxChildrenExceeded if the parent node already has config.MaxChildren children.
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) RefineNodeWithAllDeps(parentID types.NodeID, owner string, childID types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType, dependencies []types.NodeID, validationDeps []types.NodeID) error {
+	// Validate depth against config
+	if err := s.validateDepth(childID.Depth()); err != nil {
+		return err
+	}
+
+	// Load current state and capture sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Check if parent node exists
+	parent := st.GetNode(parentID)
+	if parent == nil {
+		return errors.New("parent node not found")
+	}
+
+	// Check if parent is claimed
+	if parent.WorkflowState != schema.WorkflowClaimed {
+		return errors.New("parent node is not claimed")
+	}
+
+	// Check if owner matches
+	if parent.ClaimedBy != owner {
+		return errors.New("owner does not match")
+	}
+
+	// Check if child already exists
+	if st.GetNode(childID) != nil {
+		return errors.New("child node already exists")
+	}
+
+	// Validate child count for parent
+	if err := s.validateChildCount(st, parentID); err != nil {
+		return err
+	}
+
+	// Validate external citations in the statement
+	if err := lemma.ValidateExtCitations(statement, st); err != nil {
+		return err
+	}
+
+	// Validate that all reference dependencies exist
+	for _, depID := range dependencies {
+		if st.GetNode(depID) == nil {
+			return fmt.Errorf("invalid dependency: node %s not found", depID.String())
+		}
+	}
+
+	// Validate that all validation dependencies exist
+	for _, valDepID := range validationDeps {
+		if st.GetNode(valDepID) == nil {
+			return fmt.Errorf("invalid validation dependency: node %s not found", valDepID.String())
+		}
+	}
+
+	// Create the child node with both dependency types
+	opts := node.NodeOptions{
+		Dependencies:   dependencies,
+		ValidationDeps: validationDeps,
+	}
+	child, err := node.NewNodeWithOptions(childID, nodeType, statement, inference, opts)
+	if err != nil {
+		return err
+	}
+
+	// Get ledger and append event with CAS
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewNodeCreated(*child)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "RefineNodeWithAllDeps")
+}
+
 // AcceptNode validates a node, marking it as verified correct.
 // Returns an error if the node doesn't exist.
 //
@@ -594,6 +684,24 @@ func (s *ProofService) RefineNodeWithDeps(parentID types.NodeID, owner string, c
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AcceptNode(id types.NodeID) error {
+	return s.AcceptNodeWithNote(id, "")
+}
+
+// AcceptNodeWithNote validates a node with an optional acceptance note.
+// The note allows verifiers to express nuanced feedback - accepting the node
+// while recording a minor issue or clarification for the record.
+//
+// This supports partial acceptance where minor/note severity challenges
+// exist but don't block validation.
+//
+// Returns an error if the node doesn't exist.
+//
+// After validation, automatically recomputes and emits taint state changes
+// for the node and any affected descendants.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 	// Load current state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
@@ -607,6 +715,27 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 		return errors.New("node not found")
 	}
 
+	// Check validation dependencies - all must be validated before this node can be accepted
+	if len(n.ValidationDeps) > 0 {
+		var unvalidatedDeps []string
+		for _, depID := range n.ValidationDeps {
+			depNode := st.GetNode(depID)
+			if depNode == nil {
+				// Dependency node doesn't exist (should be caught earlier, but be defensive)
+				unvalidatedDeps = append(unvalidatedDeps, depID.String()+" (not found)")
+				continue
+			}
+			// Check if the dependency is validated (or admitted, which counts as validated)
+			if depNode.EpistemicState != schema.EpistemicValidated && depNode.EpistemicState != schema.EpistemicAdmitted {
+				unvalidatedDeps = append(unvalidatedDeps, depID.String())
+			}
+		}
+		if len(unvalidatedDeps) > 0 {
+			return fmt.Errorf("cannot accept node %s: validation dependencies not yet validated: %s",
+				id.String(), strings.Join(unvalidatedDeps, ", "))
+		}
+	}
+
 	// Validate epistemic state transition (only pending -> validated allowed)
 	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
 		return err
@@ -618,10 +747,10 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 		return err
 	}
 
-	event := ledger.NewNodeValidated(id)
+	event := ledger.NewNodeValidatedWithNote(id, note)
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
 	if err != nil {
-		return wrapSequenceMismatch(err, "AcceptNode")
+		return wrapSequenceMismatch(err, "AcceptNodeWithNote")
 	}
 
 	// Auto-compute and emit taint events after successful validation
@@ -1421,4 +1550,72 @@ func (s *ProofService) WouldCreateCycle(fromID, toID types.NodeID) (cycle.CycleR
 
 	provider := &stateDependencyProvider{st: st}
 	return cycle.WouldCreateCycle(provider, fromID, toID), nil
+}
+
+// AmendNode allows a prover to correct the statement of a node they own.
+// The original statement is preserved in the amendment history.
+//
+// Requirements:
+// - Node must exist
+// - Node must be in pending epistemic state (not validated/refuted)
+// - Either the node is unclaimed, or the owner matches the claim owner
+// - New statement must be non-empty
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) AmendNode(nodeID types.NodeID, owner, newStatement string) error {
+	// Validate inputs
+	if strings.TrimSpace(owner) == "" {
+		return errors.New("owner cannot be empty")
+	}
+	if strings.TrimSpace(newStatement) == "" {
+		return errors.New("statement cannot be empty")
+	}
+
+	// Load current state and capture sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Check if node exists
+	n := st.GetNode(nodeID)
+	if n == nil {
+		return errors.New("node not found")
+	}
+
+	// Check epistemic state - can only amend pending nodes
+	if n.EpistemicState != schema.EpistemicPending {
+		return fmt.Errorf("cannot amend node: epistemic state is %s, must be pending", n.EpistemicState)
+	}
+
+	// Check ownership - either unclaimed or owned by the caller
+	if n.WorkflowState == schema.WorkflowClaimed {
+		if n.ClaimedBy != owner {
+			return fmt.Errorf("node is claimed by %s, not %s", n.ClaimedBy, owner)
+		}
+	}
+	// If unclaimed, any owner can amend (they're taking responsibility)
+
+	// Get ledger and append amendment event with CAS
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewNodeAmended(nodeID, n.Statement, newStatement, owner)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "AmendNode")
+}
+
+// GetAmendmentHistory returns the amendment history for a node.
+// Returns an empty slice if no amendments have been made.
+func (s *ProofService) GetAmendmentHistory(nodeID types.NodeID) ([]state.Amendment, error) {
+	st, err := s.LoadState()
+	if err != nil {
+		return nil, err
+	}
+
+	return st.GetAmendmentHistory(nodeID), nil
 }

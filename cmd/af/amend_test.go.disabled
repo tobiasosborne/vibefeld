@@ -1,0 +1,600 @@
+//go:build integration
+
+package main
+
+import (
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/types"
+)
+
+// setupAmendTest creates a temporary proof directory with an initialized proof
+// and a claimed node for testing the amend command.
+func setupAmendTest(t *testing.T) (string, func()) {
+	t.Helper()
+
+	tmpDir, err := os.MkdirTemp("", "af-amend-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Initialize proof - this creates node 1 with "Test conjecture"
+	err = service.Init(tmpDir, "Test conjecture", "test-author")
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatal(err)
+	}
+
+	// Claim node 1 (already created by Init)
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatal(err)
+	}
+
+	rootID, err := types.Parse("1")
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatal(err)
+	}
+
+	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatal(err)
+	}
+
+	// Refine to create child node 1.1 for testing amendments
+	childID, _ := types.Parse("1.1")
+	err = svc.RefineNode(rootID, "test-agent", childID, "claim", "Original statement", "assumption")
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatal(err)
+	}
+
+	cleanup := func() { os.RemoveAll(tmpDir) }
+	return tmpDir, cleanup
+}
+
+// newAmendTestCmd creates a test command hierarchy with the amend command.
+func newAmendTestCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "af",
+		Short: "Adversarial Proof Framework CLI",
+	}
+
+	amendCmd := newAmendCmd()
+	cmd.AddCommand(amendCmd)
+	AddFuzzyMatching(cmd)
+
+	return cmd
+}
+
+func TestAmendCmd_ValidAmendment(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	output, err := executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Corrected statement",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Output should confirm the amendment
+	if !strings.Contains(output, "amended") && !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to confirm amendment of node 1.1, got: %q", output)
+	}
+
+	// Verify the statement was actually changed
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childID, _ := types.Parse("1.1")
+	child := st.GetNode(childID)
+	if child == nil {
+		t.Fatal("expected child node 1.1 to exist")
+	}
+
+	if child.Statement != "Corrected statement" {
+		t.Errorf("expected statement to be 'Corrected statement', got %q", child.Statement)
+	}
+}
+
+func TestAmendCmd_MissingNodeID(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	_, err := executeCommand(cmd, "amend",
+		"--owner", "test-agent",
+		"--statement", "Some statement",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for missing node ID, got nil")
+	}
+}
+
+func TestAmendCmd_MissingStatement(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	_, err := executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for missing statement, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "statement") && !strings.Contains(errStr, "required") {
+		t.Errorf("expected error about missing statement, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_MissingOwner(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	_, err := executeCommand(cmd, "amend", "1.1",
+		"--statement", "Corrected statement",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for missing owner, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "owner") && !strings.Contains(errStr, "required") {
+		t.Errorf("expected error about missing owner, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_NodeNotFound(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	_, err := executeCommand(cmd, "amend", "1.99",
+		"--owner", "test-agent",
+		"--statement", "Corrected statement",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for node not found, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "not found") && !strings.Contains(errStr, "does not exist") {
+		t.Errorf("expected error about node not found, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_WrongOwner(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	// Claim node 1.1 with a different owner
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childID, _ := types.Parse("1.1")
+	err = svc.ClaimNode(childID, "different-agent", time.Hour)
+	if err != nil {
+		t.Fatalf("failed to claim node: %v", err)
+	}
+
+	cmd := newAmendTestCmd()
+	_, err = executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent", // Different from "different-agent"
+		"--statement", "Corrected statement",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for wrong owner, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "owner") && !strings.Contains(errStr, "match") && !strings.Contains(errStr, "claimed") {
+		t.Errorf("expected error about owner mismatch, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_NodeValidated_CannotAmend(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	// Accept the node to change epistemic state
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childID, _ := types.Parse("1.1")
+	err = svc.AcceptNode(childID)
+	if err != nil {
+		t.Fatalf("failed to accept node: %v", err)
+	}
+
+	cmd := newAmendTestCmd()
+	_, err = executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Corrected statement",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for validated node, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "pending") && !strings.Contains(errStr, "validated") && !strings.Contains(errStr, "state") {
+		t.Errorf("expected error about epistemic state, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_NodeClaimedByOther_CannotAmend(t *testing.T) {
+	// Create a fresh test environment
+	tmpDir, err := os.MkdirTemp("", "af-amend-claimed-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	err = service.Init(tmpDir, "Test conjecture", "test-author")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootID, _ := types.Parse("1")
+	err = svc.ClaimNode(rootID, "agent1", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a child node
+	childID, _ := types.Parse("1.1")
+	err = svc.RefineNode(rootID, "agent1", childID, "claim", "Original statement", "assumption")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim the child with a different agent
+	err = svc.ClaimNode(childID, "agent2", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to amend as the original creator (agent1)
+	cmd := newAmendTestCmd()
+	_, err = executeCommand(cmd, "amend", "1.1",
+		"--owner", "agent1",
+		"--statement", "Corrected statement",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error when node is claimed by another agent, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "claimed") && !strings.Contains(errStr, "owner") {
+		t.Errorf("expected error about node being claimed by another, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_JSONOutput(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	output, err := executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Corrected statement",
+		"--format", "json",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should be valid JSON-like structure
+	if !strings.Contains(output, "{") || !strings.Contains(output, "}") {
+		t.Errorf("expected JSON output, got: %q", output)
+	}
+
+	// Should contain the node ID
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected JSON to contain node ID, got: %q", output)
+	}
+}
+
+func TestAmendCmd_PreservesOriginalInHistory(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	_, err := executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent",
+		"--statement", "First correction",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("first amendment error: %v", err)
+	}
+
+	// Amend again
+	cmd2 := newAmendTestCmd()
+	_, err = executeCommand(cmd2, "amend", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Second correction",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("second amendment error: %v", err)
+	}
+
+	// Verify the current statement is the latest
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childID, _ := types.Parse("1.1")
+	child := st.GetNode(childID)
+	if child == nil {
+		t.Fatal("expected child node 1.1 to exist")
+	}
+
+	if child.Statement != "Second correction" {
+		t.Errorf("expected statement to be 'Second correction', got %q", child.Statement)
+	}
+
+	// Check that amendment history is tracked (via state's amendment history)
+	history := st.GetAmendmentHistory(childID)
+	if len(history) < 2 {
+		t.Errorf("expected at least 2 entries in amendment history, got %d", len(history))
+	}
+}
+
+func TestAmendCmd_EmptyStatement(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	_, err := executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent",
+		"--statement", "",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for empty statement, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "statement") && !strings.Contains(errStr, "empty") {
+		t.Errorf("expected error about empty statement, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_WhitespaceStatement(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	_, err := executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent",
+		"--statement", "   ",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for whitespace-only statement, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "statement") && !strings.Contains(errStr, "empty") {
+		t.Errorf("expected error about empty statement, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_InvalidNodeID(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	_, err := executeCommand(cmd, "amend", "invalid.id.format",
+		"--owner", "test-agent",
+		"--statement", "Corrected statement",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for invalid node ID, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "invalid") && !strings.Contains(errStr, "ID") {
+		t.Errorf("expected error about invalid ID format, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_ShortFlags(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	cmd := newAmendTestCmd()
+	output, err := executeCommand(cmd, "amend", "1.1",
+		"-o", "test-agent",
+		"-s", "Short flag correction",
+		"-d", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error with short flags, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain node ID with short flags, got: %q", output)
+	}
+}
+
+func TestAmendCmd_Help(t *testing.T) {
+	cmd := newAmendTestCmd()
+	output, err := executeCommand(cmd, "amend", "--help")
+
+	if err != nil {
+		t.Fatalf("expected no error for help, got: %v", err)
+	}
+
+	// Should show usage information
+	expectations := []string{
+		"amend",
+		"--owner",
+		"--statement",
+		"node-id",
+	}
+
+	for _, exp := range expectations {
+		if !strings.Contains(output, exp) {
+			t.Errorf("expected help to contain %q, got: %q", exp, output)
+		}
+	}
+}
+
+func TestAmendCmd_ProofNotInitialized(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "af-amend-noinit-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cmd := newAmendTestCmd()
+	_, err = executeCommand(cmd, "amend", "1",
+		"--owner", "test-agent",
+		"--statement", "Some statement",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for uninitialized proof, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "initialized") && !strings.Contains(errStr, "init") {
+		t.Errorf("expected error about uninitialized proof, got: %q", errStr)
+	}
+}
+
+func TestAmendCmd_UpdatesContentHash(t *testing.T) {
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	// Get original content hash
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childID, _ := types.Parse("1.1")
+	child := st.GetNode(childID)
+	originalHash := child.ContentHash
+
+	// Amend the node
+	cmd := newAmendTestCmd()
+	_, err = executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Corrected statement",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("amendment error: %v", err)
+	}
+
+	// Reload state and verify hash changed
+	st2, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	child2 := st2.GetNode(childID)
+	if child2.ContentHash == originalHash {
+		t.Error("expected content hash to change after amendment")
+	}
+
+	// Verify hash is valid
+	if !child2.VerifyContentHash() {
+		t.Error("content hash verification failed after amendment")
+	}
+}
+
+func TestAmendCmd_NodeUnclaimedButOwned(t *testing.T) {
+	// Test that you can amend an unclaimed node if you're the original owner
+	tmpDir, cleanup := setupAmendTest(t)
+	defer cleanup()
+
+	// The node 1.1 was created by the owner who claimed 1, but 1.1 is unclaimed
+	// This test verifies that you can amend your own node even if unclaimed
+
+	cmd := newAmendTestCmd()
+	output, err := executeCommand(cmd, "amend", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Corrected statement for unclaimed node",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error for amending unclaimed owned node, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain node ID, got: %q", output)
+	}
+}

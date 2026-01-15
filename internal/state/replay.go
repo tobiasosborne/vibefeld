@@ -146,6 +146,7 @@ var eventFactories = map[ledger.EventType]eventFactory{
 	ledger.EventNodeAdmitted:        func() ledger.Event { return &ledger.NodeAdmitted{} },
 	ledger.EventNodeRefuted:         func() ledger.Event { return &ledger.NodeRefuted{} },
 	ledger.EventNodeArchived:        func() ledger.Event { return &ledger.NodeArchived{} },
+	ledger.EventNodeAmended:         func() ledger.Event { return &ledger.NodeAmended{} },
 	ledger.EventTaintRecomputed:     func() ledger.Event { return &ledger.TaintRecomputed{} },
 	ledger.EventDefAdded:            func() ledger.Event { return &ledger.DefAdded{} },
 	ledger.EventLemmaExtracted:      func() ledger.Event { return &ledger.LemmaExtracted{} },
