@@ -16,6 +16,7 @@ import (
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/state"
+	"github.com/tobias/vibefeld/internal/taint"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -500,6 +501,9 @@ func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID t
 // AcceptNode validates a node, marking it as verified correct.
 // Returns an error if the node doesn't exist.
 //
+// After validation, automatically recomputes and emits taint state changes
+// for the node and any affected descendants.
+//
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AcceptNode(id types.NodeID) error {
@@ -529,11 +533,19 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 
 	event := ledger.NewNodeValidated(id)
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	return wrapSequenceMismatch(err, "AcceptNode")
+	if err != nil {
+		return wrapSequenceMismatch(err, "AcceptNode")
+	}
+
+	// Auto-compute and emit taint events after successful validation
+	return s.emitTaintRecomputedEvents(ldg, id)
 }
 
 // AdmitNode admits a node without full verification.
 // Returns an error if the node doesn't exist.
+//
+// After admission, automatically recomputes and emits taint state changes
+// for the node and any affected descendants (they become tainted).
 //
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
@@ -564,11 +576,19 @@ func (s *ProofService) AdmitNode(id types.NodeID) error {
 
 	event := ledger.NewNodeAdmitted(id)
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	return wrapSequenceMismatch(err, "AdmitNode")
+	if err != nil {
+		return wrapSequenceMismatch(err, "AdmitNode")
+	}
+
+	// Auto-compute and emit taint events after successful admission
+	return s.emitTaintRecomputedEvents(ldg, id)
 }
 
 // RefuteNode refutes a node, marking it as incorrect.
 // Returns an error if the node doesn't exist.
+//
+// After refutation, automatically recomputes and emits taint state changes
+// for the node and any affected descendants.
 //
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
@@ -599,11 +619,19 @@ func (s *ProofService) RefuteNode(id types.NodeID) error {
 
 	event := ledger.NewNodeRefuted(id)
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	return wrapSequenceMismatch(err, "RefuteNode")
+	if err != nil {
+		return wrapSequenceMismatch(err, "RefuteNode")
+	}
+
+	// Auto-compute and emit taint events after successful refutation
+	return s.emitTaintRecomputedEvents(ldg, id)
 }
 
 // ArchiveNode archives a node, abandoning the branch.
 // Returns an error if the node doesn't exist.
+//
+// After archiving, automatically recomputes and emits taint state changes
+// for the node and any affected descendants.
 //
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
@@ -634,7 +662,12 @@ func (s *ProofService) ArchiveNode(id types.NodeID) error {
 
 	event := ledger.NewNodeArchived(id)
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	return wrapSequenceMismatch(err, "ArchiveNode")
+	if err != nil {
+		return wrapSequenceMismatch(err, "ArchiveNode")
+	}
+
+	// Auto-compute and emit taint events after successful archiving
+	return s.emitTaintRecomputedEvents(ldg, id)
 }
 
 // AddDefinition adds a new definition to the proof.
@@ -848,6 +881,75 @@ func (s *ProofService) GetAvailableNodes() ([]*node.Node, error) {
 // Path returns the proof directory path.
 func (s *ProofService) Path() string {
 	return s.path
+}
+
+// emitTaintRecomputedEvents computes taint for a node and its descendants after
+// an epistemic state change, then emits TaintRecomputed events to the ledger.
+//
+// This is called automatically after validation events (AcceptNode, AdmitNode,
+// RefuteNode, ArchiveNode) to ensure the ledger contains explicit taint state
+// records for audit and replay purposes.
+func (s *ProofService) emitTaintRecomputedEvents(ldg *ledger.Ledger, nodeID types.NodeID) error {
+	// Reload state to get the updated epistemic state (validation event was just applied)
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+
+	// Get the node that was just validated
+	n := st.GetNode(nodeID)
+	if n == nil {
+		// Node should exist - this would be a logic error
+		return nil
+	}
+
+	// Get all nodes for taint computation
+	allNodes := st.AllNodes()
+
+	// Build ancestor list for this node
+	nodeMap := make(map[string]*node.Node)
+	for _, nd := range allNodes {
+		if nd != nil {
+			nodeMap[nd.ID.String()] = nd
+		}
+	}
+
+	var ancestors []*node.Node
+	parentID, hasParent := nodeID.Parent()
+	for hasParent {
+		if parent, ok := nodeMap[parentID.String()]; ok {
+			ancestors = append(ancestors, parent)
+		}
+		parentID, hasParent = parentID.Parent()
+	}
+
+	// Compute taint for this node
+	newTaint := taint.ComputeTaint(n, ancestors)
+
+	// Emit TaintRecomputed event for this node if taint changed
+	if n.TaintState != newTaint {
+		taintEvent := ledger.NewTaintRecomputed(nodeID, newTaint)
+		if _, err := ldg.Append(taintEvent); err != nil {
+			return err
+		}
+	}
+
+	// Propagate taint to descendants and get changed nodes
+	// Note: We need to update n.TaintState first so descendants see the correct parent taint
+	n.TaintState = newTaint
+	changedDescendants := taint.PropagateTaint(n, allNodes)
+
+	// Emit TaintRecomputed events for all changed descendants
+	for _, desc := range changedDescendants {
+		if desc != nil {
+			taintEvent := ledger.NewTaintRecomputed(desc.ID, desc.TaintState)
+			if _, err := ldg.Append(taintEvent); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // ChildSpec specifies a child node to be created in a bulk refine operation.
