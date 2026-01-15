@@ -51,11 +51,18 @@ Key principles:
 		Short: "Initialize a new proof workspace",
 		Run:   func(cmd *cobra.Command, args []string) {},
 	})
-	cmd.AddCommand(&cobra.Command{
+
+	// Status command with flags for testing flag fuzzy matching
+	statusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show proof status",
 		Run:   func(cmd *cobra.Command, args []string) {},
-	})
+	}
+	statusCmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
+	statusCmd.Flags().StringP("dir", "d", ".", "Proof directory path")
+	statusCmd.Flags().Bool("verbose", false, "Enable verbose output")
+	cmd.AddCommand(statusCmd)
+
 	cmd.AddCommand(&cobra.Command{
 		Use:   "claim",
 		Short: "Claim a job for work",
@@ -77,8 +84,8 @@ Key principles:
 		Run:   func(cmd *cobra.Command, args []string) {},
 	})
 
-	// Add fuzzy matching support
-	AddFuzzyMatching(cmd)
+	// Add fuzzy matching support (including flag fuzzy matching)
+	AddFuzzyMatchingRecursive(cmd)
 
 	return cmd
 }
@@ -253,5 +260,81 @@ func TestRootCmd_VersionShortFlag(t *testing.T) {
 	expected := "af version " + Version
 	if !strings.Contains(output, expected) {
 		t.Errorf("expected version output to contain %q, got: %q", expected, output)
+	}
+}
+
+func TestRootCmd_FlagFuzzyMatching(t *testing.T) {
+	// These tests verify fuzzy matching for flags.
+	// When a user types a misspelled flag, the CLI should suggest similar valid flags.
+
+	tests := []struct {
+		name        string
+		args        []string
+		wantSuggest []string // flags that should be suggested (without --)
+		wantErr     bool
+	}{
+		{
+			name:        "verbos suggests verbose",
+			args:        []string{"status", "--verbos"},
+			wantSuggest: []string{"verbose"},
+			wantErr:     true,
+		},
+		{
+			name:        "formt suggests format",
+			args:        []string{"status", "--formt", "json"},
+			wantSuggest: []string{"format"},
+			wantErr:     true,
+		},
+		{
+			name:        "dirr suggests dir",
+			args:        []string{"status", "--dirr", "/tmp"},
+			wantSuggest: []string{"dir"},
+			wantErr:     true,
+		},
+		{
+			name:        "formatt suggests format (double letter typo)",
+			args:        []string{"status", "--formatt", "text"},
+			wantSuggest: []string{"format"},
+			wantErr:     true,
+		},
+		{
+			name:        "completely unknown flag gets no suggestion",
+			args:        []string{"status", "--xyz123"},
+			wantSuggest: []string{}, // no close matches
+			wantErr:     true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newTestRootCmd()
+			output, err := executeCommand(cmd, tc.args...)
+
+			if tc.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("expected no error, got: %v", err)
+			}
+
+			if err == nil {
+				return
+			}
+
+			// Check that expected suggestions appear in output or error
+			combined := output + err.Error()
+			for _, suggest := range tc.wantSuggest {
+				if !strings.Contains(combined, suggest) {
+					t.Errorf("expected suggestion %q in output, got: %q", suggest, combined)
+				}
+			}
+
+			// Verify suggestions are formatted with -- prefix
+			if len(tc.wantSuggest) > 0 {
+				if !strings.Contains(combined, "Did you mean") {
+					t.Errorf("expected 'Did you mean' in output, got: %q", combined)
+				}
+			}
+		})
 	}
 }
