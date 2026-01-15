@@ -347,6 +347,12 @@ func RenderVerifierContextJSON(s *state.State, challenge *node.Challenge) string
 		"target":       string(challenge.Target),
 		"reason":       challenge.Reason,
 		"raised":       challenge.Raised.String(),
+		"status":       string(challenge.Status),
+	}
+
+	// Include resolution text for resolved challenges
+	if challenge.Status == node.ChallengeStatusResolved && challenge.Resolution != "" {
+		ctx["resolution"] = challenge.Resolution
 	}
 
 	// Add node details

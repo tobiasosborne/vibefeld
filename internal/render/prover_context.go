@@ -511,15 +511,22 @@ func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) 
 	})
 
 	for _, c := range nodeChallenges {
-		sb.WriteString("  ")
+		// Format: [ID] "reason" (status)
+		sb.WriteString("  [")
 		sb.WriteString(c.ID)
-		sb.WriteString(" [")
-		sb.WriteString(c.Status)
 		sb.WriteString("] ")
-		sb.WriteString(c.Target)
-		sb.WriteString(": ")
+		sb.WriteString("\"")
 		sb.WriteString(c.Reason)
-		sb.WriteString("\n")
+		sb.WriteString("\" (")
+		sb.WriteString(c.Status)
+		sb.WriteString(")\n")
+
+		// Show resolution text for resolved challenges
+		if c.Status == "resolved" && c.Resolution != "" {
+			sb.WriteString("       Resolution: \"")
+			sb.WriteString(c.Resolution)
+			sb.WriteString("\"\n")
+		}
 	}
 
 	// Add guidance for open challenges

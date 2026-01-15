@@ -250,11 +250,12 @@ func TestRenderProverContext_WithActiveChallenges(t *testing.T) {
 		Status: "open",
 	})
 	s.AddChallenge(&state.Challenge{
-		ID:     "ch-002",
-		NodeID: rootID,
-		Target: "context",
-		Reason: "Variable x undefined",
-		Status: "resolved",
+		ID:         "ch-002",
+		NodeID:     rootID,
+		Target:     "context",
+		Reason:     "Variable x undefined",
+		Status:     "resolved",
+		Resolution: "x is defined in the parent scope as x := 5",
 	})
 
 	result := RenderProverContext(s, rootID)
@@ -279,14 +280,108 @@ func TestRenderProverContext_WithActiveChallenges(t *testing.T) {
 		t.Errorf("RenderProverContext missing open challenge details, got: %q", result)
 	}
 
-	// Should show the resolved challenge
+	// Should show the resolved challenge with its status
 	if !strings.Contains(result, "ch-002") || !strings.Contains(result, "resolved") {
 		t.Errorf("RenderProverContext missing resolved challenge, got: %q", result)
+	}
+
+	// Should show the resolution text for resolved challenges
+	if !strings.Contains(result, "Resolution:") || !strings.Contains(result, "x is defined in the parent scope") {
+		t.Errorf("RenderProverContext missing resolution text for resolved challenge, got: %q", result)
 	}
 
 	// Should show guidance for addressing challenges
 	if !strings.Contains(result, "af refine") {
 		t.Errorf("RenderProverContext missing guidance for addressing challenges, got: %q", result)
+	}
+}
+
+// TestRenderProverContext_ChallengeResolutions tests that resolved challenges display their resolution text.
+func TestRenderProverContext_ChallengeResolutions(t *testing.T) {
+	s := state.NewState()
+
+	// Create a node with multiple challenges, some resolved with resolution text
+	n := makeTestNodeForProver("1", schema.NodeTypeClaim, "A claim with challenges", schema.InferenceModusPonens)
+	s.AddNode(n)
+
+	rootID, _ := types.Parse("1")
+
+	// Add an open challenge (no resolution)
+	s.AddChallenge(&state.Challenge{
+		ID:     "C1",
+		NodeID: rootID,
+		Target: "statement",
+		Reason: "Why is Z true?",
+		Status: "open",
+	})
+
+	// Add a resolved challenge with resolution text
+	s.AddChallenge(&state.Challenge{
+		ID:         "C2",
+		NodeID:     rootID,
+		Target:     "inference",
+		Reason:     "Justify step X",
+		Status:     "resolved",
+		Resolution: "By lemma Y, we have...",
+	})
+
+	// Add a resolved challenge without resolution text (edge case)
+	s.AddChallenge(&state.Challenge{
+		ID:     "C3",
+		NodeID: rootID,
+		Target: "gap",
+		Reason: "Missing base case",
+		Status: "resolved",
+		// No Resolution field set
+	})
+
+	result := RenderProverContext(s, rootID)
+
+	// Should show all challenges
+	if !strings.Contains(result, "C1") {
+		t.Errorf("Missing challenge C1, got: %q", result)
+	}
+	if !strings.Contains(result, "C2") {
+		t.Errorf("Missing challenge C2, got: %q", result)
+	}
+	if !strings.Contains(result, "C3") {
+		t.Errorf("Missing challenge C3, got: %q", result)
+	}
+
+	// Should show resolution text for C2 (resolved with resolution)
+	if !strings.Contains(result, "By lemma Y") {
+		t.Errorf("Missing resolution text for C2, got: %q", result)
+	}
+
+	// Open challenge should show (open) status
+	if !strings.Contains(result, "(open)") {
+		t.Errorf("Missing (open) status indicator, got: %q", result)
+	}
+
+	// Resolved challenges should show (resolved) status
+	if !strings.Contains(result, "(resolved)") {
+		t.Errorf("Missing (resolved) status indicator, got: %q", result)
+	}
+
+	// Should have the Resolution: label for resolved challenges with resolution text
+	if !strings.Contains(result, "Resolution:") {
+		t.Errorf("Missing 'Resolution:' label, got: %q", result)
+	}
+
+	// The output should match the expected format:
+	// [C1] "Why is Z true?" (open)
+	// [C2] "Justify step X" (resolved)
+	//      Resolution: "By lemma Y, we have..."
+	lines := strings.Split(result, "\n")
+	foundResolutionLine := false
+	for _, line := range lines {
+		if strings.Contains(line, "Resolution:") && strings.Contains(line, "By lemma Y") {
+			foundResolutionLine = true
+			break
+		}
+	}
+	if !foundResolutionLine {
+		t.Errorf("Resolution line not properly formatted, got: %q", result)
 	}
 }
 

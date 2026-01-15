@@ -725,3 +725,367 @@ func TestParent_CacheConsistency(t *testing.T) {
 		})
 	}
 }
+
+// TestLess_BasicComparisons verifies basic ordering between NodeIDs
+func TestLess_BasicComparisons(t *testing.T) {
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		want bool
+	}{
+		// Same level comparisons
+		{"1 < 2 (roots)", "1", "1", false}, // equal, not less
+		{"1.1 < 1.2", "1.1", "1.2", true},
+		{"1.2 < 1.10", "1.2", "1.10", true},
+		{"1.9 < 1.10", "1.9", "1.10", true},
+		{"1.10 < 1.11", "1.10", "1.11", true},
+		{"1.99 < 1.100", "1.99", "1.100", true},
+		{"1.1.1 < 1.1.2", "1.1.1", "1.1.2", true},
+		{"1.1.9 < 1.1.10", "1.1.9", "1.1.10", true},
+
+		// Reverse comparisons (should be false)
+		{"1.2 not < 1.1", "1.2", "1.1", false},
+		{"1.10 not < 1.2", "1.10", "1.2", false},
+		{"1.10 not < 1.9", "1.10", "1.9", false},
+		{"1.100 not < 1.99", "1.100", "1.99", false},
+
+		// Equal IDs (should be false)
+		{"1.1 not < 1.1", "1.1", "1.1", false},
+		{"1.2.3 not < 1.2.3", "1.2.3", "1.2.3", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := Parse(tt.a)
+			if err != nil {
+				t.Fatalf("Parse(%q) unexpected error: %v", tt.a, err)
+			}
+
+			b, err := Parse(tt.b)
+			if err != nil {
+				t.Fatalf("Parse(%q) unexpected error: %v", tt.b, err)
+			}
+
+			got := a.Less(b)
+			if got != tt.want {
+				t.Errorf("Parse(%q).Less(Parse(%q)) = %v, want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLess_DifferentDepths verifies ordering between IDs of different depths
+func TestLess_DifferentDepths(t *testing.T) {
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		want bool
+	}{
+		// Parent is less than child (shorter path comes first)
+		{"1 < 1.1", "1", "1.1", true},
+		{"1 < 1.999", "1", "1.999", true},
+		{"1.1 < 1.1.1", "1.1", "1.1.1", true},
+		{"1.2 < 1.2.1", "1.2", "1.2.1", true},
+		{"1.2.3 < 1.2.3.4", "1.2.3", "1.2.3.4", true},
+
+		// Child is not less than parent
+		{"1.1 not < 1", "1.1", "1", false},
+		{"1.999 not < 1", "1.999", "1", false},
+		{"1.1.1 not < 1.1", "1.1.1", "1.1", false},
+		{"1.2.3.4 not < 1.2.3", "1.2.3.4", "1.2.3", false},
+
+		// Different branches with different depths
+		{"1.1 < 1.2.1 (different branches)", "1.1", "1.2.1", true},
+		{"1.1.1 < 1.2 (different branches)", "1.1.1", "1.2", true},
+		{"1.2 not < 1.1.1", "1.2", "1.1.1", false},
+		{"1.2.1 not < 1.1", "1.2.1", "1.1", false},
+
+		// Deeper comparisons
+		{"1.1.1.1 < 1.1.1.2", "1.1.1.1", "1.1.1.2", true},
+		{"1.1.1.1 < 1.1.2", "1.1.1.1", "1.1.2", true},
+		{"1.1.1.1 < 1.2", "1.1.1.1", "1.2", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := Parse(tt.a)
+			if err != nil {
+				t.Fatalf("Parse(%q) unexpected error: %v", tt.a, err)
+			}
+
+			b, err := Parse(tt.b)
+			if err != nil {
+				t.Fatalf("Parse(%q) unexpected error: %v", tt.b, err)
+			}
+
+			got := a.Less(b)
+			if got != tt.want {
+				t.Errorf("Parse(%q).Less(Parse(%q)) = %v, want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLess_EmptyNodeID verifies ordering with empty/zero NodeIDs
+func TestLess_EmptyNodeID(t *testing.T) {
+	var empty NodeID
+	id1, _ := Parse("1")
+	id11, _ := Parse("1.1")
+
+	tests := []struct {
+		name string
+		a    NodeID
+		b    NodeID
+		want bool
+	}{
+		{"empty < 1", empty, id1, true},
+		{"empty < 1.1", empty, id11, true},
+		{"1 not < empty", id1, empty, false},
+		{"1.1 not < empty", id11, empty, false},
+		{"empty not < empty", empty, empty, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.a.Less(tt.b)
+			if got != tt.want {
+				t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLess_Transitivity verifies that Less is transitive (a < b && b < c => a < c)
+func TestLess_Transitivity(t *testing.T) {
+	ids := []string{
+		"1",
+		"1.1",
+		"1.1.1",
+		"1.1.2",
+		"1.2",
+		"1.2.1",
+		"1.10",
+		"1.10.1",
+	}
+
+	parsed := make([]NodeID, len(ids))
+	for i, s := range ids {
+		var err error
+		parsed[i], err = Parse(s)
+		if err != nil {
+			t.Fatalf("Parse(%q) unexpected error: %v", s, err)
+		}
+	}
+
+	// For each triple (a, b, c) where a < b and b < c, verify a < c
+	for i := 0; i < len(parsed); i++ {
+		for j := i + 1; j < len(parsed); j++ {
+			for k := j + 1; k < len(parsed); k++ {
+				a, b, c := parsed[i], parsed[j], parsed[k]
+
+				if a.Less(b) && b.Less(c) {
+					if !a.Less(c) {
+						t.Errorf("Transitivity failed: %s < %s and %s < %s but not %s < %s",
+							ids[i], ids[j], ids[j], ids[k], ids[i], ids[k])
+					}
+				}
+			}
+		}
+	}
+}
+
+// TestLess_Antisymmetry verifies that a < b implies !(b < a)
+func TestLess_Antisymmetry(t *testing.T) {
+	pairs := [][2]string{
+		{"1", "1.1"},
+		{"1.1", "1.2"},
+		{"1.2", "1.10"},
+		{"1.1.1", "1.1.2"},
+		{"1.1", "1.1.1"},
+	}
+
+	for _, pair := range pairs {
+		a, err := Parse(pair[0])
+		if err != nil {
+			t.Fatalf("Parse(%q) unexpected error: %v", pair[0], err)
+		}
+
+		b, err := Parse(pair[1])
+		if err != nil {
+			t.Fatalf("Parse(%q) unexpected error: %v", pair[1], err)
+		}
+
+		if a.Less(b) {
+			if b.Less(a) {
+				t.Errorf("Antisymmetry failed: %s < %s and %s < %s both true",
+					pair[0], pair[1], pair[1], pair[0])
+			}
+		}
+	}
+}
+
+// TestLess_Irreflexivity verifies that !(a < a) for all a
+func TestLess_Irreflexivity(t *testing.T) {
+	ids := []string{
+		"1",
+		"1.1",
+		"1.2",
+		"1.10",
+		"1.1.1",
+		"1.2.3.4.5",
+	}
+
+	for _, s := range ids {
+		id, err := Parse(s)
+		if err != nil {
+			t.Fatalf("Parse(%q) unexpected error: %v", s, err)
+		}
+
+		if id.Less(id) {
+			t.Errorf("Irreflexivity failed: %s.Less(%s) = true", s, s)
+		}
+	}
+}
+
+// TestLess_SortOrder verifies that sorting using Less produces correct order
+func TestLess_SortOrder(t *testing.T) {
+	// Input in random order
+	input := []string{
+		"1.10",
+		"1.1.2",
+		"1.2",
+		"1",
+		"1.1",
+		"1.2.1",
+		"1.1.1",
+		"1.2.10",
+		"1.2.2",
+	}
+
+	// Expected sorted order
+	expected := []string{
+		"1",
+		"1.1",
+		"1.1.1",
+		"1.1.2",
+		"1.2",
+		"1.2.1",
+		"1.2.2",
+		"1.2.10",
+		"1.10",
+	}
+
+	// Parse all IDs
+	ids := make([]NodeID, len(input))
+	for i, s := range input {
+		var err error
+		ids[i], err = Parse(s)
+		if err != nil {
+			t.Fatalf("Parse(%q) unexpected error: %v", s, err)
+		}
+	}
+
+	// Simple bubble sort using Less
+	for i := 0; i < len(ids); i++ {
+		for j := i + 1; j < len(ids); j++ {
+			if ids[j].Less(ids[i]) {
+				ids[i], ids[j] = ids[j], ids[i]
+			}
+		}
+	}
+
+	// Verify order
+	for i, id := range ids {
+		if id.String() != expected[i] {
+			t.Errorf("Position %d: got %q, want %q", i, id.String(), expected[i])
+		}
+	}
+}
+
+// TestLess_LargeNumbers verifies Less works with large part values
+func TestLess_LargeNumbers(t *testing.T) {
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		want bool
+	}{
+		{"1.999 < 1.1000", "1.999", "1.1000", true},
+		{"1.9999 < 1.10000", "1.9999", "1.10000", true},
+		{"1.100 < 1.101", "1.100", "1.101", true},
+		{"1.1.999 < 1.1.1000", "1.1.999", "1.1.1000", true},
+		{"1.999.999 < 1.999.1000", "1.999.999", "1.999.1000", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := Parse(tt.a)
+			if err != nil {
+				t.Fatalf("Parse(%q) unexpected error: %v", tt.a, err)
+			}
+
+			b, err := Parse(tt.b)
+			if err != nil {
+				t.Fatalf("Parse(%q) unexpected error: %v", tt.b, err)
+			}
+
+			got := a.Less(b)
+			if got != tt.want {
+				t.Errorf("Parse(%q).Less(Parse(%q)) = %v, want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+// BenchmarkLess compares performance of Less vs string-based comparison
+func BenchmarkLess(b *testing.B) {
+	id1, _ := Parse("1.2.3.4.5")
+	id2, _ := Parse("1.2.3.4.6")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = id1.Less(id2)
+	}
+}
+
+// BenchmarkLess_DeepNesting benchmarks Less on deeply nested IDs
+func BenchmarkLess_DeepNesting(b *testing.B) {
+	id1, _ := Parse("1.1.1.1.1.1.1.1.1.1")
+	id2, _ := Parse("1.1.1.1.1.1.1.1.1.2")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = id1.Less(id2)
+	}
+}
+
+// BenchmarkLess_Sorting benchmarks sorting a slice of NodeIDs using Less
+func BenchmarkLess_Sorting(b *testing.B) {
+	baseIDs := []string{
+		"1.10", "1.1.2", "1.2", "1", "1.1", "1.2.1", "1.1.1", "1.2.10", "1.2.2",
+		"1.3", "1.3.1", "1.3.2", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9",
+	}
+
+	parsedBase := make([]NodeID, len(baseIDs))
+	for i, s := range baseIDs {
+		parsedBase[i], _ = Parse(s)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Copy slice for each iteration
+		ids := make([]NodeID, len(parsedBase))
+		copy(ids, parsedBase)
+
+		// Bubble sort
+		for j := 0; j < len(ids); j++ {
+			for k := j + 1; k < len(ids); k++ {
+				if ids[k].Less(ids[j]) {
+					ids[j], ids[k] = ids[k], ids[j]
+				}
+			}
+		}
+	}
+}

@@ -10,12 +10,13 @@ import (
 // Challenge represents a challenge tracked in the state.
 // This is a simplified representation of node.Challenge for state tracking.
 type Challenge struct {
-	ID      string          // Unique challenge identifier
-	NodeID  types.NodeID    // The node being challenged
-	Target  string          // What aspect of the node is challenged
-	Reason  string          // Explanation of the challenge
-	Status  string          // "open", "resolved", or "withdrawn"
-	Created types.Timestamp // When the challenge was raised
+	ID         string          // Unique challenge identifier
+	NodeID     types.NodeID    // The node being challenged
+	Target     string          // What aspect of the node is challenged
+	Reason     string          // Explanation of the challenge
+	Status     string          // "open", "resolved", or "withdrawn"
+	Created    types.Timestamp // When the challenge was raised
+	Resolution string          // Resolution text (populated when status is "resolved")
 }
 
 // State represents the current derived state of a proof.

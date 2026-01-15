@@ -464,3 +464,194 @@ func TestTimestamp_ZeroComparison(t *testing.T) {
 		t.Log("Note: Zero timestamp is not before Now() - this may be valid depending on implementation")
 	}
 }
+
+func TestJSON_RoundtripNanosecondPrecision(t *testing.T) {
+	// Test that nanosecond precision is preserved through JSON roundtrip
+	tests := []struct {
+		name string
+		time time.Time
+	}{
+		{
+			"with nanoseconds",
+			time.Date(2025, 1, 11, 10, 5, 0, 123456789, time.UTC),
+		},
+		{
+			"with milliseconds only",
+			time.Date(2025, 1, 11, 10, 5, 0, 123000000, time.UTC),
+		},
+		{
+			"with microseconds only",
+			time.Date(2025, 1, 11, 10, 5, 0, 123456000, time.UTC),
+		},
+		{
+			"zero nanoseconds",
+			time.Date(2025, 1, 11, 10, 5, 0, 0, time.UTC),
+		},
+		{
+			"one nanosecond",
+			time.Date(2025, 1, 11, 10, 5, 0, 1, time.UTC),
+		},
+		{
+			"max nanoseconds",
+			time.Date(2025, 1, 11, 10, 5, 0, 999999999, time.UTC),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := FromTime(tt.time)
+
+			// Marshal to JSON
+			data, err := json.Marshal(original)
+			if err != nil {
+				t.Fatalf("json.Marshal error: %v", err)
+			}
+
+			// Unmarshal from JSON
+			var restored Timestamp
+			err = json.Unmarshal(data, &restored)
+			if err != nil {
+				t.Fatalf("json.Unmarshal error: %v (JSON was: %s)", err, string(data))
+			}
+
+			// Compare - the key test: nanosecond precision must be preserved
+			if !original.Equal(restored) {
+				t.Errorf("JSON roundtrip failed: original=%v (ns=%d), restored=%v (ns=%d), JSON=%s",
+					original, tt.time.Nanosecond(), restored, restored.t.Nanosecond(), string(data))
+			}
+		})
+	}
+}
+
+func TestJSON_UnmarshalRFC3339Nano(t *testing.T) {
+	// Test that UnmarshalJSON can handle RFC3339Nano formatted strings
+	tests := []struct {
+		name     string
+		json     string
+		wantNano int
+	}{
+		{"no fractional", `"2025-01-11T10:05:00Z"`, 0},
+		{"milliseconds", `"2025-01-11T10:05:00.123Z"`, 123000000},
+		{"microseconds", `"2025-01-11T10:05:00.123456Z"`, 123456000},
+		{"nanoseconds", `"2025-01-11T10:05:00.123456789Z"`, 123456789},
+		{"trailing zeros preserved", `"2025-01-11T10:05:00.100000000Z"`, 100000000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ts Timestamp
+			err := json.Unmarshal([]byte(tt.json), &ts)
+			if err != nil {
+				t.Fatalf("json.Unmarshal(%s) error: %v", tt.json, err)
+			}
+
+			gotNano := ts.t.Nanosecond()
+			if gotNano != tt.wantNano {
+				t.Errorf("Nanoseconds mismatch: got %d, want %d", gotNano, tt.wantNano)
+			}
+		})
+	}
+}
+
+func TestString_NanosecondPrecision(t *testing.T) {
+	// Test that String() preserves nanosecond precision
+	tests := []struct {
+		name     string
+		time     time.Time
+		wantStr  string
+	}{
+		{
+			"zero nanoseconds",
+			time.Date(2025, 1, 11, 10, 5, 0, 0, time.UTC),
+			"2025-01-11T10:05:00Z",
+		},
+		{
+			"with nanoseconds",
+			time.Date(2025, 1, 11, 10, 5, 0, 123456789, time.UTC),
+			"2025-01-11T10:05:00.123456789Z",
+		},
+		{
+			"with milliseconds",
+			time.Date(2025, 1, 11, 10, 5, 0, 123000000, time.UTC),
+			"2025-01-11T10:05:00.123Z",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := FromTime(tt.time)
+			gotStr := ts.String()
+			if gotStr != tt.wantStr {
+				t.Errorf("String() = %q, want %q", gotStr, tt.wantStr)
+			}
+		})
+	}
+}
+
+func TestParseTimestamp_NanosecondPrecision(t *testing.T) {
+	// Test that ParseTimestamp preserves nanosecond precision
+	tests := []struct {
+		name     string
+		input    string
+		wantNano int
+	}{
+		{"no fractional", "2025-01-11T10:05:00Z", 0},
+		{"milliseconds", "2025-01-11T10:05:00.123Z", 123000000},
+		{"microseconds", "2025-01-11T10:05:00.123456Z", 123456000},
+		{"nanoseconds", "2025-01-11T10:05:00.123456789Z", 123456789},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts, err := ParseTimestamp(tt.input)
+			if err != nil {
+				t.Fatalf("ParseTimestamp(%q) error: %v", tt.input, err)
+			}
+
+			gotNano := ts.t.Nanosecond()
+			if gotNano != tt.wantNano {
+				t.Errorf("Nanosecond = %d, want %d", gotNano, tt.wantNano)
+			}
+		})
+	}
+}
+
+func TestStringParseRoundtrip_NanosecondPrecision(t *testing.T) {
+	// Test that String() -> ParseTimestamp() roundtrip preserves nanoseconds
+	tests := []struct {
+		name string
+		time time.Time
+	}{
+		{
+			"with nanoseconds",
+			time.Date(2025, 1, 11, 10, 5, 0, 123456789, time.UTC),
+		},
+		{
+			"with milliseconds",
+			time.Date(2025, 1, 11, 10, 5, 0, 123000000, time.UTC),
+		},
+		{
+			"zero nanoseconds",
+			time.Date(2025, 1, 11, 10, 5, 0, 0, time.UTC),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := FromTime(tt.time)
+
+			// Roundtrip: String() -> ParseTimestamp()
+			str := original.String()
+			restored, err := ParseTimestamp(str)
+			if err != nil {
+				t.Fatalf("ParseTimestamp(%q) error: %v", str, err)
+			}
+
+			// Key test: nanosecond precision must be preserved
+			if !original.Equal(restored) {
+				t.Errorf("Roundtrip failed: original=%v (ns=%d), restored=%v (ns=%d), string=%q",
+					original, tt.time.Nanosecond(), restored, restored.t.Nanosecond(), str)
+			}
+		})
+	}
+}

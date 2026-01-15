@@ -242,3 +242,36 @@ func (n *NodeID) UnmarshalJSON(data []byte) error {
 	*n = parsed
 	return nil
 }
+
+// Less returns true if this NodeID is lexicographically less than other.
+// Comparison is performed directly on the internal integer parts without
+// string parsing, making it efficient for sorting operations.
+// Empty NodeIDs are considered less than non-empty ones.
+// Examples: 1 < 1.1 < 1.2 < 1.10 < 2 < 2.1
+func (n NodeID) Less(other NodeID) bool {
+	// Handle empty NodeIDs
+	if len(n.parts) == 0 {
+		return len(other.parts) > 0
+	}
+	if len(other.parts) == 0 {
+		return false
+	}
+
+	// Compare part by part
+	minLen := len(n.parts)
+	if len(other.parts) < minLen {
+		minLen = len(other.parts)
+	}
+
+	for i := 0; i < minLen; i++ {
+		if n.parts[i] < other.parts[i] {
+			return true
+		}
+		if n.parts[i] > other.parts[i] {
+			return false
+		}
+	}
+
+	// All compared parts are equal; shorter ID is "less"
+	return len(n.parts) < len(other.parts)
+}

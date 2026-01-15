@@ -2,8 +2,10 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -20,8 +22,13 @@ func newRefuteCmd() *cobra.Command {
 This is a verifier action that indicates the node's claim is false.
 The node's epistemic state changes from pending to refuted.
 
+This is a DESTRUCTIVE action. You will be prompted for confirmation unless
+the --yes flag is provided. In non-interactive environments (when stdin is
+not a terminal), the --yes flag is required.
+
 Examples:
-  af refute 1          Refute the root node
+  af refute 1          Refute the root node (will prompt for confirmation)
+  af refute 1 -y       Refute without confirmation
   af refute 1.2.3      Refute a specific child node
   af refute 1 -d ./proof  Refute using specific directory
   af refute 1 --reason "Contradicts theorem 3.2"  Refute with explanation`,
@@ -32,6 +39,7 @@ Examples:
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
 	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
 	cmd.Flags().String("reason", "", "Reason for refutation")
+	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 
 	return cmd
 }
@@ -56,6 +64,40 @@ func runRefute(cmd *cobra.Command, args []string) error {
 	reason, err := cmd.Flags().GetString("reason")
 	if err != nil {
 		return err
+	}
+	skipConfirm, err := cmd.Flags().GetBool("yes")
+	if err != nil {
+		return err
+	}
+
+	// Handle confirmation for destructive action
+	if !skipConfirm {
+		// Check if stdin is a terminal (character device, not a pipe or regular file)
+		stat, err := os.Stdin.Stat()
+		if err != nil {
+			return fmt.Errorf("stdin is not a terminal; use --yes flag to confirm refute in non-interactive mode")
+		}
+		mode := stat.Mode()
+		isTerminal := (mode & os.ModeCharDevice) != 0
+		isPipe := (mode & os.ModeNamedPipe) != 0
+
+		if !isTerminal || isPipe {
+			return fmt.Errorf("stdin is not a terminal; use --yes flag to confirm refute in non-interactive mode")
+		}
+
+		// Prompt for confirmation
+		fmt.Fprintf(cmd.OutOrStdout(), "Are you sure you want to refute node %s? [y/N]: ", nodeIDStr)
+		reader := bufio.NewReader(os.Stdin)
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			// EOF or other error means non-interactive context
+			return fmt.Errorf("stdin is not a terminal; use --yes flag to confirm refute in non-interactive mode")
+		}
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response != "y" && response != "yes" {
+			fmt.Fprintln(cmd.OutOrStdout(), "Refute cancelled.")
+			return nil
+		}
 	}
 
 	// Create proof service
