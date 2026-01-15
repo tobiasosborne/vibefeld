@@ -13,7 +13,7 @@ import (
 // newAddExternalCmd creates the add-external command.
 func newAddExternalCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add-external",
+		Use:   "add-external [NAME SOURCE]",
 		Short: "Add an external reference to the proof",
 		Long: `Add an external reference (axiom, theorem, paper citation) to the proof.
 
@@ -22,8 +22,8 @@ textbooks, or other authoritative sources that can be used as
 foundations for proof steps without requiring re-derivation.
 
 Examples:
-  af add-external --name "Fermat's Last Theorem" --source "Wiles, A. (1995)"
-  af add-external -n "Prime Number Theorem" -s "de la Vallee Poussin (1896)"
+  af add-external "Fermat's Last Theorem" "Wiles, A. (1995)"
+  af add-external "Prime Number Theorem" "de la Vallee Poussin (1896)"
   af add-external --name "Theorem 3.1" --source "Paper citation" --format json`,
 		RunE: runAddExternal,
 	}
@@ -56,14 +56,30 @@ func runAddExternal(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Support positional arguments: af add-external NAME SOURCE
+	// Positional args take precedence if flags are not set
+	if len(args) >= 2 {
+		// If name flag wasn't explicitly set, use positional arg
+		if strings.TrimSpace(name) == "" {
+			name = args[0]
+		}
+		// If source flag wasn't explicitly set, use positional arg
+		if strings.TrimSpace(source) == "" {
+			source = args[1]
+		}
+	} else if len(args) == 1 {
+		// Only one positional arg provided - give helpful error
+		return fmt.Errorf("add-external requires both NAME and SOURCE\n\nUsage:\n  af add-external NAME SOURCE\n  af add-external --name NAME --source SOURCE")
+	}
+
 	// Validate name is provided and not empty/whitespace
 	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("name is required and cannot be empty")
+		return fmt.Errorf("name is required and cannot be empty\n\nUsage:\n  af add-external NAME SOURCE\n  af add-external --name NAME --source SOURCE")
 	}
 
 	// Validate source is provided and not empty/whitespace
 	if strings.TrimSpace(source) == "" {
-		return fmt.Errorf("source is required and cannot be empty")
+		return fmt.Errorf("source is required and cannot be empty\n\nUsage:\n  af add-external NAME SOURCE\n  af add-external --name NAME --source SOURCE")
 	}
 
 	// Create proof service

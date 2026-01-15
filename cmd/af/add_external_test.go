@@ -247,6 +247,222 @@ func TestAddExternalCmd_ExternalStoredInState(t *testing.T) {
 }
 
 // =============================================================================
+// Positional Argument Tests
+// =============================================================================
+
+// TestAddExternalCmd_PositionalArgs tests using positional arguments NAME SOURCE.
+func TestAddExternalCmd_PositionalArgs(t *testing.T) {
+	tmpDir, cleanup := setupAddExternalTest(t)
+	defer cleanup()
+
+	// Execute add-external command with positional args
+	output, err := executeAddExternalCommand(t,
+		"Fermat's Last Theorem",
+		"Wiles, A. (1995). Modular elliptic curves and Fermat's Last Theorem.",
+		"-d", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("expected no error with positional args, got: %v", err)
+	}
+
+	// Verify output contains success indication
+	lower := strings.ToLower(output)
+	hasSuccessInfo := strings.Contains(lower, "external") ||
+		strings.Contains(lower, "added") ||
+		strings.Contains(lower, "created") ||
+		strings.Contains(lower, "success")
+
+	if !hasSuccessInfo {
+		t.Errorf("expected success message, got: %q", output)
+	}
+}
+
+// TestAddExternalCmd_PositionalArgsWithJSONFormat tests positional args with JSON output.
+func TestAddExternalCmd_PositionalArgsWithJSONFormat(t *testing.T) {
+	tmpDir, cleanup := setupAddExternalTest(t)
+	defer cleanup()
+
+	extName := "Prime Number Theorem"
+	extSource := "de la Vallee Poussin (1896)"
+
+	output, err := executeAddExternalCommand(t,
+		extName,
+		extSource,
+		"--format", "json",
+		"-d", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("expected no error with positional args and json format, got: %v", err)
+	}
+
+	// Should be valid JSON
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Errorf("output is not valid JSON: %v\nOutput: %q", err, output)
+	}
+
+	// Verify the name and source are correct
+	if name, ok := result["name"].(string); ok {
+		if name != extName {
+			t.Errorf("name = %q, want %q", name, extName)
+		}
+	}
+	if source, ok := result["source"].(string); ok {
+		if source != extSource {
+			t.Errorf("source = %q, want %q", source, extSource)
+		}
+	}
+}
+
+// TestAddExternalCmd_PositionalArgsStoredInState tests that positional args are stored correctly.
+func TestAddExternalCmd_PositionalArgsStoredInState(t *testing.T) {
+	tmpDir, cleanup := setupAddExternalTest(t)
+	defer cleanup()
+
+	extName := "Pythagorean Theorem"
+	extSource := "Euclid, Elements Book I"
+
+	// Add via command with positional args
+	output, err := executeAddExternalCommand(t,
+		extName,
+		extSource,
+		"--format", "json",
+		"-d", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Parse JSON to get the external ID
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+
+	var extID string
+	for _, key := range []string{"id", "external_id", "externalId", "ID"} {
+		if val, ok := result[key].(string); ok && val != "" {
+			extID = val
+			break
+		}
+	}
+
+	// Verify external can be retrieved from state
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
+
+	if extID != "" {
+		ext := st.GetExternal(extID)
+		if ext == nil {
+			t.Errorf("external with ID %q not found in state", extID)
+		} else {
+			if ext.Name != extName {
+				t.Errorf("external name = %q, want %q", ext.Name, extName)
+			}
+			if ext.Source != extSource {
+				t.Errorf("external source = %q, want %q", ext.Source, extSource)
+			}
+		}
+	}
+}
+
+// TestAddExternalCmd_PositionalArgsOnlyOneArg tests error when only one positional arg is provided.
+func TestAddExternalCmd_PositionalArgsOnlyOneArg(t *testing.T) {
+	tmpDir, cleanup := setupAddExternalTest(t)
+	defer cleanup()
+
+	_, err := executeAddExternalCommand(t,
+		"Only Name Provided",
+		"-d", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error when only one positional arg provided, got nil")
+	}
+
+	errStr := err.Error()
+	// Should mention both NAME and SOURCE are required
+	if !strings.Contains(errStr, "NAME") || !strings.Contains(errStr, "SOURCE") {
+		t.Errorf("expected error to mention both NAME and SOURCE, got: %q", errStr)
+	}
+}
+
+// TestAddExternalCmd_FlagsTakePrecedenceOverPositional tests that explicit flags override positional args.
+func TestAddExternalCmd_FlagsTakePrecedenceOverPositional(t *testing.T) {
+	tmpDir, cleanup := setupAddExternalTest(t)
+	defer cleanup()
+
+	flagName := "Flag Name"
+	flagSource := "Flag Source"
+
+	output, err := executeAddExternalCommand(t,
+		"Positional Name",
+		"Positional Source",
+		"--name", flagName,
+		"--source", flagSource,
+		"--format", "json",
+		"-d", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Parse JSON to verify the flag values were used
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+
+	if name, ok := result["name"].(string); ok {
+		if name != flagName {
+			t.Errorf("expected flag name %q to take precedence, got %q", flagName, name)
+		}
+	}
+	if source, ok := result["source"].(string); ok {
+		if source != flagSource {
+			t.Errorf("expected flag source %q to take precedence, got %q", flagSource, source)
+		}
+	}
+}
+
+// TestAddExternalCmd_PositionalArgsWithSpecialChars tests positional args with special characters.
+func TestAddExternalCmd_PositionalArgsWithSpecialChars(t *testing.T) {
+	tmpDir, cleanup := setupAddExternalTest(t)
+	defer cleanup()
+
+	extName := "Euler's Identity (e^(i*pi) + 1 = 0)"
+	extSource := "Euler, L. (1748). Introductio in analysin infinitorum."
+
+	output, err := executeAddExternalCommand(t,
+		extName,
+		extSource,
+		"--format", "json",
+		"-d", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("expected no error with special chars in positional args, got: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("output is not valid JSON: %v", err)
+	}
+
+	if name, ok := result["name"].(string); ok {
+		if name != extName {
+			t.Errorf("name = %q, want %q", name, extName)
+		}
+	}
+}
+
+// =============================================================================
 // Error Case Tests
 // =============================================================================
 
