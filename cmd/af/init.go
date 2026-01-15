@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/templates"
+	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newInitCmd creates the init command for initializing a new proof workspace.
@@ -13,6 +15,8 @@ func newInitCmd() *cobra.Command {
 	var conjecture string
 	var author string
 	var dir string
+	var template string
+	var listTemplates bool
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -25,25 +29,53 @@ append-only ledger with the proof's conjecture and author information.
 The conjecture is the mathematical statement to be proven through
 adversarial collaboration between prover and verifier agents.
 
+Use --template to start with a predefined proof structure:
+  - contradiction: Proof by contradiction (assume negation, derive contradiction)
+  - induction: Proof by induction (base case, inductive step)
+  - cases: Proof by case analysis (multiple cases)
+
+Use --list-templates to see all available templates.
+
 Example:
   af init --conjecture "All primes greater than 2 are odd" --author "Claude"
-  af init -c "P = NP" -a "Alice" -d ./my-proof`,
+  af init -c "P = NP" -a "Alice" -d ./my-proof
+  af init -c "Sum of first n integers is n(n+1)/2" -a "Claude" --template induction`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInit(cmd, conjecture, author, dir)
+			// Handle --list-templates flag
+			if listTemplates {
+				return runListTemplates(cmd)
+			}
+			return runInit(cmd, conjecture, author, dir, template)
 		},
 	}
 
-	cmd.Flags().StringVarP(&conjecture, "conjecture", "c", "", "The mathematical conjecture to prove (required)")
-	cmd.Flags().StringVarP(&author, "author", "a", "", "The author initiating the proof (required)")
+	cmd.Flags().StringVarP(&conjecture, "conjecture", "c", "", "The mathematical conjecture to prove (required unless --list-templates)")
+	cmd.Flags().StringVarP(&author, "author", "a", "", "The author initiating the proof (required unless --list-templates)")
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "The directory to initialize the proof in")
-
-	cmd.MarkFlagRequired("conjecture")
-	cmd.MarkFlagRequired("author")
+	cmd.Flags().StringVarP(&template, "template", "t", "", "Use a proof template (contradiction, induction, cases)")
+	cmd.Flags().BoolVar(&listTemplates, "list-templates", false, "List available proof templates")
 
 	return cmd
 }
 
-func runInit(cmd *cobra.Command, conjecture, author, dir string) error {
+// runListTemplates displays all available proof templates.
+func runListTemplates(cmd *cobra.Command) error {
+	cmd.Println("Available proof templates:")
+	cmd.Println()
+
+	for _, tmpl := range templates.List() {
+		cmd.Printf("  %s\n", tmpl.Name)
+		cmd.Printf("    %s\n", tmpl.Description)
+		cmd.Println()
+	}
+
+	cmd.Println("Usage:")
+	cmd.Println("  af init --conjecture \"...\" --author \"...\" --template <name>")
+
+	return nil
+}
+
+func runInit(cmd *cobra.Command, conjecture, author, dir, templateName string) error {
 	// Validate conjecture is not empty or whitespace-only
 	if strings.TrimSpace(conjecture) == "" {
 		return fmt.Errorf("conjecture cannot be empty")
@@ -54,18 +86,73 @@ func runInit(cmd *cobra.Command, conjecture, author, dir string) error {
 		return fmt.Errorf("author cannot be empty")
 	}
 
+	// Validate template if specified
+	var tmpl templates.Template
+	hasTemplate := false
+	if templateName != "" {
+		var ok bool
+		tmpl, ok = templates.Get(templateName)
+		if !ok {
+			return fmt.Errorf("unknown template: %q (use --list-templates to see available templates)", templateName)
+		}
+		hasTemplate = true
+	}
+
 	// Call the service layer to initialize the proof
 	if err := service.Init(dir, conjecture, author); err != nil {
 		return err
+	}
+
+	// Apply template if specified
+	if hasTemplate {
+		if err := applyTemplate(dir, tmpl); err != nil {
+			return fmt.Errorf("failed to apply template: %w", err)
+		}
 	}
 
 	// Output success message
 	cmd.Printf("Proof initialized successfully in %s\n", dir)
 	cmd.Printf("Conjecture: %s\n", conjecture)
 	cmd.Printf("Author: %s\n", author)
+
+	if hasTemplate {
+		cmd.Printf("Template: %s\n", tmpl.Name)
+		cmd.Println("\nProof structure created:")
+		cmd.Println("  1   - Root conjecture")
+		for i, child := range tmpl.Children {
+			cmd.Printf("  1.%d - %s\n", i+1, child.StatementTemplate)
+		}
+	}
+
 	cmd.Println("\nNext steps:")
 	cmd.Println("  af status    - View proof status")
 	cmd.Println("  af claim     - Claim a job to work on")
+
+	return nil
+}
+
+// applyTemplate creates the child nodes defined by the template.
+func applyTemplate(dir string, tmpl templates.Template) error {
+	svc, err := service.NewProofService(dir)
+	if err != nil {
+		return err
+	}
+
+	rootID, err := types.Parse("1")
+	if err != nil {
+		return err
+	}
+
+	for i, childSpec := range tmpl.Children {
+		childID, err := rootID.Child(i + 1)
+		if err != nil {
+			return fmt.Errorf("failed to create child ID: %w", err)
+		}
+
+		if err := svc.CreateNode(childID, childSpec.NodeType, childSpec.StatementTemplate, childSpec.Inference); err != nil {
+			return fmt.Errorf("failed to create node %s: %w", childID.String(), err)
+		}
+	}
 
 	return nil
 }

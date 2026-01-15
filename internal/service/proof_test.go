@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -858,6 +859,160 @@ func TestProofService_RefineNode_NotClaimed(t *testing.T) {
 	err = svc.RefineNode(nodeID, "agent-001", childID, schema.NodeTypeClaim, "Child statement", schema.InferenceModusPonens)
 	if err == nil {
 		t.Error("RefineNode() on unclaimed node expected error, got nil")
+	}
+}
+
+// TestProofService_RefineNodeWithDeps_Success verifies refining with dependencies.
+// Note: Uses root node "1" created by Init()
+func TestProofService_RefineNodeWithDeps_Success(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1" created by Init
+	nodeID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+
+	err = svc.ClaimNode(nodeID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// First create a child node without dependencies
+	childID1 := mustParseNodeID(t, "1.1")
+	err = svc.RefineNode(nodeID, owner, childID1, schema.NodeTypeClaim, "First step", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("RefineNode() unexpected error: %v", err)
+	}
+
+	// Now create a second child with dependency on the first
+	childID2 := mustParseNodeID(t, "1.2")
+	deps := []types.NodeID{childID1}
+	err = svc.RefineNodeWithDeps(nodeID, owner, childID2, schema.NodeTypeClaim, "By step 1.1, we have...", schema.InferenceModusPonens, deps)
+	if err != nil {
+		t.Fatalf("RefineNodeWithDeps() unexpected error: %v", err)
+	}
+
+	// Verify child was created with dependencies
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	child := st.GetNode(childID2)
+	if child == nil {
+		t.Fatal("Refined child node not found in state")
+	}
+
+	if len(child.Dependencies) != 1 {
+		t.Errorf("Expected 1 dependency, got %d", len(child.Dependencies))
+	}
+
+	if len(child.Dependencies) > 0 && child.Dependencies[0].String() != "1.1" {
+		t.Errorf("Expected dependency on '1.1', got %q", child.Dependencies[0].String())
+	}
+}
+
+// TestProofService_RefineNodeWithDeps_NonExistentDep verifies error for missing dependency.
+func TestProofService_RefineNodeWithDeps_NonExistentDep(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1" created by Init
+	nodeID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+
+	err = svc.ClaimNode(nodeID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Try to create a node with dependency on non-existent node
+	childID := mustParseNodeID(t, "1.1")
+	nonExistentDep := mustParseNodeID(t, "1.5")
+	deps := []types.NodeID{nonExistentDep}
+	err = svc.RefineNodeWithDeps(nodeID, owner, childID, schema.NodeTypeClaim, "By step 1.5...", schema.InferenceModusPonens, deps)
+	if err == nil {
+		t.Error("RefineNodeWithDeps() with non-existent dependency expected error, got nil")
+	}
+
+	// Error should mention the missing node
+	if err != nil && !strings.Contains(err.Error(), "1.5") {
+		t.Errorf("Error should mention missing node '1.5', got: %q", err.Error())
+	}
+}
+
+// TestProofService_RefineNodeWithDeps_MultipleDeps verifies refining with multiple dependencies.
+func TestProofService_RefineNodeWithDeps_MultipleDeps(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1" created by Init
+	nodeID := mustParseNodeID(t, "1")
+	owner := "agent-001"
+
+	err = svc.ClaimNode(nodeID, owner, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Create two initial children
+	childID1 := mustParseNodeID(t, "1.1")
+	err = svc.RefineNode(nodeID, owner, childID1, schema.NodeTypeClaim, "First step", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("RefineNode() unexpected error: %v", err)
+	}
+
+	childID2 := mustParseNodeID(t, "1.2")
+	err = svc.RefineNode(nodeID, owner, childID2, schema.NodeTypeClaim, "Second step", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("RefineNode() unexpected error: %v", err)
+	}
+
+	// Now create a third child with dependencies on both
+	childID3 := mustParseNodeID(t, "1.3")
+	deps := []types.NodeID{childID1, childID2}
+	err = svc.RefineNodeWithDeps(nodeID, owner, childID3, schema.NodeTypeClaim, "Combining steps 1.1 and 1.2", schema.InferenceModusPonens, deps)
+	if err != nil {
+		t.Fatalf("RefineNodeWithDeps() unexpected error: %v", err)
+	}
+
+	// Verify child was created with both dependencies
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	child := st.GetNode(childID3)
+	if child == nil {
+		t.Fatal("Refined child node not found in state")
+	}
+
+	if len(child.Dependencies) != 2 {
+		t.Errorf("Expected 2 dependencies, got %d", len(child.Dependencies))
 	}
 }
 

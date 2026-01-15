@@ -505,6 +505,86 @@ func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID t
 	return wrapSequenceMismatch(err, "RefineNode")
 }
 
+// RefineNodeWithDeps adds a child node with explicit dependencies to a claimed parent node.
+// Dependencies are logical cross-references to other nodes (e.g., "by step 1.2").
+// Returns an error if the parent is not claimed by the owner, any dependency doesn't exist,
+// or validation fails.
+//
+// Returns ErrMaxDepthExceeded if the child node's depth would exceed config.MaxDepth.
+// Returns ErrMaxChildrenExceeded if the parent node already has config.MaxChildren children.
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) RefineNodeWithDeps(parentID types.NodeID, owner string, childID types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType, dependencies []types.NodeID) error {
+	// Validate depth against config
+	if err := s.validateDepth(childID.Depth()); err != nil {
+		return err
+	}
+
+	// Load current state and capture sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Check if parent node exists
+	parent := st.GetNode(parentID)
+	if parent == nil {
+		return errors.New("parent node not found")
+	}
+
+	// Check if parent is claimed
+	if parent.WorkflowState != schema.WorkflowClaimed {
+		return errors.New("parent node is not claimed")
+	}
+
+	// Check if owner matches
+	if parent.ClaimedBy != owner {
+		return errors.New("owner does not match")
+	}
+
+	// Check if child already exists
+	if st.GetNode(childID) != nil {
+		return errors.New("child node already exists")
+	}
+
+	// Validate child count for parent
+	if err := s.validateChildCount(st, parentID); err != nil {
+		return err
+	}
+
+	// Validate external citations in the statement
+	if err := lemma.ValidateExtCitations(statement, st); err != nil {
+		return err
+	}
+
+	// Validate that all dependencies exist
+	for _, depID := range dependencies {
+		if st.GetNode(depID) == nil {
+			return fmt.Errorf("invalid dependency: node %s not found", depID.String())
+		}
+	}
+
+	// Create the child node with dependencies
+	opts := node.NodeOptions{
+		Dependencies: dependencies,
+	}
+	child, err := node.NewNodeWithOptions(childID, nodeType, statement, inference, opts)
+	if err != nil {
+		return err
+	}
+
+	// Get ledger and append event with CAS
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewNodeCreated(*child)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "RefineNodeWithDeps")
+}
+
 // AcceptNode validates a node, marking it as verified correct.
 // Returns an error if the node doesn't exist.
 //
@@ -546,6 +626,90 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 
 	// Auto-compute and emit taint events after successful validation
 	return s.emitTaintRecomputedEvents(ldg, id)
+}
+
+// AcceptNodeBulk validates multiple nodes atomically, marking them as verified correct.
+// All nodes must exist and be in pending state. If any validation fails, the operation
+// stops at the first error (partial failure may occur).
+//
+// After validation, automatically recomputes and emits taint state changes for each
+// node and any affected descendants.
+//
+// Returns nil if all nodes were successfully accepted.
+// Returns error if any node doesn't exist, isn't pending, or validation fails.
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
+	if len(ids) == 0 {
+		return nil // Nothing to do
+	}
+
+	// Load current state and capture sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Validate all nodes exist and are in pending state before any mutation
+	for _, id := range ids {
+		n := st.GetNode(id)
+		if n == nil {
+			return fmt.Errorf("node %s not found", id.String())
+		}
+
+		// Validate epistemic state transition (only pending -> validated allowed)
+		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
+			return fmt.Errorf("node %s: %w", id.String(), err)
+		}
+	}
+
+	// Get ledger
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	// Create events for all nodes
+	events := make([]ledger.Event, len(ids))
+	for i, id := range ids {
+		events[i] = ledger.NewNodeValidated(id)
+	}
+
+	// Append all events atomically with CAS
+	_, err = s.appendBulkIfSequence(ldg, events, expectedSeq)
+	if err != nil {
+		return wrapSequenceMismatch(err, "AcceptNodeBulk")
+	}
+
+	// Emit taint events for all accepted nodes
+	for _, id := range ids {
+		if err := s.emitTaintRecomputedEvents(ldg, id); err != nil {
+			// Log but don't fail - the validation events are already committed
+			// Taint will be recalculated on next state load
+			continue
+		}
+	}
+
+	return nil
+}
+
+// GetPendingNodes returns all nodes in the pending epistemic state.
+// This is useful for the --all flag in accept command.
+func (s *ProofService) GetPendingNodes() ([]*node.Node, error) {
+	st, err := s.LoadState()
+	if err != nil {
+		return nil, err
+	}
+
+	var pending []*node.Node
+	for _, n := range st.AllNodes() {
+		if n.EpistemicState == schema.EpistemicPending {
+			pending = append(pending, n)
+		}
+	}
+
+	return pending, nil
 }
 
 // AdmitNode admits a node without full verification.

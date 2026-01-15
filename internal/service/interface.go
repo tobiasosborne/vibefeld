@@ -59,6 +59,16 @@ type ProofOperations interface {
 	// since state was loaded. Callers should retry after reloading state.
 	AcceptNode(id types.NodeID) error
 
+	// AcceptNodeBulk validates multiple nodes atomically, marking them as verified correct.
+	// All nodes must exist and be in pending state.
+	//
+	// Returns ErrConcurrentModification if the proof was modified by another process
+	// since state was loaded. Callers should retry after reloading state.
+	AcceptNodeBulk(ids []types.NodeID) error
+
+	// GetPendingNodes returns all nodes in the pending epistemic state.
+	GetPendingNodes() ([]*node.Node, error)
+
 	// AdmitNode admits a node without full verification.
 	// Returns an error if the node doesn't exist.
 	//

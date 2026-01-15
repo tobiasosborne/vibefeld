@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -828,5 +829,392 @@ func TestRefineMultiCmd_DefCitationSecondChildFails(t *testing.T) {
 	}
 	if !strings.Contains(errStr, "child 2") {
 		t.Errorf("expected error to mention 'child 2', got: %q", errStr)
+	}
+}
+
+// =============================================================================
+// Positional Arguments Tests (vibefeld-q9ez)
+// =============================================================================
+
+// TestRefineMultiCmd_PositionalArgs_TwoStatements tests creating two children via positional arguments.
+// Example: af refine 1 "Step A" "Step B" --owner agent1
+func TestRefineMultiCmd_PositionalArgs_TwoStatements(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	// Using positional arguments after the parent ID
+	output, err := executeCommand(cmd, "refine", "1",
+		"First subgoal", "Second subgoal",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should create 1.1 and 1.2
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain 1.1, got: %q", output)
+	}
+	if !strings.Contains(output, "1.2") {
+		t.Errorf("expected output to contain 1.2, got: %q", output)
+	}
+
+	// Verify nodes were actually created
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	child1, _ := types.Parse("1.1")
+	child2, _ := types.Parse("1.2")
+	if st.GetNode(child1) == nil {
+		t.Error("expected child node 1.1 to exist in state")
+	}
+	if st.GetNode(child2) == nil {
+		t.Error("expected child node 1.2 to exist in state")
+	}
+
+	// Verify statements match
+	node1 := st.GetNode(child1)
+	if node1 != nil && node1.Statement != "First subgoal" {
+		t.Errorf("expected node 1.1 statement to be 'First subgoal', got: %q", node1.Statement)
+	}
+	node2 := st.GetNode(child2)
+	if node2 != nil && node2.Statement != "Second subgoal" {
+		t.Errorf("expected node 1.2 statement to be 'Second subgoal', got: %q", node2.Statement)
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_ThreeStatements tests creating three children via positional args.
+func TestRefineMultiCmd_PositionalArgs_ThreeStatements(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"Case 1", "Case 2", "Case 3",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should create 1.1, 1.2, and 1.3
+	for i := 1; i <= 3; i++ {
+		idStr := fmt.Sprintf("1.%d", i)
+		if !strings.Contains(output, idStr) {
+			t.Errorf("expected output to contain %s, got: %q", idStr, output)
+		}
+	}
+
+	// Verify nodes were actually created
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedStatements := []string{"Case 1", "Case 2", "Case 3"}
+	for i, stmt := range expectedStatements {
+		idStr := fmt.Sprintf("1.%d", i+1)
+		childID, _ := types.Parse(idStr)
+		node := st.GetNode(childID)
+		if node == nil {
+			t.Errorf("expected child node %s to exist in state", idStr)
+			continue
+		}
+		if node.Statement != stmt {
+			t.Errorf("expected node %s statement to be %q, got: %q", idStr, stmt, node.Statement)
+		}
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_SingleStatement tests that single positional statement still works.
+// This maintains backward compatibility with `af refine 1 "Statement" --owner agent1`
+func TestRefineMultiCmd_PositionalArgs_SingleStatement(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"Single statement via positional arg",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should create 1.1
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain 1.1, got: %q", output)
+	}
+
+	// Verify node was created
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childID, _ := types.Parse("1.1")
+	node := st.GetNode(childID)
+	if node == nil {
+		t.Error("expected child node 1.1 to exist in state")
+	} else if node.Statement != "Single statement via positional arg" {
+		t.Errorf("expected node statement to match, got: %q", node.Statement)
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_DefaultTypes tests that all positional children get default type "claim".
+func TestRefineMultiCmd_PositionalArgs_DefaultTypes(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"Step A", "Step B",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Verify all nodes have default type "claim"
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 1; i <= 2; i++ {
+		idStr := fmt.Sprintf("1.%d", i)
+		childID, _ := types.Parse(idStr)
+		node := st.GetNode(childID)
+		if node == nil {
+			t.Errorf("expected child node %s to exist", idStr)
+			continue
+		}
+		if node.Type != schema.NodeTypeClaim {
+			t.Errorf("expected node %s type to be 'claim', got: %s", idStr, node.Type)
+		}
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_JSONOutput tests that JSON format works with positional args.
+func TestRefineMultiCmd_PositionalArgs_JSONOutput(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"Child A", "Child B",
+		"--owner", "test-agent",
+		"--format", "json",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Output should be valid JSON
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Errorf("expected valid JSON output, got parse error: %v", err)
+	}
+
+	// Should contain success indicator and children array
+	if success, ok := result["success"].(bool); !ok || !success {
+		t.Errorf("expected JSON success=true, got: %v", result["success"])
+	}
+
+	if children, ok := result["children"].([]interface{}); !ok || len(children) != 2 {
+		t.Errorf("expected JSON children array with 2 elements, got: %v", result["children"])
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_ConflictWithStatementFlag tests mutual exclusivity.
+// Using positional args AND --statement should produce an error.
+func TestRefineMultiCmd_PositionalArgs_ConflictWithStatementFlag(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"Positional statement",
+		"--statement", "Flag statement",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error when using both positional args and --statement, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "exclusive") && !strings.Contains(errStr, "both") && !strings.Contains(errStr, "conflict") {
+		t.Errorf("expected error about conflicting input methods, got: %q", errStr)
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_ConflictWithChildrenFlag tests mutual exclusivity.
+// Using positional args AND --children should produce an error.
+func TestRefineMultiCmd_PositionalArgs_ConflictWithChildrenFlag(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	childrenJSON := `[{"statement":"JSON child"}]`
+	_, err := executeCommand(cmd, "refine", "1",
+		"Positional statement",
+		"--children", childrenJSON,
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error when using both positional args and --children, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "exclusive") && !strings.Contains(errStr, "both") && !strings.Contains(errStr, "conflict") {
+		t.Errorf("expected error about conflicting input methods, got: %q", errStr)
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_EmptyStatement tests error for empty positional statement.
+func TestRefineMultiCmd_PositionalArgs_EmptyStatement(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"Valid statement", "",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for empty positional statement, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "statement") && !strings.Contains(errStr, "empty") {
+		t.Errorf("expected error about empty statement, got: %q", errStr)
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_WhitespaceStatement tests error for whitespace-only positional statement.
+func TestRefineMultiCmd_PositionalArgs_WhitespaceStatement(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	cmd := newRefineMultiTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"Valid statement", "   ",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for whitespace-only positional statement, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "statement") && !strings.Contains(errStr, "empty") {
+		t.Errorf("expected error about empty statement, got: %q", errStr)
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_ExistingChildren tests that positional args skip existing child IDs.
+func TestRefineMultiCmd_PositionalArgs_ExistingChildren(t *testing.T) {
+	tmpDir, cleanup := setupRefineMultiTest(t)
+	defer cleanup()
+
+	// First, create a child node using single refine
+	cmd1 := newRefineMultiTestCmd()
+	_, err := executeCommand(cmd1, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Existing child",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create first child: %v", err)
+	}
+
+	// Now create multiple children via positional args - should get 1.2 and 1.3
+	cmd2 := newRefineMultiTestCmd()
+	output, err := executeCommand(cmd2, "refine", "1",
+		"Second child", "Third child",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error when skipping existing child, got: %v", err)
+	}
+
+	// Should have created 1.2 and 1.3 (skipping 1.1)
+	if !strings.Contains(output, "1.2") || !strings.Contains(output, "1.3") {
+		t.Errorf("expected output to contain 1.2 and 1.3, got: %q", output)
+	}
+}
+
+// TestRefineMultiCmd_PositionalArgs_ParentNotClaimed tests error when parent is not claimed.
+func TestRefineMultiCmd_PositionalArgs_ParentNotClaimed(t *testing.T) {
+	// Create a proof with an unclaimed node
+	tmpDir, err := os.MkdirTemp("", "af-refine-pos-unclaimed-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	err = service.Init(tmpDir, "Test conjecture", "test-author")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Node "1" is NOT claimed
+
+	cmd := newRefineMultiTestCmd()
+	_, err = executeCommand(cmd, "refine", "1",
+		"Child 1", "Child 2",
+		"--owner", "test-agent",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for unclaimed parent, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "not claimed") && !strings.Contains(errStr, "claim") {
+		t.Errorf("expected error about node not claimed, got: %q", errStr)
 	}
 }

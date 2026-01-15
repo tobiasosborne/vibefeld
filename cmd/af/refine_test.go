@@ -891,3 +891,327 @@ func TestRefineCmd_DefCitationHyphenatedName(t *testing.T) {
 		t.Errorf("expected output to contain child ID, got: %q", output)
 	}
 }
+
+// ===========================================================================
+// Tests for --depends flag (cross-reference validation)
+// ===========================================================================
+
+func TestRefineCmd_WithDependsFlag_ValidSingleDep(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// First, create a sibling node to depend on
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "First subgoal",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create first child: %v", err)
+	}
+
+	// Now refine with a dependency on the sibling
+	cmd2 := newRefineTestCmd()
+	output, err := executeCommand(cmd2, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "By step 1.1, we have...",
+		"--depends", "1.1",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Output should show the new child (1.2)
+	if !strings.Contains(output, "1.2") {
+		t.Errorf("expected output to contain child ID '1.2', got: %q", output)
+	}
+
+	// Verify the dependency was recorded
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childID, _ := types.Parse("1.2")
+	child := st.GetNode(childID)
+	if child == nil {
+		t.Fatal("expected child node 1.2 to exist")
+	}
+
+	if len(child.Dependencies) != 1 {
+		t.Errorf("expected 1 dependency, got %d", len(child.Dependencies))
+	}
+
+	if len(child.Dependencies) > 0 && child.Dependencies[0].String() != "1.1" {
+		t.Errorf("expected dependency on '1.1', got %q", child.Dependencies[0].String())
+	}
+}
+
+func TestRefineCmd_WithDependsFlag_MultipleDeps(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Create two sibling nodes to depend on
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "First subgoal",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create first child: %v", err)
+	}
+
+	cmd2 := newRefineTestCmd()
+	_, err = executeCommand(cmd2, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Second subgoal",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create second child: %v", err)
+	}
+
+	// Now refine with dependencies on both siblings
+	cmd3 := newRefineTestCmd()
+	output, err := executeCommand(cmd3, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Combining steps 1.1 and 1.2, we get...",
+		"--depends", "1.1,1.2",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.3") {
+		t.Errorf("expected output to contain child ID '1.3', got: %q", output)
+	}
+
+	// Verify both dependencies were recorded
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childID, _ := types.Parse("1.3")
+	child := st.GetNode(childID)
+	if child == nil {
+		t.Fatal("expected child node 1.3 to exist")
+	}
+
+	if len(child.Dependencies) != 2 {
+		t.Errorf("expected 2 dependencies, got %d", len(child.Dependencies))
+	}
+}
+
+func TestRefineCmd_WithDependsFlag_NonExistentDep(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Try to refine with a dependency on a non-existent node
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "By step 1.5, we have...",
+		"--depends", "1.5",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for non-existent dependency, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "1.5") {
+		t.Errorf("expected error to mention the missing node '1.5', got: %q", errStr)
+	}
+	if !strings.Contains(errStr, "not found") && !strings.Contains(errStr, "does not exist") && !strings.Contains(errStr, "invalid") {
+		t.Errorf("expected error about dependency not found, got: %q", errStr)
+	}
+}
+
+func TestRefineCmd_WithDependsFlag_InvalidFormat(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Try to refine with an invalid dependency ID format
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Some statement",
+		"--depends", "invalid.id.format",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for invalid dependency ID format, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "invalid") && !strings.Contains(errStr, "parse") {
+		t.Errorf("expected error about invalid ID format, got: %q", errStr)
+	}
+}
+
+func TestRefineCmd_WithDependsFlag_EmptyString(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Empty depends flag should be treated as no dependencies (not an error)
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Statement without dependencies",
+		"--depends", "",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error for empty depends, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain child ID '1.1', got: %q", output)
+	}
+}
+
+func TestRefineCmd_WithDependsFlag_MixedValidAndInvalid(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Create one valid dependency
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "First subgoal",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create first child: %v", err)
+	}
+
+	// Try to refine with one valid and one invalid dependency
+	cmd2 := newRefineTestCmd()
+	_, err = executeCommand(cmd2, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Using steps 1.1 and 1.99...",
+		"--depends", "1.1,1.99",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error for mixed valid/invalid dependencies, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "1.99") {
+		t.Errorf("expected error to mention the missing node '1.99', got: %q", errStr)
+	}
+}
+
+func TestRefineCmd_WithDependsFlag_DependOnParent(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Should be able to depend on the parent node
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "From the conjecture (node 1), we derive...",
+		"--depends", "1",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error when depending on parent, got: %v", err)
+	}
+
+	if !strings.Contains(output, "1.1") {
+		t.Errorf("expected output to contain child ID '1.1', got: %q", output)
+	}
+
+	// Verify the dependency was recorded
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childID, _ := types.Parse("1.1")
+	child := st.GetNode(childID)
+	if child == nil {
+		t.Fatal("expected child node 1.1 to exist")
+	}
+
+	if len(child.Dependencies) != 1 || child.Dependencies[0].String() != "1" {
+		t.Errorf("expected dependency on '1', got %v", child.Dependencies)
+	}
+}
+
+func TestRefineCmd_WithDependsFlag_JSONOutput(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Create a dependency first
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "First subgoal",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create first child: %v", err)
+	}
+
+	// Refine with dependency and JSON output
+	cmd2 := newRefineTestCmd()
+	output, err := executeCommand(cmd2, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Using step 1.1...",
+		"--depends", "1.1",
+		"--format", "json",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// JSON output should contain dependencies
+	if !strings.Contains(output, "depends") || !strings.Contains(output, "1.1") {
+		t.Errorf("expected JSON output to show dependencies, got: %q", output)
+	}
+}
+
+func TestRefineCmd_WithDependsFlag_ShowsInHelp(t *testing.T) {
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "--help")
+
+	if err != nil {
+		t.Fatalf("expected no error for help, got: %v", err)
+	}
+
+	// Help should show the --depends flag
+	if !strings.Contains(output, "--depends") {
+		t.Errorf("expected help to show --depends flag, got: %q", output)
+	}
+}
