@@ -152,6 +152,67 @@ func TestAddAndGetExternal(t *testing.T) {
 	}
 }
 
+// TestGetExternalByName verifies retrieving externals by name.
+func TestGetExternalByName(t *testing.T) {
+	s := NewState()
+
+	// Create and add an external
+	ext := node.NewExternal("Fermat-last-theorem", "Wiles, A. (1995)")
+	s.AddExternal(&ext)
+
+	// Retrieve by name
+	got := s.GetExternalByName("Fermat-last-theorem")
+	if got == nil {
+		t.Fatal("GetExternalByName returned nil for existing external")
+	}
+	if got.ID != ext.ID {
+		t.Errorf("GetExternalByName returned wrong external: got ID %s, want %s", got.ID, ext.ID)
+	}
+	if got.Name != ext.Name {
+		t.Errorf("GetExternalByName returned wrong name: got %q, want %q", got.Name, ext.Name)
+	}
+
+	// Verify non-existent name returns nil
+	notFound := s.GetExternalByName("non-existent")
+	if notFound != nil {
+		t.Errorf("GetExternalByName for non-existent name returned non-nil: %v", notFound)
+	}
+}
+
+// TestGetExternalByName_MultipleExternals verifies GetExternalByName with multiple externals.
+func TestGetExternalByName_MultipleExternals(t *testing.T) {
+	s := NewState()
+
+	// Add multiple externals
+	ext1 := node.NewExternal("ZFC", "Zermelo-Fraenkel set theory")
+	ext2 := node.NewExternal("AC", "Axiom of Choice")
+	ext3 := node.NewExternal("CH", "Continuum Hypothesis")
+	s.AddExternal(&ext1)
+	s.AddExternal(&ext2)
+	s.AddExternal(&ext3)
+
+	// Verify each can be found by name
+	tests := []struct {
+		name     string
+		expected *node.External
+	}{
+		{"ZFC", &ext1},
+		{"AC", &ext2},
+		{"CH", &ext3},
+	}
+
+	for _, tt := range tests {
+		got := s.GetExternalByName(tt.name)
+		if got == nil {
+			t.Errorf("GetExternalByName(%q) returned nil", tt.name)
+			continue
+		}
+		if got.ID != tt.expected.ID {
+			t.Errorf("GetExternalByName(%q) returned wrong external: got ID %s, want %s", tt.name, got.ID, tt.expected.ID)
+		}
+	}
+}
+
 // TestAddAndGetLemma verifies adding and retrieving lemmas by ID.
 func TestAddAndGetLemma(t *testing.T) {
 	s := NewState()

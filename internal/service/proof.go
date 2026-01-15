@@ -13,6 +13,7 @@ import (
 	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/ledger"
+	"github.com/tobias/vibefeld/internal/lemma"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/state"
@@ -478,6 +479,11 @@ func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID t
 
 	// Validate child count for parent
 	if err := s.validateChildCount(st, parentID); err != nil {
+		return err
+	}
+
+	// Validate external citations in the statement
+	if err := lemma.ValidateExtCitations(statement, st); err != nil {
 		return err
 	}
 
@@ -1076,6 +1082,11 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		// Validate statement is not empty
 		if strings.TrimSpace(spec.Statement) == "" {
 			return nil, fmt.Errorf("child %d: statement cannot be empty", i+1)
+		}
+
+		// Validate external citations in the statement
+		if err := lemma.ValidateExtCitations(spec.Statement, st); err != nil {
+			return nil, fmt.Errorf("child %d: %w", i+1, err)
 		}
 
 		// Generate child ID
