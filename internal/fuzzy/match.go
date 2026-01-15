@@ -115,3 +115,10 @@ func Match(input string, candidates []string, threshold float64) MatchResult {
 func SuggestCommand(input string, commands []string) MatchResult {
 	return Match(input, commands, 0.8)
 }
+
+// SuggestFlag suggests similar flags for a mistyped flag name.
+// It handles both long flags (--foo) and short flags (-f).
+// The threshold is slightly lower (0.7) than commands to be more forgiving.
+func SuggestFlag(input string, flags []string) MatchResult {
+	return Match(input, flags, 0.7)
+}

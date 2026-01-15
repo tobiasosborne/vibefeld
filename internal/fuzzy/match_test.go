@@ -533,3 +533,118 @@ func matchResultEqual(a, b MatchResult) bool {
 		a.AutoCorrect == b.AutoCorrect &&
 		reflect.DeepEqual(a.Suggestions, b.Suggestions)
 }
+
+// Standard CLI flags for testing
+var cliFlags = []string{
+	"help", "version", "verbose", "format", "output", "dir", "config",
+	"quiet", "debug", "json", "force", "recursive", "dry-run", "all",
+}
+
+func TestSuggestFlag_Typo(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantMatch string
+	}{
+		{
+			name:      "verbos -> verbose",
+			input:     "verbos",
+			wantMatch: "verbose",
+		},
+		{
+			name:      "formt -> format",
+			input:     "formt",
+			wantMatch: "format",
+		},
+		{
+			name:      "ouput -> output",
+			input:     "ouput",
+			wantMatch: "output",
+		},
+		{
+			name:      "confg -> config",
+			input:     "confg",
+			wantMatch: "config",
+		},
+		{
+			name:      "dirr -> dir",
+			input:     "dirr",
+			wantMatch: "dir",
+		},
+		{
+			name:      "qiet -> quiet",
+			input:     "qiet",
+			wantMatch: "quiet",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SuggestFlag(tt.input, cliFlags)
+			if got.Match != tt.wantMatch {
+				t.Errorf("SuggestFlag() Match = %v, want %v", got.Match, tt.wantMatch)
+			}
+		})
+	}
+}
+
+func TestSuggestFlag_Prefix(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		wantContains string // Match should contain this prefix
+		wantMinSuggs int    // minimum suggestions
+	}{
+		{
+			name:         "ver prefix",
+			input:        "ver",
+			wantContains: "ver", // should match verbose, version
+			wantMinSuggs: 1,
+		},
+		{
+			name:         "for prefix",
+			input:        "for",
+			wantContains: "for", // should match format, force
+			wantMinSuggs: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SuggestFlag(tt.input, cliFlags)
+			// With prefix matching, we should get some match or suggestions
+			if got.Match == "" && len(got.Suggestions) < tt.wantMinSuggs {
+				t.Errorf("SuggestFlag() no match and suggestions = %v, want at least %v suggestions",
+					got.Suggestions, tt.wantMinSuggs)
+			}
+		})
+	}
+}
+
+func TestSuggestFlag_NoMatch(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "completely unrelated",
+			input: "xyz123",
+		},
+		{
+			name:  "gibberish",
+			input: "asdfghjkl",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SuggestFlag(tt.input, cliFlags)
+			if got.Match != "" {
+				t.Errorf("SuggestFlag() Match = %v, want empty for no match", got.Match)
+			}
+			if got.AutoCorrect {
+				t.Errorf("SuggestFlag() AutoCorrect = true, want false for no match")
+			}
+		})
+	}
+}
