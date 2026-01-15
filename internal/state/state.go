@@ -112,6 +112,17 @@ func (s *State) GetExternal(id string) *node.External {
 	return s.externals[id]
 }
 
+// GetExternalByName returns the external with the given name, or nil if not found.
+// If multiple externals have the same name, returns the first one found (arbitrary order).
+func (s *State) GetExternalByName(name string) *node.External {
+	for _, e := range s.externals {
+		if e.Name == name {
+			return e
+		}
+	}
+	return nil
+}
+
 // AddLemma adds a lemma to the state.
 // If a lemma with the same ID already exists, it is overwritten.
 func (s *State) AddLemma(l *node.Lemma) {
