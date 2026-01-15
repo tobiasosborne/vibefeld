@@ -104,7 +104,7 @@ func TestAddAndGetAssumption(t *testing.T) {
 	s := NewState()
 
 	// Create a test assumption
-	asm := node.NewAssumption("Test assumption statement")
+	asm, _ := node.NewAssumption("Test assumption statement")
 
 	// Add the assumption
 	s.AddAssumption(asm)
@@ -129,7 +129,7 @@ func TestAddAndGetExternal(t *testing.T) {
 	s := NewState()
 
 	// Create a test external
-	ext := node.NewExternal("Fermat's Last Theorem", "Wiles, A. (1995)")
+	ext, _ := node.NewExternal("Fermat's Last Theorem", "Wiles, A. (1995)")
 
 	// Add the external
 	s.AddExternal(&ext)
@@ -157,7 +157,7 @@ func TestGetExternalByName(t *testing.T) {
 	s := NewState()
 
 	// Create and add an external
-	ext := node.NewExternal("Fermat-last-theorem", "Wiles, A. (1995)")
+	ext, _ := node.NewExternal("Fermat-last-theorem", "Wiles, A. (1995)")
 	s.AddExternal(&ext)
 
 	// Retrieve by name
@@ -184,9 +184,9 @@ func TestGetExternalByName_MultipleExternals(t *testing.T) {
 	s := NewState()
 
 	// Add multiple externals
-	ext1 := node.NewExternal("ZFC", "Zermelo-Fraenkel set theory")
-	ext2 := node.NewExternal("AC", "Axiom of Choice")
-	ext3 := node.NewExternal("CH", "Continuum Hypothesis")
+	ext1, _ := node.NewExternal("ZFC", "Zermelo-Fraenkel set theory")
+	ext2, _ := node.NewExternal("AC", "Axiom of Choice")
+	ext3, _ := node.NewExternal("CH", "Continuum Hypothesis")
 	s.AddExternal(&ext1)
 	s.AddExternal(&ext2)
 	s.AddExternal(&ext3)
@@ -288,7 +288,7 @@ func TestGetNonExistentAssumption(t *testing.T) {
 	s := NewState()
 
 	// Add an assumption
-	asm := node.NewAssumption("Existing assumption")
+	asm, _ := node.NewAssumption("Existing assumption")
 	s.AddAssumption(asm)
 
 	// Try to get a different assumption
@@ -303,7 +303,7 @@ func TestGetNonExistentExternal(t *testing.T) {
 	s := NewState()
 
 	// Add an external
-	ext := node.NewExternal("Existing", "Source")
+	ext, _ := node.NewExternal("Existing", "Source")
 	s.AddExternal(&ext)
 
 	// Try to get a different external
@@ -397,12 +397,12 @@ func TestDuplicateAssumptionOverwrites(t *testing.T) {
 	s := NewState()
 
 	// Create first assumption and record its ID
-	asm1 := node.NewAssumption("First assumption")
+	asm1, _ := node.NewAssumption("First assumption")
 	originalID := asm1.ID
 	s.AddAssumption(asm1)
 
 	// Create second assumption with same ID
-	asm2 := node.NewAssumption("Second assumption")
+	asm2, _ := node.NewAssumption("Second assumption")
 	asm2.ID = originalID
 	s.AddAssumption(asm2)
 
@@ -421,12 +421,12 @@ func TestDuplicateExternalOverwrites(t *testing.T) {
 	s := NewState()
 
 	// Create first external and record its ID
-	ext1 := node.NewExternal("First", "First source")
+	ext1, _ := node.NewExternal("First", "First source")
 	originalID := ext1.ID
 	s.AddExternal(&ext1)
 
 	// Create second external with same ID
-	ext2 := node.NewExternal("Second", "Second source")
+	ext2, _ := node.NewExternal("Second", "Second source")
 	ext2.ID = originalID
 	s.AddExternal(&ext2)
 
@@ -554,11 +554,11 @@ func TestMixedEntities(t *testing.T) {
 	s.AddDefinition(def)
 
 	// Add an assumption
-	asm := node.NewAssumption("Test assumption")
+	asm, _ := node.NewAssumption("Test assumption")
 	s.AddAssumption(asm)
 
 	// Add an external
-	ext := node.NewExternal("TestExt", "Test source")
+	ext, _ := node.NewExternal("TestExt", "Test source")
 	s.AddExternal(&ext)
 
 	// Add a lemma

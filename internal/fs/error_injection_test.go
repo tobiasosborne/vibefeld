@@ -82,14 +82,14 @@ func createTestDefinition(id string) *node.Definition {
 
 // createTestAssumption creates a valid test assumption for use in tests.
 func createTestAssumption(id string) *node.Assumption {
-	a := node.NewAssumption("Test assumption statement")
+	a, _ := node.NewAssumption("Test assumption statement")
 	a.ID = id // Override the auto-generated ID
 	return a
 }
 
 // createTestExternal creates a valid test external reference for use in tests.
 func createTestExternal(id string) *node.External {
-	ext := node.NewExternal("Test external", "https://example.com")
+	ext, _ := node.NewExternal("Test external", "https://example.com")
 	ext.ID = id // Override the auto-generated ID
 	return &ext
 }

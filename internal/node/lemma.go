@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/types"
@@ -35,7 +36,8 @@ type Lemma struct {
 }
 
 // NewLemma creates a new Lemma with the given statement and source node ID.
-// Returns an error if the statement is empty or the source node ID is invalid.
+// Returns an error if the statement is empty, the source node ID is invalid,
+// or if random ID generation fails.
 func NewLemma(statement string, sourceNodeID types.NodeID) (*Lemma, error) {
 	// Validate statement is not empty or whitespace only
 	if strings.TrimSpace(statement) == "" {
@@ -52,12 +54,10 @@ func NewLemma(statement string, sourceNodeID types.NodeID) (*Lemma, error) {
 	contentHash := hex.EncodeToString(sum[:])
 
 	// Generate unique ID using random bytes.
-	// Panics if crypto/rand fails, as this indicates a critical system issue
-	// (e.g., entropy source unavailable) from which there is no reasonable recovery.
 	now := types.Now()
 	randomBytes := make([]byte, 8)
 	if _, err := rand.Read(randomBytes); err != nil {
-		panic("crypto/rand.Read failed: " + err.Error())
+		return nil, fmt.Errorf("generating lemma ID: %w", err)
 	}
 	id := "LEM-" + hex.EncodeToString(randomBytes)
 

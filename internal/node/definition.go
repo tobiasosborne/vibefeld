@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/types"
@@ -29,7 +30,8 @@ type Definition struct {
 }
 
 // NewDefinition creates a new Definition with the given name and content.
-// Returns an error if name or content is empty or whitespace-only.
+// Returns an error if name or content is empty or whitespace-only,
+// or if random ID generation fails.
 func NewDefinition(name, content string) (*Definition, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, errors.New("definition name cannot be empty")
@@ -38,8 +40,13 @@ func NewDefinition(name, content string) (*Definition, error) {
 		return nil, errors.New("definition content cannot be empty")
 	}
 
+	id, err := generateDefinitionID()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Definition{
-		ID:          generateDefinitionID(),
+		ID:          id,
 		Name:        name,
 		Content:     content,
 		ContentHash: computeContentHash(content),
@@ -69,14 +76,13 @@ func (d *Definition) Equal(other *Definition) bool {
 
 // generateDefinitionID generates a unique identifier for a Definition.
 // Uses random bytes for uniqueness.
-// Panics if crypto/rand fails, as this indicates a critical system issue
-// (e.g., entropy source unavailable) from which there is no reasonable recovery.
-func generateDefinitionID() string {
+// Returns an error if crypto/rand fails.
+func generateDefinitionID() (string, error) {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		panic("crypto/rand.Read failed: " + err.Error())
+		return "", fmt.Errorf("generating definition ID: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 // computeContentHash computes a SHA256 hash of the content string.

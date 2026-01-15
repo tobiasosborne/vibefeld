@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/types"
@@ -35,31 +36,36 @@ type PendingDef struct {
 
 // NewPendingDef creates a new pending definition request.
 // The ID is automatically generated and the status is set to pending.
-func NewPendingDef(term string, requestedBy types.NodeID) *PendingDef {
+// Returns an error if random ID generation fails.
+func NewPendingDef(term string, requestedBy types.NodeID) (*PendingDef, error) {
+	id, err := generatePendingDefID()
+	if err != nil {
+		return nil, err
+	}
 	return &PendingDef{
-		ID:          generatePendingDefID(),
+		ID:          id,
 		Term:        term,
 		RequestedBy: requestedBy,
 		Created:     types.Now(),
 		ResolvedBy:  "",
 		Status:      PendingDefStatusPending,
-	}
+	}, nil
 }
 
 // generatePendingDefID generates a unique identifier for a PendingDef.
 // Uses random bytes for uniqueness.
-// Panics if crypto/rand fails, as this indicates a critical system issue
-// (e.g., entropy source unavailable) from which there is no reasonable recovery.
-func generatePendingDefID() string {
+// Returns an error if crypto/rand fails.
+func generatePendingDefID() (string, error) {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		panic("crypto/rand.Read failed: " + err.Error())
+		return "", fmt.Errorf("generating pending definition ID: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 // NewPendingDefWithValidation creates a new pending definition request with validation.
-// Returns an error if the term is empty/whitespace or the requestedBy NodeID is zero.
+// Returns an error if the term is empty/whitespace, the requestedBy NodeID is zero,
+// or if random ID generation fails.
 func NewPendingDefWithValidation(term string, requestedBy types.NodeID) (*PendingDef, error) {
 	if isBlank(term) {
 		return nil, errors.New("term cannot be empty or whitespace")
@@ -68,7 +74,7 @@ func NewPendingDefWithValidation(term string, requestedBy types.NodeID) (*Pendin
 	if requestedBy.String() == "" {
 		return nil, errors.New("requestedBy cannot be zero NodeID")
 	}
-	return NewPendingDef(term, requestedBy), nil
+	return NewPendingDef(term, requestedBy)
 }
 
 // Resolve marks the pending definition as resolved by the given definition ID.

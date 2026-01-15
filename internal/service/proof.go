@@ -728,7 +728,10 @@ func (s *ProofService) AddAssumption(statement string) (string, error) {
 	}
 
 	// Create the assumption
-	asm := node.NewAssumption(statement)
+	asm, err := node.NewAssumption(statement)
+	if err != nil {
+		return "", fmt.Errorf("creating assumption: %w", err)
+	}
 
 	// Store assumption in filesystem (base path is the proof directory)
 	if err := fs.WriteAssumption(s.path, asm); err != nil {
@@ -750,7 +753,10 @@ func (s *ProofService) AddExternal(name, source string) (string, error) {
 	}
 
 	// Create the external
-	ext := node.NewExternal(name, source)
+	ext, err := node.NewExternal(name, source)
+	if err != nil {
+		return "", fmt.Errorf("creating external: %w", err)
+	}
 
 	// Store in filesystem (base path is the proof directory)
 	if err := fs.WriteExternal(s.path, &ext); err != nil {

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/types"
@@ -23,28 +24,38 @@ type External struct {
 
 // NewExternal creates a new External reference with the given name and source.
 // The ContentHash is computed from the source, and Created is set to the current time.
-func NewExternal(name, source string) External {
+// Returns an error if random ID generation fails.
+func NewExternal(name, source string) (External, error) {
+	id, err := generateID()
+	if err != nil {
+		return External{}, err
+	}
 	return External{
-		ID:          generateID(),
+		ID:          id,
 		Name:        name,
 		Source:      source,
 		ContentHash: computeSourceHash(source),
 		Created:     types.Now(),
 		Notes:       "",
-	}
+	}, nil
 }
 
 // NewExternalWithNotes creates a new External reference with the given name, source, and notes.
 // The ContentHash is computed from the source, and Created is set to the current time.
-func NewExternalWithNotes(name, source, notes string) External {
+// Returns an error if random ID generation fails.
+func NewExternalWithNotes(name, source, notes string) (External, error) {
+	id, err := generateID()
+	if err != nil {
+		return External{}, err
+	}
 	return External{
-		ID:          generateID(),
+		ID:          id,
 		Name:        name,
 		Source:      source,
 		ContentHash: computeSourceHash(source),
 		Created:     types.Now(),
 		Notes:       notes,
-	}
+	}, nil
 }
 
 // Validate checks that the External has valid required fields.
@@ -67,12 +78,11 @@ func computeSourceHash(source string) string {
 
 // generateID generates a unique identifier for an External reference.
 // Uses random bytes for uniqueness.
-// Panics if crypto/rand fails, as this indicates a critical system issue
-// (e.g., entropy source unavailable) from which there is no reasonable recovery.
-func generateID() string {
+// Returns an error if crypto/rand fails.
+func generateID() (string, error) {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		panic("crypto/rand.Read failed: " + err.Error())
+		return "", fmt.Errorf("generating external ID: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }

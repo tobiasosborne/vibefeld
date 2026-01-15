@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/tobias/vibefeld/internal/ledger"
 )
@@ -126,6 +127,31 @@ func extractEventType(data []byte) (ledger.EventType, error) {
 	return "", fmt.Errorf("invalid JSON: unterminated type string")
 }
 
+// eventFactory is a function that creates a new instance of a specific event type.
+type eventFactory func() ledger.Event
+
+// eventFactories maps event type strings to factory functions that create
+// instances of the corresponding event types. This registry pattern eliminates
+// the repetitive switch statement and makes adding new event types trivial.
+var eventFactories = map[ledger.EventType]eventFactory{
+	ledger.EventProofInitialized:    func() ledger.Event { return &ledger.ProofInitialized{} },
+	ledger.EventNodeCreated:         func() ledger.Event { return &ledger.NodeCreated{} },
+	ledger.EventNodesClaimed:        func() ledger.Event { return &ledger.NodesClaimed{} },
+	ledger.EventNodesReleased:       func() ledger.Event { return &ledger.NodesReleased{} },
+	ledger.EventChallengeRaised:     func() ledger.Event { return &ledger.ChallengeRaised{} },
+	ledger.EventChallengeResolved:   func() ledger.Event { return &ledger.ChallengeResolved{} },
+	ledger.EventChallengeWithdrawn:  func() ledger.Event { return &ledger.ChallengeWithdrawn{} },
+	ledger.EventChallengeSuperseded: func() ledger.Event { return &ledger.ChallengeSuperseded{} },
+	ledger.EventNodeValidated:       func() ledger.Event { return &ledger.NodeValidated{} },
+	ledger.EventNodeAdmitted:        func() ledger.Event { return &ledger.NodeAdmitted{} },
+	ledger.EventNodeRefuted:         func() ledger.Event { return &ledger.NodeRefuted{} },
+	ledger.EventNodeArchived:        func() ledger.Event { return &ledger.NodeArchived{} },
+	ledger.EventTaintRecomputed:     func() ledger.Event { return &ledger.TaintRecomputed{} },
+	ledger.EventDefAdded:            func() ledger.Event { return &ledger.DefAdded{} },
+	ledger.EventLemmaExtracted:      func() ledger.Event { return &ledger.LemmaExtracted{} },
+	ledger.EventLockReaped:          func() ledger.Event { return &ledger.LockReaped{} },
+}
+
 // parseEvent parses raw JSON bytes into a typed Event.
 // Returns an error if the JSON is invalid or the event type is unknown.
 // Uses optimized byte scanning to extract the type field, avoiding double JSON parsing.
@@ -136,107 +162,19 @@ func parseEvent(data []byte) (ledger.Event, error) {
 		return nil, err
 	}
 
-	// Now parse the full event based on type (single unmarshal)
-	switch eventType {
-	case ledger.EventProofInitialized:
-		var e ledger.ProofInitialized
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse ProofInitialized: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventNodeCreated:
-		var e ledger.NodeCreated
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse NodeCreated: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventNodesClaimed:
-		var e ledger.NodesClaimed
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse NodesClaimed: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventNodesReleased:
-		var e ledger.NodesReleased
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse NodesReleased: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventChallengeRaised:
-		var e ledger.ChallengeRaised
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse ChallengeRaised: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventChallengeResolved:
-		var e ledger.ChallengeResolved
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse ChallengeResolved: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventChallengeWithdrawn:
-		var e ledger.ChallengeWithdrawn
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse ChallengeWithdrawn: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventNodeValidated:
-		var e ledger.NodeValidated
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse NodeValidated: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventNodeAdmitted:
-		var e ledger.NodeAdmitted
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse NodeAdmitted: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventNodeRefuted:
-		var e ledger.NodeRefuted
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse NodeRefuted: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventNodeArchived:
-		var e ledger.NodeArchived
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse NodeArchived: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventTaintRecomputed:
-		var e ledger.TaintRecomputed
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse TaintRecomputed: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventDefAdded:
-		var e ledger.DefAdded
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse DefAdded: %w", err)
-		}
-		return e, nil
-
-	case ledger.EventLemmaExtracted:
-		var e ledger.LemmaExtracted
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse LemmaExtracted: %w", err)
-		}
-		return e, nil
-
-	default:
+	// Look up the factory for this event type
+	factory, ok := eventFactories[eventType]
+	if !ok {
 		return nil, fmt.Errorf("unknown event type: %s", eventType)
 	}
+
+	// Create a new instance (pointer) and unmarshal into it
+	eventPtr := factory()
+	if err := json.Unmarshal(data, eventPtr); err != nil {
+		return nil, fmt.Errorf("failed to parse %s: %w", eventType, err)
+	}
+
+	// Dereference pointer to get value type (required for Apply's type assertions)
+	// Uses reflection to avoid a separate type switch for each event type
+	return reflect.ValueOf(eventPtr).Elem().Interface().(ledger.Event), nil
 }

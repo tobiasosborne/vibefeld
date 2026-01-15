@@ -36,7 +36,10 @@ func TestNewAssumption(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := node.NewAssumption(tt.statement)
+			a, err := node.NewAssumption(tt.statement)
+			if err != nil {
+				t.Fatalf("NewAssumption() unexpected error: %v", err)
+			}
 
 			if a.Statement != tt.statement {
 				t.Errorf("Statement = %q, want %q", a.Statement, tt.statement)
@@ -93,7 +96,10 @@ func TestNewAssumptionWithJustification(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := node.NewAssumptionWithJustification(tt.statement, tt.justification)
+			a, err := node.NewAssumptionWithJustification(tt.statement, tt.justification)
+			if err != nil {
+				t.Fatalf("NewAssumptionWithJustification() unexpected error: %v", err)
+			}
 
 			if a.Statement != tt.statement {
 				t.Errorf("Statement = %q, want %q", a.Statement, tt.statement)
@@ -141,7 +147,10 @@ func TestAssumptionContentHash(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := node.NewAssumption(tt.statement)
+			a, err := node.NewAssumption(tt.statement)
+			if err != nil {
+				t.Fatalf("NewAssumption() unexpected error: %v", err)
+			}
 
 			// Compute expected hash manually
 			sum := sha256.Sum256([]byte(tt.statement))
@@ -159,8 +168,14 @@ func TestAssumptionContentHash(t *testing.T) {
 func TestAssumptionContentHashDeterministic(t *testing.T) {
 	statement := "Let epsilon > 0 be given"
 
-	a1 := node.NewAssumption(statement)
-	a2 := node.NewAssumption(statement)
+	a1, err := node.NewAssumption(statement)
+	if err != nil {
+		t.Fatalf("NewAssumption() a1 unexpected error: %v", err)
+	}
+	a2, err := node.NewAssumption(statement)
+	if err != nil {
+		t.Fatalf("NewAssumption() a2 unexpected error: %v", err)
+	}
 
 	if a1.ContentHash != a2.ContentHash {
 		t.Errorf("Same statement produced different hashes: %q vs %q", a1.ContentHash, a2.ContentHash)
@@ -170,8 +185,14 @@ func TestAssumptionContentHashDeterministic(t *testing.T) {
 // TestAssumptionContentHashUnique verifies that different statements
 // produce different hashes.
 func TestAssumptionContentHashUnique(t *testing.T) {
-	a1 := node.NewAssumption("statement one")
-	a2 := node.NewAssumption("statement two")
+	a1, err := node.NewAssumption("statement one")
+	if err != nil {
+		t.Fatalf("NewAssumption() a1 unexpected error: %v", err)
+	}
+	a2, err := node.NewAssumption("statement two")
+	if err != nil {
+		t.Fatalf("NewAssumption() a2 unexpected error: %v", err)
+	}
 
 	if a1.ContentHash == a2.ContentHash {
 		t.Error("Different statements should produce different hashes")
@@ -210,7 +231,10 @@ func TestAssumptionJSONSerialization(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			original := node.NewAssumptionWithJustification(tt.statement, tt.justification)
+			original, err := node.NewAssumptionWithJustification(tt.statement, tt.justification)
+			if err != nil {
+				t.Fatalf("NewAssumptionWithJustification() unexpected error: %v", err)
+			}
 
 			// Serialize to JSON
 			data, err := json.Marshal(original)
@@ -247,10 +271,13 @@ func TestAssumptionJSONSerialization(t *testing.T) {
 // TestAssumptionJSONRoundTrip verifies that JSON serialization
 // preserves all data through multiple round trips.
 func TestAssumptionJSONRoundTrip(t *testing.T) {
-	original := node.NewAssumptionWithJustification(
+	original, err := node.NewAssumptionWithJustification(
 		"The sequence converges uniformly",
 		"by Weierstrass M-test",
 	)
+	if err != nil {
+		t.Fatalf("NewAssumptionWithJustification() unexpected error: %v", err)
+	}
 
 	// First round trip
 	data1, err := json.Marshal(original)
@@ -330,7 +357,10 @@ func TestAssumptionValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := node.NewAssumption(tt.statement)
+			a, createErr := node.NewAssumption(tt.statement)
+			if createErr != nil {
+				t.Fatalf("NewAssumption() unexpected error: %v", createErr)
+			}
 			err := a.Validate()
 
 			if tt.wantErr {
@@ -358,7 +388,10 @@ func TestAssumptionIDGeneration(t *testing.T) {
 
 	// Create multiple assumptions and verify unique IDs
 	for i := 0; i < 100; i++ {
-		a := node.NewAssumption("same statement for all")
+		a, err := node.NewAssumption("same statement for all")
+		if err != nil {
+			t.Fatalf("NewAssumption() iteration %d unexpected error: %v", i, err)
+		}
 		if seen[a.ID] {
 			t.Errorf("Duplicate ID generated: %s", a.ID)
 		}
@@ -369,7 +402,10 @@ func TestAssumptionIDGeneration(t *testing.T) {
 // TestAssumptionIDFormat verifies that generated IDs have
 // the expected format.
 func TestAssumptionIDFormat(t *testing.T) {
-	a := node.NewAssumption("test statement")
+	a, err := node.NewAssumption("test statement")
+	if err != nil {
+		t.Fatalf("NewAssumption() unexpected error: %v", err)
+	}
 
 	if len(a.ID) == 0 {
 		t.Error("ID should not be empty")

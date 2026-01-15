@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/types"
@@ -32,23 +33,23 @@ type Assumption struct {
 
 // NewAssumption creates a new Assumption with the given statement.
 // The content hash and timestamp are computed automatically.
-func NewAssumption(statement string) *Assumption {
+// Returns an error if random ID generation fails.
+func NewAssumption(statement string) (*Assumption, error) {
 	return NewAssumptionWithJustification(statement, "")
 }
 
 // NewAssumptionWithJustification creates a new Assumption with the
 // given statement and justification.
-func NewAssumptionWithJustification(statement, justification string) *Assumption {
+// Returns an error if random ID generation fails.
+func NewAssumptionWithJustification(statement, justification string) (*Assumption, error) {
 	// Compute content hash from statement
 	sum := sha256.Sum256([]byte(statement))
 	contentHash := hex.EncodeToString(sum[:])
 
 	// Generate unique ID using random bytes.
-	// Panics if crypto/rand fails, as this indicates a critical system issue
-	// (e.g., entropy source unavailable) from which there is no reasonable recovery.
 	randomBytes := make([]byte, 8)
 	if _, err := rand.Read(randomBytes); err != nil {
-		panic("crypto/rand.Read failed: " + err.Error())
+		return nil, fmt.Errorf("generating assumption ID: %w", err)
 	}
 	id := hex.EncodeToString(randomBytes)
 
@@ -58,7 +59,7 @@ func NewAssumptionWithJustification(statement, justification string) *Assumption
 		ContentHash:   contentHash,
 		Created:       types.Now(),
 		Justification: justification,
-	}
+	}, nil
 }
 
 // Validate checks if the Assumption is valid.

@@ -29,7 +29,10 @@ func TestNewPendingDef_Valid(t *testing.T) {
 				t.Fatalf("Parse(%q) unexpected error: %v", tt.requestedBy, err)
 			}
 
-			pd := node.NewPendingDef(tt.term, requestedBy)
+			pd, err := node.NewPendingDef(tt.term, requestedBy)
+			if err != nil {
+				t.Fatalf("NewPendingDef() unexpected error: %v", err)
+			}
 
 			// Verify ID is non-empty
 			if pd.ID == "" {
@@ -73,7 +76,10 @@ func TestNewPendingDef_UniqueIDs(t *testing.T) {
 
 	ids := make(map[string]bool)
 	for i := 0; i < 100; i++ {
-		pd := node.NewPendingDef("test term", requestedBy)
+		pd, err := node.NewPendingDef("test term", requestedBy)
+		if err != nil {
+			t.Fatalf("NewPendingDef() iteration %d unexpected error: %v", i, err)
+		}
 		if ids[pd.ID] {
 			t.Errorf("NewPendingDef generated duplicate ID: %s", pd.ID)
 		}
@@ -95,7 +101,10 @@ func TestPendingDef_Resolve(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			requestedBy, _ := types.Parse("1.1")
-			pd := node.NewPendingDef("group", requestedBy)
+			pd, err := node.NewPendingDef("group", requestedBy)
+			if err != nil {
+				t.Fatalf("NewPendingDef() unexpected error: %v", err)
+			}
 
 			// Verify initial state
 			if pd.Status != node.PendingDefStatusPending {
@@ -103,7 +112,7 @@ func TestPendingDef_Resolve(t *testing.T) {
 			}
 
 			// Resolve the pending definition
-			err := pd.Resolve(tt.definitionID)
+			err = pd.Resolve(tt.definitionID)
 			if err != nil {
 				t.Fatalf("Resolve(%q) unexpected error: %v", tt.definitionID, err)
 			}
@@ -124,10 +133,13 @@ func TestPendingDef_Resolve(t *testing.T) {
 // TestPendingDef_Resolve_AlreadyResolved verifies Resolve fails if already resolved.
 func TestPendingDef_Resolve_AlreadyResolved(t *testing.T) {
 	requestedBy, _ := types.Parse("1")
-	pd := node.NewPendingDef("group", requestedBy)
+	pd, err := node.NewPendingDef("group", requestedBy)
+	if err != nil {
+		t.Fatalf("NewPendingDef() unexpected error: %v", err)
+	}
 
 	// Resolve once
-	err := pd.Resolve("def-001")
+	err = pd.Resolve("def-001")
 	if err != nil {
 		t.Fatalf("first Resolve() unexpected error: %v", err)
 	}
@@ -142,10 +154,13 @@ func TestPendingDef_Resolve_AlreadyResolved(t *testing.T) {
 // TestPendingDef_Resolve_AlreadyCancelled verifies Resolve fails if cancelled.
 func TestPendingDef_Resolve_AlreadyCancelled(t *testing.T) {
 	requestedBy, _ := types.Parse("1")
-	pd := node.NewPendingDef("group", requestedBy)
+	pd, err := node.NewPendingDef("group", requestedBy)
+	if err != nil {
+		t.Fatalf("NewPendingDef() unexpected error: %v", err)
+	}
 
 	// Cancel first
-	err := pd.Cancel()
+	err = pd.Cancel()
 	if err != nil {
 		t.Fatalf("Cancel() unexpected error: %v", err)
 	}
@@ -160,9 +175,12 @@ func TestPendingDef_Resolve_AlreadyCancelled(t *testing.T) {
 // TestPendingDef_Resolve_EmptyDefinitionID verifies Resolve fails with empty ID.
 func TestPendingDef_Resolve_EmptyDefinitionID(t *testing.T) {
 	requestedBy, _ := types.Parse("1")
-	pd := node.NewPendingDef("group", requestedBy)
+	pd, err := node.NewPendingDef("group", requestedBy)
+	if err != nil {
+		t.Fatalf("NewPendingDef() unexpected error: %v", err)
+	}
 
-	err := pd.Resolve("")
+	err = pd.Resolve("")
 	if err == nil {
 		t.Error("Resolve(\"\") expected error, got nil")
 	}
@@ -171,7 +189,10 @@ func TestPendingDef_Resolve_EmptyDefinitionID(t *testing.T) {
 // TestPendingDef_Cancel verifies the Cancel method transitions status correctly.
 func TestPendingDef_Cancel(t *testing.T) {
 	requestedBy, _ := types.Parse("1.2.3")
-	pd := node.NewPendingDef("homomorphism", requestedBy)
+	pd, err := node.NewPendingDef("homomorphism", requestedBy)
+	if err != nil {
+		t.Fatalf("NewPendingDef() unexpected error: %v", err)
+	}
 
 	// Verify initial state
 	if pd.Status != node.PendingDefStatusPending {
@@ -179,7 +200,7 @@ func TestPendingDef_Cancel(t *testing.T) {
 	}
 
 	// Cancel the pending definition
-	err := pd.Cancel()
+	err = pd.Cancel()
 	if err != nil {
 		t.Fatalf("Cancel() unexpected error: %v", err)
 	}
@@ -198,10 +219,13 @@ func TestPendingDef_Cancel(t *testing.T) {
 // TestPendingDef_Cancel_AlreadyResolved verifies Cancel fails if already resolved.
 func TestPendingDef_Cancel_AlreadyResolved(t *testing.T) {
 	requestedBy, _ := types.Parse("1")
-	pd := node.NewPendingDef("group", requestedBy)
+	pd, err := node.NewPendingDef("group", requestedBy)
+	if err != nil {
+		t.Fatalf("NewPendingDef() unexpected error: %v", err)
+	}
 
 	// Resolve first
-	err := pd.Resolve("def-001")
+	err = pd.Resolve("def-001")
 	if err != nil {
 		t.Fatalf("Resolve() unexpected error: %v", err)
 	}
@@ -216,10 +240,13 @@ func TestPendingDef_Cancel_AlreadyResolved(t *testing.T) {
 // TestPendingDef_Cancel_AlreadyCancelled verifies Cancel fails if already cancelled.
 func TestPendingDef_Cancel_AlreadyCancelled(t *testing.T) {
 	requestedBy, _ := types.Parse("1")
-	pd := node.NewPendingDef("group", requestedBy)
+	pd, err := node.NewPendingDef("group", requestedBy)
+	if err != nil {
+		t.Fatalf("NewPendingDef() unexpected error: %v", err)
+	}
 
 	// Cancel once
-	err := pd.Cancel()
+	err = pd.Cancel()
 	if err != nil {
 		t.Fatalf("first Cancel() unexpected error: %v", err)
 	}
@@ -262,7 +289,10 @@ func TestPendingDef_IsPending(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			requestedBy, _ := types.Parse("1")
-			pd := node.NewPendingDef("group", requestedBy)
+			pd, err := node.NewPendingDef("group", requestedBy)
+			if err != nil {
+				t.Fatalf("NewPendingDef() unexpected error: %v", err)
+			}
 
 			tt.setup(pd)
 
@@ -313,7 +343,10 @@ func TestPendingDef_JSON_Roundtrip(t *testing.T) {
 				t.Fatalf("Parse(%q) unexpected error: %v", tt.requestedBy, err)
 			}
 
-			original := node.NewPendingDef(tt.term, requestedBy)
+			original, err := node.NewPendingDef(tt.term, requestedBy)
+			if err != nil {
+				t.Fatalf("NewPendingDef() unexpected error: %v", err)
+			}
 			tt.setup(original)
 
 			// Marshal to JSON
@@ -355,7 +388,10 @@ func TestPendingDef_JSON_Roundtrip(t *testing.T) {
 // TestPendingDef_JSON_Fields verifies JSON output contains expected field names.
 func TestPendingDef_JSON_Fields(t *testing.T) {
 	requestedBy, _ := types.Parse("1.2")
-	pd := node.NewPendingDef("group", requestedBy)
+	pd, err := node.NewPendingDef("group", requestedBy)
+	if err != nil {
+		t.Fatalf("NewPendingDef() unexpected error: %v", err)
+	}
 	_ = pd.Resolve("def-001")
 
 	data, err := json.Marshal(pd)
@@ -475,7 +511,10 @@ func TestPendingDef_TermPreserved(t *testing.T) {
 
 	for _, term := range tests {
 		t.Run(term, func(t *testing.T) {
-			pd := node.NewPendingDef(term, requestedBy)
+			pd, err := node.NewPendingDef(term, requestedBy)
+			if err != nil {
+				t.Fatalf("NewPendingDef() unexpected error: %v", err)
+			}
 			if pd.Term != term {
 				t.Errorf("Term = %q, want %q", pd.Term, term)
 			}

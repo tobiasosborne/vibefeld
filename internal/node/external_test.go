@@ -49,7 +49,10 @@ func TestNewExternal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ext := node.NewExternal(tt.refName, tt.source)
+			ext, err := node.NewExternal(tt.refName, tt.source)
+			if err != nil {
+				t.Fatalf("NewExternal() unexpected error: %v", err)
+			}
 
 			if ext.Name != tt.wantName {
 				t.Errorf("NewExternal().Name = %q, want %q", ext.Name, tt.wantName)
@@ -110,7 +113,10 @@ func TestNewExternalWithNotes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ext := node.NewExternalWithNotes(tt.refName, tt.source, tt.notes)
+			ext, err := node.NewExternalWithNotes(tt.refName, tt.source, tt.notes)
+			if err != nil {
+				t.Fatalf("NewExternalWithNotes() unexpected error: %v", err)
+			}
 
 			if ext.Name != tt.refName {
 				t.Errorf("NewExternalWithNotes().Name = %q, want %q", ext.Name, tt.refName)
@@ -160,7 +166,10 @@ func TestExternal_ContentHashComputedFromSource(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ext := node.NewExternal("Test", tt.source)
+			ext, err := node.NewExternal("Test", tt.source)
+			if err != nil {
+				t.Fatalf("NewExternal() unexpected error: %v", err)
+			}
 
 			// Compute expected hash directly
 			sum := sha256.Sum256([]byte(tt.source))
@@ -174,8 +183,14 @@ func TestExternal_ContentHashComputedFromSource(t *testing.T) {
 }
 
 func TestExternal_DifferentSourcesDifferentHashes(t *testing.T) {
-	ext1 := node.NewExternal("Ref1", "Source One")
-	ext2 := node.NewExternal("Ref1", "Source Two")
+	ext1, err := node.NewExternal("Ref1", "Source One")
+	if err != nil {
+		t.Fatalf("NewExternal() ext1 unexpected error: %v", err)
+	}
+	ext2, err := node.NewExternal("Ref1", "Source Two")
+	if err != nil {
+		t.Fatalf("NewExternal() ext2 unexpected error: %v", err)
+	}
 
 	if ext1.ContentHash == ext2.ContentHash {
 		t.Error("Different sources should produce different content hashes")
@@ -184,8 +199,14 @@ func TestExternal_DifferentSourcesDifferentHashes(t *testing.T) {
 
 func TestExternal_SameSourceSameHash(t *testing.T) {
 	source := "Identical source text"
-	ext1 := node.NewExternal("Name1", source)
-	ext2 := node.NewExternal("Name2", source)
+	ext1, err := node.NewExternal("Name1", source)
+	if err != nil {
+		t.Fatalf("NewExternal() ext1 unexpected error: %v", err)
+	}
+	ext2, err := node.NewExternal("Name2", source)
+	if err != nil {
+		t.Fatalf("NewExternal() ext2 unexpected error: %v", err)
+	}
 
 	if ext1.ContentHash != ext2.ContentHash {
 		t.Error("Same sources should produce identical content hashes regardless of name")
@@ -196,7 +217,10 @@ func TestExternal_UniqueIDs(t *testing.T) {
 	// Create multiple externals and verify IDs are unique
 	seen := make(map[string]bool)
 	for i := 0; i < 100; i++ {
-		ext := node.NewExternal("Test", "Source")
+		ext, err := node.NewExternal("Test", "Source")
+		if err != nil {
+			t.Fatalf("NewExternal() iteration %d unexpected error: %v", i, err)
+		}
 		if seen[ext.ID] {
 			t.Errorf("Duplicate ID generated: %s", ext.ID)
 		}
@@ -207,29 +231,29 @@ func TestExternal_UniqueIDs(t *testing.T) {
 func TestExternal_JSONSerialization(t *testing.T) {
 	tests := []struct {
 		name   string
-		ext    func() node.External
+		ext    func() (node.External, error)
 	}{
 		{
 			name: "basic external",
-			ext: func() node.External {
+			ext: func() (node.External, error) {
 				return node.NewExternal("Test Theorem", "https://example.com/proof")
 			},
 		},
 		{
 			name: "external with notes",
-			ext: func() node.External {
+			ext: func() (node.External, error) {
 				return node.NewExternalWithNotes("Important Result", "Smith (2023)", "Key lemma for main proof")
 			},
 		},
 		{
 			name: "external with unicode",
-			ext: func() node.External {
+			ext: func() (node.External, error) {
 				return node.NewExternalWithNotes("Gödel", "Über formal unentscheidbare Sätze", "Gödel's paper")
 			},
 		},
 		{
 			name: "external with empty notes",
-			ext: func() node.External {
+			ext: func() (node.External, error) {
 				return node.NewExternalWithNotes("AC", "Axiom of Choice", "")
 			},
 		},
@@ -237,7 +261,10 @@ func TestExternal_JSONSerialization(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			original := tt.ext()
+			original, err := tt.ext()
+			if err != nil {
+				t.Fatalf("ext() unexpected error: %v", err)
+			}
 
 			// Marshal to JSON
 			data, err := json.Marshal(original)
@@ -276,7 +303,10 @@ func TestExternal_JSONSerialization(t *testing.T) {
 }
 
 func TestExternal_JSONFieldNames(t *testing.T) {
-	ext := node.NewExternalWithNotes("Test", "Source", "Notes")
+	ext, err := node.NewExternalWithNotes("Test", "Source", "Notes")
+	if err != nil {
+		t.Fatalf("NewExternalWithNotes() unexpected error: %v", err)
+	}
 
 	data, err := json.Marshal(ext)
 	if err != nil {
@@ -329,7 +359,10 @@ func TestExternal_Validation_EmptyName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ext := node.NewExternal(tt.refName, tt.source)
+			ext, createErr := node.NewExternal(tt.refName, tt.source)
+			if createErr != nil {
+				t.Fatalf("NewExternal() unexpected error: %v", createErr)
+			}
 			err := ext.Validate()
 			if err == nil {
 				t.Error("Validate() should return error for empty/whitespace name")
@@ -368,7 +401,10 @@ func TestExternal_Validation_EmptySource(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ext := node.NewExternal(tt.refName, tt.source)
+			ext, createErr := node.NewExternal(tt.refName, tt.source)
+			if createErr != nil {
+				t.Fatalf("NewExternal() unexpected error: %v", createErr)
+			}
 			err := ext.Validate()
 			if err == nil {
 				t.Error("Validate() should return error for empty/whitespace source")
@@ -378,8 +414,11 @@ func TestExternal_Validation_EmptySource(t *testing.T) {
 }
 
 func TestExternal_Validation_BothEmpty(t *testing.T) {
-	ext := node.NewExternal("", "")
-	err := ext.Validate()
+	ext, err := node.NewExternal("", "")
+	if err != nil {
+		t.Fatalf("NewExternal() unexpected error: %v", err)
+	}
+	err = ext.Validate()
 	if err == nil {
 		t.Error("Validate() should return error when both name and source are empty")
 	}
@@ -421,10 +460,14 @@ func TestExternal_Validation_Valid(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var ext node.External
+			var createErr error
 			if tt.notes == "" {
-				ext = node.NewExternal(tt.refName, tt.source)
+				ext, createErr = node.NewExternal(tt.refName, tt.source)
 			} else {
-				ext = node.NewExternalWithNotes(tt.refName, tt.source, tt.notes)
+				ext, createErr = node.NewExternalWithNotes(tt.refName, tt.source, tt.notes)
+			}
+			if createErr != nil {
+				t.Fatalf("NewExternal() unexpected error: %v", createErr)
 			}
 
 			err := ext.Validate()
@@ -436,10 +479,16 @@ func TestExternal_Validation_Valid(t *testing.T) {
 }
 
 func TestExternal_CreatedTimestamp(t *testing.T) {
-	ext1 := node.NewExternal("First", "Source1")
+	ext1, err := node.NewExternal("First", "Source1")
+	if err != nil {
+		t.Fatalf("NewExternal() ext1 unexpected error: %v", err)
+	}
 
 	// Small delay to ensure different timestamps
-	ext2 := node.NewExternal("Second", "Source2")
+	ext2, err := node.NewExternal("Second", "Source2")
+	if err != nil {
+		t.Fatalf("NewExternal() ext2 unexpected error: %v", err)
+	}
 
 	// Both should have non-zero timestamps
 	if ext1.Created.IsZero() {
