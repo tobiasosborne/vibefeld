@@ -1,104 +1,104 @@
-# Handoff - 2026-01-14 (Session 40)
+# Handoff - 2026-01-15 (Session 41)
 
 ## What Was Accomplished This Session
 
-### Session 40 Summary: Fixed 5 Issues (4 in Parallel + 1 Follow-up)
+### Session 41 Summary: Fixed 12 Issues (3 Parallel Batches of 4)
 
-| Issue | Priority | Type | Description |
-|-------|----------|------|-------------|
-| vibefeld-nsr2 | P2 | Task | Added 38 concurrent access tests for ledger/lock/fs packages |
-| vibefeld-rimp | P2 | Task | Added inference types to `af refine --help` output |
-| vibefeld-am4u | P2 | Bug | Added validation for def:NAME citations in statements |
-| vibefeld-amjk | P2 | Bug | Removed formula truncation - math expressions now shown in full |
-| vibefeld-mckr | P2 | Bug | Fixed race condition in Lock.Refresh() - added mutex protection |
+| Batch | Issue | Type | Description |
+|-------|-------|------|-------------|
+| 1 | vibefeld-rccv | Task | Renamed lock types for clarity (Lock → ClaimLock) |
+| 1 | vibefeld-ukw0 | Bug | add-external now accepts positional arguments |
+| 1 | vibefeld-yxhf | Bug | Added epistemic state pre-transition validation |
+| 1 | vibefeld-9cd0 | Bug | JSON encoding no longer escapes HTML characters |
+| 2 | vibefeld-wuo4 | Bug | Created docs/state-machines.md with transition diagrams |
+| 2 | vibefeld-ugfn | Task | Deduplicated allChildrenValidated logic to state package |
+| 2 | vibefeld-uxm1 | Bug | Standardized CLI flags (-t/--type, -j/--justification) |
+| 2 | vibefeld-o9op | Feature | Auto-compute taint after validation events |
+| 3 | vibefeld-nrif | Bug | Created docs/edge-cases.md documenting limits |
+| 3 | vibefeld-f3v0 | Feature | Added color formatting (pending=yellow, validated=green, etc.) |
+| 3 | vibefeld-2jy8 | Bug | Implemented fuzzy matching for CLI flags |
+| 3 | vibefeld-mnrc | Bug | Added external reference citation validation |
 
-### Details
+### Key Changes by Area
 
-**vibefeld-nsr2**: Concurrent Access Tests
-- Created `internal/ledger/concurrent_test.go` (9 tests)
-- Created `internal/lock/concurrent_test.go` (14 tests)
-- Created `internal/lock/race_test.go` (5 tests)
-- Created `internal/fs/concurrent_test.go` (10 tests)
-- Tests cover: concurrent appends, lock acquisition races, CAS operations, mixed operations
-- Discovered race condition in `Lock.Refresh()` (documented, not fixed - separate issue)
-- All tests pass with `-race` flag
+**Documentation (docs/):**
+- `docs/state-machines.md` - Complete state machine documentation (workflow, epistemic, taint, challenge)
+- `docs/edge-cases.md` - Edge case documentation (limits, concurrency, special characters)
 
-**vibefeld-rimp**: Refine Help Inference Types
-- Modified `cmd/af/refine.go` to show all 11 valid inference types in help
-- Added test `TestRefineCmd_HelpShowsInferenceTypes` to verify
-- Help now shows: modus_ponens, modus_tollens, by_definition, assumption, local_assume, local_discharge, contradiction, universal_instantiation, existential_instantiation, universal_generalization, existential_generalization
+**CLI (cmd/af/):**
+- `refine.go` - Standardized flags to -t/--type and -j/--justification
+- `add_external.go` - Added positional argument support
+- `root.go` - Added flag fuzzy matching with suggestions
 
-**vibefeld-am4u**: Definition Citation Validation
-- Created `internal/lemma/defcite.go` with:
-  - `ParseDefCitations()` - extracts def:NAME citations using regex
-  - `ValidateDefCitations()` - checks cited definitions exist in state
-  - `CollectMissingDefCitations()` - reports all missing definitions
-- Created `internal/lemma/defcite_test.go` with 14 test cases
-- Wired validation into `cmd/af/refine.go` for both single and multi-child modes
-- Added 9 integration tests in refine_test.go and refine_multi_test.go
+**Rendering (internal/render/):**
+- `color.go` - New ANSI color support with NO_COLOR environment variable support
+- `json.go` - Fixed HTML character escaping, deduplicated allChildrenValidated
+- `status.go`, `tree.go`, `node.go` - Integrated color formatting
 
-**vibefeld-amjk**: Formula Truncation Fix
-- Removed `maxStatementLen` constant and `truncateStatement()` function from render package
-- Updated `RenderNode()`, `RenderNodeTree()`, and `formatNode()` to never truncate
-- Mathematical expressions now shown in full (critical for proof verification)
-- Added test `TestRenderNode_NoTruncationForMathFormulas` with 5 math formula cases
+**Service Layer (internal/service/):**
+- `proof.go` - Auto-compute taint after AcceptNode/AdmitNode/RefuteNode/ArchiveNode
+- `proof.go` - Added epistemic state pre-validation
+- `proof.go` - Added external citation validation
+
+**Lock Package (internal/lock/):**
+- Renamed `Lock` → `ClaimLock`, `NewLock` → `NewClaimLock`
+- All tests updated to use new naming
+
+**State Package (internal/state/):**
+- Added `AllChildrenValidated()` method (consolidated from render)
+- Added `GetExternalByName()` method for citation validation
+
+**Lemma Package (internal/lemma/):**
+- `extcite.go` - New external citation validation (ParseExtCitations, ValidateExtCitations)
+
+**Fuzzy Package (internal/fuzzy/):**
+- `match.go` - Added SuggestFlag function for flag typo suggestions
 
 ### New Files Created
-- `internal/ledger/concurrent_test.go` (~650 lines)
-- `internal/lock/concurrent_test.go` (~750 lines)
-- `internal/lock/race_test.go` (~150 lines)
-- `internal/fs/concurrent_test.go` (~700 lines)
-- `internal/lemma/defcite.go` (90 lines)
-- `internal/lemma/defcite_test.go` (~200 lines)
-
-### Files Modified
-- `cmd/af/refine.go` - Added lemma import, validation calls, help text
-- `cmd/af/refine_test.go` - Added 7 new tests
-- `cmd/af/refine_multi_test.go` - Added 3 new tests
-- `internal/render/node.go` - Removed truncation
-- `internal/render/tree.go` - Removed truncation
-- `internal/render/node_test.go` - Updated and added tests
+- `docs/state-machines.md` (~380 lines)
+- `docs/edge-cases.md` (~310 lines)
+- `internal/render/color.go` (~170 lines)
+- `internal/render/color_test.go` (~470 lines)
+- `internal/lemma/extcite.go` (~90 lines)
+- `internal/lemma/extcite_test.go` (~320 lines)
 
 ## Current State
 
-### P0 Issues: 0 remaining
-All critical bugs remain fixed.
-
-### P1 Issues: 0 remaining
-All high priority issues resolved.
-
-### P2 Issues: 6 remaining
-Run `bd ready` to see available work.
+### Issue Statistics
+- **Total Issues:** 369
+- **Open:** 68
+- **Closed:** 301 (81.6% completion)
+- **Ready to Work:** 66
+- **Blocked:** 2
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
-ok  github.com/tobias/vibefeld/internal/ledger
-ok  github.com/tobias/vibefeld/internal/lock
-ok  github.com/tobias/vibefeld/internal/fs
+ok  github.com/tobias/vibefeld/internal/fuzzy
 ok  github.com/tobias/vibefeld/internal/lemma
+ok  github.com/tobias/vibefeld/internal/lock
 ok  github.com/tobias/vibefeld/internal/render
+ok  github.com/tobias/vibefeld/internal/service
+ok  github.com/tobias/vibefeld/internal/state
 ... (all packages pass)
 ```
 
 Build succeeds: `go build ./cmd/af`
 
-### Issue Filed and Fixed This Session
-**vibefeld-mckr** (P2): Race condition in `Lock.Refresh()` - FIXED by adding mutex protection to `Refresh()`, `IsExpired()`, `ExpiresAt()`, and `MarshalJSON()`.
-
 ## Next Steps
 
-Run `bd ready` to see 6 remaining P2 issues:
-1. **vibefeld-rccv**: Two lock systems with confusing naming
-2. **vibefeld-ugfn**: Duplicated allChildrenValidated logic
-3. **vibefeld-yxhf**: Epistemic state pre-transition validation
-4. **vibefeld-o9op**: Auto-compute taint after validation events
-5. **vibefeld-r89m**: Help text doesn't match actual CLI behavior
-6. **vibefeld-uxm1**: Inconsistent flag names across commands
+Run `bd ready` to see 66 remaining ready issues. Top priorities:
+1. **vibefeld-r89m**: Help text doesn't match actual CLI behavior
+2. **vibefeld-8nmv**: No workflow tutorial in CLI
+3. **vibefeld-q9ez**: No bulk operations (multi-child, multi-accept)
+4. **vibefeld-f64f**: No cross-reference validation
+5. **vibefeld-2c0t**: No proof templates for common patterns
+6. **vibefeld-jn4p**: No diff/history view for node evolution
 
 ## Session History
 
+**Session 41:** Fixed 12 issues (3 batches of 4 in parallel) - lock naming, state machine docs, color formatting, fuzzy matching, external citations, auto-taint, CLI flags, edge case docs
 **Session 40:** Fixed 5 issues (4 P2 parallel + 1 follow-up) - concurrent tests, refine help, def validation, no truncation, Lock.Refresh() race fix
 **Session 39:** Fixed 4 issues in parallel (1 P1, 3 P2) - challenge supersession, af inferences/types commands, NodeID caching
 **Session 38:** Fixed 23 issues (5 P0, 15 P1, 3 P2) - all P0s resolved, breadth-first model, config integration
