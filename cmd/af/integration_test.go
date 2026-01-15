@@ -150,7 +150,7 @@ func TestTracerBullet_FullWorkflow(t *testing.T) {
 	cmd = newIntegrationTestCmd()
 	output, err = executeCommand(cmd, "refine", "1",
 		"--statement", "Assume n is prime and n > 2. By definition of prime, n has no divisors other than 1 and itself.",
-		"--inference", "assumption",
+		"--justification", "assumption",
 		"--owner", "prover-agent-001",
 		"--dir", proofDir,
 	)
@@ -169,7 +169,7 @@ func TestTracerBullet_FullWorkflow(t *testing.T) {
 	cmd = newIntegrationTestCmd()
 	output, err = executeCommand(cmd, "refine", "1",
 		"--statement", "Since n > 2 and all even numbers > 2 are divisible by 2, n cannot be even. Therefore n is odd.",
-		"--inference", "modus_ponens",
+		"--justification", "modus_ponens",
 		"--owner", "prover-agent-001",
 		"--dir", proofDir,
 	)
@@ -286,7 +286,7 @@ func TestTracerBullet_ProverVerifierRoleIsolation(t *testing.T) {
 	cmd = newIntegrationTestCmd()
 	_, err = executeCommand(cmd, "refine", "1",
 		"--statement", "Proof step",
-		"--inference", "assumption",
+		"--justification", "assumption",
 		"--owner", "prover-001",
 		"--dir", proofDir,
 	)
@@ -356,7 +356,7 @@ func TestTracerBullet_MultipleRefinements(t *testing.T) {
 		cmd = newIntegrationTestCmd()
 		output, err := executeCommand(cmd, "refine", "1",
 			"--statement", r.statement,
-			"--inference", r.inference,
+			"--justification", r.inference,
 			"--owner", "prover",
 			"--dir", proofDir,
 		)
@@ -434,7 +434,7 @@ func TestTracerBullet_JSONOutput(t *testing.T) {
 	cmd = newIntegrationTestCmd()
 	output, err = executeCommand(cmd, "refine", "1",
 		"--statement", "Test",
-		"--inference", "assumption",
+		"--justification", "assumption",
 		"--owner", "test",
 		"--dir", proofDir,
 		"--format", "json",
