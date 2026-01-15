@@ -3,7 +3,7 @@ package lock
 
 // IsStale returns true if the lock is nil or expired.
 // A stale lock is one that can be safely cleaned up or overwritten.
-func IsStale(l *Lock) bool {
+func IsStale(l *ClaimLock) bool {
 	if l == nil {
 		return true
 	}
@@ -12,6 +12,6 @@ func IsStale(l *Lock) bool {
 
 // IsStale returns true if the lock is expired.
 // A stale lock is one that can be safely cleaned up or overwritten.
-func (l *Lock) IsStale() bool {
+func (l *ClaimLock) IsStale() bool {
 	return l.IsExpired()
 }

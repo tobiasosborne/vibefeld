@@ -63,7 +63,7 @@ func NewLockReleased(nodeID types.NodeID, owner string) LockReleased {
 // It is safe for concurrent use.
 type PersistentManager struct {
 	mu     sync.RWMutex
-	locks  map[string]*Lock // keyed by NodeID.String()
+	locks  map[string]*ClaimLock // keyed by NodeID.String()
 	ledger *ledger.Ledger
 }
 
@@ -75,7 +75,7 @@ func NewPersistentManager(l *ledger.Ledger) (*PersistentManager, error) {
 	}
 
 	pm := &PersistentManager{
-		locks:  make(map[string]*Lock),
+		locks:  make(map[string]*ClaimLock),
 		ledger: l,
 	}
 
@@ -148,14 +148,14 @@ func (pm *PersistentManager) applyLockAcquired(evt LockAcquired) {
 		expiresTime = acquiredTime
 	}
 
-	lock := &Lock{
+	claimLock := &ClaimLock{
 		nodeID:     evt.NodeID,
 		owner:      evt.Owner,
 		acquiredAt: acquiredTime,
 		expiresAt:  expiresTime,
 	}
 
-	pm.locks[key] = lock
+	pm.locks[key] = claimLock
 }
 
 // applyLockReleased applies a LockReleased event to the in-memory state.
@@ -172,9 +172,9 @@ func (pm *PersistentManager) applyLockReaped(evt ledger.LockReaped) {
 
 // Acquire acquires a lock on a node, persisting to the ledger.
 // Returns error if: node already locked and not expired, empty owner, whitespace owner, zero/negative timeout.
-func (pm *PersistentManager) Acquire(nodeID types.NodeID, owner string, timeout time.Duration) (*Lock, error) {
+func (pm *PersistentManager) Acquire(nodeID types.NodeID, owner string, timeout time.Duration) (*ClaimLock, error) {
 	// Create the lock first (validates owner and timeout)
-	lk, err := NewLock(nodeID, owner, timeout)
+	lk, err := NewClaimLock(nodeID, owner, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +236,7 @@ func (pm *PersistentManager) Release(nodeID types.NodeID, owner string) error {
 }
 
 // Info returns lock info for a node (nil if not locked or expired).
-func (pm *PersistentManager) Info(nodeID types.NodeID) (*Lock, error) {
+func (pm *PersistentManager) Info(nodeID types.NodeID) (*ClaimLock, error) {
 	key := nodeID.String()
 
 	pm.mu.RLock()
@@ -272,11 +272,11 @@ func (pm *PersistentManager) IsLocked(nodeID types.NodeID) bool {
 
 // ReapExpired removes all expired locks and returns them.
 // Persists each removal to the ledger using LockReaped events.
-func (pm *PersistentManager) ReapExpired() ([]*Lock, error) {
+func (pm *PersistentManager) ReapExpired() ([]*ClaimLock, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	var reaped []*Lock
+	var reaped []*ClaimLock
 
 	for key, lk := range pm.locks {
 		if lk.IsExpired() {
@@ -297,11 +297,11 @@ func (pm *PersistentManager) ReapExpired() ([]*Lock, error) {
 }
 
 // ListAll returns all non-expired locks.
-func (pm *PersistentManager) ListAll() []*Lock {
+func (pm *PersistentManager) ListAll() []*ClaimLock {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	var result []*Lock
+	var result []*ClaimLock
 	for _, lk := range pm.locks {
 		if !lk.IsExpired() {
 			result = append(result, lk)

@@ -68,7 +68,7 @@ func ReapStaleLocks(locksDir string, lg *ledger.Ledger) ([]string, error) {
 			continue
 		}
 
-		var lk Lock
+		var lk ClaimLock
 		if err := json.Unmarshal(data, &lk); err != nil {
 			// Skip corrupted lock files
 			continue

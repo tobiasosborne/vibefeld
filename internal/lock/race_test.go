@@ -10,7 +10,7 @@ import (
 	"github.com/tobias/vibefeld/internal/types"
 )
 
-// TestLockRefreshRace verifies that Lock.Refresh() is now thread-safe.
+// TestLockRefreshRace verifies that ClaimLock.Refresh() is now thread-safe.
 // This test was previously skipped due to a race condition that has been fixed.
 func TestLockRefreshRace(t *testing.T) {
 	nodeID, err := types.Parse("1")
@@ -18,7 +18,7 @@ func TestLockRefreshRace(t *testing.T) {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	lock, err := NewLock(nodeID, "agent", 5*time.Second)
+	lock, err := NewClaimLock(nodeID, "agent", 5*time.Second)
 	if err != nil {
 		t.Fatalf("failed to create lock: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestLockRefreshRaceDetection(t *testing.T) {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	lock, err := NewLock(nodeID, "agent", 5*time.Second)
+	lock, err := NewClaimLock(nodeID, "agent", 5*time.Second)
 	if err != nil {
 		t.Fatalf("failed to create lock: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestExpiresAtRace(t *testing.T) {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	lock, err := NewLock(nodeID, "agent", 100*time.Millisecond)
+	lock, err := NewClaimLock(nodeID, "agent", 100*time.Millisecond)
 	if err != nil {
 		t.Fatalf("failed to create lock: %v", err)
 	}
@@ -137,14 +137,14 @@ func TestExpiresAtRace(t *testing.T) {
 	t.Logf("expired checks: %d, refreshes: %d", expiredCount.Load(), refreshCount.Load())
 }
 
-// TestLockFieldRaces tests for races between various Lock methods.
+// TestLockFieldRaces tests for races between various ClaimLock methods.
 func TestLockFieldRaces(t *testing.T) {
 	nodeID, err := types.Parse("1")
 	if err != nil {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	lock, err := NewLock(nodeID, "agent", time.Second)
+	lock, err := NewClaimLock(nodeID, "agent", time.Second)
 	if err != nil {
 		t.Fatalf("failed to create lock: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestLockFieldRaces(t *testing.T) {
 	t.Logf("completed %d reads, %d refreshes", readCount.Load(), refreshCount.Load())
 }
 
-// TestLockMutexConsistency verifies that Lock's mutex is consistently used
+// TestLockMutexConsistency verifies that ClaimLock's mutex is consistently used
 // for operations that should be atomic.
 func TestLockMutexConsistency(t *testing.T) {
 	nodeID, err := types.Parse("1")
@@ -204,7 +204,7 @@ func TestLockMutexConsistency(t *testing.T) {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	// Test that multiple Lock instances can be created and used concurrently
+	// Test that multiple ClaimLock instances can be created and used concurrently
 	var wg sync.WaitGroup
 	var createCount atomic.Int32
 
@@ -213,7 +213,7 @@ func TestLockMutexConsistency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			lock, err := NewLock(nodeID, "agent", time.Second)
+			lock, err := NewClaimLock(nodeID, "agent", time.Second)
 			if err != nil {
 				return
 			}
@@ -244,7 +244,7 @@ func TestLockMarshalJSONRace(t *testing.T) {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	lock, err := NewLock(nodeID, "agent", time.Second)
+	lock, err := NewClaimLock(nodeID, "agent", time.Second)
 	if err != nil {
 		t.Fatalf("failed to create lock: %v", err)
 	}

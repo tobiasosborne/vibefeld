@@ -12,21 +12,21 @@ import (
 // It is safe for concurrent use.
 type Manager struct {
 	mu    sync.RWMutex
-	locks map[string]*Lock // keyed by NodeID.String()
+	locks map[string]*ClaimLock // keyed by NodeID.String()
 }
 
 // NewManager creates a new Manager with an empty lock set.
 func NewManager() *Manager {
 	return &Manager{
-		locks: make(map[string]*Lock),
+		locks: make(map[string]*ClaimLock),
 	}
 }
 
 // Acquire acquires a lock on a node.
 // Returns error if: node already locked and not expired, empty owner, whitespace owner, zero/negative timeout.
-func (m *Manager) Acquire(nodeID types.NodeID, owner string, timeout time.Duration) (*Lock, error) {
+func (m *Manager) Acquire(nodeID types.NodeID, owner string, timeout time.Duration) (*ClaimLock, error) {
 	// Create the lock first (validates owner and timeout)
-	lk, err := NewLock(nodeID, owner, timeout)
+	lk, err := NewClaimLock(nodeID, owner, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (m *Manager) Release(nodeID types.NodeID, owner string) error {
 }
 
 // Info returns lock info for a node (nil if not locked or expired).
-func (m *Manager) Info(nodeID types.NodeID) (*Lock, error) {
+func (m *Manager) Info(nodeID types.NodeID) (*ClaimLock, error) {
 	key := nodeID.String()
 
 	m.mu.RLock()
@@ -109,11 +109,11 @@ func (m *Manager) IsLocked(nodeID types.NodeID) bool {
 }
 
 // ReapExpired removes all expired locks and returns them.
-func (m *Manager) ReapExpired() ([]*Lock, error) {
+func (m *Manager) ReapExpired() ([]*ClaimLock, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var reaped []*Lock
+	var reaped []*ClaimLock
 
 	for key, lk := range m.locks {
 		if lk.IsExpired() {
@@ -126,11 +126,11 @@ func (m *Manager) ReapExpired() ([]*Lock, error) {
 }
 
 // ListAll returns all non-expired locks.
-func (m *Manager) ListAll() []*Lock {
+func (m *Manager) ListAll() []*ClaimLock {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var result []*Lock
+	var result []*ClaimLock
 	for _, lk := range m.locks {
 		if !lk.IsExpired() {
 			result = append(result, lk)

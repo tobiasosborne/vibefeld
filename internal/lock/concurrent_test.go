@@ -458,14 +458,14 @@ func TestConcurrentInfo(t *testing.T) {
 }
 
 // TestConcurrentLockRefresh tests that lock refresh is safe under concurrent access.
-// Lock.Refresh() now uses mutex protection for thread-safe access to expiresAt.
+// ClaimLock.Refresh() now uses mutex protection for thread-safe access to expiresAt.
 func TestConcurrentLockRefresh(t *testing.T) {
 	nodeID, err := types.Parse("1")
 	if err != nil {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	lock, err := NewLock(nodeID, "agent", 5*time.Second)
+	lock, err := NewClaimLock(nodeID, "agent", 5*time.Second)
 	if err != nil {
 		t.Fatalf("failed to create lock: %v", err)
 	}
@@ -735,7 +735,7 @@ func TestConcurrentLockJSONMarshaling(t *testing.T) {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	lock, err := NewLock(nodeID, "agent", 5*time.Second)
+	lock, err := NewClaimLock(nodeID, "agent", 5*time.Second)
 	if err != nil {
 		t.Fatalf("failed to create lock: %v", err)
 	}
@@ -762,7 +762,7 @@ func TestConcurrentLockJSONMarshaling(t *testing.T) {
 				marshalCount.Add(1)
 
 				// Unmarshal
-				var newLock Lock
+				var newLock ClaimLock
 				if err := newLock.UnmarshalJSON(data); err != nil {
 					unmarshalErrors.Add(1)
 				} else {
