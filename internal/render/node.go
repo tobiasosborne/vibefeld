@@ -19,6 +19,7 @@ const (
 // Format: [ID] type (state): "statement"
 // Returns empty string for nil node.
 // Mathematical statements are shown in full without truncation to preserve precision.
+// Uses color coding for epistemic state when color is enabled.
 func RenderNode(n *node.Node) string {
 	if n == nil {
 		return ""
@@ -31,7 +32,7 @@ func RenderNode(n *node.Node) string {
 	return fmt.Sprintf("[%s] %s (%s): %q",
 		n.ID.String(),
 		string(n.Type),
-		string(n.EpistemicState),
+		ColorEpistemicState(n.EpistemicState),
 		stmt,
 	)
 }
@@ -40,6 +41,7 @@ func RenderNode(n *node.Node) string {
 // Includes: ID, type, statement, inference, workflow state, epistemic state,
 // taint state, created timestamp, and optional fields (context, dependencies, scope).
 // Returns empty string for nil node.
+// Uses color coding for epistemic and taint states when color is enabled.
 func RenderNodeVerbose(n *node.Node) string {
 	if n == nil {
 		return ""
@@ -53,8 +55,8 @@ func RenderNodeVerbose(n *node.Node) string {
 	sb.WriteString(fmt.Sprintf("Statement:  %s\n", n.Statement))
 	sb.WriteString(fmt.Sprintf("Inference:  %s\n", string(n.Inference)))
 	sb.WriteString(fmt.Sprintf("Workflow:   %s\n", string(n.WorkflowState)))
-	sb.WriteString(fmt.Sprintf("Epistemic:  %s\n", string(n.EpistemicState)))
-	sb.WriteString(fmt.Sprintf("Taint:      %s\n", string(n.TaintState)))
+	sb.WriteString(fmt.Sprintf("Epistemic:  %s\n", ColorEpistemicState(n.EpistemicState)))
+	sb.WriteString(fmt.Sprintf("Taint:      %s\n", ColorTaintState(n.TaintState)))
 	sb.WriteString(fmt.Sprintf("Created:    %s\n", n.Created.String()))
 	sb.WriteString(fmt.Sprintf("Hash:       %s\n", n.ContentHash))
 
@@ -85,6 +87,7 @@ func RenderNodeVerbose(n *node.Node) string {
 // RenderNodeTree renders a list of nodes as an indented tree structure.
 // Nodes are sorted by ID and indented based on their depth in the hierarchy.
 // Returns empty string for nil or empty node list.
+// Uses color coding for epistemic state when color is enabled.
 func RenderNodeTree(nodes []*node.Node) string {
 	if len(nodes) == 0 {
 		return ""
@@ -120,7 +123,7 @@ func RenderNodeTree(nodes []*node.Node) string {
 			indent,
 			n.ID.String(),
 			string(n.Type),
-			string(n.EpistemicState),
+			ColorEpistemicState(n.EpistemicState),
 			stmt,
 		))
 

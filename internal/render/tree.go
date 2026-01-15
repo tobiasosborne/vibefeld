@@ -169,6 +169,7 @@ func isDescendantOrEqual(nodeID, ancestorID types.NodeID) bool {
 // formatNode formats a single node for tree display.
 // Format: ID [epistemic/taint] statement
 // Mathematical statements are shown in full without truncation to preserve precision.
+// Uses color coding for epistemic and taint states when color is enabled.
 func formatNode(n *node.Node) string {
 	var sb strings.Builder
 
@@ -176,11 +177,11 @@ func formatNode(n *node.Node) string {
 	sb.WriteString(n.ID.String())
 	sb.WriteString(" ")
 
-	// Status bracket [epistemic/taint]
+	// Status bracket [epistemic/taint] with color coding
 	sb.WriteString("[")
-	sb.WriteString(string(n.EpistemicState))
+	sb.WriteString(ColorEpistemicState(n.EpistemicState))
 	sb.WriteString("/")
-	sb.WriteString(string(n.TaintState))
+	sb.WriteString(ColorTaintState(n.TaintState))
 	sb.WriteString("] ")
 
 	// Statement (sanitized but NOT truncated - mathematical formulas must be shown in full)

@@ -72,7 +72,7 @@ func renderStatistics(sb *strings.Builder, nodes []*node.Node) {
 	// Write total count
 	sb.WriteString(fmt.Sprintf("Nodes: %d total\n", total))
 
-	// Write epistemic state counts (in fixed order for determinism)
+	// Write epistemic state counts (in fixed order for determinism) with color coding
 	sb.WriteString("  Epistemic: ")
 	epistemicStates := []schema.EpistemicState{
 		schema.EpistemicPending,
@@ -83,12 +83,12 @@ func renderStatistics(sb *strings.Builder, nodes []*node.Node) {
 	}
 	epistemicParts := make([]string, len(epistemicStates))
 	for i, state := range epistemicStates {
-		epistemicParts[i] = fmt.Sprintf("%d %s", epistemicCounts[state], state)
+		epistemicParts[i] = fmt.Sprintf("%d %s", epistemicCounts[state], ColorEpistemicState(state))
 	}
 	sb.WriteString(strings.Join(epistemicParts, ", "))
 	sb.WriteString("\n")
 
-	// Write taint state counts (in fixed order for determinism)
+	// Write taint state counts (in fixed order for determinism) with color coding
 	sb.WriteString("  Taint: ")
 	taintStates := []node.TaintState{
 		node.TaintClean,
@@ -98,7 +98,7 @@ func renderStatistics(sb *strings.Builder, nodes []*node.Node) {
 	}
 	taintParts := make([]string, len(taintStates))
 	for i, state := range taintStates {
-		taintParts[i] = fmt.Sprintf("%d %s", taintCounts[state], state)
+		taintParts[i] = fmt.Sprintf("%d %s", taintCounts[state], ColorTaintState(state))
 	}
 	sb.WriteString(strings.Join(taintParts, ", "))
 	sb.WriteString("\n")
@@ -128,20 +128,21 @@ func renderJobs(sb *strings.Builder, s *state.State, nodes []*node.Node) {
 }
 
 // renderLegend writes the legend section to the builder.
+// Uses color coding to visually demonstrate each state's color.
 func renderLegend(sb *strings.Builder) {
-	// Epistemic states legend
+	// Epistemic states legend with color coding
 	sb.WriteString("Epistemic States:\n")
-	sb.WriteString("  pending    - Awaiting proof/verification\n")
-	sb.WriteString("  validated  - Verified by adversarial verifier\n")
-	sb.WriteString("  admitted   - Accepted without full verification\n")
-	sb.WriteString("  refuted    - Proven false\n")
-	sb.WriteString("  archived   - Superseded or abandoned\n")
+	sb.WriteString(fmt.Sprintf("  %s    - Awaiting proof/verification\n", ColorEpistemicState(schema.EpistemicPending)))
+	sb.WriteString(fmt.Sprintf("  %s  - Verified by adversarial verifier\n", ColorEpistemicState(schema.EpistemicValidated)))
+	sb.WriteString(fmt.Sprintf("  %s   - Accepted without full verification\n", ColorEpistemicState(schema.EpistemicAdmitted)))
+	sb.WriteString(fmt.Sprintf("  %s    - Proven false\n", ColorEpistemicState(schema.EpistemicRefuted)))
+	sb.WriteString(fmt.Sprintf("  %s   - Superseded or abandoned\n", ColorEpistemicState(schema.EpistemicArchived)))
 	sb.WriteString("\n")
 
-	// Taint states legend
+	// Taint states legend with color coding
 	sb.WriteString("Taint States:\n")
-	sb.WriteString("  clean         - No epistemic uncertainty\n")
-	sb.WriteString("  self_admitted - Contains admitted node\n")
-	sb.WriteString("  tainted       - Depends on tainted/refuted node\n")
-	sb.WriteString("  unresolved    - Taint status not yet computed\n")
+	sb.WriteString(fmt.Sprintf("  %s         - No epistemic uncertainty\n", ColorTaintState(node.TaintClean)))
+	sb.WriteString(fmt.Sprintf("  %s - Contains admitted node\n", ColorTaintState(node.TaintSelfAdmitted)))
+	sb.WriteString(fmt.Sprintf("  %s       - Depends on tainted/refuted node\n", ColorTaintState(node.TaintTainted)))
+	sb.WriteString(fmt.Sprintf("  %s    - Taint status not yet computed\n", ColorTaintState(node.TaintUnresolved)))
 }
