@@ -155,6 +155,19 @@ func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string
 		"expires_at": expiresAt.Format(time.RFC3339),
 	}
 
+	// Add verification checklist for verifier role
+	if role == "verifier" {
+		targetNode := st.GetNode(nodeID)
+		if targetNode != nil {
+			checklistJSON := render.RenderVerificationChecklistJSON(targetNode, st)
+			// Parse the checklist JSON and add it to the result
+			var checklist interface{}
+			if err := json.Unmarshal([]byte(checklistJSON), &checklist); err == nil {
+				result["verification_checklist"] = checklist
+			}
+		}
+	}
+
 	data, err := json.Marshal(result)
 	if err != nil {
 		return fmt.Errorf("failed to encode JSON: %w", err)
@@ -187,6 +200,17 @@ func outputClaimText(cmd *cobra.Command, nodeID types.NodeID, owner string, time
 	context := render.RenderProverContext(st, nodeID)
 	if context != "" {
 		cmd.Println(context)
+	}
+
+	// Display verification checklist for verifier role
+	if role == "verifier" {
+		targetNode := st.GetNode(nodeID)
+		if targetNode != nil {
+			checklist := render.RenderVerificationChecklist(targetNode, st)
+			if checklist != "" {
+				cmd.Println(checklist)
+			}
+		}
 	}
 
 	cmd.Println("Next steps:")

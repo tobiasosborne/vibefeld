@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/fs"
+	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
@@ -796,5 +797,165 @@ func TestJobsCmd_ExpectedFlags(t *testing.T) {
 		if jobsCmd.Flags().ShorthandLookup(short) == nil {
 			t.Errorf("expected jobs command to have short flag -%s for --%s", short, long)
 		}
+	}
+}
+
+// =============================================================================
+// Severity Counts Tests
+// =============================================================================
+
+// addChallengeToNodeWithSeverity is a test helper that adds a challenge with a specific severity.
+func addChallengeToNodeWithSeverity(t *testing.T, proofDir string, nodeID types.NodeID, challengeID, severity string) {
+	t.Helper()
+	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
+	if err != nil {
+		t.Fatalf("failed to get ledger: %v", err)
+	}
+	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, "statement", "test challenge", severity)
+	if _, err := ldg.Append(event); err != nil {
+		t.Fatalf("failed to append challenge: %v", err)
+	}
+}
+
+// TestJobsCommand_ShowsChallengeSeverityCounts verifies that jobs output includes severity breakdown.
+func TestJobsCommand_ShowsChallengeSeverityCounts(t *testing.T) {
+	// Setup: Create proof with a node that has challenges of different severities
+	proofDir, cleanup := setupJobsTest(t)
+	defer cleanup()
+
+	// Node 1 already exists from Init, add challenges to it
+	nodeID, _ := types.Parse("1")
+
+	// Add multiple challenges with different severities
+	addChallengeToNodeWithSeverity(t, proofDir, nodeID, "chal-001", "critical")
+	addChallengeToNodeWithSeverity(t, proofDir, nodeID, "chal-002", "minor")
+	addChallengeToNodeWithSeverity(t, proofDir, nodeID, "chal-003", "minor")
+
+	// Run jobs command
+	cmd := newTestJobsCmd()
+	output, err := executeCommand(cmd, "jobs", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("jobs command failed: %v", err)
+	}
+
+	// Verify output contains severity counts
+	lowerOutput := strings.ToLower(output)
+
+	// Should show "1 critical"
+	if !strings.Contains(lowerOutput, "1 critical") {
+		t.Errorf("expected output to contain '1 critical', got: %q", output)
+	}
+
+	// Should show "2 minor"
+	if !strings.Contains(lowerOutput, "2 minor") {
+		t.Errorf("expected output to contain '2 minor', got: %q", output)
+	}
+
+	// Should show "challenges" (plural since total > 1)
+	if !strings.Contains(lowerOutput, "challenges") {
+		t.Errorf("expected output to contain 'challenges', got: %q", output)
+	}
+}
+
+// TestJobsCommand_ShowsChallengeSeverityCountsJSON verifies JSON output includes severity counts.
+func TestJobsCommand_ShowsChallengeSeverityCountsJSON(t *testing.T) {
+	// Setup: Create proof with a node that has challenges
+	proofDir, cleanup := setupJobsTest(t)
+	defer cleanup()
+
+	// Node 1 already exists from Init, add challenges to it
+	nodeID, _ := types.Parse("1")
+
+	// Add challenges with different severities
+	addChallengeToNodeWithSeverity(t, proofDir, nodeID, "chal-001", "critical")
+	addChallengeToNodeWithSeverity(t, proofDir, nodeID, "chal-002", "major")
+
+	// Run jobs command with JSON output
+	cmd := newTestJobsCmd()
+	output, err := executeCommand(cmd, "jobs", "--format", "json", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("jobs command failed: %v", err)
+	}
+
+	// Parse JSON output
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\nOutput: %s", err, output)
+	}
+
+	// Verify prover_jobs exists and has severity_counts
+	proverJobs, ok := result["prover_jobs"].([]interface{})
+	if !ok || len(proverJobs) == 0 {
+		t.Fatalf("expected prover_jobs array with entries, got: %v", result["prover_jobs"])
+	}
+
+	// Check first prover job has severity_counts
+	firstJob := proverJobs[0].(map[string]interface{})
+	severityCounts, ok := firstJob["severity_counts"].(map[string]interface{})
+	if !ok {
+		t.Errorf("expected severity_counts in job entry, got: %v", firstJob)
+		return
+	}
+
+	// Verify counts
+	if critical, ok := severityCounts["critical"].(float64); !ok || critical != 1 {
+		t.Errorf("expected critical=1, got: %v", severityCounts["critical"])
+	}
+	if major, ok := severityCounts["major"].(float64); !ok || major != 1 {
+		t.Errorf("expected major=1, got: %v", severityCounts["major"])
+	}
+}
+
+// TestJobsCommand_NoSeverityCountsForNodesWithoutChallenges verifies nodes without challenges don't show severity info.
+func TestJobsCommand_NoSeverityCountsForNodesWithoutChallenges(t *testing.T) {
+	// Setup: Create proof with nodes but no challenges
+	proofDir, cleanup := setupJobsTestWithVerifierJobs(t)
+	defer cleanup()
+
+	// Run jobs command
+	cmd := newTestJobsCmd()
+	output, err := executeCommand(cmd, "jobs", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("jobs command failed: %v", err)
+	}
+
+	// Verifier jobs should not have severity counts in output
+	// Look for bracket patterns that would indicate severity counts
+	if strings.Contains(output, "[0 critical") ||
+		strings.Contains(output, "[0 major") ||
+		strings.Contains(output, "[0 minor") ||
+		strings.Contains(output, "[0 note") {
+		t.Errorf("expected no zero severity counts in output, got: %q", output)
+	}
+}
+
+// TestJobsCommand_SeverityCountsSingularChallenge verifies singular "challenge" is used for count of 1.
+func TestJobsCommand_SeverityCountsSingularChallenge(t *testing.T) {
+	// Setup: Create proof with a node that has exactly one challenge
+	proofDir, cleanup := setupJobsTest(t)
+	defer cleanup()
+
+	nodeID, _ := types.Parse("1")
+
+	// Add just one challenge
+	addChallengeToNodeWithSeverity(t, proofDir, nodeID, "chal-001", "major")
+
+	// Run jobs command
+	cmd := newTestJobsCmd()
+	output, err := executeCommand(cmd, "jobs", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("jobs command failed: %v", err)
+	}
+
+	// Should use singular "challenge" not "challenges"
+	if strings.Contains(output, "challenges]") {
+		t.Errorf("expected singular 'challenge' for count of 1, got plural: %q", output)
+	}
+	if !strings.Contains(output, "challenge]") {
+		t.Errorf("expected '[... challenge]' in output, got: %q", output)
 	}
 }

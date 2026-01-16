@@ -1,14 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/jobs"
 	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/render"
+	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/state"
 )
 
 // newJobsCmd creates the jobs command.
@@ -95,10 +98,13 @@ func runJobs(cmd *cobra.Command, args []string) error {
 		nodeMap[n.ID.String()] = n
 	}
 
+	// Get all challenges from state
+	allChallenges := st.AllChallenges()
+
 	// Build challenge map from state challenges
 	// Maps node ID string -> slice of challenges on that node
 	challengeMap := make(map[string][]*node.Challenge)
-	for _, c := range st.AllChallenges() {
+	for _, c := range allChallenges {
 		nodeIDStr := c.NodeID.String()
 		// Convert state.Challenge to node.Challenge (only Status field is needed by jobs package)
 		nc := &node.Challenge{
@@ -108,6 +114,9 @@ func runJobs(cmd *cobra.Command, args []string) error {
 		}
 		challengeMap[nodeIDStr] = append(challengeMap[nodeIDStr], nc)
 	}
+
+	// Build severity map for challenge severity counts
+	severityMap := buildSeverityMap(allChallenges)
 
 	// Find jobs
 	jobResult := jobs.FindJobs(nodes, nodeMap, challengeMap)
@@ -127,13 +136,13 @@ func runJobs(cmd *cobra.Command, args []string) error {
 
 	// Output based on format
 	if format == "json" {
-		output := render.RenderJobsJSON(jobResult)
+		output := renderJobsJSONWithSeverity(jobResult, severityMap)
 		fmt.Fprintln(cmd.OutOrStdout(), output)
 		return nil
 	}
 
 	// Text format
-	output := render.RenderJobs(jobResult)
+	output := renderJobsWithSeverity(jobResult, severityMap)
 	fmt.Fprint(cmd.OutOrStdout(), output)
 
 	// Add summary line showing both job type counts
@@ -146,4 +155,226 @@ func runJobs(cmd *cobra.Command, args []string) error {
 
 func init() {
 	rootCmd.AddCommand(newJobsCmd())
+}
+
+// severityCounts tracks the count of open challenges by severity for a node.
+type severityCounts struct {
+	Critical int `json:"critical,omitempty"`
+	Major    int `json:"major,omitempty"`
+	Minor    int `json:"minor,omitempty"`
+	Note     int `json:"note,omitempty"`
+}
+
+// buildSeverityMap builds a map of nodeID -> severity counts for open challenges.
+func buildSeverityMap(challenges []*state.Challenge) map[string]*severityCounts {
+	result := make(map[string]*severityCounts)
+
+	for _, c := range challenges {
+		// Only count open challenges
+		if c.Status != "open" {
+			continue
+		}
+
+		nodeIDStr := c.NodeID.String()
+		counts, ok := result[nodeIDStr]
+		if !ok {
+			counts = &severityCounts{}
+			result[nodeIDStr] = counts
+		}
+
+		switch schema.ChallengeSeverity(c.Severity) {
+		case schema.SeverityCritical:
+			counts.Critical++
+		case schema.SeverityMajor:
+			counts.Major++
+		case schema.SeverityMinor:
+			counts.Minor++
+		case schema.SeverityNote:
+			counts.Note++
+		}
+	}
+
+	return result
+}
+
+// formatSeverityCounts returns a human-readable string of severity counts.
+// Only shows non-zero counts. Example: "[1 critical, 2 minor challenges]"
+func formatSeverityCounts(counts *severityCounts) string {
+	if counts == nil {
+		return ""
+	}
+
+	var parts []string
+	if counts.Critical > 0 {
+		parts = append(parts, fmt.Sprintf("%d critical", counts.Critical))
+	}
+	if counts.Major > 0 {
+		parts = append(parts, fmt.Sprintf("%d major", counts.Major))
+	}
+	if counts.Minor > 0 {
+		parts = append(parts, fmt.Sprintf("%d minor", counts.Minor))
+	}
+	if counts.Note > 0 {
+		parts = append(parts, fmt.Sprintf("%d note", counts.Note))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	suffix := "challenge"
+	total := counts.Critical + counts.Major + counts.Minor + counts.Note
+	if total > 1 {
+		suffix = "challenges"
+	}
+
+	return fmt.Sprintf("[%s %s]", strings.Join(parts, ", "), suffix)
+}
+
+// renderJobsWithSeverity renders jobs with severity counts included.
+func renderJobsWithSeverity(jobResult *jobs.JobResult, severityMap map[string]*severityCounts) string {
+	if jobResult == nil || jobResult.IsEmpty() {
+		return "No jobs available.\n\nProver jobs: 0 nodes awaiting refinement\nVerifier jobs: 0 nodes ready for review"
+	}
+
+	var sb strings.Builder
+
+	// Sort prover jobs by ID for consistent output
+	proverJobs := make([]*node.Node, len(jobResult.ProverJobs))
+	copy(proverJobs, jobResult.ProverJobs)
+	sort.Slice(proverJobs, func(i, j int) bool {
+		return proverJobs[i].ID.String() < proverJobs[j].ID.String()
+	})
+
+	// Sort verifier jobs by ID for consistent output
+	verifierJobs := make([]*node.Node, len(jobResult.VerifierJobs))
+	copy(verifierJobs, jobResult.VerifierJobs)
+	sort.Slice(verifierJobs, func(i, j int) bool {
+		return verifierJobs[i].ID.String() < verifierJobs[j].ID.String()
+	})
+
+	// Render prover jobs section
+	if len(proverJobs) > 0 {
+		sb.WriteString(fmt.Sprintf("=== Prover Jobs (%d available) ===\n", len(proverJobs)))
+		sb.WriteString("Nodes awaiting refinement. Claim one and refine the proof.\n\n")
+		for _, n := range proverJobs {
+			renderJobNodeWithSeverity(&sb, n, severityMap[n.ID.String()])
+		}
+		sb.WriteString("\nNext: Run 'af claim <id>' to claim a prover job, then 'af refine <id>' to work on it.\n")
+	}
+
+	// Add separator between sections if both have jobs
+	if len(proverJobs) > 0 && len(verifierJobs) > 0 {
+		sb.WriteString("\n")
+	}
+
+	// Render verifier jobs section
+	if len(verifierJobs) > 0 {
+		sb.WriteString(fmt.Sprintf("=== Verifier Jobs (%d available) ===\n", len(verifierJobs)))
+		sb.WriteString("Nodes ready for review. Verify or challenge the proof.\n\n")
+		for _, n := range verifierJobs {
+			renderJobNodeWithSeverity(&sb, n, severityMap[n.ID.String()])
+		}
+		sb.WriteString("\nNext: Run 'af accept <id>' to validate or 'af challenge <id>' to raise objections.\n")
+	}
+
+	return sb.String()
+}
+
+// renderJobNodeWithSeverity renders a single job node entry with severity counts.
+func renderJobNodeWithSeverity(sb *strings.Builder, n *node.Node, counts *severityCounts) {
+	// Sanitize statement (remove control chars, normalize whitespace) but do NOT truncate
+	stmt := sanitizeJobStatement(n.Statement)
+
+	// Build the line with severity counts if present
+	severityStr := formatSeverityCounts(counts)
+	if severityStr != "" {
+		sb.WriteString(fmt.Sprintf("  [%s] %s: %q %s\n", n.ID.String(), string(n.Type), stmt, severityStr))
+	} else {
+		sb.WriteString(fmt.Sprintf("  [%s] %s: %q\n", n.ID.String(), string(n.Type), stmt))
+	}
+
+	// Show claimed-by info for verifier jobs
+	if n.ClaimedBy != "" {
+		sb.WriteString(fmt.Sprintf("         claimed by: %s\n", n.ClaimedBy))
+	}
+}
+
+// sanitizeJobStatement sanitizes statement text for display.
+func sanitizeJobStatement(s string) string {
+	// Replace control characters and normalize whitespace
+	var sb strings.Builder
+	for _, r := range s {
+		if r < 32 && r != '\n' && r != '\t' {
+			sb.WriteRune(' ')
+		} else {
+			sb.WriteRune(r)
+		}
+	}
+	// Collapse multiple spaces into one
+	result := sb.String()
+	for strings.Contains(result, "  ") {
+		result = strings.ReplaceAll(result, "  ", " ")
+	}
+	return strings.TrimSpace(result)
+}
+
+// jobsJSONJobEntry represents a single job entry with severity info in JSON format.
+type jobsJSONJobEntry struct {
+	NodeID         string          `json:"node_id"`
+	Statement      string          `json:"statement"`
+	Type           string          `json:"type"`
+	Depth          int             `json:"depth"`
+	SeverityCounts *severityCounts `json:"severity_counts,omitempty"`
+}
+
+// jobsJSONOutput represents the JSON output for jobs command with severity info.
+type jobsJSONOutput struct {
+	ProverJobs   []jobsJSONJobEntry `json:"prover_jobs"`
+	VerifierJobs []jobsJSONJobEntry `json:"verifier_jobs"`
+}
+
+// renderJobsJSONWithSeverity renders jobs as JSON with severity counts included.
+func renderJobsJSONWithSeverity(jobResult *jobs.JobResult, severityMap map[string]*severityCounts) string {
+	if jobResult == nil {
+		return `{"prover_jobs":[],"verifier_jobs":[]}`
+	}
+
+	output := jobsJSONOutput{
+		ProverJobs:   make([]jobsJSONJobEntry, 0, len(jobResult.ProverJobs)),
+		VerifierJobs: make([]jobsJSONJobEntry, 0, len(jobResult.VerifierJobs)),
+	}
+
+	for _, job := range jobResult.ProverJobs {
+		entry := jobsJSONJobEntry{
+			NodeID:    job.ID.String(),
+			Statement: job.Statement,
+			Type:      string(job.Type),
+			Depth:     job.Depth(),
+		}
+		if counts := severityMap[job.ID.String()]; counts != nil {
+			entry.SeverityCounts = counts
+		}
+		output.ProverJobs = append(output.ProverJobs, entry)
+	}
+
+	for _, job := range jobResult.VerifierJobs {
+		entry := jobsJSONJobEntry{
+			NodeID:    job.ID.String(),
+			Statement: job.Statement,
+			Type:      string(job.Type),
+			Depth:     job.Depth(),
+		}
+		if counts := severityMap[job.ID.String()]; counts != nil {
+			entry.SeverityCounts = counts
+		}
+		output.VerifierJobs = append(output.VerifierJobs, entry)
+	}
+
+	data, err := json.Marshal(output)
+	if err != nil {
+		return `{"prover_jobs":[],"verifier_jobs":[]}`
+	}
+
+	return string(data)
 }

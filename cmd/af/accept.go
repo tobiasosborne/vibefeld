@@ -3,12 +3,14 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/state"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -153,6 +155,10 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 			acceptErr = svc.AcceptNode(nodeIDs[0])
 		}
 		if acceptErr != nil {
+			// Check if error is due to blocking challenges
+			if errors.Is(acceptErr, service.ErrBlockingChallenges) {
+				return handleBlockingChallengesError(cmd, svc, nodeIDs[0], format, acceptErr)
+			}
 			return fmt.Errorf("error accepting node: %w", acceptErr)
 		}
 
@@ -184,6 +190,14 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 
 	// Multiple nodes: use AcceptNodeBulk
 	if err := svc.AcceptNodeBulk(nodeIDs); err != nil {
+		// Check if error is due to blocking challenges
+		if errors.Is(err, service.ErrBlockingChallenges) {
+			// Try to find which node has blocking challenges
+			nodeID := extractNodeIDFromBlockingError(err)
+			if nodeID != nil {
+				return handleBlockingChallengesError(cmd, svc, *nodeID, format, err)
+			}
+		}
 		return fmt.Errorf("error accepting nodes: %w", err)
 	}
 
@@ -214,6 +228,139 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 	}
 
 	return nil
+}
+
+// handleBlockingChallengesError displays blocking challenges that prevent acceptance.
+// It formats the error output based on the requested format (text or json).
+func handleBlockingChallengesError(cmd *cobra.Command, svc *service.ProofService, nodeID types.NodeID, format string, origErr error) error {
+	// Load state to get the blocking challenges
+	st, err := svc.LoadState()
+	if err != nil {
+		// If we can't load state, just return the original error
+		return fmt.Errorf("error accepting node: %w", origErr)
+	}
+
+	blockingChallenges := st.GetBlockingChallengesForNode(nodeID)
+
+	switch strings.ToLower(format) {
+	case "json":
+		return outputBlockingChallengesJSON(cmd, nodeID, blockingChallenges, origErr)
+	default:
+		return outputBlockingChallengesText(cmd, nodeID, blockingChallenges, origErr)
+	}
+}
+
+// outputBlockingChallengesText displays blocking challenges in text format.
+func outputBlockingChallengesText(cmd *cobra.Command, nodeID types.NodeID, challenges []*state.Challenge, origErr error) error {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("Cannot accept node %s: blocking challenges must be resolved first.\n\n", nodeID.String()))
+
+	if len(challenges) > 0 {
+		sb.WriteString("Blocking Challenges:\n")
+		for i, c := range challenges {
+			sb.WriteString(fmt.Sprintf("  %d. [%s] %s (severity: %s)\n", i+1, c.ID, c.Target, c.Severity))
+			sb.WriteString(fmt.Sprintf("     Reason: %s\n", c.Reason))
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("How to resolve:\n")
+	sb.WriteString("  - Use 'af refine' to address the challenges by improving the proof\n")
+	sb.WriteString("  - Use 'af resolve <challenge-id>' to resolve a challenge with an explanation\n")
+	sb.WriteString("  - Use 'af withdraw <challenge-id>' to withdraw a challenge if it was raised in error\n")
+
+	// Print the output
+	fmt.Fprint(cmd.OutOrStdout(), sb.String())
+
+	// Return error with just the summary (without the details we already printed)
+	return fmt.Errorf("node %s has %d blocking challenge(s)", nodeID.String(), len(challenges))
+}
+
+// outputBlockingChallengesJSON displays blocking challenges in JSON format.
+func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID types.NodeID, challenges []*state.Challenge, origErr error) error {
+	type challengeInfo struct {
+		ID       string `json:"id"`
+		Target   string `json:"target"`
+		Severity string `json:"severity"`
+		Reason   string `json:"reason"`
+	}
+
+	type blockingResponse struct {
+		Error              string          `json:"error"`
+		NodeID             string          `json:"node_id"`
+		BlockingChallenges []challengeInfo `json:"blocking_challenges"`
+		HowToResolve       []string        `json:"how_to_resolve"`
+	}
+
+	challengeList := make([]challengeInfo, len(challenges))
+	for i, c := range challenges {
+		challengeList[i] = challengeInfo{
+			ID:       c.ID,
+			Target:   c.Target,
+			Severity: c.Severity,
+			Reason:   c.Reason,
+		}
+	}
+
+	response := blockingResponse{
+		Error:              "blocking_challenges",
+		NodeID:             nodeID.String(),
+		BlockingChallenges: challengeList,
+		HowToResolve: []string{
+			"Use 'af refine' to address the challenges by improving the proof",
+			"Use 'af resolve <challenge-id>' to resolve a challenge with an explanation",
+			"Use 'af withdraw <challenge-id>' to withdraw a challenge if it was raised in error",
+		},
+	}
+
+	output, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling JSON: %w", err)
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), string(output))
+
+	// Return error with just the summary
+	return fmt.Errorf("node %s has %d blocking challenge(s)", nodeID.String(), len(challenges))
+}
+
+// extractNodeIDFromBlockingError attempts to extract the node ID from a blocking challenges error message.
+// Returns nil if the node ID cannot be extracted.
+func extractNodeIDFromBlockingError(err error) *types.NodeID {
+	if err == nil {
+		return nil
+	}
+
+	// The error format from service is: "node has unresolved blocking challenges: node X has N blocking challenge(s): ..."
+	errStr := err.Error()
+
+	// Look for "node " followed by the ID
+	const nodePrefix = "node "
+	idx := strings.Index(errStr, nodePrefix)
+	if idx == -1 {
+		return nil
+	}
+
+	// Skip past "node "
+	remaining := errStr[idx+len(nodePrefix):]
+
+	// Find the end of the node ID (space or " has")
+	endIdx := strings.Index(remaining, " has")
+	if endIdx == -1 {
+		endIdx = strings.Index(remaining, " ")
+	}
+	if endIdx == -1 {
+		return nil
+	}
+
+	nodeIDStr := remaining[:endIdx]
+	nodeID, err := types.Parse(nodeIDStr)
+	if err != nil {
+		return nil
+	}
+
+	return &nodeID
 }
 
 func init() {

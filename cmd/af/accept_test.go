@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/tobias/vibefeld/internal/fs"
+	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
@@ -922,5 +923,265 @@ func TestAcceptCommand_ConfirmFlagInHelp(t *testing.T) {
 
 	if !strings.Contains(strings.ToLower(output), "confirm") {
 		t.Errorf("help output should mention 'confirm', got: %q", output)
+	}
+}
+
+// =============================================================================
+// Blocking Challenge Tests
+// =============================================================================
+
+// addChallengeToNode is a test helper that adds a challenge to a node by directly
+// appending to the ledger. This bypasses the service layer to set up test fixtures.
+func addChallengeToNode(t *testing.T, proofDir string, nodeID types.NodeID, challengeID, target, reason, severity string) {
+	t.Helper()
+	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
+	if err != nil {
+		t.Fatalf("failed to get ledger: %v", err)
+	}
+	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity)
+	if _, err := ldg.Append(event); err != nil {
+		t.Fatalf("failed to append challenge: %v", err)
+	}
+}
+
+// TestAcceptCommand_ShowsBlockingChallengesOnFailure tests that when accept fails
+// due to blocking challenges, the challenges are displayed to the user.
+func TestAcceptCommand_ShowsBlockingChallengesOnFailure(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a critical challenge to the node
+	addChallengeToNode(t, tmpDir, nodeID, "chal-001", "statement", "The statement is unclear", "critical")
+
+	// Try to accept the node - should fail and show the challenge
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir)
+
+	// Should return an error
+	if err == nil {
+		t.Fatal("expected error when accepting node with blocking challenges, got nil")
+	}
+
+	// Output should contain information about blocking challenges
+	if !strings.Contains(output, "blocking") || !strings.Contains(output, "challenge") {
+		t.Errorf("output should mention blocking challenges, got: %q", output)
+	}
+
+	// Output should show the challenge ID
+	if !strings.Contains(output, "chal-001") {
+		t.Errorf("output should show challenge ID 'chal-001', got: %q", output)
+	}
+
+	// Output should show the target
+	if !strings.Contains(output, "statement") {
+		t.Errorf("output should show challenge target 'statement', got: %q", output)
+	}
+
+	// Output should show the reason
+	if !strings.Contains(output, "unclear") {
+		t.Errorf("output should show challenge reason, got: %q", output)
+	}
+
+	// Output should show the severity
+	if !strings.Contains(output, "critical") {
+		t.Errorf("output should show challenge severity 'critical', got: %q", output)
+	}
+
+	// Output should suggest how to resolve
+	if !strings.Contains(output, "resolve") || !strings.Contains(output, "refine") {
+		t.Errorf("output should suggest resolution methods, got: %q", output)
+	}
+}
+
+// TestAcceptCommand_ShowsBlockingChallengesJSON tests that when accept fails
+// due to blocking challenges with JSON format, the challenges are displayed as JSON.
+func TestAcceptCommand_ShowsBlockingChallengesJSON(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add two blocking challenges
+	addChallengeToNode(t, tmpDir, nodeID, "chal-001", "statement", "Statement is ambiguous", "critical")
+	addChallengeToNode(t, tmpDir, nodeID, "chal-002", "inference", "Inference type incorrect", "major")
+
+	// Try to accept the node with JSON format - should fail and show challenges as JSON
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir, "-f", "json")
+
+	// Should return an error
+	if err == nil {
+		t.Fatal("expected error when accepting node with blocking challenges, got nil")
+	}
+
+	// The output may contain the JSON followed by error messages and usage from Cobra.
+	// Extract the JSON portion (everything up to the first newline after the closing brace).
+	jsonOutput := extractJSONFromOutput(output)
+
+	// Output should be valid JSON
+	var result map[string]interface{}
+	if jsonErr := json.Unmarshal([]byte(jsonOutput), &result); jsonErr != nil {
+		t.Fatalf("output should be valid JSON, got error: %v\nFull Output: %q\nExtracted JSON: %q", jsonErr, output, jsonOutput)
+	}
+
+	// Should have error field
+	if result["error"] != "blocking_challenges" {
+		t.Errorf("JSON should have error='blocking_challenges', got: %v", result["error"])
+	}
+
+	// Should have node_id field
+	if result["node_id"] != "1" {
+		t.Errorf("JSON should have node_id='1', got: %v", result["node_id"])
+	}
+
+	// Should have blocking_challenges array
+	challenges, ok := result["blocking_challenges"].([]interface{})
+	if !ok {
+		t.Fatalf("JSON should have blocking_challenges array, got: %v", result["blocking_challenges"])
+	}
+
+	// Should have 2 challenges
+	if len(challenges) != 2 {
+		t.Errorf("expected 2 blocking challenges, got %d", len(challenges))
+	}
+
+	// Verify first challenge has expected fields
+	if len(challenges) > 0 {
+		firstChallenge, ok := challenges[0].(map[string]interface{})
+		if !ok {
+			t.Fatalf("challenge should be an object, got: %T", challenges[0])
+		}
+
+		if _, hasID := firstChallenge["id"]; !hasID {
+			t.Error("challenge should have 'id' field")
+		}
+		if _, hasTarget := firstChallenge["target"]; !hasTarget {
+			t.Error("challenge should have 'target' field")
+		}
+		if _, hasSeverity := firstChallenge["severity"]; !hasSeverity {
+			t.Error("challenge should have 'severity' field")
+		}
+		if _, hasReason := firstChallenge["reason"]; !hasReason {
+			t.Error("challenge should have 'reason' field")
+		}
+	}
+
+	// Should have how_to_resolve array
+	resolve, ok := result["how_to_resolve"].([]interface{})
+	if !ok {
+		t.Errorf("JSON should have how_to_resolve array, got: %v", result["how_to_resolve"])
+	}
+
+	if len(resolve) == 0 {
+		t.Error("how_to_resolve array should not be empty")
+	}
+}
+
+// extractJSONFromOutput extracts a JSON object from output that may contain
+// additional error messages or usage text after the JSON.
+func extractJSONFromOutput(output string) string {
+	// Find the start of JSON (first '{')
+	startIdx := strings.Index(output, "{")
+	if startIdx == -1 {
+		return output
+	}
+
+	// Track braces to find the matching closing brace
+	braceCount := 0
+	inString := false
+	escaped := false
+
+	for i := startIdx; i < len(output); i++ {
+		c := output[i]
+
+		if escaped {
+			escaped = false
+			continue
+		}
+
+		if c == '\\' && inString {
+			escaped = true
+			continue
+		}
+
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+
+		if inString {
+			continue
+		}
+
+		if c == '{' {
+			braceCount++
+		} else if c == '}' {
+			braceCount--
+			if braceCount == 0 {
+				return output[startIdx : i+1]
+			}
+		}
+	}
+
+	// If we didn't find matching braces, return from start to end
+	return output[startIdx:]
+}
+
+// TestAcceptCommand_NoBlockingWithMinorChallenge tests that minor challenges
+// do not block acceptance.
+func TestAcceptCommand_NoBlockingWithMinorChallenge(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a minor challenge to the node (should NOT block acceptance)
+	addChallengeToNode(t, tmpDir, nodeID, "chal-minor", "statement", "Minor style issue", "minor")
+
+	// Try to accept the node - should succeed because minor challenges don't block
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir)
+
+	// Should NOT return an error
+	if err != nil {
+		t.Fatalf("expected no error when accepting node with only minor challenges, got: %v\nOutput: %s", err, output)
+	}
+
+	// Should show success message
+	lower := strings.ToLower(output)
+	if !strings.Contains(lower, "accepted") && !strings.Contains(lower, "validated") {
+		t.Errorf("output should indicate success, got: %q", output)
+	}
+}
+
+// TestAcceptCommand_MultipleBlockingChallenges tests that all blocking challenges
+// are shown when multiple exist.
+func TestAcceptCommand_MultipleBlockingChallenges(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add multiple blocking challenges
+	addChallengeToNode(t, tmpDir, nodeID, "chal-critical", "statement", "Critical issue found", "critical")
+	addChallengeToNode(t, tmpDir, nodeID, "chal-major-1", "inference", "Inference problem", "major")
+	addChallengeToNode(t, tmpDir, nodeID, "chal-major-2", "gap", "Logical gap in reasoning", "major")
+
+	// Try to accept the node - should fail
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir)
+
+	// Should return an error
+	if err == nil {
+		t.Fatal("expected error when accepting node with blocking challenges")
+	}
+
+	// All blocking challenge IDs should be shown
+	if !strings.Contains(output, "chal-critical") {
+		t.Errorf("output should show 'chal-critical', got: %q", output)
+	}
+	if !strings.Contains(output, "chal-major-1") {
+		t.Errorf("output should show 'chal-major-1', got: %q", output)
+	}
+	if !strings.Contains(output, "chal-major-2") {
+		t.Errorf("output should show 'chal-major-2', got: %q", output)
 	}
 }

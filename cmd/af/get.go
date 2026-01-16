@@ -21,6 +21,7 @@ func newGetCmd() *cobra.Command {
 	var ancestors bool
 	var subtree bool
 	var full bool
+	var checklist bool
 
 	cmd := &cobra.Command{
 		Use:   "get <node-id>",
@@ -36,10 +37,12 @@ Examples:
   af get 1 --subtree          Show node 1 and all its descendants
   af get 1 --full             Show full node details
   af get 1.1 -a -F            Show ancestors with full details
-  af get 1 -s -f json         Show subtree in JSON format`,
+  af get 1 -s -f json         Show subtree in JSON format
+  af get 1.1 --checklist      Show verification checklist for node 1.1
+  af get 1.1 --checklist -f json  Show verification checklist in JSON`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGet(cmd, args[0], dir, format, ancestors, subtree, full)
+			return runGet(cmd, args[0], dir, format, ancestors, subtree, full, checklist)
 		},
 	}
 
@@ -48,11 +51,12 @@ Examples:
 	cmd.Flags().BoolVarP(&ancestors, "ancestors", "a", false, "Show ancestor chain")
 	cmd.Flags().BoolVarP(&subtree, "subtree", "s", false, "Show subtree (all descendants)")
 	cmd.Flags().BoolVarP(&full, "full", "F", false, "Show full node details")
+	cmd.Flags().BoolVarP(&checklist, "checklist", "c", false, "Show verification checklist for the node")
 
 	return cmd
 }
 
-func runGet(cmd *cobra.Command, nodeIDStr, dir, format string, ancestors, subtree, full bool) error {
+func runGet(cmd *cobra.Command, nodeIDStr, dir, format string, ancestors, subtree, full, checklist bool) error {
 	// Validate format
 	format = strings.ToLower(format)
 	if format != "" && format != "text" && format != "json" {
@@ -90,6 +94,16 @@ func runGet(cmd *cobra.Command, nodeIDStr, dir, format string, ancestors, subtre
 	targetNode := st.GetNode(nodeID)
 	if targetNode == nil {
 		return fmt.Errorf("node %q does not exist", nodeIDStr)
+	}
+
+	// Handle checklist flag - show verification checklist instead of normal output
+	if checklist {
+		if format == "json" {
+			cmd.Println(render.RenderVerificationChecklistJSON(targetNode, st))
+		} else {
+			cmd.Print(render.RenderVerificationChecklist(targetNode, st))
+		}
+		return nil
 	}
 
 	// Collect nodes to display based on flags

@@ -985,3 +985,177 @@ func TestClaimCmd_ExpectedFlags(t *testing.T) {
 		}
 	}
 }
+
+// =============================================================================
+// Verification Checklist Tests (vibefeld-4f5q)
+// =============================================================================
+
+// TestClaimCommand_VerifierSeesChecklist verifies that verifier claim shows the verification checklist.
+func TestClaimCommand_VerifierSeesChecklist(t *testing.T) {
+	proofDir, cleanup := setupClaimTest(t)
+	defer cleanup()
+
+	cmd := newTestClaimCmd()
+	output, err := executeCommand(cmd, "claim", "1", "--owner", "verifier-001", "--role", "verifier", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("claim command failed: %v", err)
+	}
+
+	// Verify the verification checklist header is present
+	if !strings.Contains(output, "Verification Checklist") {
+		t.Errorf("expected verifier claim output to contain 'Verification Checklist', got: %q", output)
+	}
+
+	// Verify checklist sections are present
+	checklistSections := []string{
+		"STATEMENT PRECISION",
+		"INFERENCE VALIDITY",
+		"DEPENDENCIES",
+		"HIDDEN ASSUMPTIONS",
+		"DOMAIN RESTRICTIONS",
+		"NOTATION CONSISTENCY",
+	}
+
+	for _, section := range checklistSections {
+		if !strings.Contains(output, section) {
+			t.Errorf("expected verifier claim output to contain checklist section %q, got: %q", section, output)
+		}
+	}
+
+	// Verify challenge command suggestion is present
+	if !strings.Contains(output, "af challenge") {
+		t.Errorf("expected verifier claim output to contain challenge command suggestion, got: %q", output)
+	}
+}
+
+// TestClaimCommand_ProverDoesNotSeeChecklist verifies that prover claim does NOT show the verification checklist.
+func TestClaimCommand_ProverDoesNotSeeChecklist(t *testing.T) {
+	proofDir, cleanup := setupClaimTest(t)
+	defer cleanup()
+
+	cmd := newTestClaimCmd()
+	output, err := executeCommand(cmd, "claim", "1", "--owner", "prover-001", "--role", "prover", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("claim command failed: %v", err)
+	}
+
+	// Verify the verification checklist is NOT present for prover
+	if strings.Contains(output, "Verification Checklist") {
+		t.Errorf("expected prover claim output to NOT contain 'Verification Checklist', but it did: %q", output)
+	}
+
+	// Verify checklist sections are NOT present
+	checklistSections := []string{
+		"STATEMENT PRECISION",
+		"INFERENCE VALIDITY",
+		"HIDDEN ASSUMPTIONS",
+		"DOMAIN RESTRICTIONS",
+		"NOTATION CONSISTENCY",
+	}
+
+	for _, section := range checklistSections {
+		if strings.Contains(output, section) {
+			t.Errorf("expected prover claim output to NOT contain checklist section %q, but it did", section)
+		}
+	}
+
+	// Verify prover gets appropriate next steps (refine, not challenge)
+	if !strings.Contains(output, "af refine") {
+		t.Errorf("expected prover claim output to contain 'af refine' suggestion, got: %q", output)
+	}
+}
+
+// TestClaimCommand_ChecklistJSON_WhenFormatJSON verifies JSON format includes verification checklist for verifier.
+func TestClaimCommand_ChecklistJSON_WhenFormatJSON(t *testing.T) {
+	proofDir, cleanup := setupClaimTest(t)
+	defer cleanup()
+
+	cmd := newTestClaimCmd()
+	output, err := executeCommand(cmd, "claim", "1", "--owner", "verifier-001", "--role", "verifier", "--format", "json", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("claim command failed: %v", err)
+	}
+
+	// Parse JSON output
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("expected valid JSON output, got error: %v\nOutput: %s", err, output)
+	}
+
+	// Verify verification_checklist field is present for verifier
+	checklist, ok := result["verification_checklist"]
+	if !ok {
+		t.Error("expected JSON to contain 'verification_checklist' field for verifier claim")
+		return
+	}
+
+	// Verify checklist is a map with expected structure
+	checklistMap, ok := checklist.(map[string]interface{})
+	if !ok {
+		t.Errorf("expected 'verification_checklist' to be an object, got: %T", checklist)
+		return
+	}
+
+	// Verify required fields in checklist
+	expectedFields := []string{"node_id", "items", "dependencies", "challenge_command"}
+	for _, field := range expectedFields {
+		if _, ok := checklistMap[field]; !ok {
+			t.Errorf("expected verification_checklist to contain field %q", field)
+		}
+	}
+
+	// Verify items array is present and non-empty
+	items, ok := checklistMap["items"].([]interface{})
+	if !ok {
+		t.Errorf("expected 'items' to be an array, got: %T", checklistMap["items"])
+		return
+	}
+	if len(items) == 0 {
+		t.Error("expected 'items' array to be non-empty")
+	}
+}
+
+// TestClaimCommand_ProverJSON_NoChecklist verifies JSON format does NOT include verification checklist for prover.
+func TestClaimCommand_ProverJSON_NoChecklist(t *testing.T) {
+	proofDir, cleanup := setupClaimTest(t)
+	defer cleanup()
+
+	cmd := newTestClaimCmd()
+	output, err := executeCommand(cmd, "claim", "1", "--owner", "prover-001", "--role", "prover", "--format", "json", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("claim command failed: %v", err)
+	}
+
+	// Parse JSON output
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("expected valid JSON output, got error: %v\nOutput: %s", err, output)
+	}
+
+	// Verify verification_checklist field is NOT present for prover
+	if _, ok := result["verification_checklist"]; ok {
+		t.Error("expected JSON to NOT contain 'verification_checklist' field for prover claim")
+	}
+}
+
+// TestClaimCommand_VerifierChecklist_DefaultRole verifies that without --role flag, default is prover (no checklist).
+func TestClaimCommand_VerifierChecklist_DefaultRole(t *testing.T) {
+	proofDir, cleanup := setupClaimTest(t)
+	defer cleanup()
+
+	cmd := newTestClaimCmd()
+	output, err := executeCommand(cmd, "claim", "1", "--owner", "agent-001", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("claim command failed: %v", err)
+	}
+
+	// Default role is prover, so no verification checklist should be present
+	if strings.Contains(output, "Verification Checklist") {
+		t.Errorf("expected default role (prover) claim to NOT show verification checklist, but it did")
+	}
+}
