@@ -1,122 +1,87 @@
-# Handoff - 2026-01-16 (Session 48)
+# Handoff - 2026-01-16 (Session 49)
 
 ## What Was Accomplished This Session
 
-### Session 48 Summary: 8 Features Implemented (2 Batches of 4 Parallel Subagents)
+### Session 49 Summary: 4 Features Implemented (4 Parallel Subagents)
 
-**Batch 1:**
 | Issue | Type | Priority | Description |
 |-------|------|----------|-------------|
-| vibefeld-wepp | Feature | P3 | Tab completion for node IDs |
-| vibefeld-06on | Feature | P3 | Guided workflow/wizard |
-| vibefeld-h7ii | Feature | P2 | Learning from common challenge patterns |
-| vibefeld-ooht | Feature | P2 | Proof structure/strategy guidance |
+| vibefeld-64he + vibefeld-51s3 | Task | P3 | Argument order independence (internal/cli/argparse) |
+| vibefeld-6szr + vibefeld-m6av | Task | P3 | Missing argument help prompts (internal/cli/prompt) |
+| vibefeld-amd1 + vibefeld-n40w | Task | P3 | Contextual next-step suggestions (internal/render/next_steps) |
+| vibefeld-b0yc + vibefeld-t1io | Task | P2 | Lemma independence validation (internal/lemma/independence) |
 
-**Batch 2:**
-| Issue | Type | Priority | Description |
-|-------|------|----------|-------------|
-| vibefeld-68lh | Feature | P2 | Claim extension without release/reclaim |
-| vibefeld-7ihg | Feature | P3 | Webhook/hook support for integrations |
-| vibefeld-swn9 | Task | P2 | Implement verify-external command |
-| vibefeld-hmnt | Task | P2 | Implement extract-lemma command |
+### New Files Created (~2,500 lines)
 
-### Key Changes by Area
+**internal/cli/** (new package)
+- `argparse.go` - Argument order independence for Cobra commands
+- `argparse_test.go` - Comprehensive tests for argument parsing
+- `prompt.go` - Missing argument help prompts with examples
+- `prompt_test.go` - Tests for prompting functionality
 
-**Batch 1 Files (~6,000 lines):**
-- `cmd/af/completion.go` - Shell tab completion (bash/zsh/fish/powershell)
-- `cmd/af/wizard.go` - Interactive workflow wizards
-- `cmd/af/patterns.go` - Challenge pattern CLI
-- `cmd/af/strategy.go` - Proof strategy CLI
-- `internal/patterns/` - Pattern library package
-- `internal/strategy/` - Strategy planning package
-- Plus test files for all above
+**internal/render/**
+- `next_steps.go` - Contextual next-step suggestions
+- `next_steps_test.go` - Tests for next-step suggestions
 
-**Batch 2 Files (~3,100 lines):**
-- `cmd/af/extend_claim.go` - Claim extension command
-- `cmd/af/hooks.go` - Hook management CLI
-- `cmd/af/verify_external.go` - Implemented from stub
-- `cmd/af/extract_lemma.go` - Implemented from stub
-- `internal/hooks/` - Hook system package
-- Plus test files for all above
+**internal/lemma/**
+- `independence.go` - Lemma independence validation
+- `independence_test.go` - Tests for independence criteria
 
-### New/Implemented Commands
+### Key Features
 
-**`af completion` - Shell Tab Completion (vibefeld-wepp)**
-```bash
-source <(af completion bash)     # Install bash completion
-source <(af completion zsh)      # Install zsh completion
-```
-Features: Node ID completion for claim/refine/accept, challenge ID completion, prefix filtering.
-
-**`af wizard` - Guided Workflows (vibefeld-06on)**
-```bash
-af wizard new-proof              # Guide through proof initialization
-af wizard respond-challenge      # Guide through responding to challenges
-af wizard review                 # Guide verifier through pending nodes
+**Argument Order Independence (argparse)**
+```go
+// Users can provide flags and positional args in any order
+ParseArgs(args, flagNames) (positional, flags)
+NormalizeArgs(args, flagNames) []string  // Reorder for Cobra
+ParseArgsWithBoolFlags(args, flagNames, boolFlags)  // Boolean flag support
 ```
 
-**`af patterns` - Challenge Pattern Library (vibefeld-h7ii)**
-```bash
-af patterns list                 # Show known patterns
-af patterns analyze              # Analyze proof for potential issues
-af patterns stats                # Statistics on challenge types
+**Missing Argument Prompts (prompt)**
+```go
+// Helpful prompts when required arguments are missing
+type ArgSpec struct {
+    Name, Description string
+    Examples []string
+    Required bool
+}
+CheckRequiredArgs(args, specs) *MissingArgError
+// Output: "Missing required argument: node-id\n  The ID of the node to claim\n\nExamples:\n  af claim 1"
 ```
-Pattern types: logical_gap, scope_violation, circular_reasoning, undefined_term
 
-**`af strategy` - Proof Planning (vibefeld-ooht)**
-```bash
-af strategy list                 # Show available proof strategies
-af strategy suggest "conjecture" # Analyze and suggest strategies
-af strategy apply induction "P(n)"  # Generate skeleton
+**Next-Step Suggestions (next_steps)**
+```go
+// Context-aware suggestions after each command
+type NextStep struct { Command, Description string; Priority int }
+SuggestNextSteps(ctx Context) []NextStep
+RenderNextSteps(steps) string
+// Output: "Next steps:\n  -> af claim 1.2      Claim the available node"
 ```
-Strategies: direct, contradiction, induction, cases, contrapositive
 
-**`af extend-claim` - Claim Extension (vibefeld-68lh)**
-```bash
-af extend-claim 1.2 --owner claude          # Extend claim on node 1.2
-af extend-claim 1.2 --owner claude --duration 2h  # Custom duration
-af extend-claim 1.2 -o claude -f json       # JSON output
+**Lemma Independence (independence)**
+```go
+// Validate a node can be extracted as reusable lemma
+ValidateIndependence(nodeID, state) (*IndependenceResult, error)
+CheckLocalDependencies(nodeID, state) []NodeID
+CheckAncestorValidity(nodeID, state) []NodeID
+// Criteria: validated, no local scope, clean ancestry, not tainted
 ```
-Safely extends claim duration without risky release/reclaim cycle.
-
-**`af hooks` - Webhook/Hook System (vibefeld-7ihg)**
-```bash
-af hooks list                               # Show configured hooks
-af hooks add node_created webhook http://example.com/hook
-af hooks add challenge_raised command "./notify.sh"
-af hooks remove <id>                        # Remove a hook
-af hooks test <id>                          # Test with sample event
-```
-Events: node_created, node_validated, challenge_raised, challenge_resolved
-Hook types: webhook (HTTP POST), command (shell with env vars)
-
-**`af verify-external` - External Verification (vibefeld-swn9)**
-```bash
-af verify-external ext-abc123               # Mark external as verified
-af verify-external ext-abc123 -f json       # JSON output
-```
-Marks external references (citations, axioms) as verified.
-
-**`af extract-lemma` - Lemma Extraction (vibefeld-hmnt)**
-```bash
-af extract-lemma 1.2 -s "All primes > 2 are odd"  # Extract lemma
-af extract-lemma 1.2 -s "Statement" -f json       # JSON output
-```
-Extracts validated nodes as reusable lemmas with independence validation.
 
 ## Current State
 
 ### Issue Statistics
 - **Total:** 369
-- **Open:** 28
-- **Closed:** 341 (8 closed this session)
-- **Ready to Work:** 28
+- **Open:** 20
+- **Closed:** 349 (8 closed this session)
+- **Ready to Work:** 20
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
-ok  github.com/tobias/vibefeld/internal/hooks
+ok  github.com/tobias/vibefeld/internal/cli
+ok  github.com/tobias/vibefeld/internal/lemma
+ok  github.com/tobias/vibefeld/internal/render
 ... (all packages pass)
 ```
 
@@ -125,14 +90,15 @@ Build succeeds: `go build ./cmd/af`
 ## Next Steps
 
 Run `bd ready` to see remaining issues. Current priorities:
-1. **vibefeld-asq3** (P2): Fix prover-centric tool (verifiers second-class)
-2. **vibefeld-86r0** (P2): Add role isolation enforcement
-3. **vibefeld-s9xa** (P3): Add dry-run mode
-4. **vibefeld-pify** (P3): Add pagination for large proofs
-5. **vibefeld-yri1** (P3): Add verbose mode for debugging
+1. **vibefeld-1b4s** (P3): Write tests for fuzzy flag matching
+2. **vibefeld-e1av** (P3): Implement fuzzy flag matching
+3. **vibefeld-5k97** (P3): Add version command with build info
+4. **vibefeld-flwo** (P3): Implement shell completion script
+5. **vibefeld-n6hm** (P3): Add --help to all commands with examples
 
 ## Session History
 
+**Session 49:** Implemented 4 features (4 parallel subagents) - argparse, prompt, next_steps, independence
 **Session 48:** Implemented 8 features (2 batches of 4 parallel subagents) - completion, wizard, patterns, strategy, extend-claim, hooks, verify-external, extract-lemma
 **Session 47:** Implemented 4 features (4 parallel subagents) - Dobinski E2E test, quality metrics, watch command, interactive shell
 **Session 46:** Implemented 4 issues (4 parallel subagents) - validation scope check, JSON API completion, error messages, E2E test suite
