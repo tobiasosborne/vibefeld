@@ -1,87 +1,86 @@
-# Handoff - 2026-01-16 (Session 47)
+# Handoff - 2026-01-16 (Session 48)
 
 ## What Was Accomplished This Session
 
-### Session 47 Summary: 4 Features Implemented in Parallel
+### Session 48 Summary: 4 Features Implemented in Parallel
 
 | Issue | Type | Priority | Description |
 |-------|------|----------|-------------|
-| vibefeld-om5f | Task | P2 | Dobinski proof regression test |
-| vibefeld-uwhe | Feature | P2 | Quality metrics for proofs |
-| vibefeld-wgfv | Feature | P3 | Event stream for real-time monitoring |
-| vibefeld-qfit | Feature | P3 | Interactive mode/REPL |
+| vibefeld-wepp | Feature | P3 | Tab completion for node IDs |
+| vibefeld-06on | Feature | P3 | Guided workflow/wizard |
+| vibefeld-h7ii | Feature | P2 | Learning from common challenge patterns |
+| vibefeld-ooht | Feature | P2 | Proof structure/strategy guidance |
 
 ### Key Changes by Area
 
-**New Files Created (4,262 lines total):**
-- `e2e/dobinski_regression_test.go` - 913 lines, 11 subtests
-- `internal/metrics/metrics.go` - 374 lines, core metrics calculations
-- `internal/metrics/metrics_test.go` - 544 lines, 29 unit tests
-- `cmd/af/metrics.go` - 250 lines, CLI command
-- `cmd/af/metrics_test.go` - 386 lines, 14 tests
-- `cmd/af/watch.go` - 261 lines, event streaming
-- `cmd/af/watch_test.go` - 536 lines, 15 tests
-- `cmd/af/shell.go` - 104 lines, REPL command
-- `cmd/af/shell_test.go` - 272 lines
-- `internal/shell/shell.go` - 204 lines, REPL core
-- `internal/shell/shell_test.go` - 418 lines
+**New Files Created (5,965 lines total):**
+- `cmd/af/completion.go` - Shell tab completion
+- `cmd/af/completion_test.go` - 21 tests
+- `cmd/af/wizard.go` - Interactive workflow wizards
+- `cmd/af/wizard_test.go` - 22 tests
+- `cmd/af/patterns.go` - Challenge pattern CLI
+- `cmd/af/patterns_test.go` - 14 tests
+- `cmd/af/strategy.go` - Proof strategy CLI
+- `cmd/af/strategy_test.go` - 28 tests
+- `internal/patterns/patterns.go` - Pattern library core
+- `internal/patterns/patterns_test.go` - 22 tests
+- `internal/strategy/strategy.go` - Strategy planning core
+- `internal/strategy/strategy_test.go` - 24 tests
 
 ### New Commands
 
-**`af metrics` - Quality Reports (vibefeld-uwhe)**
+**`af completion` - Shell Tab Completion (vibefeld-wepp)**
 ```bash
-af metrics                    # Show quality report for entire proof
-af metrics --format json      # Machine-readable output
-af metrics --node 1.2         # Focus on specific subtree
+source <(af completion bash)     # Install bash completion
+source <(af completion zsh)      # Install zsh completion
+af completion fish > ~/.config/fish/completions/af.fish
+af completion powershell | Out-String | Invoke-Expression
 ```
-Metrics provided:
-- Refinement depth (max tree depth)
-- Challenge density (challenges per node)
-- Definition coverage (% terms defined)
-- Overall quality score (0-100)
+Features: Node ID completion for claim/refine/accept/etc., challenge ID completion, prefix filtering
 
-**`af watch` - Event Monitoring (vibefeld-wgfv)**
+**`af wizard` - Guided Workflows (vibefeld-06on)**
 ```bash
-af watch                      # Tail events in real-time
-af watch --interval 500ms     # Custom poll interval
-af watch --filter node_created  # Filter by event type
-af watch --json               # NDJSON output
-af watch --once               # Show current events and exit
-af watch --since 42           # Start from sequence 42
+af wizard new-proof              # Guide through proof initialization
+af wizard respond-challenge      # Guide through responding to challenges
+af wizard review                 # Guide verifier through pending nodes
+af wizard new-proof --no-confirm # Skip confirmation prompts
+af wizard new-proof --preview    # Preview only, don't execute
 ```
-Features: Graceful Ctrl+C handling, partial match filtering
 
-**`af shell` - Interactive REPL (vibefeld-qfit)**
+**`af patterns` - Challenge Pattern Library (vibefeld-h7ii)**
 ```bash
-af shell                      # Start interactive mode
-af shell --prompt "proof> "   # Custom prompt
+af patterns list                 # Show known patterns
+af patterns analyze              # Analyze proof for potential issues
+af patterns stats                # Show statistics on challenge types
+af patterns extract              # Extract patterns from resolved challenges
+af patterns list --type logical_gap  # Filter by pattern type
+af patterns --json               # Machine-readable output
 ```
-Built-in commands: `help`, `exit`, `quit`
-All af commands work without prefix: `status`, `jobs`, etc.
+Pattern types: logical_gap, scope_violation, circular_reasoning, undefined_term
 
-### Dobinski Regression Tests (vibefeld-om5f)
-
-Comprehensive E2E tests reproducing and preventing the original failures:
-1. `TestDobinski_VerifierSeesNewNodesImmediately` - 4 subtests
-2. `TestDobinski_FullContextOnClaim` - Ancestor chain verification
-3. `TestDobinski_ChallengeFlowCorrectly` - 5 subtests
-4. `TestDobinski_FullWorkflowRegression` - End-to-end scenario
+**`af strategy` - Proof Planning (vibefeld-ooht)**
+```bash
+af strategy list                 # Show available proof strategies
+af strategy suggest "conjecture" # Analyze and suggest strategies
+af strategy apply induction "P(n) for all n"  # Generate skeleton
+af strategy list --format json   # Machine-readable output
+```
+Strategies: direct, contradiction, induction, cases, contrapositive
 
 ## Current State
 
 ### Issue Statistics
 - **Total:** 369
-- **Open:** 36
-- **Closed:** 333 (4 closed this session)
-- **Ready to Work:** 6
+- **Open:** 32
+- **Closed:** 337 (4 closed this session)
+- **Ready to Work:** 32
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
-ok  github.com/tobias/vibefeld/e2e
-ok  github.com/tobias/vibefeld/internal/metrics
-ok  github.com/tobias/vibefeld/internal/shell
+ok  github.com/tobias/vibefeld/internal/patterns
+ok  github.com/tobias/vibefeld/internal/strategy
 ... (all packages pass)
 ```
 
@@ -92,13 +91,14 @@ Build succeeds: `go build ./cmd/af`
 Run `bd ready` to see remaining issues. Current priorities:
 1. **vibefeld-asq3** (P2): Fix prover-centric tool (verifiers second-class)
 2. **vibefeld-86r0** (P2): Add role isolation enforcement
-3. **vibefeld-ooht** (P2): Add proof structure/strategy guidance
-4. **vibefeld-h7ii** (P2): Add learning from common challenge patterns
-5. **vibefeld-68lh** (P2): Add claim extension (avoid release/re-claim risk)
-6. **vibefeld-06on** (P3): Add guided workflow/wizard
+3. **vibefeld-68lh** (P2): Add claim extension (avoid release/re-claim risk)
+4. **vibefeld-06on** (P3): Add guided workflow/wizard - DONE
+5. **vibefeld-7ihg** (P3): Add webhook/hook support
+6. **vibefeld-s9xa** (P3): Add dry-run mode
 
 ## Session History
 
+**Session 48:** Implemented 4 features (4 parallel subagents) - Tab completion, wizard, patterns, strategy
 **Session 47:** Implemented 4 features (4 parallel subagents) - Dobinski E2E test, quality metrics, watch command, interactive shell
 **Session 46:** Implemented 4 issues (4 parallel subagents) - validation scope check, JSON API completion, error messages, E2E test suite
 **Session 45b:** Implemented 4 features (4 parallel subagents) - scope tracking, amend command, challenge severity, validation dependencies
