@@ -129,6 +129,31 @@ See `docs/vibefeld-implementation-plan.md` for full details.
 
 **Parallelizable after tracer bullet**: All remaining CLI commands (Phase 17-22).
 
+## Adversarial Workflow Fix (PRIORITY)
+
+The core adversarial workflow has critical issues identified in Session 53. See:
+- `docs/FAILURE_REPORT_SESSION53.md` - What went wrong
+- `docs/ADVERSARIAL_WORKFLOW_FIX_PLAN.md` - Root cause analysis
+- `docs/ADVERSARIAL_WORKFLOW_IMPLEMENTATION_PLAN.md` - 22-step fix plan
+
+### Key Issues Found
+1. **Acceptance doesn't check blocking challenges** - `SeverityBlocksAcceptance()` exists but is never called
+2. **No verification checklist** - Verifiers have no guidance on what to check
+3. **Tool guides toward depth** - "Next steps" encourages child refinement over breadth
+4. **Job detection is CORRECT** - The bug is NOT in `internal/jobs/`
+
+### Critical Path (P0)
+Start with these two issues (no dependencies):
+1. `vibefeld-eo90` - Add `GetBlockingChallengesForNode` to State
+2. `vibefeld-45nt` - Create `RenderVerificationChecklist` function
+
+### Quick Reference
+```bash
+bd ready                    # See 10 unblocked issues
+bd blocked                  # See 12 blocked issues with dependencies
+bd show vibefeld-eo90       # View issue details
+```
+
 ## Testing
 
 - Test files: `*_test.go` alongside implementation
