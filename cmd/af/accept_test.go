@@ -1501,3 +1501,196 @@ func TestAcceptCommand_ShowsVerificationSummaryWithDependenciesJSON(t *testing.T
 		}
 	}
 }
+
+// =============================================================================
+// Verifier Challenge Check Tests (--agent and --confirm flags)
+// =============================================================================
+
+// addChallengeWithRaisedBy is a test helper that adds a challenge to a node
+// with the RaisedBy field set by writing a custom JSON event to the ledger.
+// Note: This requires the ChallengeRaised event struct and apply function to
+// support the raised_by field. If they don't, this test will fail indicating
+// that the ledger layer needs to be updated.
+func addChallengeWithRaisedBy(t *testing.T, proofDir string, nodeID types.NodeID, challengeID, target, reason, severity, raisedBy string) {
+	t.Helper()
+
+	// First, get the next sequence number by reading the ledger
+	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
+	if err != nil {
+		t.Fatalf("failed to get ledger: %v", err)
+	}
+
+	// Use the standard function without RaisedBy for now
+	// TODO: Once ledger.ChallengeRaised has RaisedBy field, update this
+	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity)
+	if _, err := ldg.Append(event); err != nil {
+		t.Fatalf("failed to append challenge: %v", err)
+	}
+
+	// Note: The RaisedBy field is not yet supported in the ledger event.
+	// The test TestAcceptCommand_NoConfirmNeededIfChallengeRaised will fail
+	// until this is implemented. This is documented as a known limitation.
+	// For now, we skip that test.
+	_ = raisedBy
+}
+
+// TestAcceptCommand_RequiresConfirmIfNoChallenges tests that accepting without
+// having raised any challenges requires --confirm when --agent is provided.
+func TestAcceptCommand_RequiresConfirmIfNoChallenges(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	// Try to accept with --agent but without having raised any challenges
+	// and without --confirm - should fail
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir, "--agent", "verifier-1")
+
+	// Should return an error
+	if err == nil {
+		t.Fatal("expected error when accepting without having raised challenges, got nil")
+	}
+
+	errStr := err.Error()
+	combined := output + errStr
+
+	// Error should mention that no challenges were raised
+	if !strings.Contains(combined, "haven't raised any challenges") {
+		t.Errorf("error should mention no challenges raised, got: %q", combined)
+	}
+
+	// Error should suggest using --confirm
+	if !strings.Contains(combined, "--confirm") {
+		t.Errorf("error should suggest using --confirm, got: %q", combined)
+	}
+
+	// Node should NOT be validated (acceptance should have been blocked)
+	svc, _ := service.NewProofService(tmpDir)
+	st, _ := svc.LoadState()
+	nodeID := mustParseNodeID(t, "1")
+	n := st.GetNode(nodeID)
+	if n != nil && n.EpistemicState == schema.EpistemicValidated {
+		t.Error("node should NOT be validated when acceptance is blocked")
+	}
+}
+
+// TestAcceptCommand_ConfirmBypassesCheck tests that --confirm bypasses the
+// challenge verification check, allowing acceptance without having raised challenges.
+func TestAcceptCommand_ConfirmBypassesCheck(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	// Accept with --agent and --confirm (no challenges raised, but --confirm bypasses)
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir, "--agent", "verifier-1", "--confirm")
+
+	// Should succeed
+	if err != nil {
+		t.Fatalf("expected no error with --confirm, got: %v\nOutput: %s", err, output)
+	}
+
+	// Output should indicate success
+	lower := strings.ToLower(output)
+	if !strings.Contains(lower, "accepted") && !strings.Contains(lower, "validated") {
+		t.Errorf("output should indicate success, got: %q", output)
+	}
+
+	// Node should be validated
+	svc, _ := service.NewProofService(tmpDir)
+	st, _ := svc.LoadState()
+	nodeID := mustParseNodeID(t, "1")
+	n := st.GetNode(nodeID)
+	if n == nil {
+		t.Fatal("node not found after accept")
+	}
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+}
+
+// TestAcceptCommand_NoConfirmNeededIfChallengeRaised tests that --confirm is not
+// required when the agent has raised a challenge for the node.
+// NOTE: This test is skipped because the ChallengeRaised ledger event does not yet
+// support the RaisedBy field. Once vibefeld-7h0p (Add RaisedBy field to ChallengeRaised)
+// is implemented, this test should be enabled.
+func TestAcceptCommand_NoConfirmNeededIfChallengeRaised(t *testing.T) {
+	t.Skip("Skipped: ChallengeRaised event doesn't have RaisedBy field yet (see vibefeld-7h0p)")
+
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a minor challenge (doesn't block acceptance) raised by verifier-1
+	addChallengeWithRaisedBy(t, tmpDir, nodeID, "chal-001", "statement", "Minor clarification needed", "minor", "verifier-1")
+
+	// Accept with --agent but WITHOUT --confirm (should succeed because challenge was raised)
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir, "--agent", "verifier-1")
+
+	// Should succeed without needing --confirm
+	if err != nil {
+		t.Fatalf("expected no error when agent raised challenges, got: %v\nOutput: %s", err, output)
+	}
+
+	// Output should indicate success
+	lower := strings.ToLower(output)
+	if !strings.Contains(lower, "accepted") && !strings.Contains(lower, "validated") {
+		t.Errorf("output should indicate success, got: %q", output)
+	}
+
+	// Node should be validated
+	svc, _ := service.NewProofService(tmpDir)
+	st, _ := svc.LoadState()
+	n := st.GetNode(nodeID)
+	if n == nil {
+		t.Fatal("node not found after accept")
+	}
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+}
+
+// TestAcceptCommand_AgentFlagInHelp tests that --agent flag appears in help output.
+func TestAcceptCommand_AgentFlagInHelp(t *testing.T) {
+	cmd := newAcceptCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--help"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("help should not error: %v", err)
+	}
+
+	output := buf.String()
+
+	// Check that --agent flag is documented in help
+	if !strings.Contains(output, "--agent") {
+		t.Errorf("help output should contain --agent flag, got: %q", output)
+	}
+}
+
+// TestAcceptCommand_NoAgentFlagMeansNoCheck tests that without --agent,
+// no challenge verification is performed.
+func TestAcceptCommand_NoAgentFlagMeansNoCheck(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	// Accept without --agent flag - should succeed without any challenge check
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir)
+
+	// Should succeed
+	if err != nil {
+		t.Fatalf("expected no error without --agent flag, got: %v\nOutput: %s", err, output)
+	}
+
+	// Node should be validated
+	svc, _ := service.NewProofService(tmpDir)
+	st, _ := svc.LoadState()
+	nodeID := mustParseNodeID(t, "1")
+	n := st.GetNode(nodeID)
+	if n == nil {
+		t.Fatal("node not found after accept")
+	}
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+}

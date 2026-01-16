@@ -18,6 +18,7 @@ func newAcceptCmd() *cobra.Command {
 	var acceptAll bool
 	var withNote string
 	var confirm bool
+	var agent string
 
 	cmd := &cobra.Command{
 		Use:   "accept [node-id]...",
@@ -39,6 +40,10 @@ Use --with-note for partial acceptance (accept with a recorded note):
 Notes are recorded in the ledger for the audit trail but do not
 block acceptance. This allows verifiers to express nuanced feedback.
 
+If you provide --agent, the tool will check if you have raised any
+challenges for the node. Accepting without having raised any challenges
+requires --confirm to ensure thorough verification.
+
 Examples:
   af accept 1              Accept the root node
   af accept 1.2.3          Accept a specific child node
@@ -46,10 +51,12 @@ Examples:
   af accept --all          Accept all pending nodes
   af accept -a             Accept all pending nodes (short form)
   af accept 1 --with-note "Consider clarifying step 2"
-  af accept 1 -d ./proof   Accept using specific directory`,
+  af accept 1 -d ./proof   Accept using specific directory
+  af accept 1 --agent verifier-1  Accept with agent verification
+  af accept 1 --agent v1 --confirm  Accept without having raised challenges`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAccept(cmd, args, acceptAll, withNote)
+			return runAccept(cmd, args, acceptAll, withNote, confirm, agent)
 		},
 	}
 
@@ -57,12 +64,13 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
 	cmd.Flags().BoolVarP(&acceptAll, "all", "a", false, "Accept all pending nodes")
 	cmd.Flags().StringVar(&withNote, "with-note", "", "Optional acceptance note for partial acceptance")
-	cmd.Flags().BoolVar(&confirm, "confirm", false, "Confirm acceptance without challenges")
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "Confirm acceptance without having raised challenges")
+	cmd.Flags().StringVar(&agent, "agent", "", "Agent ID (verifier identity for challenge verification)")
 
 	return cmd
 }
 
-func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string) error {
+func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent string) error {
 	examples := render.GetExamples("af accept")
 
 	// Get flags
@@ -143,6 +151,21 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 				return render.InvalidNodeIDError("af accept", nodeIDStr, examples)
 			}
 			nodeIDs = append(nodeIDs, nodeID)
+		}
+	}
+
+	// If agent is provided, check if they raised any challenges for each node
+	// Accepting without having raised challenges requires --confirm
+	if agent != "" && !confirm {
+		st, err := svc.LoadState()
+		if err != nil {
+			return fmt.Errorf("error loading state: %w", err)
+		}
+
+		for _, nodeID := range nodeIDs {
+			if !st.VerifierRaisedChallengeForNode(nodeID, agent) {
+				return fmt.Errorf("you haven't raised any challenges for node %s; use --confirm to accept anyway", nodeID.String())
+			}
 		}
 	}
 

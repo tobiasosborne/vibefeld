@@ -24,6 +24,10 @@ func TestDefault_HasCorrectValues(t *testing.T) {
 		t.Errorf("Default() MaxChildren = %d, want 10", cfg.MaxChildren)
 	}
 
+	if cfg.WarnDepth != 3 {
+		t.Errorf("Default() WarnDepth = %d, want 3", cfg.WarnDepth)
+	}
+
 	if cfg.AutoCorrectThreshold != 0.8 {
 		t.Errorf("Default() AutoCorrectThreshold = %f, want 0.8", cfg.AutoCorrectThreshold)
 	}
@@ -186,6 +190,49 @@ func TestLoad_MissingFields(t *testing.T) {
 	}
 	if loaded.AutoCorrectThreshold != 0.8 {
 		t.Errorf("Load() with missing AutoCorrectThreshold = %f, want default 0.8", loaded.AutoCorrectThreshold)
+	}
+	if loaded.WarnDepth != 3 {
+		t.Errorf("Load() with missing WarnDepth = %d, want default 3", loaded.WarnDepth)
+	}
+}
+
+func TestConfig_WarnDepthDefault(t *testing.T) {
+	// Test that WarnDepth defaults to 3 in Default()
+	cfg := Default()
+	if cfg.WarnDepth != 3 {
+		t.Errorf("Default() WarnDepth = %d, want 3", cfg.WarnDepth)
+	}
+}
+
+func TestConfig_WarnDepthCustom(t *testing.T) {
+	// Test that a custom WarnDepth value is preserved when loading from file
+	tmpDir := t.TempDir()
+	metaPath := filepath.Join(tmpDir, "meta.json")
+
+	// Config with custom WarnDepth
+	customConfig := map[string]interface{}{
+		"title":      "Test With Custom WarnDepth",
+		"conjecture": "Test conjecture",
+		"version":    "1.0",
+		"created":    time.Now().UTC().Format(time.RFC3339),
+		"warn_depth": 5,
+	}
+
+	data, err := json.MarshalIndent(customConfig, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal custom config: %v", err)
+	}
+	if err := os.WriteFile(metaPath, data, 0644); err != nil {
+		t.Fatalf("Failed to write custom config: %v", err)
+	}
+
+	loaded, err := Load(metaPath)
+	if err != nil {
+		t.Fatalf("Load() with custom WarnDepth error = %v, want nil", err)
+	}
+
+	if loaded.WarnDepth != 5 {
+		t.Errorf("Load() with custom WarnDepth = %d, want 5", loaded.WarnDepth)
 	}
 }
 

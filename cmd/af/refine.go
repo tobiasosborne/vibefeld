@@ -271,8 +271,8 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 	}
 
 	// Warn about deep nodes (Issue 2: vibefeld-80uy)
-	// Warn when creating a node at depth > 3
-	if childDepth > 3 {
+	// Warn when creating a node at depth > WarnDepth (configurable, default 3)
+	if childDepth > cfg.WarnDepth {
 		cmd.Printf("Warning: Creating node at depth %d. Consider adding siblings to parent instead.\n\n", childDepth)
 	}
 

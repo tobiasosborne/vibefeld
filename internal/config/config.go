@@ -31,6 +31,9 @@ type Config struct {
 	// MaxChildren is the maximum number of children per node (default: 10)
 	MaxChildren int `json:"max_children"`
 
+	// WarnDepth is the depth at which warnings are issued for deep nodes (default: 3)
+	WarnDepth int `json:"warn_depth"`
+
 	// AutoCorrectThreshold is the fuzzy match threshold for auto-correction (default: 0.8)
 	AutoCorrectThreshold float64 `json:"auto_correct_threshold"`
 
@@ -72,6 +75,9 @@ func Load(path string) (*Config, error) {
 	if cfg.MaxChildren == 0 {
 		cfg.MaxChildren = 10
 	}
+	if cfg.WarnDepth == 0 {
+		cfg.WarnDepth = 3
+	}
 	if cfg.AutoCorrectThreshold == 0 {
 		cfg.AutoCorrectThreshold = 0.8
 	}
@@ -87,6 +93,7 @@ func Default() *Config {
 		LockTimeout:          5 * time.Minute,
 		MaxDepth:             20,
 		MaxChildren:          10,
+		WarnDepth:            3,
 		AutoCorrectThreshold: 0.8,
 		Version:              "1.0",
 		Created:              time.Now(),
