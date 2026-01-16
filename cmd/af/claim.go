@@ -23,10 +23,14 @@ func newClaimCmd() *cobra.Command {
 Before working on a node, agents must claim it to prevent concurrent
 modifications. Claims have a timeout to automatically release abandoned work.
 
+Use --refresh to extend the claim timeout on a node you already own,
+without releasing and reclaiming (which would risk another agent claiming it).
+
 Examples:
   af claim 1 --owner prover-001 --role prover
   af claim 1.2 --owner verifier-alpha --timeout 30m --role verifier
-  af claim 1 -o prover-001 -r prover -t 2h --format json`,
+  af claim 1 -o prover-001 -r prover -t 2h --format json
+  af claim 1 --owner prover-001 --refresh --timeout 2h`,
 		Args: cobra.ExactArgs(1),
 		RunE: runClaim,
 	}
@@ -37,6 +41,7 @@ Examples:
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory")
 	cmd.Flags().StringP("format", "f", "text", "Output format: text or json")
 	cmd.Flags().StringP("role", "r", "prover", "Agent role: prover or verifier")
+	cmd.Flags().Bool("refresh", false, "Refresh an existing claim (extend timeout without releasing)")
 
 	// Mark owner as required
 	cmd.MarkFlagRequired("owner")
@@ -60,6 +65,7 @@ func runClaim(cmd *cobra.Command, args []string) error {
 	dir, _ := cmd.Flags().GetString("dir")
 	format, _ := cmd.Flags().GetString("format")
 	role, _ := cmd.Flags().GetString("role")
+	refresh, _ := cmd.Flags().GetBool("refresh")
 
 	// Validate owner is not empty or whitespace
 	if strings.TrimSpace(owner) == "" {
@@ -89,10 +95,17 @@ func runClaim(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to open proof directory: %w", err)
 	}
 
-	// Claim the node
-	err = svc.ClaimNode(nodeID, owner, timeout)
-	if err != nil {
-		return fmt.Errorf("failed to claim node %s: %w", nodeID.String(), err)
+	// Either refresh an existing claim or claim a new node
+	if refresh {
+		err = svc.RefreshClaim(nodeID, owner, timeout)
+		if err != nil {
+			return fmt.Errorf("failed to refresh claim on node %s: %w", nodeID.String(), err)
+		}
+	} else {
+		err = svc.ClaimNode(nodeID, owner, timeout)
+		if err != nil {
+			return fmt.Errorf("failed to claim node %s: %w", nodeID.String(), err)
+		}
 	}
 
 	// Load state for context rendering
@@ -103,14 +116,14 @@ func runClaim(cmd *cobra.Command, args []string) error {
 
 	// Output result based on format
 	if format == "json" {
-		return outputClaimJSON(cmd, nodeID, owner, role, timeout, st)
+		return outputClaimJSON(cmd, nodeID, owner, role, timeout, st, refresh)
 	}
 
-	return outputClaimText(cmd, nodeID, owner, timeout, role, st)
+	return outputClaimText(cmd, nodeID, owner, timeout, role, st, refresh)
 }
 
 // outputClaimJSON outputs the claim result in JSON format.
-func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string, timeout time.Duration, st *state.State) error {
+func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string, timeout time.Duration, st *state.State, refresh bool) error {
 	// Render context based on role
 	var context string
 	if role == "prover" {
@@ -126,11 +139,17 @@ func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string
 	// Calculate expiration time
 	expiresAt := time.Now().Add(timeout)
 
+	// Set status based on whether this was a refresh or new claim
+	status := "claimed"
+	if refresh {
+		status = "refreshed"
+	}
+
 	result := map[string]interface{}{
 		"node_id":    nodeID.String(),
 		"owner":      owner,
 		"role":       role,
-		"status":     "claimed",
+		"status":     status,
 		"context":    context,
 		"timeout":    timeout.String(),
 		"expires_at": expiresAt.Format(time.RFC3339),
@@ -146,11 +165,16 @@ func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string
 }
 
 // outputClaimText outputs the claim result in human-readable text format.
-func outputClaimText(cmd *cobra.Command, nodeID types.NodeID, owner string, timeout time.Duration, role string, st *state.State) error {
+func outputClaimText(cmd *cobra.Command, nodeID types.NodeID, owner string, timeout time.Duration, role string, st *state.State, refresh bool) error {
 	// Calculate expiration time
 	expiresAt := time.Now().Add(timeout)
 
-	cmd.Printf("Claimed node %s\n", nodeID.String())
+	// Print action based on whether this was a refresh or new claim
+	if refresh {
+		cmd.Printf("Refreshed claim on node %s\n", nodeID.String())
+	} else {
+		cmd.Printf("Claimed node %s\n", nodeID.String())
+	}
 	cmd.Printf("  Owner:      %s\n", owner)
 	cmd.Printf("  Role:       %s\n", role)
 	cmd.Printf("  Timeout:    %s\n", timeout)

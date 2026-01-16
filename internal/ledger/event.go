@@ -31,6 +31,7 @@ const (
 	EventLockReaped           EventType = "lock_reaped"
 	EventScopeOpened          EventType = "scope_opened"
 	EventScopeClosed          EventType = "scope_closed"
+	EventClaimRefreshed       EventType = "claim_refreshed"
 )
 
 // Event is the base interface for all ledger events.
@@ -446,5 +447,27 @@ func NewScopeClosed(nodeID types.NodeID, dischargeNodeID types.NodeID) ScopeClos
 		},
 		NodeID:          nodeID,
 		DischargeNodeID: dischargeNodeID,
+	}
+}
+
+// ClaimRefreshed is emitted when an agent refreshes their claim on a node,
+// extending the claim timeout without releasing and reclaiming.
+type ClaimRefreshed struct {
+	BaseEvent
+	NodeID     types.NodeID    `json:"node_id"`
+	Owner      string          `json:"owner"`
+	NewTimeout types.Timestamp `json:"new_timeout"`
+}
+
+// NewClaimRefreshed creates a ClaimRefreshed event.
+func NewClaimRefreshed(nodeID types.NodeID, owner string, newTimeout types.Timestamp) ClaimRefreshed {
+	return ClaimRefreshed{
+		BaseEvent: BaseEvent{
+			EventType: EventClaimRefreshed,
+			EventTime: types.Now(),
+		},
+		NodeID:     nodeID,
+		Owner:      owner,
+		NewTimeout: newTimeout,
 	}
 }

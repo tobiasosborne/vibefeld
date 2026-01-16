@@ -34,6 +34,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyNodeCreated(s, e)
 	case ledger.NodesClaimed:
 		return applyNodesClaimed(s, e)
+	case ledger.ClaimRefreshed:
+		return applyClaimRefreshed(s, e)
 	case ledger.NodesReleased:
 		return applyNodesReleased(s, e)
 	case ledger.NodeValidated:
@@ -101,6 +103,25 @@ func applyNodesClaimed(s *State, e ledger.NodesClaimed) error {
 		n.ClaimedBy = e.Owner
 		n.ClaimedAt = e.Timeout
 	}
+	return nil
+}
+
+// applyClaimRefreshed handles the ClaimRefreshed event.
+// This updates the claim timeout without changing workflow state.
+func applyClaimRefreshed(s *State, e ledger.ClaimRefreshed) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	// Verify the node is still claimed by the same owner
+	if n.WorkflowState != schema.WorkflowClaimed {
+		return fmt.Errorf("node %s is not claimed", e.NodeID.String())
+	}
+	if n.ClaimedBy != e.Owner {
+		return fmt.Errorf("node %s is claimed by %s, not %s", e.NodeID.String(), n.ClaimedBy, e.Owner)
+	}
+	// Update the timeout
+	n.ClaimedAt = e.NewTimeout
 	return nil
 }
 

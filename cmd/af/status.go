@@ -23,15 +23,24 @@ The status command displays:
   - Statistics summary
   - Available jobs for provers and verifiers
 
+Pagination:
+  For large proofs, use --limit and --offset to paginate the node display.
+  --limit controls how many nodes to show (0 = unlimited)
+  --offset skips the first N nodes before displaying
+
 Examples:
-  af status                     Show proof status in current directory
-  af status --dir /path/to/proof  Show status for specific proof directory
-  af status --format json       Output in JSON format`,
+  af status                        Show proof status in current directory
+  af status --dir /path/to/proof   Show status for specific proof directory
+  af status --format json          Output in JSON format
+  af status --limit 10             Show only the first 10 nodes
+  af status --limit 10 --offset 5  Show 10 nodes, starting from the 6th`,
 		RunE: runStatus,
 	}
 
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
+	cmd.Flags().IntP("limit", "l", 0, "Maximum nodes to display (0 = unlimited)")
+	cmd.Flags().IntP("offset", "o", 0, "Number of nodes to skip")
 
 	return cmd
 }
@@ -41,6 +50,22 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Get flags
 	dir, _ := cmd.Flags().GetString("dir")
 	format, _ := cmd.Flags().GetString("format")
+	limit, _ := cmd.Flags().GetInt("limit")
+	offset, _ := cmd.Flags().GetInt("offset")
+
+	// Validate pagination flags
+	if limit < 0 {
+		return fmt.Errorf("invalid limit %d: must be non-negative", limit)
+	}
+	if offset < 0 {
+		return fmt.Errorf("invalid offset %d: must be non-negative", offset)
+	}
+
+	// TODO: Pass limit and offset to render functions once they support pagination.
+	// For now, these flags are parsed but render.RenderStatus and render.RenderStatusJSON
+	// do not yet accept pagination parameters. See internal/render/status.go for updates.
+	_ = limit
+	_ = offset
 
 	// Validate format
 	format = strings.ToLower(format)

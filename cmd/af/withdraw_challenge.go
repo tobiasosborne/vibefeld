@@ -28,7 +28,12 @@ func newWithdrawChallengeCmd() *cobra.Command {
 
 The challenge must be in an open state (not already resolved or withdrawn).
 Withdrawing a challenge is typically done by the verifier who originally
-raised it when they determine the challenge is no longer valid or relevant.`,
+raised it when they determine the challenge is no longer valid or relevant.
+
+Examples:
+  af withdraw-challenge chal-001            Withdraw challenge chal-001
+  af withdraw-challenge chal-abc123 -d .    Withdraw challenge in current directory
+  af withdraw-challenge chal-xyz -f json    Withdraw and output result as JSON`,
 		Args: cobra.ExactArgs(1),
 		RunE: runWithdrawChallenge,
 	}

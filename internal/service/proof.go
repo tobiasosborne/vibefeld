@@ -397,6 +397,63 @@ func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Dur
 	return wrapSequenceMismatch(err, "ClaimNode")
 }
 
+// RefreshClaim extends the claim timeout for a node the caller owns.
+// This allows agents to extend their claims without releasing and reclaiming,
+// which would risk another agent claiming the node in between.
+//
+// Returns an error if the node doesn't exist, is not claimed, or is claimed by
+// a different owner.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) RefreshClaim(id types.NodeID, owner string, timeout time.Duration) error {
+	// Validate owner
+	if strings.TrimSpace(owner) == "" {
+		return errors.New("owner cannot be empty")
+	}
+
+	// Validate timeout
+	if timeout <= 0 {
+		return errors.New("timeout must be positive")
+	}
+
+	// Load current state and capture sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Check if node exists
+	n := st.GetNode(id)
+	if n == nil {
+		return errors.New("node not found")
+	}
+
+	// Check if node is claimed
+	if n.WorkflowState != schema.WorkflowClaimed {
+		return errors.New("node is not claimed")
+	}
+
+	// Check if owner matches
+	if n.ClaimedBy != owner {
+		return fmt.Errorf("node is claimed by %s, not %s", n.ClaimedBy, owner)
+	}
+
+	// Get ledger and append refresh event with CAS
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	// Calculate new timeout timestamp
+	newTimeoutTS := types.FromTime(time.Now().Add(timeout))
+
+	event := ledger.NewClaimRefreshed(id, owner, newTimeoutTS)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "RefreshClaim")
+}
+
 // ReleaseNode releases a claimed node, making it available again.
 // Returns an error if the node is not claimed or the owner doesn't match.
 //

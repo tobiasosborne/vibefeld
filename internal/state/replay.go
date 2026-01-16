@@ -151,6 +151,7 @@ var eventFactories = map[ledger.EventType]eventFactory{
 	ledger.EventDefAdded:            func() ledger.Event { return &ledger.DefAdded{} },
 	ledger.EventLemmaExtracted:      func() ledger.Event { return &ledger.LemmaExtracted{} },
 	ledger.EventLockReaped:          func() ledger.Event { return &ledger.LockReaped{} },
+	ledger.EventClaimRefreshed:      func() ledger.Event { return &ledger.ClaimRefreshed{} },
 }
 
 // parseEvent parses raw JSON bytes into a typed Event.

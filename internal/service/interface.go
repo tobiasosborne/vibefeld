@@ -38,6 +38,17 @@ type ProofOperations interface {
 	// claiming the same node. Callers should retry after reloading state.
 	ClaimNode(id types.NodeID, owner string, timeout time.Duration) error
 
+	// RefreshClaim extends the claim timeout for a node the caller owns.
+	// This allows agents to extend their claims without releasing and reclaiming,
+	// which would risk another agent claiming the node in between.
+	//
+	// Returns an error if the node doesn't exist, is not claimed, or is claimed by
+	// a different owner.
+	//
+	// Returns ErrConcurrentModification if the proof was modified by another process
+	// since state was loaded. Callers should retry after reloading state.
+	RefreshClaim(id types.NodeID, owner string, timeout time.Duration) error
+
 	// ReleaseNode releases a claimed node, making it available again.
 	// Returns an error if the node is not claimed or the owner doesn't match.
 	//

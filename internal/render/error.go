@@ -4,7 +4,7 @@ package render
 
 import (
 	"encoding/json"
-	stderr "errors"
+	stderrors "errors"
 	"fmt"
 	"strings"
 
@@ -44,7 +44,7 @@ func RenderError(err error) RenderedError {
 
 	// It's an AFError - extract and render with recovery suggestions
 	var afErr *errors.AFError
-	if !stderr.As(err, &afErr) {
+	if !stderrors.As(err, &afErr) {
 		// Shouldn't happen if Code() returned non-zero, but handle gracefully
 		return RenderedError{
 			Code:     code.String(),
