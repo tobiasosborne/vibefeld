@@ -34,6 +34,11 @@ type Challenge struct {
 	// Reason explains why the challenge was raised.
 	Reason string `json:"reason"`
 
+	// Severity indicates the importance of the challenge.
+	// Valid values: "critical", "major", "minor", "note".
+	// Critical and major challenges block node acceptance.
+	Severity string `json:"severity"`
+
 	// Raised is the timestamp when the challenge was created.
 	Raised types.Timestamp `json:"raised"`
 
@@ -75,6 +80,7 @@ func NewChallenge(id string, targetID types.NodeID, target schema.ChallengeTarge
 		TargetID: targetID,
 		Target:   target,
 		Reason:   reason,
+		Severity: string(schema.DefaultChallengeSeverity()),
 		Raised:   types.Now(),
 		Status:   ChallengeStatusOpen,
 	}, nil

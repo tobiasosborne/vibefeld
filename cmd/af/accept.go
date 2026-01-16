@@ -15,6 +15,7 @@ import (
 func newAcceptCmd() *cobra.Command {
 	var acceptAll bool
 	var withNote string
+	var confirm bool
 
 	cmd := &cobra.Command{
 		Use:   "accept [node-id]...",
@@ -54,6 +55,7 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
 	cmd.Flags().BoolVarP(&acceptAll, "all", "a", false, "Accept all pending nodes")
 	cmd.Flags().StringVar(&withNote, "with-note", "", "Optional acceptance note for partial acceptance")
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "Confirm acceptance without challenges")
 
 	return cmd
 }

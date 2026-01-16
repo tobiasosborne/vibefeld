@@ -752,3 +752,211 @@ func TestAllChildrenValidated(t *testing.T) {
 		})
 	}
 }
+
+// TestGetBlockingChallengesForNode_ReturnsCritical verifies that critical challenges are returned.
+func TestGetBlockingChallengesForNode_ReturnsCritical(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a critical challenge
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "statement",
+		Reason:   "Unclear assumption",
+		Status:   "open",
+		Severity: "critical",
+	})
+
+	got := s.GetBlockingChallengesForNode(nodeID)
+	if len(got) != 1 {
+		t.Fatalf("GetBlockingChallengesForNode returned %d challenges, want 1", len(got))
+	}
+	if got[0].ID != "ch-1" {
+		t.Errorf("GetBlockingChallengesForNode returned wrong challenge: got ID %s, want ch-1", got[0].ID)
+	}
+}
+
+// TestGetBlockingChallengesForNode_ReturnsMajor verifies that major challenges are returned.
+func TestGetBlockingChallengesForNode_ReturnsMajor(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a major challenge
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "inference",
+		Reason:   "Missing justification",
+		Status:   "open",
+		Severity: "major",
+	})
+
+	got := s.GetBlockingChallengesForNode(nodeID)
+	if len(got) != 1 {
+		t.Fatalf("GetBlockingChallengesForNode returned %d challenges, want 1", len(got))
+	}
+	if got[0].ID != "ch-1" {
+		t.Errorf("GetBlockingChallengesForNode returned wrong challenge: got ID %s, want ch-1", got[0].ID)
+	}
+}
+
+// TestGetBlockingChallengesForNode_ExcludesMinor verifies that minor challenges are not returned.
+func TestGetBlockingChallengesForNode_ExcludesMinor(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a minor challenge (should be excluded)
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "style",
+		Reason:   "Could be clearer",
+		Status:   "open",
+		Severity: "minor",
+	})
+
+	got := s.GetBlockingChallengesForNode(nodeID)
+	if len(got) != 0 {
+		t.Errorf("GetBlockingChallengesForNode returned %d challenges, want 0 (minor should be excluded)", len(got))
+	}
+}
+
+// TestGetBlockingChallengesForNode_ExcludesNote verifies that note challenges are not returned.
+func TestGetBlockingChallengesForNode_ExcludesNote(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a note challenge (should be excluded)
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "clarification",
+		Reason:   "Consider adding more detail",
+		Status:   "open",
+		Severity: "note",
+	})
+
+	got := s.GetBlockingChallengesForNode(nodeID)
+	if len(got) != 0 {
+		t.Errorf("GetBlockingChallengesForNode returned %d challenges, want 0 (note should be excluded)", len(got))
+	}
+}
+
+// TestGetBlockingChallengesForNode_ExcludesResolved verifies that resolved challenges are not returned.
+func TestGetBlockingChallengesForNode_ExcludesResolved(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a resolved critical challenge (should be excluded because it's resolved)
+	s.AddChallenge(&Challenge{
+		ID:         "ch-1",
+		NodeID:     nodeID,
+		Target:     "statement",
+		Reason:     "Was unclear",
+		Status:     "resolved",
+		Severity:   "critical",
+		Resolution: "Fixed the statement",
+	})
+
+	// Add a withdrawn major challenge (should also be excluded)
+	s.AddChallenge(&Challenge{
+		ID:       "ch-2",
+		NodeID:   nodeID,
+		Target:   "inference",
+		Reason:   "Thought it was missing",
+		Status:   "withdrawn",
+		Severity: "major",
+	})
+
+	got := s.GetBlockingChallengesForNode(nodeID)
+	if len(got) != 0 {
+		t.Errorf("GetBlockingChallengesForNode returned %d challenges, want 0 (resolved/withdrawn should be excluded)", len(got))
+	}
+}
+
+// TestGetBlockingChallengesForNode_EmptyForNoNode verifies empty result for node with no challenges.
+func TestGetBlockingChallengesForNode_EmptyForNoNode(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+	otherNodeID := mustParseNodeID(t, "1.1")
+
+	// Add challenges on a different node
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   otherNodeID,
+		Target:   "statement",
+		Reason:   "Some issue",
+		Status:   "open",
+		Severity: "critical",
+	})
+
+	got := s.GetBlockingChallengesForNode(nodeID)
+	if len(got) != 0 {
+		t.Errorf("GetBlockingChallengesForNode returned %d challenges, want 0 (no challenges on this node)", len(got))
+	}
+}
+
+// TestGetBlockingChallengesForNode_MixedSeverities verifies correct filtering with mixed severities.
+func TestGetBlockingChallengesForNode_MixedSeverities(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add challenges of all severity levels
+	s.AddChallenge(&Challenge{
+		ID:       "ch-critical",
+		NodeID:   nodeID,
+		Status:   "open",
+		Severity: "critical",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-major",
+		NodeID:   nodeID,
+		Status:   "open",
+		Severity: "major",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-minor",
+		NodeID:   nodeID,
+		Status:   "open",
+		Severity: "minor",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-note",
+		NodeID:   nodeID,
+		Status:   "open",
+		Severity: "note",
+	})
+	// Add a resolved critical to verify status check
+	s.AddChallenge(&Challenge{
+		ID:       "ch-resolved",
+		NodeID:   nodeID,
+		Status:   "resolved",
+		Severity: "critical",
+	})
+
+	got := s.GetBlockingChallengesForNode(nodeID)
+	if len(got) != 2 {
+		t.Fatalf("GetBlockingChallengesForNode returned %d challenges, want 2", len(got))
+	}
+
+	// Verify we got critical and major
+	foundCritical := false
+	foundMajor := false
+	for _, c := range got {
+		switch c.ID {
+		case "ch-critical":
+			foundCritical = true
+		case "ch-major":
+			foundMajor = true
+		default:
+			t.Errorf("Unexpected challenge returned: %s", c.ID)
+		}
+	}
+	if !foundCritical {
+		t.Error("Critical challenge not found in result")
+	}
+	if !foundMajor {
+		t.Error("Major challenge not found in result")
+	}
+}

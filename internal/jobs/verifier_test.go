@@ -40,6 +40,18 @@ func createTestChallenge(t *testing.T, id string, targetID types.NodeID, status 
 	return c
 }
 
+// createTestChallengeWithSeverity creates a test challenge for a node with a specific severity.
+func createTestChallengeWithSeverity(t *testing.T, id string, targetID types.NodeID, status node.ChallengeStatus, severity string) *node.Challenge {
+	t.Helper()
+	c, err := node.NewChallenge(id, targetID, schema.TargetStatement, "Test challenge reason")
+	if err != nil {
+		t.Fatalf("node.NewChallenge() error: %v", err)
+	}
+	c.Status = status
+	c.Severity = severity
+	return c
+}
+
 // buildNodeMap builds a map from node ID string to node pointer.
 func buildNodeMap(nodes []*node.Node) map[string]*node.Node {
 	m := make(map[string]*node.Node)
@@ -420,5 +432,172 @@ func TestFindVerifierJobs_NodeMustHaveStatement(t *testing.T) {
 
 	if len(result) != 1 {
 		t.Errorf("FindVerifierJobs() should return node with statement")
+	}
+}
+
+// =============================================================================
+// Severity-based challenge tests
+// =============================================================================
+
+// TestVerifierJob_TrueWithMinorChallenge tests that a node with only a minor
+// open challenge IS a verifier job (minor challenges don't block).
+func TestVerifierJob_TrueWithMinorChallenge(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	// Minor challenge should NOT block verifier job detection
+	challenge := createTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusOpen, "minor")
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	// Node SHOULD be a verifier job because minor challenges don't block
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 1 (minor challenge should not block)", len(result))
+	}
+}
+
+// TestVerifierJob_TrueWithNoteChallenge tests that a node with only a note
+// challenge IS a verifier job (note challenges don't block).
+func TestVerifierJob_TrueWithNoteChallenge(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	// Note challenge should NOT block verifier job detection
+	challenge := createTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusOpen, "note")
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	// Node SHOULD be a verifier job because note challenges don't block
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 1 (note challenge should not block)", len(result))
+	}
+}
+
+// TestVerifierJob_FalseWithCriticalChallenge tests that a node with a critical
+// open challenge is NOT a verifier job (critical challenges block).
+func TestVerifierJob_FalseWithCriticalChallenge(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	// Critical challenge should block verifier job detection
+	challenge := createTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusOpen, "critical")
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	// Node should NOT be a verifier job because critical challenges block
+	if len(result) != 0 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 0 (critical challenge should block)", len(result))
+	}
+}
+
+// TestVerifierJob_FalseWithMajorChallenge tests that a node with a major
+// open challenge is NOT a verifier job (major challenges block).
+func TestVerifierJob_FalseWithMajorChallenge(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	// Major challenge should block verifier job detection
+	challenge := createTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusOpen, "major")
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	// Node should NOT be a verifier job because major challenges block
+	if len(result) != 0 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 0 (major challenge should block)", len(result))
+	}
+}
+
+// TestVerifierJob_TrueWithResolvedCritical tests that a node with a resolved
+// critical challenge IS a verifier job (resolved challenges don't block).
+func TestVerifierJob_TrueWithResolvedCritical(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	// Resolved critical challenge should NOT block verifier job detection
+	challenge := createTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusResolved, "critical")
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	// Node SHOULD be a verifier job because the critical challenge is resolved
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 1 (resolved critical should not block)", len(result))
+	}
+}
+
+// TestVerifierJob_MixedSeverities_BlocksOnCritical tests that a node with
+// mixed severity challenges is NOT a verifier job if any are blocking (critical/major).
+func TestVerifierJob_MixedSeverities_BlocksOnCritical(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	// Multiple challenges: minor (non-blocking) and critical (blocking)
+	minorChallenge := createTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusOpen, "minor")
+	criticalChallenge := createTestChallengeWithSeverity(t, "ch-2", nodeID, node.ChallengeStatusOpen, "critical")
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{minorChallenge, criticalChallenge})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	// Node should NOT be a verifier job because of the critical challenge
+	if len(result) != 0 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 0 (critical among mixed should block)", len(result))
+	}
+}
+
+// TestVerifierJob_MixedSeverities_AllowsOnlyMinor tests that a node with
+// only minor/note challenges IS a verifier job.
+func TestVerifierJob_MixedSeverities_AllowsOnlyMinor(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	// Multiple non-blocking challenges
+	minorChallenge := createTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusOpen, "minor")
+	noteChallenge := createTestChallengeWithSeverity(t, "ch-2", nodeID, node.ChallengeStatusOpen, "note")
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{minorChallenge, noteChallenge})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	// Node SHOULD be a verifier job because only non-blocking challenges
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 1 (only minor/note should not block)", len(result))
+	}
+}
+
+// TestVerifierJob_MixedSeverities_ResolvedCriticalAndOpenMinor tests that
+// a node with resolved critical and open minor IS a verifier job.
+func TestVerifierJob_MixedSeverities_ResolvedCriticalAndOpenMinor(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	// Resolved blocking challenge and open non-blocking challenge
+	resolvedCritical := createTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusResolved, "critical")
+	openMinor := createTestChallengeWithSeverity(t, "ch-2", nodeID, node.ChallengeStatusOpen, "minor")
+
+	nodes := []*node.Node{n}
+	nodeMap := buildNodeMap(nodes)
+	challengeMap := buildChallengeMap([]*node.Challenge{resolvedCritical, openMinor})
+
+	result := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap)
+
+	// Node SHOULD be a verifier job because critical is resolved and minor doesn't block
+	if len(result) != 1 {
+		t.Errorf("FindVerifierJobs() returned %d nodes, want 1 (resolved critical + open minor should not block)", len(result))
 	}
 }

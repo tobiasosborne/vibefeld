@@ -866,3 +866,61 @@ func TestAcceptCmd_RelativeDirectory(t *testing.T) {
 		t.Error("node not validated with relative directory path")
 	}
 }
+
+// TestAcceptCommand_ConfirmFlag tests that the --confirm flag is recognized and parsed.
+func TestAcceptCommand_ConfirmFlag(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	// Test that the --confirm flag is recognized and the command executes successfully
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir, "--confirm")
+	if err != nil {
+		t.Fatalf("expected no error with --confirm flag, got: %v\nOutput: %s", err, output)
+	}
+
+	// Verify node was accepted (flag doesn't change behavior yet, just needs to be recognized)
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+	n := st.GetNode(nodeID)
+	if n == nil {
+		t.Fatal("node not found after accept with --confirm")
+	}
+
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+}
+
+// TestAcceptCommand_ConfirmFlagInHelp tests that --confirm flag appears in help output.
+func TestAcceptCommand_ConfirmFlagInHelp(t *testing.T) {
+	cmd := newAcceptCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--help"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("help should not error: %v", err)
+	}
+
+	output := buf.String()
+
+	// Check that --confirm flag is documented in help
+	if !strings.Contains(output, "--confirm") {
+		t.Errorf("help output should contain --confirm flag, got: %q", output)
+	}
+
+	if !strings.Contains(strings.ToLower(output), "confirm") {
+		t.Errorf("help output should mention 'confirm', got: %q", output)
+	}
+}

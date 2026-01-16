@@ -197,6 +197,30 @@ func (s *State) OpenChallenges() []*Challenge {
 	return open
 }
 
+// GetBlockingChallengesForNode returns open challenges with blocking severity
+// (critical or major) for the specified node.
+// This is used to determine if a node can be accepted - nodes with blocking
+// challenges cannot be accepted until those challenges are resolved.
+func (s *State) GetBlockingChallengesForNode(nodeID types.NodeID) []*Challenge {
+	var blocking []*Challenge
+	nodeIDStr := nodeID.String()
+	for _, c := range s.challenges {
+		// Must be on the specified node
+		if c.NodeID.String() != nodeIDStr {
+			continue
+		}
+		// Must be open (not resolved or withdrawn)
+		if c.Status != "open" {
+			continue
+		}
+		// Must be a blocking severity (critical or major)
+		if schema.SeverityBlocksAcceptance(schema.ChallengeSeverity(c.Severity)) {
+			blocking = append(blocking, c)
+		}
+	}
+	return blocking
+}
+
 // AllNodes returns a slice of all nodes in the state.
 // The order of nodes is not guaranteed.
 func (s *State) AllNodes() []*node.Node {

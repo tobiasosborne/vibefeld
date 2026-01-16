@@ -42,10 +42,11 @@ func FindVerifierJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challen
 //   - Has a statement (non-empty)
 //   - EpistemicState = "pending" (not yet verified)
 //   - WorkflowState = "available" (not claimed or blocked)
-//   - Has no open/unresolved challenges
+//   - Has no open blocking challenges (critical/major severity)
 //
 // This is the breadth-first model: new nodes are immediately verifiable.
-// Challenges move nodes to prover territory until resolved.
+// Blocking challenges move nodes to prover territory until resolved.
+// Non-blocking challenges (minor/note) do not prevent verifier review.
 func isVerifierJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 	// Must have a statement (nodes are created with statements, but check anyway)
 	if n.Statement == "" {
@@ -62,11 +63,13 @@ func isVerifierJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool
 		return false
 	}
 
-	// Must have no open challenges
-	return !hasOpenChallenges(n, challengeMap)
+	// Must have no open blocking challenges (critical/major)
+	// Minor and note challenges do not prevent verifier review
+	return !hasBlockingChallenges(n, challengeMap)
 }
 
 // hasOpenChallenges returns true if the node has any open (unresolved) challenges.
+// Deprecated: Use hasBlockingChallenges for severity-aware checking.
 func hasOpenChallenges(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 	if challengeMap == nil {
 		return false
@@ -75,6 +78,23 @@ func hasOpenChallenges(n *node.Node, challengeMap map[string][]*node.Challenge) 
 	challenges := challengeMap[n.ID.String()]
 	for _, c := range challenges {
 		if c.Status == node.ChallengeStatusOpen {
+			return true
+		}
+	}
+	return false
+}
+
+// hasBlockingChallenges returns true if the node has any open challenges with
+// blocking severity (critical or major). Minor and note challenges do not block.
+func hasBlockingChallenges(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
+	if challengeMap == nil {
+		return false
+	}
+
+	challenges := challengeMap[n.ID.String()]
+	for _, c := range challenges {
+		if c.Status == node.ChallengeStatusOpen &&
+			schema.SeverityBlocksAcceptance(schema.ChallengeSeverity(c.Severity)) {
 			return true
 		}
 	}
