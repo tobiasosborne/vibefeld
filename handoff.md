@@ -1,103 +1,81 @@
-# Handoff - 2026-01-15 (Session 45b)
+# Handoff - 2026-01-16 (Session 46)
 
 ## What Was Accomplished This Session
 
-### Session 45b Summary: 4 More Features Implemented in Parallel
+### Session 46 Summary: 4 Issues Implemented in Parallel
 
-| Issue | Type | Description |
-|-------|------|-------------|
-| vibefeld-6um6 | Feature | Assumption scope tracking (`af scope` command) |
-| vibefeld-v63b | Feature | Undo/rollback (`af amend` command for corrections) |
-| vibefeld-cm6n | Feature | Challenge severity levels (critical/major/minor/note) |
-| vibefeld-1jc9 | Feature | Cross-branch dependency tracking (`--requires-validated`, `af deps`) |
+| Issue | Type | Priority | Description |
+|-------|------|----------|-------------|
+| vibefeld-1jo3 | Bug | P1 | Validation scope check for local_assume nodes |
+| vibefeld-1kv6 | Bug | P3 | Complete JSON API with missing fields |
+| vibefeld-v0ux | Task | P3 | Error message improvement with workflow hints |
+| vibefeld-wzwp | Task | P2 | Comprehensive E2E test suite for multi-agent scenarios |
 
 ### Key Changes by Area
 
 **New Files:**
-- `internal/scope/tracker.go` - Tracker for managing assumption scopes
-- `internal/scope/tracker_test.go` - 17 tests for Tracker
-- `cmd/af/scope.go` - New `af scope` command
-- `cmd/af/scope_test.go` - Scope command tests
-- `cmd/af/amend.go` - New `af amend` command
-- `cmd/af/amend_test.go.disabled` - Amend tests (disabled for build tag)
-- `internal/service/amend_test.go` - 6 service layer amend tests
-- `internal/schema/severity.go` - ChallengeSeverity type
-- `internal/schema/severity_test.go` - 8 severity tests
-- `cmd/af/challenge_severity_test.go` - 8 challenge severity tests
-- `cmd/af/accept_note_test.go` - 7 accept with note tests
-- `cmd/af/deps.go` - New `af deps` command for dependency graph
-- `cmd/af/deps_test.go` - Deps command tests
-- `internal/node/validation_dep_test.go` - Validation dependency tests
-- `cmd/af/refine_validation_deps_test.go` - Refine validation deps tests
-- `cmd/af/accept_validation_deps_test.go` - Accept validation deps tests
+- `e2e/multi_agent_scenarios_test.go` - 1,400+ line comprehensive E2E test suite
 
 **Modified Files:**
-- `internal/ledger/event.go` - Added ScopeOpened, ScopeClosed, NodeAmended events; Severity to ChallengeRaised
-- `internal/state/state.go` - Added scope tracking, Amendment type
-- `internal/state/apply.go` - Handlers for new events
-- `cmd/af/get.go` - Shows scope info, validation deps
-- `cmd/af/challenge.go` - Added --severity flag
-- `cmd/af/accept.go` - Added --with-note, validation dep checking
-- `cmd/af/challenges.go` - Shows severity in listings
-- `cmd/af/refine.go` - Added --requires-validated flag
-- `internal/node/node.go` - Added ValidationDeps field
-- `internal/node/dep_validate.go` - Added ValidateValidationDepExistence
-- `internal/render/tree.go` - Shows [BLOCKED] for unvalidated deps
-- `internal/render/node.go` - Shows "Requires validated:" line
-- `internal/service/proof.go` - Added AmendNode, AcceptNodeWithNote, RefineNodeWithAllDeps
+- `internal/scope/validate.go` - Added `ValidateScopeClosure()` function
+- `internal/scope/validate_test.go` - Added 6 new tests for scope closure validation
+- `internal/render/json.go` - Added JSONChallenge type, challenges in status, children in verifier context
+- `cmd/af/refine.go` - Improved error messages with claim+refine workflow hints
+- `e2e/concurrent_test.go` - Fixed lock API changes
+- `e2e/reap_test.go` - Fixed lock API changes
+- `e2e/def_request_test.go` - Fixed NewPendingDef return value handling
 
 ### New Behaviors
 
-**Assumption Scope Tracking**
+**Scope Closure Validation (vibefeld-1jo3)**
+- `ValidateScopeClosure()` ensures local_assume nodes have their scopes closed by descendants
+- Returns SCOPE_UNCLOSED error if scope remains active at validation time
+- Implements PRD requirement: "All scope entries opened by n (if local_assume) are closed by a descendant"
+
+**Complete JSON API (vibefeld-1kv6)**
+- Added `Latex`, `ValidationDeps`, `ClaimedAt` fields to JSONNode
+- Added `JSONChallenge` struct with full challenge details
+- Added `Challenges` array to status JSON output
+- Added `TotalChallenges`, `OpenChallenges` to statistics
+- `RenderProverContextJSON` now includes challenges for the node
+- `RenderVerifierContextJSON` now includes children of challenged node
+
+**Improved Error Messages (vibefeld-v0ux)**
 ```bash
-af scope 1.1.1              # Show scope info for node
-af scope --all              # Show all scopes in proof
-af scope --all --format json
+# Before:
+parent node is not claimed. Claim it first with 'af claim 1.1'
+
+# After:
+parent node is not claimed. Claim it first with 'af claim 1.1'
+
+Hint: Run 'af claim 1.1 -o agent && af refine 1.1 -o agent -s ...' to claim and refine in one step
 ```
 
-**Amend Node Statement**
-```bash
-af amend 1.1 --owner agent1 --statement "Corrected claim"
-af get 1.1 --full           # Shows amendment history
-```
-
-**Challenge Severity Levels**
-```bash
-af challenge 1 --severity critical --reason "This is wrong"
-af challenge 1 --severity major --reason "Significant issue"
-af challenge 1 --severity minor --reason "Could improve"    # Doesn't block
-af challenge 1 --severity note --reason "FYI"              # Doesn't block
-```
-
-**Partial Acceptance**
-```bash
-af accept 1 --with-note "Minor issue but acceptable"
-```
-
-**Validation Dependencies**
-```bash
-# Create node that requires 1.1-1.4 to be validated first
-af refine 1.5 --owner agent1 -s "Final step" --requires-validated 1.1,1.2,1.3,1.4
-
-# View dependency graph
-af deps 1.5
-
-# Accept blocked until deps validated
-af accept 1.5  # Error: validation dependencies not yet validated: 1.1, 1.2
-```
+**E2E Multi-Agent Test Suite (vibefeld-wzwp)**
+7 comprehensive scenarios tested:
+1. Happy path acceptance flow
+2. Challenge-address-accept flow
+3. Multiple challenges on same node
+4. Nested challenges (independent resolution)
+5. Supersession on archive
+6. Escape hatch taint propagation
+7. Concurrent agent scenarios (claim race, parallel ops, verifier race)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** ~44 (4 closed this session)
-- **Ready to Work:** 6+
+- **Total:** 369
+- **Open:** 40
+- **Closed:** 329 (4 closed this session)
+- **Ready to Work:** 40
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
+ok  github.com/tobias/vibefeld/e2e
+ok  github.com/tobias/vibefeld/internal/render
 ok  github.com/tobias/vibefeld/internal/scope
-ok  github.com/tobias/vibefeld/internal/schema
 ... (all packages pass)
 ```
 
@@ -105,16 +83,17 @@ Build succeeds: `go build ./cmd/af`
 
 ## Next Steps
 
-Run `bd ready` to see remaining issues. Remaining priorities:
-1. **vibefeld-asq3**: Fix prover-centric tool (verifiers second-class)
-2. **vibefeld-86r0**: Add role isolation enforcement
-3. **vibefeld-ooht**: Add proof structure/strategy guidance
-4. **vibefeld-uwhe**: Add quality metrics for proofs
-5. **vibefeld-h7ii**: Add learning from common challenge patterns
-6. **vibefeld-68lh**: Add claim extension (avoid release/re-claim risk)
+Run `bd ready` to see remaining issues. Current priorities:
+1. **vibefeld-asq3** (P2): Fix prover-centric tool (verifiers second-class)
+2. **vibefeld-86r0** (P2): Add role isolation enforcement
+3. **vibefeld-ooht** (P2): Add proof structure/strategy guidance
+4. **vibefeld-uwhe** (P2): Add quality metrics for proofs
+5. **vibefeld-h7ii** (P2): Add learning from common challenge patterns
+6. **vibefeld-68lh** (P2): Add claim extension (avoid release/re-claim risk)
 
 ## Session History
 
+**Session 46:** Implemented 4 issues (4 parallel subagents) - validation scope check, JSON API completion, error messages, E2E test suite
 **Session 45b:** Implemented 4 features (4 parallel subagents) - scope tracking, amend command, challenge severity, validation dependencies
 **Session 45:** Implemented 4 features (4 parallel subagents) - tutorial command, bulk operations, cross-reference validation, proof templates
 **Session 44:** Implemented 8 features (2 batches of 4 parallel subagents) - timestamp fix, challenge visibility, confirmations, NodeID.Less(), af progress, panic->error, event registry, help examples
