@@ -73,6 +73,29 @@ func RenderTree(s *state.State, customRoot *types.NodeID) string {
 	return sb.String()
 }
 
+// RenderTreeForNodes renders a flat list of nodes without tree structure.
+// This is used for paginated output where tree hierarchy may be incomplete.
+// Each node is rendered on its own line with indentation based on depth.
+// Returns an empty string for nil or empty node list.
+func RenderTreeForNodes(s *state.State, nodes []*node.Node) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, n := range nodes {
+		// Indent based on depth (2 spaces per level)
+		depth := n.ID.Depth()
+		indent := strings.Repeat("  ", depth-1)
+		nodeStr := formatNodeWithState(n, s)
+		sb.WriteString(indent)
+		sb.WriteString(nodeStr)
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
 // renderSubtree recursively renders a node and its children.
 // isRoot indicates if this is the rendering root (the node we started rendering from).
 func renderSubtree(

@@ -939,7 +939,7 @@ func addChallengeToNode(t *testing.T, proofDir string, nodeID types.NodeID, chal
 	if err != nil {
 		t.Fatalf("failed to get ledger: %v", err)
 	}
-	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity)
+	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity, "")
 	if _, err := ldg.Append(event); err != nil {
 		t.Fatalf("failed to append challenge: %v", err)
 	}
@@ -1507,31 +1507,19 @@ func TestAcceptCommand_ShowsVerificationSummaryWithDependenciesJSON(t *testing.T
 // =============================================================================
 
 // addChallengeWithRaisedBy is a test helper that adds a challenge to a node
-// with the RaisedBy field set by writing a custom JSON event to the ledger.
-// Note: This requires the ChallengeRaised event struct and apply function to
-// support the raised_by field. If they don't, this test will fail indicating
-// that the ledger layer needs to be updated.
+// with the RaisedBy field set.
 func addChallengeWithRaisedBy(t *testing.T, proofDir string, nodeID types.NodeID, challengeID, target, reason, severity, raisedBy string) {
 	t.Helper()
 
-	// First, get the next sequence number by reading the ledger
 	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
 	if err != nil {
 		t.Fatalf("failed to get ledger: %v", err)
 	}
 
-	// Use the standard function without RaisedBy for now
-	// TODO: Once ledger.ChallengeRaised has RaisedBy field, update this
-	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity)
+	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity, raisedBy)
 	if _, err := ldg.Append(event); err != nil {
 		t.Fatalf("failed to append challenge: %v", err)
 	}
-
-	// Note: The RaisedBy field is not yet supported in the ledger event.
-	// The test TestAcceptCommand_NoConfirmNeededIfChallengeRaised will fail
-	// until this is implemented. This is documented as a known limitation.
-	// For now, we skip that test.
-	_ = raisedBy
 }
 
 // TestAcceptCommand_RequiresConfirmIfNoChallenges tests that accepting without
@@ -1607,11 +1595,7 @@ func TestAcceptCommand_ConfirmBypassesCheck(t *testing.T) {
 
 // TestAcceptCommand_NoConfirmNeededIfChallengeRaised tests that --confirm is not
 // required when the agent has raised a challenge for the node.
-// NOTE: This test is skipped because the ChallengeRaised ledger event does not yet
-// support the RaisedBy field. Once vibefeld-7h0p (Add RaisedBy field to ChallengeRaised)
-// is implemented, this test should be enabled.
 func TestAcceptCommand_NoConfirmNeededIfChallengeRaised(t *testing.T) {
-	t.Skip("Skipped: ChallengeRaised event doesn't have RaisedBy field yet (see vibefeld-7h0p)")
 
 	tmpDir, cleanup := setupAcceptTestWithNode(t)
 	defer cleanup()

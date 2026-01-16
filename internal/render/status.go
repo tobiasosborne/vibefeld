@@ -11,8 +11,12 @@ import (
 )
 
 // RenderStatus renders the full proof status including tree, statistics, jobs, and legend.
+// Supports pagination via limit and offset parameters:
+//   - limit: maximum number of nodes to display (0 = unlimited)
+//   - offset: number of nodes to skip before displaying (0 = no skip)
+//
 // Returns a meaningful message for nil/empty state (not empty string).
-func RenderStatus(s *state.State) string {
+func RenderStatus(s *state.State, limit, offset int) string {
 	// Handle nil state
 	if s == nil {
 		return "No proof state initialized."
@@ -24,26 +28,32 @@ func RenderStatus(s *state.State) string {
 		return "No proof initialized. Run 'af init' to start a new proof."
 	}
 
+	// Sort nodes by ID for consistent pagination
+	sortNodesByID(nodes)
+
+	// Apply pagination
+	paginatedNodes := applyPagination(nodes, limit, offset)
+
 	var sb strings.Builder
 
 	// 1. Header section
 	sb.WriteString("=== Proof Status ===\n\n")
 
-	// 2. Tree view section
-	treeOutput := RenderTree(s, nil)
+	// 2. Tree view section (uses paginated nodes)
+	treeOutput := RenderTreeForNodes(s, paginatedNodes)
 	if treeOutput != "" {
 		sb.WriteString(treeOutput)
 		sb.WriteString("\n")
 	}
 
-	// 3. Statistics section
+	// 3. Statistics section (uses paginated nodes for display, but shows pagination info)
 	sb.WriteString("--- Statistics ---\n")
-	renderStatistics(&sb, nodes)
+	renderStatisticsWithPagination(&sb, paginatedNodes, len(nodes), limit, offset)
 	sb.WriteString("\n")
 
-	// 4. Jobs section
+	// 4. Jobs section (calculated from paginated nodes)
 	sb.WriteString("--- Jobs ---\n")
-	renderJobs(&sb, s, nodes)
+	renderJobs(&sb, s, paginatedNodes)
 	sb.WriteString("\n")
 
 	// 5. Legend section
@@ -51,6 +61,82 @@ func RenderStatus(s *state.State) string {
 	renderLegend(&sb)
 
 	return sb.String()
+}
+
+// applyPagination applies limit and offset to a slice of nodes.
+// offset=0 means no skip, limit=0 means no limit.
+func applyPagination(nodes []*node.Node, limit, offset int) []*node.Node {
+	total := len(nodes)
+
+	// Apply offset
+	if offset > 0 {
+		if offset >= total {
+			return []*node.Node{}
+		}
+		nodes = nodes[offset:]
+	}
+
+	// Apply limit
+	if limit > 0 && limit < len(nodes) {
+		nodes = nodes[:limit]
+	}
+
+	return nodes
+}
+
+// renderStatisticsWithPagination writes the statistics section including pagination info.
+func renderStatisticsWithPagination(sb *strings.Builder, nodes []*node.Node, totalNodes, limit, offset int) {
+	displayed := len(nodes)
+
+	// Count epistemic states
+	epistemicCounts := make(map[schema.EpistemicState]int)
+	for _, n := range nodes {
+		epistemicCounts[n.EpistemicState]++
+	}
+
+	// Count taint states
+	taintCounts := make(map[node.TaintState]int)
+	for _, n := range nodes {
+		taintCounts[n.TaintState]++
+	}
+
+	// Write total count with pagination info
+	if limit > 0 || offset > 0 {
+		sb.WriteString(fmt.Sprintf("Nodes: %d displayed (of %d total, offset=%d, limit=%d)\n", displayed, totalNodes, offset, limit))
+	} else {
+		sb.WriteString(fmt.Sprintf("Nodes: %d total\n", totalNodes))
+	}
+
+	// Write epistemic state counts (in fixed order for determinism) with color coding
+	sb.WriteString("  Epistemic: ")
+	epistemicStates := []schema.EpistemicState{
+		schema.EpistemicPending,
+		schema.EpistemicValidated,
+		schema.EpistemicAdmitted,
+		schema.EpistemicRefuted,
+		schema.EpistemicArchived,
+	}
+	epistemicParts := make([]string, len(epistemicStates))
+	for i, state := range epistemicStates {
+		epistemicParts[i] = fmt.Sprintf("%d %s", epistemicCounts[state], ColorEpistemicState(state))
+	}
+	sb.WriteString(strings.Join(epistemicParts, ", "))
+	sb.WriteString("\n")
+
+	// Write taint state counts (in fixed order for determinism) with color coding
+	sb.WriteString("  Taint: ")
+	taintStates := []node.TaintState{
+		node.TaintClean,
+		node.TaintSelfAdmitted,
+		node.TaintTainted,
+		node.TaintUnresolved,
+	}
+	taintParts := make([]string, len(taintStates))
+	for i, state := range taintStates {
+		taintParts[i] = fmt.Sprintf("%d %s", taintCounts[state], ColorTaintState(state))
+	}
+	sb.WriteString(strings.Join(taintParts, ", "))
+	sb.WriteString("\n")
 }
 
 // renderStatistics writes the statistics section to the builder.

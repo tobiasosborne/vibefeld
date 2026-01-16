@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/tobias/vibefeld/internal/jobs"
 	"github.com/tobias/vibefeld/internal/node"
@@ -75,6 +78,9 @@ type JSONStatus struct {
 // JSONStatistics represents proof statistics in JSON format.
 type JSONStatistics struct {
 	TotalNodes      int            `json:"total_nodes"`
+	DisplayedNodes  int            `json:"displayed_nodes,omitempty"`
+	Offset          int            `json:"offset,omitempty"`
+	Limit           int            `json:"limit,omitempty"`
 	EpistemicState  map[string]int `json:"epistemic_state"`
 	TaintState      map[string]int `json:"taint_state"`
 	TotalChallenges int            `json:"total_challenges"`
@@ -143,9 +149,13 @@ func RenderNodeListJSON(nodes []*node.Node) string {
 }
 
 // RenderStatusJSON renders the proof status as JSON.
+// Supports pagination via limit and offset parameters:
+//   - limit: maximum number of nodes to include (0 = unlimited)
+//   - offset: number of nodes to skip before including (0 = no skip)
+//
 // Returns JSON string representation of the status.
 // Returns empty JSON object for nil state.
-func RenderStatusJSON(s *state.State) string {
+func RenderStatusJSON(s *state.State, limit, offset int) string {
 	if s == nil {
 		return `{"error":"no proof state initialized"}`
 	}
@@ -155,7 +165,14 @@ func RenderStatusJSON(s *state.State) string {
 		return `{"statistics":{"total_nodes":0},"jobs":{"prover_jobs":0,"verifier_jobs":0},"nodes":[]}`
 	}
 
-	status := statusToJSON(s, nodes)
+	// Sort nodes by ID for consistent pagination
+	sortNodesForJSON(nodes)
+
+	// Apply pagination
+	totalNodes := len(nodes)
+	paginatedNodes := applyJSONPagination(nodes, limit, offset)
+
+	status := statusToJSONWithPagination(s, paginatedNodes, totalNodes, limit, offset)
 
 	data, err := marshalJSON(status)
 	if err != nil {
@@ -163,6 +180,63 @@ func RenderStatusJSON(s *state.State) string {
 	}
 
 	return string(data)
+}
+
+// sortNodesForJSON sorts nodes by their hierarchical ID in numeric order.
+func sortNodesForJSON(nodes []*node.Node) {
+	sort.Slice(nodes, func(i, j int) bool {
+		return compareNodeIDsForJSON(nodes[i].ID.String(), nodes[j].ID.String())
+	})
+}
+
+// compareNodeIDsForJSON compares two node ID strings numerically.
+func compareNodeIDsForJSON(a, b string) bool {
+	aParts := splitNodeID(a)
+	bParts := splitNodeID(b)
+
+	minLen := len(aParts)
+	if len(bParts) < minLen {
+		minLen = len(bParts)
+	}
+
+	for i := 0; i < minLen; i++ {
+		if aParts[i] != bParts[i] {
+			return aParts[i] < bParts[i]
+		}
+	}
+
+	return len(aParts) < len(bParts)
+}
+
+// splitNodeID splits a node ID string into its numeric parts.
+func splitNodeID(id string) []int {
+	parts := strings.Split(id, ".")
+	result := make([]int, len(parts))
+	for i, p := range parts {
+		n, _ := strconv.Atoi(p)
+		result[i] = n
+	}
+	return result
+}
+
+// applyJSONPagination applies limit and offset to a slice of nodes.
+func applyJSONPagination(nodes []*node.Node, limit, offset int) []*node.Node {
+	total := len(nodes)
+
+	// Apply offset
+	if offset > 0 {
+		if offset >= total {
+			return []*node.Node{}
+		}
+		nodes = nodes[offset:]
+	}
+
+	// Apply limit
+	if limit > 0 && limit < len(nodes) {
+		nodes = nodes[:limit]
+	}
+
+	return nodes
 }
 
 // RenderJobsJSON renders available jobs as JSON.
@@ -306,6 +380,74 @@ func statusToJSON(s *state.State, nodes []*node.Node) JSONStatus {
 			TotalChallenges: len(allChallenges),
 			OpenChallenges:  openChallengeCount,
 		},
+		Jobs: JSONJobs{
+			ProverJobs:   proverJobs,
+			VerifierJobs: verifierJobs,
+		},
+		Nodes:      jsonNodes,
+		Challenges: jsonChallenges,
+	}
+}
+
+// statusToJSONWithPagination converts state to JSON status with pagination info.
+func statusToJSONWithPagination(s *state.State, nodes []*node.Node, totalNodes, limit, offset int) JSONStatus {
+	// Build statistics from displayed nodes
+	epistemicCounts := make(map[string]int)
+	taintCounts := make(map[string]int)
+
+	for _, n := range nodes {
+		epistemicCounts[string(n.EpistemicState)]++
+		taintCounts[string(n.TaintState)]++
+	}
+
+	// Count jobs from displayed nodes
+	proverJobs := 0
+	verifierJobs := 0
+	for _, n := range nodes {
+		if n.WorkflowState == "available" && n.EpistemicState == "pending" {
+			proverJobs++
+		}
+		if n.WorkflowState == "claimed" && n.EpistemicState == "pending" {
+			if s.AllChildrenValidated(n.ID) {
+				verifierJobs++
+			}
+		}
+	}
+
+	// Convert nodes to JSON
+	jsonNodes := make([]JSONNode, 0, len(nodes))
+	for _, n := range nodes {
+		jsonNodes = append(jsonNodes, nodeToJSON(n))
+	}
+
+	// Convert challenges to JSON
+	allChallenges := s.AllChallenges()
+	jsonChallenges := make([]JSONChallenge, 0, len(allChallenges))
+	openChallengeCount := 0
+	for _, c := range allChallenges {
+		jsonChallenges = append(jsonChallenges, challengeToJSON(c))
+		if c.Status == "open" {
+			openChallengeCount++
+		}
+	}
+
+	stats := JSONStatistics{
+		TotalNodes:      totalNodes,
+		EpistemicState:  epistemicCounts,
+		TaintState:      taintCounts,
+		TotalChallenges: len(allChallenges),
+		OpenChallenges:  openChallengeCount,
+	}
+
+	// Add pagination info if pagination is applied
+	if limit > 0 || offset > 0 {
+		stats.DisplayedNodes = len(nodes)
+		stats.Offset = offset
+		stats.Limit = limit
+	}
+
+	return JSONStatus{
+		Statistics: stats,
 		Jobs: JSONJobs{
 			ProverJobs:   proverJobs,
 			VerifierJobs: verifierJobs,

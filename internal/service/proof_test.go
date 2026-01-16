@@ -2601,7 +2601,7 @@ func addChallengeToNode(t *testing.T, proofDir string, nodeID types.NodeID, chal
 	if err != nil {
 		t.Fatalf("failed to get ledger: %v", err)
 	}
-	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, "statement", "test challenge", severity)
+	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, "statement", "test challenge", severity, "")
 	if _, err := ldg.Append(event); err != nil {
 		t.Fatalf("failed to append challenge: %v", err)
 	}

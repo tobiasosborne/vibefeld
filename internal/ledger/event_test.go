@@ -253,6 +253,29 @@ func TestChallengeRaisedEvent(t *testing.T) {
 		if event.Reason != "Deduction not valid here" {
 			t.Errorf("Reason = %q, want %q", event.Reason, "Deduction not valid here")
 		}
+		// NewChallengeRaised uses default empty RaisedBy
+		if event.RaisedBy != "" {
+			t.Errorf("RaisedBy = %q, want empty string", event.RaisedBy)
+		}
+	})
+
+	t.Run("creation with severity and raisedBy", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.2")
+
+		event := NewChallengeRaisedWithSeverity("chal-002", nodeID, "statement", "Unclear wording", "critical", "verifier-42")
+
+		if event.Type() != EventChallengeRaised {
+			t.Errorf("Type() = %q, want %q", event.Type(), EventChallengeRaised)
+		}
+		if event.ChallengeID != "chal-002" {
+			t.Errorf("ChallengeID = %q, want %q", event.ChallengeID, "chal-002")
+		}
+		if event.Severity != "critical" {
+			t.Errorf("Severity = %q, want %q", event.Severity, "critical")
+		}
+		if event.RaisedBy != "verifier-42" {
+			t.Errorf("RaisedBy = %q, want %q", event.RaisedBy, "verifier-42")
+		}
 	})
 
 	t.Run("JSON roundtrip", func(t *testing.T) {
@@ -280,6 +303,40 @@ func TestChallengeRaisedEvent(t *testing.T) {
 		}
 		if decoded.Reason != original.Reason {
 			t.Errorf("Reason mismatch: got %q, want %q", decoded.Reason, original.Reason)
+		}
+	})
+
+	t.Run("JSON roundtrip with RaisedBy", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.3.4")
+		original := NewChallengeRaisedWithSeverity("chal-abc", nodeID, "inference", "Invalid deduction", "major", "agent-alpha")
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		var decoded ChallengeRaised
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if decoded.ChallengeID != original.ChallengeID {
+			t.Errorf("ChallengeID mismatch: got %q, want %q", decoded.ChallengeID, original.ChallengeID)
+		}
+		if decoded.NodeID.String() != original.NodeID.String() {
+			t.Errorf("NodeID mismatch: got %q, want %q", decoded.NodeID.String(), original.NodeID.String())
+		}
+		if decoded.Target != original.Target {
+			t.Errorf("Target mismatch: got %q, want %q", decoded.Target, original.Target)
+		}
+		if decoded.Reason != original.Reason {
+			t.Errorf("Reason mismatch: got %q, want %q", decoded.Reason, original.Reason)
+		}
+		if decoded.Severity != original.Severity {
+			t.Errorf("Severity mismatch: got %q, want %q", decoded.Severity, original.Severity)
+		}
+		if decoded.RaisedBy != original.RaisedBy {
+			t.Errorf("RaisedBy mismatch: got %q, want %q", decoded.RaisedBy, original.RaisedBy)
 		}
 	})
 }
@@ -714,11 +771,11 @@ func TestEventJSONFieldNames(t *testing.T) {
 
 	t.Run("ChallengeRaised fields", func(t *testing.T) {
 		nodeID, _ := types.Parse("1")
-		event := NewChallengeRaised("chal-id", nodeID, "target", "reason")
+		event := NewChallengeRaisedWithSeverity("chal-id", nodeID, "target", "reason", "major", "verifier-1")
 		data, _ := json.Marshal(event)
 		jsonStr := string(data)
 
-		expectedFields := []string{`"type"`, `"timestamp"`, `"challenge_id"`, `"node_id"`, `"target"`, `"reason"`}
+		expectedFields := []string{`"type"`, `"timestamp"`, `"challenge_id"`, `"node_id"`, `"target"`, `"reason"`, `"severity"`, `"raised_by"`}
 		for _, field := range expectedFields {
 			if !contains(jsonStr, field) {
 				t.Errorf("JSON missing field %s: %s", field, jsonStr)

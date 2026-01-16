@@ -280,6 +280,7 @@ func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
 		Reason:   e.Reason,
 		Status:   "open",
 		Severity: severity,
+		RaisedBy: e.RaisedBy,
 		Created:  e.EventTime,
 	}
 	s.AddChallenge(c)

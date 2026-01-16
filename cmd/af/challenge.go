@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -134,8 +135,11 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error accessing ledger: %w", err)
 	}
 
-	// Append challenge raised event with severity
-	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity)
+	// Get agent ID from environment variable (if set)
+	agentID := os.Getenv("AF_AGENT_ID")
+
+	// Append challenge raised event with severity and agent ID
+	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity, agentID)
 	_, err = ldg.Append(event)
 	if err != nil {
 		return fmt.Errorf("error raising challenge: %w", err)

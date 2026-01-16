@@ -61,12 +61,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid offset %d: must be non-negative", offset)
 	}
 
-	// TODO: Pass limit and offset to render functions once they support pagination.
-	// For now, these flags are parsed but render.RenderStatus and render.RenderStatusJSON
-	// do not yet accept pagination parameters. See internal/render/status.go for updates.
-	_ = limit
-	_ = offset
-
 	// Validate format
 	format = strings.ToLower(format)
 	if format != "" && format != "text" && format != "json" {
@@ -99,15 +93,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading proof state: %w", err)
 	}
 
-	// Output based on format
+	// Output based on format with pagination support
 	if format == "json" {
-		output := render.RenderStatusJSON(st)
+		output := render.RenderStatusJSON(st, limit, offset)
 		fmt.Fprintln(cmd.OutOrStdout(), output)
 		return nil
 	}
 
-	// Text format
-	output := render.RenderStatus(st)
+	// Text format with pagination support
+	output := render.RenderStatus(st, limit, offset)
 	fmt.Fprint(cmd.OutOrStdout(), output)
 
 	return nil
