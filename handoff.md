@@ -1,81 +1,87 @@
-# Handoff - 2026-01-16 (Session 46)
+# Handoff - 2026-01-16 (Session 47)
 
 ## What Was Accomplished This Session
 
-### Session 46 Summary: 4 Issues Implemented in Parallel
+### Session 47 Summary: 4 Features Implemented in Parallel
 
 | Issue | Type | Priority | Description |
 |-------|------|----------|-------------|
-| vibefeld-1jo3 | Bug | P1 | Validation scope check for local_assume nodes |
-| vibefeld-1kv6 | Bug | P3 | Complete JSON API with missing fields |
-| vibefeld-v0ux | Task | P3 | Error message improvement with workflow hints |
-| vibefeld-wzwp | Task | P2 | Comprehensive E2E test suite for multi-agent scenarios |
+| vibefeld-om5f | Task | P2 | Dobinski proof regression test |
+| vibefeld-uwhe | Feature | P2 | Quality metrics for proofs |
+| vibefeld-wgfv | Feature | P3 | Event stream for real-time monitoring |
+| vibefeld-qfit | Feature | P3 | Interactive mode/REPL |
 
 ### Key Changes by Area
 
-**New Files:**
-- `e2e/multi_agent_scenarios_test.go` - 1,400+ line comprehensive E2E test suite
+**New Files Created (4,262 lines total):**
+- `e2e/dobinski_regression_test.go` - 913 lines, 11 subtests
+- `internal/metrics/metrics.go` - 374 lines, core metrics calculations
+- `internal/metrics/metrics_test.go` - 544 lines, 29 unit tests
+- `cmd/af/metrics.go` - 250 lines, CLI command
+- `cmd/af/metrics_test.go` - 386 lines, 14 tests
+- `cmd/af/watch.go` - 261 lines, event streaming
+- `cmd/af/watch_test.go` - 536 lines, 15 tests
+- `cmd/af/shell.go` - 104 lines, REPL command
+- `cmd/af/shell_test.go` - 272 lines
+- `internal/shell/shell.go` - 204 lines, REPL core
+- `internal/shell/shell_test.go` - 418 lines
 
-**Modified Files:**
-- `internal/scope/validate.go` - Added `ValidateScopeClosure()` function
-- `internal/scope/validate_test.go` - Added 6 new tests for scope closure validation
-- `internal/render/json.go` - Added JSONChallenge type, challenges in status, children in verifier context
-- `cmd/af/refine.go` - Improved error messages with claim+refine workflow hints
-- `e2e/concurrent_test.go` - Fixed lock API changes
-- `e2e/reap_test.go` - Fixed lock API changes
-- `e2e/def_request_test.go` - Fixed NewPendingDef return value handling
+### New Commands
 
-### New Behaviors
-
-**Scope Closure Validation (vibefeld-1jo3)**
-- `ValidateScopeClosure()` ensures local_assume nodes have their scopes closed by descendants
-- Returns SCOPE_UNCLOSED error if scope remains active at validation time
-- Implements PRD requirement: "All scope entries opened by n (if local_assume) are closed by a descendant"
-
-**Complete JSON API (vibefeld-1kv6)**
-- Added `Latex`, `ValidationDeps`, `ClaimedAt` fields to JSONNode
-- Added `JSONChallenge` struct with full challenge details
-- Added `Challenges` array to status JSON output
-- Added `TotalChallenges`, `OpenChallenges` to statistics
-- `RenderProverContextJSON` now includes challenges for the node
-- `RenderVerifierContextJSON` now includes children of challenged node
-
-**Improved Error Messages (vibefeld-v0ux)**
+**`af metrics` - Quality Reports (vibefeld-uwhe)**
 ```bash
-# Before:
-parent node is not claimed. Claim it first with 'af claim 1.1'
-
-# After:
-parent node is not claimed. Claim it first with 'af claim 1.1'
-
-Hint: Run 'af claim 1.1 -o agent && af refine 1.1 -o agent -s ...' to claim and refine in one step
+af metrics                    # Show quality report for entire proof
+af metrics --format json      # Machine-readable output
+af metrics --node 1.2         # Focus on specific subtree
 ```
+Metrics provided:
+- Refinement depth (max tree depth)
+- Challenge density (challenges per node)
+- Definition coverage (% terms defined)
+- Overall quality score (0-100)
 
-**E2E Multi-Agent Test Suite (vibefeld-wzwp)**
-7 comprehensive scenarios tested:
-1. Happy path acceptance flow
-2. Challenge-address-accept flow
-3. Multiple challenges on same node
-4. Nested challenges (independent resolution)
-5. Supersession on archive
-6. Escape hatch taint propagation
-7. Concurrent agent scenarios (claim race, parallel ops, verifier race)
+**`af watch` - Event Monitoring (vibefeld-wgfv)**
+```bash
+af watch                      # Tail events in real-time
+af watch --interval 500ms     # Custom poll interval
+af watch --filter node_created  # Filter by event type
+af watch --json               # NDJSON output
+af watch --once               # Show current events and exit
+af watch --since 42           # Start from sequence 42
+```
+Features: Graceful Ctrl+C handling, partial match filtering
+
+**`af shell` - Interactive REPL (vibefeld-qfit)**
+```bash
+af shell                      # Start interactive mode
+af shell --prompt "proof> "   # Custom prompt
+```
+Built-in commands: `help`, `exit`, `quit`
+All af commands work without prefix: `status`, `jobs`, etc.
+
+### Dobinski Regression Tests (vibefeld-om5f)
+
+Comprehensive E2E tests reproducing and preventing the original failures:
+1. `TestDobinski_VerifierSeesNewNodesImmediately` - 4 subtests
+2. `TestDobinski_FullContextOnClaim` - Ancestor chain verification
+3. `TestDobinski_ChallengeFlowCorrectly` - 5 subtests
+4. `TestDobinski_FullWorkflowRegression` - End-to-end scenario
 
 ## Current State
 
 ### Issue Statistics
 - **Total:** 369
-- **Open:** 40
-- **Closed:** 329 (4 closed this session)
-- **Ready to Work:** 40
+- **Open:** 36
+- **Closed:** 333 (4 closed this session)
+- **Ready to Work:** 6
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
 ok  github.com/tobias/vibefeld/e2e
-ok  github.com/tobias/vibefeld/internal/render
-ok  github.com/tobias/vibefeld/internal/scope
+ok  github.com/tobias/vibefeld/internal/metrics
+ok  github.com/tobias/vibefeld/internal/shell
 ... (all packages pass)
 ```
 
@@ -87,12 +93,13 @@ Run `bd ready` to see remaining issues. Current priorities:
 1. **vibefeld-asq3** (P2): Fix prover-centric tool (verifiers second-class)
 2. **vibefeld-86r0** (P2): Add role isolation enforcement
 3. **vibefeld-ooht** (P2): Add proof structure/strategy guidance
-4. **vibefeld-uwhe** (P2): Add quality metrics for proofs
-5. **vibefeld-h7ii** (P2): Add learning from common challenge patterns
-6. **vibefeld-68lh** (P2): Add claim extension (avoid release/re-claim risk)
+4. **vibefeld-h7ii** (P2): Add learning from common challenge patterns
+5. **vibefeld-68lh** (P2): Add claim extension (avoid release/re-claim risk)
+6. **vibefeld-06on** (P3): Add guided workflow/wizard
 
 ## Session History
 
+**Session 47:** Implemented 4 features (4 parallel subagents) - Dobinski E2E test, quality metrics, watch command, interactive shell
 **Session 46:** Implemented 4 issues (4 parallel subagents) - validation scope check, JSON API completion, error messages, E2E test suite
 **Session 45b:** Implemented 4 features (4 parallel subagents) - scope tracking, amend command, challenge severity, validation dependencies
 **Session 45:** Implemented 4 features (4 parallel subagents) - tutorial command, bulk operations, cross-reference validation, proof templates
