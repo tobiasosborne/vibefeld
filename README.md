@@ -245,7 +245,7 @@ Vibefeld is under active development.
 
 ## Philosophy
 
-> "Beware of bugs in the above code; I have only ~~proved it correct~~ *vibe coded it*, not tried it." -- Donald Knuth
+> "Beware of bugs in the above code; I have only ~~proved it correct~~ *vibe coded it*, not tried it." -- ~~Donald Knuth~~ *every vibe coder*
 
 Traditional proof assistants trust the prover to find their own errors. Vibefeld assumes you will miss things. That is why it deploys adversaries.
 
