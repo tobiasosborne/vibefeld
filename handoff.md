@@ -1,100 +1,98 @@
-# Handoff - 2026-01-16 (Session 53)
+# Handoff - 2026-01-16 (Session 54)
 
 ## What Was Accomplished This Session
 
-### Session 53 Summary: Deep Analysis of Adversarial Workflow Failure
+### Session 54 Summary: Implemented First 4 Adversarial Workflow Fixes
 
-Performed comprehensive multi-agent analysis of why the √2 irrationality proof test failed. Spawned 6 parallel analysis agents to investigate:
-1. Verifier job detection logic
-2. Refine command and proof structure
-3. Claim/release workflow
-4. Challenge system
-5. PRD and specifications
-6. State/epistemic model
+Spawned 4 parallel subagents to implement independent issues from the 22-step fix plan:
 
-### Key Finding: The Failure Report Was Partially Wrong
+| Issue | Description | Files |
+|-------|-------------|-------|
+| `vibefeld-eo90` | Add `GetBlockingChallengesForNode` to State | `internal/state/state.go` |
+| `vibefeld-45nt` | Create `RenderVerificationChecklist` function | `internal/render/verification_checklist.go` (NEW) |
+| `vibefeld-5b0s` | Update verifier job detection to use severity | `internal/jobs/verifier.go` |
+| `vibefeld-5w6j` | Add `--confirm` flag to accept command | `cmd/af/accept.go` |
 
-The `FAILURE_REPORT_SESSION53.md` claimed "nodes only become verifier jobs when ALL children are validated" - **this logic doesn't exist**. The verifier job detection at `internal/jobs/verifier.go:49-67` is **CORRECT** (77/77 tests pass).
+### Implementation Details
 
-### Root Causes Identified
+1. **GetBlockingChallengesForNode** - Filters open challenges to only Critical/Major severity using `schema.SeverityBlocksAcceptance()`. 7 tests added.
 
-| Root Cause | Severity | Location |
-|------------|----------|----------|
-| Acceptance doesn't check blocking challenges | CRITICAL | `service/proof.go:761-815` |
-| No verification checklist on claim | CRITICAL | `render/verifier_context.go` |
-| "Next steps" encourages depth over breadth | HIGH | `refine.go:310` |
-| `SeverityBlocksAcceptance()` is dead code | HIGH | `schema/severity.go:74-80` |
+2. **RenderVerificationChecklist** - New file with comprehensive verification checklist including: statement precision, inference validity, dependencies with status, hidden assumptions, domain restrictions, notation consistency. Suggests challenge command. 16 tests added.
 
-### Documents Created
+3. **Verifier Job Severity** - Changed `hasOpenChallenges()` to `hasBlockingChallenges()` so only critical/major challenges mark node as prover job. Minor/note challenges still allow verifier jobs. Added `Severity` field to Challenge struct. 8 tests added.
 
-| Document | Purpose |
-|----------|---------|
-| `docs/ADVERSARIAL_WORKFLOW_FIX_PLAN.md` | High-level analysis and fix strategy |
-| `docs/ADVERSARIAL_WORKFLOW_IMPLEMENTATION_PLAN.md` | Granular 22-step implementation plan |
+4. **--confirm Flag** - Added flag to accept command (wired up but doesn't change behavior yet - that's `vibefeld-01xf`). 2 tests added.
 
-### Issues Created (22 total)
+### Tests Added
+- `internal/state/state_test.go`: 7 new tests
+- `internal/render/verification_checklist_test.go`: 16 new tests (new file)
+- `internal/jobs/verifier_test.go`: 8 new tests
+- `cmd/af/accept_test.go`: 2 new tests
 
-| Phase | Issues | Priority | Ready | Blocked |
-|-------|--------|----------|-------|---------|
-| 1. Challenge Enforcement | 5 | P0 | 1 | 4 |
-| 2. Verification Checklist | 4 | P0 | 1 | 3 |
-| 3. Breadth-First Guidance | 5 | P1 | 4 | 1 |
-| 4. Severity Connection | 4 | P1 | 1 | 3 |
-| 5. Minimum Challenge | 4 | P2 | 3 | 1 |
-
-All issues have proper dependencies configured.
+**Total: 33 new tests, all pass**
 
 ## Current State
 
 ### Issue Statistics
 - **Total:** 391
-- **Open:** 22 (all new from this session)
-- **Blocked:** 12
-- **Ready to Work:** 10
+- **Open:** 18
+- **Closed:** 373 (4 closed this session)
+- **Blocked:** 6
+- **Ready to Work:** 12
 
 ### Test Status
-All existing tests pass. No code changes this session (analysis only).
+All tests pass. Build succeeds.
 
-### Critical Path Issues (No Dependencies)
+### Newly Unblocked Issues (by closing the 4 above)
 
-| Issue | Description |
-|-------|-------------|
-| `vibefeld-eo90` | Step 1.1: Add `GetBlockingChallengesForNode` to State |
-| `vibefeld-45nt` | Step 2.1: Create `RenderVerificationChecklist` function |
-
-These unblock the rest of Phase 1 and Phase 2.
+| Issue | Description | Priority |
+|-------|-------------|----------|
+| `vibefeld-yidj` | Step 1.2: Add blocking challenge check to AcceptNode | P0 |
+| `vibefeld-c5gc` | Step 1.3: Add blocking challenge check to AcceptNodeWithNote | P0 |
+| `vibefeld-5yn5` | Step 1.4: Add blocking challenge check to AcceptNodeBulk | P0 |
+| `vibefeld-3720` | Step 2.2: Add JSON format for verification checklist | P0 |
+| `vibefeld-kzci` | Step 4.1: Add HasBlockingChallenges helper to state | P1 |
+| `vibefeld-3o9p` | Step 4.3: Update prover job detection to use severity | P1 |
 
 ## Next Steps
 
-### Immediate (P0)
-1. Implement `vibefeld-eo90` - State method for blocking challenges
-2. Implement `vibefeld-45nt` - Verification checklist render function
-3. Then unblocked: Steps 1.2-1.4, 2.2
+### Immediate (P0) - Phase 1 & 2 Completion
+1. `vibefeld-yidj` - Add blocking challenge check to AcceptNode (service/proof.go)
+2. `vibefeld-c5gc` - Add blocking challenge check to AcceptNodeWithNote (service/proof.go)
+3. `vibefeld-5yn5` - Add blocking challenge check to AcceptNodeBulk (service/proof.go)
+4. `vibefeld-3720` - Add JSON format for verification checklist (render/)
 
-### Then (P1)
-4. Breadth-first guidance in refine command (Steps 3.1-3.5)
-5. Connect severity system to job detection (Steps 4.1-4.4)
+**Note**: Issues 1-3 all modify `service/proof.go` - run sequentially or carefully coordinate
 
-### Finally (P2)
-6. Add verification friction (Steps 5.1-5.4)
+### Then (P1) - Phases 3 & 4
+5. `vibefeld-yu7j` - Modify refine next steps (cmd/af/refine.go)
+6. `vibefeld-80uy` - Add depth warning (cmd/af/refine.go)
+7. `vibefeld-1r6h` - Enforce MaxDepth (cmd/af/refine.go)
+8. `vibefeld-cunz` - Add --sibling flag (cmd/af/refine.go)
+9. `vibefeld-kzci` - Add HasBlockingChallenges helper (state/)
+10. `vibefeld-3o9p` - Update prover job detection (jobs/)
 
-## Key Files Reference
+**Note**: Issues 5-8 all modify `cmd/af/refine.go` - run sequentially or carefully coordinate
 
-| Component | File | Lines |
-|-----------|------|-------|
-| AcceptNodeWithNote (needs fix) | `internal/service/proof.go` | 761-815 |
-| SeverityBlocksAcceptance (dead code) | `internal/schema/severity.go` | 74-80 |
-| isVerifierJob (correct) | `internal/jobs/verifier.go` | 49-67 |
-| Refine next steps (needs fix) | `cmd/af/refine.go` | 309-312 |
+## Key Files Changed This Session
+
+| File | Change |
+|------|--------|
+| `internal/state/state.go` | Added `GetBlockingChallengesForNode` method |
+| `internal/render/verification_checklist.go` | NEW - Verification checklist renderer |
+| `internal/render/verification_checklist_test.go` | NEW - 16 tests |
+| `internal/jobs/verifier.go` | Changed to use `hasBlockingChallenges()` |
+| `internal/node/challenge.go` | Added `Severity` field to Challenge struct |
+| `cmd/af/accept.go` | Added `--confirm` flag |
 
 ## Blockers/Decisions Needed
 
-None - the analysis is complete and the fix plan is ready for implementation.
+None - next issues are unblocked and ready.
 
 ## Session History
 
+**Session 54:** Implemented 4 adversarial workflow fixes (4 parallel subagents) - first batch of 22-step plan
 **Session 53:** Deep analysis of adversarial workflow failure, created 22-step fix plan with dependencies
 **Session 52:** Implemented 9 features/fixes (3 batches, 7 parallel subagents) - BACKLOG CLEARED
 **Session 51:** Implemented 4 features (4 parallel subagents) - render viewmodels, lock docs, fs helpers, CONTRIBUTING.md
 **Session 50:** Implemented 4 features (4 parallel subagents) - fuzzy_flag, blocking, version, README
-**Session 49:** Implemented 4 features (4 parallel subagents) - argparse, prompt, next_steps, independence
