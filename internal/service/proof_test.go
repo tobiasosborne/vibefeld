@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tobias/vibefeld/internal/fs"
+	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/state"
@@ -2585,5 +2586,370 @@ func TestProofService_RefineNodeBulk_AtMaxChildren(t *testing.T) {
 	}
 	if len(childIDs) != 2 {
 		t.Errorf("RefineNodeBulk() returned %d IDs, want 2", len(childIDs))
+	}
+}
+
+// =============================================================================
+// Blocking Challenge Tests
+// =============================================================================
+
+// addChallengeToNode is a test helper that adds a challenge to a node by directly
+// appending to the ledger. This bypasses the service layer to set up test fixtures.
+func addChallengeToNode(t *testing.T, proofDir string, nodeID types.NodeID, challengeID, severity string) {
+	t.Helper()
+	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
+	if err != nil {
+		t.Fatalf("failed to get ledger: %v", err)
+	}
+	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, "statement", "test challenge", severity)
+	if _, err := ldg.Append(event); err != nil {
+		t.Fatalf("failed to append challenge: %v", err)
+	}
+}
+
+// TestProofService_AcceptNode_BlockedByCriticalChallenge verifies that AcceptNode
+// fails when the node has an unresolved critical challenge.
+func TestProofService_AcceptNode_BlockedByCriticalChallenge(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a critical challenge to the node
+	addChallengeToNode(t, proofDir, nodeID, "chal-001", "critical")
+
+	// Try to accept the node - should fail
+	err = svc.AcceptNode(nodeID)
+	if err == nil {
+		t.Fatal("AcceptNode() expected error for node with critical challenge, got nil")
+	}
+
+	if !errors.Is(err, ErrBlockingChallenges) {
+		t.Errorf("AcceptNode() error = %v, want error wrapping ErrBlockingChallenges", err)
+	}
+
+	if !strings.Contains(err.Error(), "chal-001") {
+		t.Errorf("AcceptNode() error should mention challenge ID, got: %v", err)
+	}
+}
+
+// TestProofService_AcceptNode_BlockedByMajorChallenge verifies that AcceptNode
+// fails when the node has an unresolved major challenge.
+func TestProofService_AcceptNode_BlockedByMajorChallenge(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a major challenge to the node
+	addChallengeToNode(t, proofDir, nodeID, "chal-002", "major")
+
+	// Try to accept the node - should fail
+	err = svc.AcceptNode(nodeID)
+	if err == nil {
+		t.Fatal("AcceptNode() expected error for node with major challenge, got nil")
+	}
+
+	if !errors.Is(err, ErrBlockingChallenges) {
+		t.Errorf("AcceptNode() error = %v, want error wrapping ErrBlockingChallenges", err)
+	}
+}
+
+// TestProofService_AcceptNode_SucceedsWithMinorChallenge verifies that AcceptNode
+// succeeds when the node only has minor challenges (non-blocking).
+func TestProofService_AcceptNode_SucceedsWithMinorChallenge(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a minor challenge to the node (non-blocking)
+	addChallengeToNode(t, proofDir, nodeID, "chal-003", "minor")
+
+	// Accept the node - should succeed
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode() unexpected error for node with minor challenge: %v", err)
+	}
+
+	// Verify node was validated
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	n := st.GetNode(nodeID)
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Errorf("Node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+}
+
+// TestProofService_AcceptNode_SucceedsWithNoteChallenge verifies that AcceptNode
+// succeeds when the node only has note-level challenges (non-blocking).
+func TestProofService_AcceptNode_SucceedsWithNoteChallenge(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a note challenge to the node (non-blocking)
+	addChallengeToNode(t, proofDir, nodeID, "chal-004", "note")
+
+	// Accept the node - should succeed
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode() unexpected error for node with note challenge: %v", err)
+	}
+}
+
+// TestProofService_AcceptNodeWithNote_BlockedByCriticalChallenge verifies that
+// AcceptNodeWithNote fails when the node has an unresolved critical challenge.
+func TestProofService_AcceptNodeWithNote_BlockedByCriticalChallenge(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a critical challenge to the node
+	addChallengeToNode(t, proofDir, nodeID, "chal-005", "critical")
+
+	// Try to accept the node with a note - should fail
+	err = svc.AcceptNodeWithNote(nodeID, "acceptance note")
+	if err == nil {
+		t.Fatal("AcceptNodeWithNote() expected error for node with critical challenge, got nil")
+	}
+
+	if !errors.Is(err, ErrBlockingChallenges) {
+		t.Errorf("AcceptNodeWithNote() error = %v, want error wrapping ErrBlockingChallenges", err)
+	}
+}
+
+// TestProofService_AcceptNodeWithNote_SucceedsWithMinorChallenge verifies that
+// AcceptNodeWithNote succeeds when the node only has minor challenges.
+func TestProofService_AcceptNodeWithNote_SucceedsWithMinorChallenge(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a minor challenge to the node (non-blocking)
+	addChallengeToNode(t, proofDir, nodeID, "chal-006", "minor")
+
+	// Accept the node with a note - should succeed
+	err = svc.AcceptNodeWithNote(nodeID, "accepting with minor issue noted")
+	if err != nil {
+		t.Fatalf("AcceptNodeWithNote() unexpected error for node with minor challenge: %v", err)
+	}
+}
+
+// TestProofService_AcceptNodeBulk_BlockedByCriticalChallenge verifies that
+// AcceptNodeBulk fails when any node has an unresolved critical challenge.
+func TestProofService_AcceptNodeBulk_BlockedByCriticalChallenge(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Create multiple child nodes
+	nodeID1 := mustParseNodeID(t, "1.1")
+	nodeID2 := mustParseNodeID(t, "1.2")
+
+	err = svc.CreateNode(nodeID1, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	err = svc.CreateNode(nodeID2, schema.NodeTypeClaim, "Child 2", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	// Add a critical challenge to the second node
+	addChallengeToNode(t, proofDir, nodeID2, "chal-007", "critical")
+
+	// Try to accept both nodes - should fail because of the challenge on nodeID2
+	err = svc.AcceptNodeBulk([]types.NodeID{nodeID1, nodeID2})
+	if err == nil {
+		t.Fatal("AcceptNodeBulk() expected error for node with critical challenge, got nil")
+	}
+
+	if !errors.Is(err, ErrBlockingChallenges) {
+		t.Errorf("AcceptNodeBulk() error = %v, want error wrapping ErrBlockingChallenges", err)
+	}
+
+	if !strings.Contains(err.Error(), "1.2") {
+		t.Errorf("AcceptNodeBulk() error should mention blocked node ID, got: %v", err)
+	}
+}
+
+// TestProofService_AcceptNodeBulk_BlockedByMajorChallenge verifies that
+// AcceptNodeBulk fails when any node has an unresolved major challenge.
+func TestProofService_AcceptNodeBulk_BlockedByMajorChallenge(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1.1")
+	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	// Add a major challenge to the node
+	addChallengeToNode(t, proofDir, nodeID, "chal-008", "major")
+
+	// Try to accept the node - should fail
+	err = svc.AcceptNodeBulk([]types.NodeID{nodeID})
+	if err == nil {
+		t.Fatal("AcceptNodeBulk() expected error for node with major challenge, got nil")
+	}
+
+	if !errors.Is(err, ErrBlockingChallenges) {
+		t.Errorf("AcceptNodeBulk() error = %v, want error wrapping ErrBlockingChallenges", err)
+	}
+}
+
+// TestProofService_AcceptNodeBulk_SucceedsWithMinorChallenges verifies that
+// AcceptNodeBulk succeeds when nodes only have minor/note challenges.
+func TestProofService_AcceptNodeBulk_SucceedsWithMinorChallenges(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Create multiple child nodes
+	nodeID1 := mustParseNodeID(t, "1.1")
+	nodeID2 := mustParseNodeID(t, "1.2")
+
+	err = svc.CreateNode(nodeID1, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	err = svc.CreateNode(nodeID2, schema.NodeTypeClaim, "Child 2", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	// Add minor/note challenges to the nodes (non-blocking)
+	addChallengeToNode(t, proofDir, nodeID1, "chal-009", "minor")
+	addChallengeToNode(t, proofDir, nodeID2, "chal-010", "note")
+
+	// Accept both nodes - should succeed
+	err = svc.AcceptNodeBulk([]types.NodeID{nodeID1, nodeID2})
+	if err != nil {
+		t.Fatalf("AcceptNodeBulk() unexpected error for nodes with minor/note challenges: %v", err)
+	}
+
+	// Verify nodes were validated
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	for _, nodeID := range []types.NodeID{nodeID1, nodeID2} {
+		n := st.GetNode(nodeID)
+		if n.EpistemicState != schema.EpistemicValidated {
+			t.Errorf("Node %s EpistemicState = %q, want %q", nodeID, n.EpistemicState, schema.EpistemicValidated)
+		}
+	}
+}
+
+// TestProofService_AcceptNode_MultipleBlockingChallenges verifies the error message
+// when a node has multiple blocking challenges.
+func TestProofService_AcceptNode_MultipleBlockingChallenges(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add multiple blocking challenges
+	addChallengeToNode(t, proofDir, nodeID, "chal-a", "critical")
+	addChallengeToNode(t, proofDir, nodeID, "chal-b", "major")
+
+	// Try to accept the node - should fail
+	err = svc.AcceptNode(nodeID)
+	if err == nil {
+		t.Fatal("AcceptNode() expected error for node with multiple blocking challenges, got nil")
+	}
+
+	// Verify error mentions the count of challenges
+	if !strings.Contains(err.Error(), "2 blocking challenge") {
+		t.Errorf("AcceptNode() error should mention 2 blocking challenges, got: %v", err)
 	}
 }

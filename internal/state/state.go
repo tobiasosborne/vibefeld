@@ -221,6 +221,12 @@ func (s *State) GetBlockingChallengesForNode(nodeID types.NodeID) []*Challenge {
 	return blocking
 }
 
+// HasBlockingChallenges returns true if the node has any open challenges
+// with Critical or Major severity that block acceptance.
+func (s *State) HasBlockingChallenges(nodeID types.NodeID) bool {
+	return len(s.GetBlockingChallengesForNode(nodeID)) > 0
+}
+
 // AllNodes returns a slice of all nodes in the state.
 // The order of nodes is not guaranteed.
 func (s *State) AllNodes() []*node.Node {

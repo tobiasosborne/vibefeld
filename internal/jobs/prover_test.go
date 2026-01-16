@@ -29,7 +29,7 @@ func createTestNode(t *testing.T, idStr string, workflow schema.WorkflowState, e
 	return n
 }
 
-// createProverTestChallenge creates a test challenge for a node.
+// createProverTestChallenge creates a test challenge for a node with default (major) severity.
 func createProverTestChallenge(t *testing.T, id string, targetID types.NodeID, status node.ChallengeStatus) *node.Challenge {
 	t.Helper()
 	c, err := node.NewChallenge(id, targetID, schema.TargetStatement, "Test challenge reason")
@@ -37,6 +37,18 @@ func createProverTestChallenge(t *testing.T, id string, targetID types.NodeID, s
 		t.Fatalf("node.NewChallenge() error: %v", err)
 	}
 	c.Status = status
+	return c
+}
+
+// createProverTestChallengeWithSeverity creates a test challenge with a specific severity.
+func createProverTestChallengeWithSeverity(t *testing.T, id string, targetID types.NodeID, status node.ChallengeStatus, severity schema.ChallengeSeverity) *node.Challenge {
+	t.Helper()
+	c, err := node.NewChallenge(id, targetID, schema.TargetStatement, "Test challenge reason")
+	if err != nil {
+		t.Fatalf("node.NewChallenge() error: %v", err)
+	}
+	c.Status = status
+	c.Severity = string(severity)
 	return c
 }
 
@@ -441,5 +453,45 @@ func TestFindProverJobs_ChildrenDontAffectProverStatus(t *testing.T) {
 	}
 	if len(result) > 0 && result[0].ID.String() != "1" {
 		t.Errorf("FindProverJobs() returned %s, want 1", result[0].ID.String())
+	}
+}
+
+// TestProverJob_TrueWithCriticalChallenge tests that a node with a critical
+// (blocking) challenge is a prover job.
+func TestProverJob_TrueWithCriticalChallenge(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	challenge := createProverTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusOpen, schema.SeverityCritical)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{challenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 1 (node has critical challenge)", len(result))
+	}
+	if len(result) > 0 && result[0].ID.String() != "1" {
+		t.Errorf("FindProverJobs() returned %s, want 1", result[0].ID.String())
+	}
+}
+
+// TestProverJob_FalseWithOnlyMinorChallenge tests that a node with only
+// minor (non-blocking) challenges is NOT a prover job. Minor and note
+// challenges do not require prover attention.
+func TestProverJob_FalseWithOnlyMinorChallenge(t *testing.T) {
+	nodeID, _ := types.Parse("1")
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	minorChallenge := createProverTestChallengeWithSeverity(t, "ch-1", nodeID, node.ChallengeStatusOpen, schema.SeverityMinor)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{minorChallenge})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 0 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 0 (node only has minor challenge, not blocking)", len(result))
 	}
 }

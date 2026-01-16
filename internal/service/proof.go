@@ -33,6 +33,10 @@ var ErrMaxDepthExceeded = errors.New("maximum proof depth exceeded")
 // ErrMaxChildrenExceeded is returned when an operation would exceed the configured MaxChildren.
 var ErrMaxChildrenExceeded = errors.New("maximum children per node exceeded")
 
+// ErrBlockingChallenges is returned when an operation cannot proceed due to
+// unresolved blocking challenges (critical or major severity) on a node.
+var ErrBlockingChallenges = errors.New("node has unresolved blocking challenges")
+
 // wrapSequenceMismatch converts ledger.ErrSequenceMismatch to ErrConcurrentModification
 // with additional context for the caller.
 func wrapSequenceMismatch(err error, operation string) error {
@@ -40,6 +44,19 @@ func wrapSequenceMismatch(err error, operation string) error {
 		return fmt.Errorf("%w: %s failed, please retry", ErrConcurrentModification, operation)
 	}
 	return err
+}
+
+// formatBlockingChallengesError creates an error message listing blocking challenges.
+func formatBlockingChallengesError(nodeID types.NodeID, challenges []*state.Challenge) error {
+	if len(challenges) == 0 {
+		return nil
+	}
+	var ids []string
+	for _, c := range challenges {
+		ids = append(ids, c.ID)
+	}
+	return fmt.Errorf("%w: node %s has %d blocking challenge(s): %s",
+		ErrBlockingChallenges, nodeID.String(), len(challenges), strings.Join(ids, ", "))
 }
 
 // ProofService orchestrates proof operations across ledger, state, locks, and filesystem.
@@ -734,6 +751,7 @@ func (s *ProofService) RefineNodeWithAllDeps(parentID types.NodeID, owner string
 
 // AcceptNode validates a node, marking it as verified correct.
 // Returns an error if the node doesn't exist.
+// Returns ErrBlockingChallenges if the node has unresolved critical or major challenges.
 //
 // After validation, automatically recomputes and emits taint state changes
 // for the node and any affected descendants.
@@ -752,6 +770,7 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 // exist but don't block validation.
 //
 // Returns an error if the node doesn't exist.
+// Returns ErrBlockingChallenges if the node has unresolved critical or major challenges.
 //
 // After validation, automatically recomputes and emits taint state changes
 // for the node and any affected descendants.
@@ -770,6 +789,12 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 	n := st.GetNode(id)
 	if n == nil {
 		return errors.New("node not found")
+	}
+
+	// Check for blocking challenges (critical or major severity)
+	blockingChallenges := st.GetBlockingChallengesForNode(id)
+	if len(blockingChallenges) > 0 {
+		return formatBlockingChallengesError(id, blockingChallenges)
 	}
 
 	// Check validation dependencies - all must be validated before this node can be accepted
@@ -823,6 +848,7 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 //
 // Returns nil if all nodes were successfully accepted.
 // Returns error if any node doesn't exist, isn't pending, or validation fails.
+// Returns ErrBlockingChallenges if any node has unresolved critical or major challenges.
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
@@ -837,11 +863,17 @@ func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
 	}
 	expectedSeq := st.LatestSeq()
 
-	// Validate all nodes exist and are in pending state before any mutation
+	// Validate all nodes exist, have no blocking challenges, and are in pending state before any mutation
 	for _, id := range ids {
 		n := st.GetNode(id)
 		if n == nil {
 			return fmt.Errorf("node %s not found", id.String())
+		}
+
+		// Check for blocking challenges (critical or major severity)
+		blockingChallenges := st.GetBlockingChallengesForNode(id)
+		if len(blockingChallenges) > 0 {
+			return formatBlockingChallengesError(id, blockingChallenges)
 		}
 
 		// Validate epistemic state transition (only pending -> validated allowed)

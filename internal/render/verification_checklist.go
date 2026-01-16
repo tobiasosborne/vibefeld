@@ -2,6 +2,7 @@
 package render
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -198,4 +199,168 @@ func renderChallengeCommandSuggestion(sb *strings.Builder, n *node.Node) {
 	sb.WriteString("  context      - Referenced definitions or externals are wrong\n")
 	sb.WriteString("  type_error   - Type mismatch in mathematical objects\n")
 	sb.WriteString("  completeness - Missing cases in argument\n")
+}
+
+// JSONVerificationChecklist represents a verification checklist in JSON format.
+type JSONVerificationChecklist struct {
+	NodeID           string                       `json:"node_id"`
+	Items            []JSONChecklistItem          `json:"items"`
+	Dependencies     []JSONChecklistDependency    `json:"dependencies"`
+	ChallengeCommand string                       `json:"challenge_command"`
+}
+
+// JSONChecklistItem represents a single checklist item for verification.
+type JSONChecklistItem struct {
+	Category    string   `json:"category"`
+	Description string   `json:"description"`
+	Details     string   `json:"details,omitempty"`
+	Checks      []string `json:"checks"`
+}
+
+// JSONChecklistDependency represents a dependency with its status for verification.
+type JSONChecklistDependency struct {
+	NodeID         string `json:"node_id"`
+	Statement      string `json:"statement"`
+	EpistemicState string `json:"epistemic_state"`
+}
+
+// RenderVerificationChecklistJSON generates a JSON-serializable checklist for verifiers.
+// Returns a JSON string representing the verification checklist.
+// Returns empty JSON object for nil node or nil state.
+func RenderVerificationChecklistJSON(n *node.Node, s *state.State) string {
+	// Handle nil inputs
+	if n == nil || s == nil {
+		return "{}"
+	}
+
+	checklist := JSONVerificationChecklist{
+		NodeID:           n.ID.String(),
+		Items:            buildChecklistItems(n),
+		Dependencies:     buildDependenciesList(n, s),
+		ChallengeCommand: buildChallengeCommand(n),
+	}
+
+	data, err := marshalJSON(checklist)
+	if err != nil {
+		return fmt.Sprintf(`{"node_id":%q,"error":"failed to marshal checklist"}`, n.ID.String())
+	}
+
+	return string(data)
+}
+
+// buildChecklistItems creates the list of verification checklist items.
+func buildChecklistItems(n *node.Node) []JSONChecklistItem {
+	items := make([]JSONChecklistItem, 0, 6)
+
+	// 1. Statement precision
+	items = append(items, JSONChecklistItem{
+		Category:    "statement_precision",
+		Description: "Statement Precision",
+		Details:     sanitizeStatement(n.Statement),
+		Checks: []string{
+			"Is the statement mathematically precise?",
+			"Are all terms clearly defined?",
+			"Are quantifiers explicit and correct?",
+		},
+	})
+
+	// 2. Inference validity
+	inferenceDetails := string(n.Inference)
+	if info, ok := schema.GetInferenceInfo(n.Inference); ok {
+		inferenceDetails = fmt.Sprintf("%s (%s) - Form: %s", string(n.Inference), info.Name, info.Form)
+	}
+	items = append(items, JSONChecklistItem{
+		Category:    "inference_validity",
+		Description: "Inference Validity",
+		Details:     inferenceDetails,
+		Checks: []string{
+			"Does the inference rule apply correctly?",
+			"Are the premises sufficient for the conclusion?",
+			"Is this the most appropriate inference type?",
+		},
+	})
+
+	// 3. Dependencies (item without dependency-specific details; those go in the dependencies array)
+	items = append(items, JSONChecklistItem{
+		Category:    "dependencies",
+		Description: "Dependencies",
+		Details:     fmt.Sprintf("%d dependencies declared", len(n.Dependencies)),
+		Checks: []string{
+			"Are all dependencies correctly listed?",
+			"Are the dependencies validated?",
+			"Are there missing dependencies?",
+		},
+	})
+
+	// 4. Hidden assumptions
+	items = append(items, JSONChecklistItem{
+		Category:    "hidden_assumptions",
+		Description: "Hidden Assumptions",
+		Checks: []string{
+			"Are there unstated assumptions being used?",
+			"Are all preconditions explicitly stated?",
+			"Does the step rely on facts not in scope?",
+		},
+	})
+
+	// 5. Domain restrictions
+	items = append(items, JSONChecklistItem{
+		Category:    "domain_restrictions",
+		Description: "Domain Restrictions",
+		Checks: []string{
+			"Are domain restrictions properly specified?",
+			"Are variables in the correct domains?",
+			"Are edge cases handled (division by zero, etc.)?",
+		},
+	})
+
+	// 6. Notation consistency
+	items = append(items, JSONChecklistItem{
+		Category:    "notation_consistency",
+		Description: "Notation Consistency",
+		Checks: []string{
+			"Is notation consistent with the rest of the proof?",
+			"Are symbols used with their defined meanings?",
+			"Are there naming conflicts or ambiguities?",
+		},
+	})
+
+	return items
+}
+
+// buildDependenciesList creates the list of dependencies with their status.
+func buildDependenciesList(n *node.Node, s *state.State) []JSONChecklistDependency {
+	if len(n.Dependencies) == 0 {
+		return []JSONChecklistDependency{}
+	}
+
+	// Sort dependencies for deterministic output
+	deps := make([]types.NodeID, len(n.Dependencies))
+	copy(deps, n.Dependencies)
+	sort.Slice(deps, func(i, j int) bool {
+		return compareNodeIDs(deps[i].String(), deps[j].String())
+	})
+
+	result := make([]JSONChecklistDependency, 0, len(deps))
+	for _, depID := range deps {
+		dep := JSONChecklistDependency{
+			NodeID:         depID.String(),
+			Statement:      "",
+			EpistemicState: "unknown",
+		}
+
+		if depNode := s.GetNode(depID); depNode != nil {
+			dep.Statement = depNode.Statement
+			dep.EpistemicState = string(depNode.EpistemicState)
+		}
+
+		result = append(result, dep)
+	}
+
+	return result
+}
+
+// buildChallengeCommand constructs the suggested challenge command string.
+func buildChallengeCommand(n *node.Node) string {
+	return fmt.Sprintf("af challenge %s --target <target> --reason \"<reason>\"", n.ID.String())
 }

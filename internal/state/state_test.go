@@ -960,3 +960,135 @@ func TestGetBlockingChallengesForNode_MixedSeverities(t *testing.T) {
 		t.Error("Major challenge not found in result")
 	}
 }
+
+// TestHasBlockingChallenges_TrueForCritical verifies HasBlockingChallenges returns true
+// when there is a critical challenge on the node.
+func TestHasBlockingChallenges_TrueForCritical(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a critical challenge
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "statement",
+		Reason:   "Unclear assumption",
+		Status:   "open",
+		Severity: "critical",
+	})
+
+	got := s.HasBlockingChallenges(nodeID)
+	if !got {
+		t.Errorf("HasBlockingChallenges(%s) = false, want true (critical challenge exists)", nodeID)
+	}
+}
+
+// TestHasBlockingChallenges_TrueForMajor verifies HasBlockingChallenges returns true
+// when there is a major challenge on the node.
+func TestHasBlockingChallenges_TrueForMajor(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a major challenge
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "inference",
+		Reason:   "Missing justification",
+		Status:   "open",
+		Severity: "major",
+	})
+
+	got := s.HasBlockingChallenges(nodeID)
+	if !got {
+		t.Errorf("HasBlockingChallenges(%s) = false, want true (major challenge exists)", nodeID)
+	}
+}
+
+// TestHasBlockingChallenges_FalseForMinor verifies HasBlockingChallenges returns false
+// when there are only minor challenges on the node.
+func TestHasBlockingChallenges_FalseForMinor(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a minor challenge
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "style",
+		Reason:   "Could be clearer",
+		Status:   "open",
+		Severity: "minor",
+	})
+
+	// Add a note challenge
+	s.AddChallenge(&Challenge{
+		ID:       "ch-2",
+		NodeID:   nodeID,
+		Target:   "clarification",
+		Reason:   "Consider adding more detail",
+		Status:   "open",
+		Severity: "note",
+	})
+
+	got := s.HasBlockingChallenges(nodeID)
+	if got {
+		t.Errorf("HasBlockingChallenges(%s) = true, want false (only minor/note challenges exist)", nodeID)
+	}
+}
+
+// TestHasBlockingChallenges_FalseForNoChallenges verifies HasBlockingChallenges returns false
+// when there are no challenges on the node.
+func TestHasBlockingChallenges_FalseForNoChallenges(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+	otherNodeID := mustParseNodeID(t, "1.1")
+
+	// Add challenges on a different node
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   otherNodeID,
+		Target:   "statement",
+		Reason:   "Some issue",
+		Status:   "open",
+		Severity: "critical",
+	})
+
+	got := s.HasBlockingChallenges(nodeID)
+	if got {
+		t.Errorf("HasBlockingChallenges(%s) = true, want false (no challenges on this node)", nodeID)
+	}
+}
+
+// TestHasBlockingChallenges_FalseForResolved verifies HasBlockingChallenges returns false
+// when all blocking challenges have been resolved.
+func TestHasBlockingChallenges_FalseForResolved(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a resolved critical challenge
+	s.AddChallenge(&Challenge{
+		ID:         "ch-1",
+		NodeID:     nodeID,
+		Target:     "statement",
+		Reason:     "Was unclear",
+		Status:     "resolved",
+		Severity:   "critical",
+		Resolution: "Fixed the statement",
+	})
+
+	// Add a withdrawn major challenge
+	s.AddChallenge(&Challenge{
+		ID:       "ch-2",
+		NodeID:   nodeID,
+		Target:   "inference",
+		Reason:   "Thought it was missing",
+		Status:   "withdrawn",
+		Severity: "major",
+	})
+
+	got := s.HasBlockingChallenges(nodeID)
+	if got {
+		t.Errorf("HasBlockingChallenges(%s) = true, want false (all blocking challenges resolved/withdrawn)", nodeID)
+	}
+}

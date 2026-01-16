@@ -11,11 +11,14 @@ import (
 // A prover job is a node that:
 //   - EpistemicState = "pending" (needs proof work)
 //   - WorkflowState != "blocked" (available or claimed)
-//   - Has one or more open/unresolved challenges that need addressing
+//   - Has one or more open blocking challenges (critical/major severity)
 //
 // This implements the challenge-driven prover model where provers work on
-// nodes that have been challenged by verifiers. Unchallenged nodes are
-// verifier territory in the breadth-first adversarial model.
+// nodes that have been challenged by verifiers. Only blocking challenges
+// (critical/major severity) require prover attention. Minor and note
+// challenges do not create prover jobs.
+//
+// Unchallenged nodes are verifier territory in the breadth-first adversarial model.
 //
 // The challengeMap parameter maps node ID strings to the challenges on that node.
 // If challengeMap is nil, it is treated as empty (no challenges exist, so no prover jobs).
@@ -40,9 +43,10 @@ func FindProverJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challenge
 // A prover job is a node that needs prover attention:
 //   - EpistemicState = "pending" (not yet verified)
 //   - WorkflowState != "blocked" (can be available or claimed)
-//   - Has at least one open challenge
+//   - Has at least one open blocking challenge (critical/major severity)
 //
-// Provers address challenges raised by verifiers. Once all challenges
+// Provers address blocking challenges raised by verifiers. Minor and note
+// challenges do not require prover attention. Once all blocking challenges
 // are resolved/withdrawn, the node becomes a verifier job again.
 func isProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 	// Must not be blocked
@@ -55,6 +59,7 @@ func isProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 		return false
 	}
 
-	// Must have at least one open challenge
-	return hasOpenChallenges(n, challengeMap)
+	// Must have at least one open blocking challenge (critical/major)
+	// Minor and note challenges do not create prover jobs
+	return hasBlockingChallenges(n, challengeMap)
 }
