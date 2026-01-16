@@ -1,87 +1,76 @@
-# Handoff - 2026-01-16 (Session 49)
+# Handoff - 2026-01-16 (Session 50)
 
 ## What Was Accomplished This Session
 
-### Session 49 Summary: 4 Features Implemented (4 Parallel Subagents)
+### Session 50 Summary: 7 Issues Closed (4 Parallel Subagents)
 
 | Issue | Type | Priority | Description |
 |-------|------|----------|-------------|
-| vibefeld-64he + vibefeld-51s3 | Task | P3 | Argument order independence (internal/cli/argparse) |
-| vibefeld-6szr + vibefeld-m6av | Task | P3 | Missing argument help prompts (internal/cli/prompt) |
-| vibefeld-amd1 + vibefeld-n40w | Task | P3 | Contextual next-step suggestions (internal/render/next_steps) |
-| vibefeld-b0yc + vibefeld-t1io | Task | P2 | Lemma independence validation (internal/lemma/independence) |
+| vibefeld-1b4s + vibefeld-e1av | Task | P3 | Fuzzy flag matching (internal/cli/fuzzy_flag) |
+| vibefeld-q8g0 + vibefeld-x3vd | Task | P2 | Definition blocking/unblocking (internal/node/blocking) |
+| vibefeld-5k97 | Task | P3 | Version command with build info (cmd/af/version) |
+| vibefeld-fvk4 | Task | P3 | README.md quick start guide |
+| vibefeld-flwo | Task | P3 | Shell completion (already implemented - closed) |
 
-### New Files Created (~2,500 lines)
+### New Files Created (~2,100 lines)
 
-**internal/cli/** (new package)
-- `argparse.go` - Argument order independence for Cobra commands
-- `argparse_test.go` - Comprehensive tests for argument parsing
-- `prompt.go` - Missing argument help prompts with examples
-- `prompt_test.go` - Tests for prompting functionality
+**internal/cli/**
+- `fuzzy_flag.go` - Fuzzy flag matching with auto-correction
+- `fuzzy_flag_test.go` - Comprehensive tests for fuzzy matching
 
-**internal/render/**
-- `next_steps.go` - Contextual next-step suggestions
-- `next_steps_test.go` - Tests for next-step suggestions
+**internal/node/**
+- `blocking.go` - Definition blocking/unblocking logic
+- `blocking_test.go` - Tests for blocking propagation
 
-**internal/lemma/**
-- `independence.go` - Lemma independence validation
-- `independence_test.go` - Tests for independence criteria
+**cmd/af/**
+- `version.go` - Version command with ldflags support
+- `version_test.go` - Tests for version command
+
+**Project root**
+- `README.md` - Updated quick start guide
 
 ### Key Features
 
-**Argument Order Independence (argparse)**
+**Fuzzy Flag Matching (fuzzy_flag)**
 ```go
-// Users can provide flags and positional args in any order
-ParseArgs(args, flagNames) (positional, flags)
-NormalizeArgs(args, flagNames) []string  // Reorder for Cobra
-ParseArgsWithBoolFlags(args, flagNames, boolFlags)  // Boolean flag support
+// Match user flags against known flags with typo correction
+FuzzyMatchFlag("--ownr", knownFlags) // auto-corrects to --owner
+FuzzyMatchFlags(args, knownFlags)    // processes multiple flags
+// Returns FuzzyFlagResult with Match, AutoCorrect, Suggestions
 ```
 
-**Missing Argument Prompts (prompt)**
+**Definition Blocking (blocking)**
 ```go
-// Helpful prompts when required arguments are missing
-type ArgSpec struct {
-    Name, Description string
-    Examples []string
-    Required bool
-}
-CheckRequiredArgs(args, specs) *MissingArgError
-// Output: "Missing required argument: node-id\n  The ID of the node to claim\n\nExamples:\n  af claim 1"
+// Detect and propagate blocking through proof tree
+IsBlocked(nodeID, pendingDefs) bool
+GetBlockingDef(nodeID, pendingDefs) *PendingDef
+ComputeBlockedSet(pendingDefs, dependencies) map[string]bool
+WouldResolveBlocking(defID, pendingDefs) []NodeID
 ```
 
-**Next-Step Suggestions (next_steps)**
-```go
-// Context-aware suggestions after each command
-type NextStep struct { Command, Description string; Priority int }
-SuggestNextSteps(ctx Context) []NextStep
-RenderNextSteps(steps) string
-// Output: "Next steps:\n  -> af claim 1.2      Claim the available node"
-```
+**Version Command (version)**
+```bash
+af version           # Shows version, commit, build date, Go version
+af version --json    # JSON output for scripting
 
-**Lemma Independence (independence)**
-```go
-// Validate a node can be extracted as reusable lemma
-ValidateIndependence(nodeID, state) (*IndependenceResult, error)
-CheckLocalDependencies(nodeID, state) []NodeID
-CheckAncestorValidity(nodeID, state) []NodeID
-// Criteria: validated, no local scope, clean ancestry, not tainted
+# Build with ldflags:
+go build -ldflags "-X main.VersionInfo=1.0.0 -X main.GitCommit=$(git rev-parse --short HEAD)"
 ```
 
 ## Current State
 
 ### Issue Statistics
 - **Total:** 369
-- **Open:** 20
-- **Closed:** 349 (8 closed this session)
-- **Ready to Work:** 20
+- **Open:** 13
+- **Closed:** 356 (7 closed this session)
+- **Ready to Work:** 13
 
 ### Test Status
 All tests pass:
 ```
 ok  github.com/tobias/vibefeld/cmd/af
 ok  github.com/tobias/vibefeld/internal/cli
-ok  github.com/tobias/vibefeld/internal/lemma
-ok  github.com/tobias/vibefeld/internal/render
+ok  github.com/tobias/vibefeld/internal/node
 ... (all packages pass)
 ```
 
@@ -89,15 +78,14 @@ Build succeeds: `go build ./cmd/af`
 
 ## Next Steps
 
-Run `bd ready` to see remaining issues. Current priorities:
-1. **vibefeld-1b4s** (P3): Write tests for fuzzy flag matching
-2. **vibefeld-e1av** (P3): Implement fuzzy flag matching
-3. **vibefeld-5k97** (P3): Add version command with build info
-4. **vibefeld-flwo** (P3): Implement shell completion script
-5. **vibefeld-n6hm** (P3): Add --help to all commands with examples
+Run `bd ready` to see remaining issues:
+1. **vibefeld-n6hm** (P3): Add --help to all commands with examples
+2. **vibefeld-mo3l** (P3): Create CONTRIBUTING.md guide
+3. **vibefeld-0q7f** (P3): Render package has broad dependencies creating coupling
 
 ## Session History
 
+**Session 50:** Implemented 4 features (4 parallel subagents) - fuzzy_flag, blocking, version, README
 **Session 49:** Implemented 4 features (4 parallel subagents) - argparse, prompt, next_steps, independence
 **Session 48:** Implemented 8 features (2 batches of 4 parallel subagents) - completion, wizard, patterns, strategy, extend-claim, hooks, verify-external, extract-lemma
 **Session 47:** Implemented 4 features (4 parallel subagents) - Dobinski E2E test, quality metrics, watch command, interactive shell
