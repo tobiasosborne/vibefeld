@@ -245,9 +245,9 @@ Vibefeld is under active development.
 
 ## Philosophy
 
-> "The first principle is that you must not fool yourself -- and you are the easiest person to fool." -- Richard Feynman
+> "Beware of bugs in the above code; I have only proved it correct, not tried it." -- Donald Knuth
 
-Traditional proof assistants trust the human to find their own errors. Vibefeld assumes you will miss things. That is why it deploys adversaries.
+Traditional proof assistants trust the prover to find their own errors. Vibefeld assumes you will miss things. That is why it deploys adversaries.
 
 Every proof in Vibefeld is a record of intellectual combat: claims made, challenges raised, weaknesses exposed, arguments refined. The final validated proof is not just correct -- it is *battle-tested*.
 
