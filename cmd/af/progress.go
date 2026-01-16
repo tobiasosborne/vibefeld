@@ -169,6 +169,7 @@ func computeProgressMetrics(st *state.State, pendingDefs []*node.PendingDef) *Pr
 			metrics.ByState["refuted"]++
 		case schema.EpistemicArchived:
 			metrics.ByState["archived"]++
+			metrics.CompletedNodes++ // Archived nodes are resolved, don't block completion
 		}
 
 		// Count blocked nodes

@@ -261,11 +261,11 @@ func TestComputeProgressMetrics_MixedStates(t *testing.T) {
 	if metrics.TotalNodes != 5 {
 		t.Errorf("expected TotalNodes to be 5, got %d", metrics.TotalNodes)
 	}
-	if metrics.CompletedNodes != 2 {
-		t.Errorf("expected CompletedNodes to be 2, got %d", metrics.CompletedNodes)
+	if metrics.CompletedNodes != 3 {
+		t.Errorf("expected CompletedNodes to be 3, got %d", metrics.CompletedNodes)
 	}
-	if metrics.CompletionPercent != 40 {
-		t.Errorf("expected CompletionPercent to be 40, got %d", metrics.CompletionPercent)
+	if metrics.CompletionPercent != 60 {
+		t.Errorf("expected CompletionPercent to be 60, got %d", metrics.CompletionPercent)
 	}
 	if metrics.ByState["pending"] != 1 {
 		t.Errorf("expected ByState['pending'] to be 1, got %d", metrics.ByState["pending"])
@@ -621,14 +621,14 @@ func TestComputeProgressMetrics_CompletionPercentage(t *testing.T) {
 			expectedCompleted: 4,
 		},
 		{
-			name:              "9 of 20",
+			name:              "10 of 20 (archived counts as complete)",
 			validated:         5,
 			admitted:          4,
 			pending:           8,
 			refuted:           2,
 			archived:          1,
-			expectedPercent:   45,
-			expectedCompleted: 9,
+			expectedPercent:   50,
+			expectedCompleted: 10,
 		},
 	}
 
