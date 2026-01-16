@@ -250,7 +250,7 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 	if err != nil {
 		// Provide helpful error messages
 		if strings.Contains(err.Error(), "not claimed") {
-			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'", parentIDStr)
+			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s -o %s -s ...' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
 		}
 		if strings.Contains(err.Error(), "owner does not match") {
 			return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
@@ -381,7 +381,7 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 	if err != nil {
 		// Provide helpful error messages
 		if strings.Contains(err.Error(), "not claimed") {
-			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'", parentIDStr)
+			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s -o %s --children ...' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
 		}
 		if strings.Contains(err.Error(), "owner does not match") {
 			return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
@@ -477,7 +477,7 @@ func runRefinePositional(cmd *cobra.Command, parentID types.NodeID, parentIDStr,
 	if err != nil {
 		// Provide helpful error messages
 		if strings.Contains(err.Error(), "not claimed") {
-			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'", parentIDStr)
+			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s \"statement1\" \"statement2\" -o %s' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
 		}
 		if strings.Contains(err.Error(), "owner does not match") {
 			return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)

@@ -477,7 +477,7 @@ func TestConcurrent_LockManagerConcurrency(t *testing.T) {
 	wg.Add(5)
 
 	var mu sync.Mutex
-	results := make([]*lock.Lock, 5)
+	results := make([]*lock.ClaimLock, 5)
 
 	start := make(chan struct{})
 

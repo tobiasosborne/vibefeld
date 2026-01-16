@@ -45,7 +45,7 @@ func setupReapTest(t *testing.T) (string, string, string, func()) {
 func createTestLockFile(t *testing.T, locksDir string, nodeID types.NodeID, owner string, timeout time.Duration) string {
 	t.Helper()
 
-	lk, err := lock.NewLock(nodeID, owner, timeout)
+	lk, err := lock.NewClaimLock(nodeID, owner, timeout)
 	if err != nil {
 		t.Fatalf("NewLock(%s, %s, %v) failed: %v", nodeID, owner, timeout, err)
 	}
@@ -68,7 +68,7 @@ func createTestStaleLockFile(t *testing.T, locksDir string, nodeID types.NodeID,
 	t.Helper()
 
 	// Create lock with very short timeout
-	lk, err := lock.NewLock(nodeID, owner, 1*time.Nanosecond)
+	lk, err := lock.NewClaimLock(nodeID, owner, 1*time.Nanosecond)
 	if err != nil {
 		t.Fatalf("NewLock(%s, %s) failed: %v", nodeID, owner, err)
 	}
@@ -226,7 +226,7 @@ func TestReap_ReapingAllowsNewAcquisition(t *testing.T) {
 	}
 
 	// Now a new agent can acquire the lock
-	newLock, err := lock.NewLock(nodeID, "agent-new", 1*time.Hour)
+	newLock, err := lock.NewClaimLock(nodeID, "agent-new", 1*time.Hour)
 	if err != nil {
 		t.Fatalf("NewLock for new agent failed: %v", err)
 	}
@@ -247,13 +247,13 @@ func TestReap_ReapingAllowsNewAcquisition(t *testing.T) {
 		t.Fatalf("ReadFile for new lock failed: %v", err)
 	}
 
-	var readLock lock.Lock
+	var readLock lock.ClaimLock
 	if err := json.Unmarshal(newData, &readLock); err != nil {
 		t.Fatalf("Unmarshal new lock failed: %v", err)
 	}
 
-	if readLock.Owner() != "agent-new" {
-		t.Errorf("Expected owner 'agent-new', got %q", readLock.Owner())
+	if !readLock.IsOwnedBy("agent-new") {
+		t.Errorf("Expected owner 'agent-new', got different owner")
 	}
 	if readLock.IsExpired() {
 		t.Error("New lock should not be expired")

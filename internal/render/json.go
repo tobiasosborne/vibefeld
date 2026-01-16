@@ -36,6 +36,7 @@ type JSONNode struct {
 	ID             string   `json:"id"`
 	Type           string   `json:"type"`
 	Statement      string   `json:"statement"`
+	Latex          string   `json:"latex,omitempty"`
 	Inference      string   `json:"inference"`
 	WorkflowState  string   `json:"workflow_state"`
 	EpistemicState string   `json:"epistemic_state"`
@@ -44,22 +45,40 @@ type JSONNode struct {
 	ContentHash    string   `json:"content_hash"`
 	Context        []string `json:"context,omitempty"`
 	Dependencies   []string `json:"dependencies,omitempty"`
+	ValidationDeps []string `json:"validation_deps,omitempty"`
 	Scope          []string `json:"scope,omitempty"`
 	ClaimedBy      string   `json:"claimed_by,omitempty"`
+	ClaimedAt      string   `json:"claimed_at,omitempty"`
+}
+
+// JSONChallenge represents a challenge in JSON format.
+type JSONChallenge struct {
+	ID         string `json:"id"`
+	TargetID   string `json:"target_id"`
+	Target     string `json:"target"`
+	Reason     string `json:"reason"`
+	Status     string `json:"status"`
+	Severity   string `json:"severity,omitempty"`
+	Raised     string `json:"raised"`
+	ResolvedAt string `json:"resolved_at,omitempty"`
+	Resolution string `json:"resolution,omitempty"`
 }
 
 // JSONStatus represents the proof status in JSON format.
 type JSONStatus struct {
-	Statistics JSONStatistics `json:"statistics"`
-	Jobs       JSONJobs       `json:"jobs"`
-	Nodes      []JSONNode     `json:"nodes"`
+	Statistics JSONStatistics  `json:"statistics"`
+	Jobs       JSONJobs        `json:"jobs"`
+	Nodes      []JSONNode      `json:"nodes"`
+	Challenges []JSONChallenge `json:"challenges"`
 }
 
 // JSONStatistics represents proof statistics in JSON format.
 type JSONStatistics struct {
-	TotalNodes     int                    `json:"total_nodes"`
-	EpistemicState map[string]int         `json:"epistemic_state"`
-	TaintState     map[string]int         `json:"taint_state"`
+	TotalNodes      int            `json:"total_nodes"`
+	EpistemicState  map[string]int `json:"epistemic_state"`
+	TaintState      map[string]int `json:"taint_state"`
+	TotalChallenges int            `json:"total_challenges"`
+	OpenChallenges  int            `json:"open_challenges"`
 }
 
 // JSONJobs represents job counts in JSON format.
@@ -191,6 +210,7 @@ func nodeToJSON(n *node.Node) JSONNode {
 		ID:             n.ID.String(),
 		Type:           string(n.Type),
 		Statement:      n.Statement,
+		Latex:          n.Latex,
 		Inference:      string(n.Inference),
 		WorkflowState:  string(n.WorkflowState),
 		EpistemicState: string(n.EpistemicState),
@@ -198,6 +218,11 @@ func nodeToJSON(n *node.Node) JSONNode {
 		Created:        n.Created.String(),
 		ContentHash:    n.ContentHash,
 		ClaimedBy:      n.ClaimedBy,
+	}
+
+	// Add claimed_at if node is claimed
+	if !n.ClaimedAt.IsZero() {
+		jn.ClaimedAt = n.ClaimedAt.String()
 	}
 
 	// Convert context
@@ -211,6 +236,14 @@ func nodeToJSON(n *node.Node) JSONNode {
 		jn.Dependencies = make([]string, len(n.Dependencies))
 		for i, dep := range n.Dependencies {
 			jn.Dependencies[i] = dep.String()
+		}
+	}
+
+	// Convert validation dependencies
+	if len(n.ValidationDeps) > 0 {
+		jn.ValidationDeps = make([]string, len(n.ValidationDeps))
+		for i, dep := range n.ValidationDeps {
+			jn.ValidationDeps[i] = dep.String()
 		}
 	}
 
@@ -254,18 +287,52 @@ func statusToJSON(s *state.State, nodes []*node.Node) JSONStatus {
 		jsonNodes = append(jsonNodes, nodeToJSON(n))
 	}
 
+	// Convert challenges to JSON
+	allChallenges := s.AllChallenges()
+	jsonChallenges := make([]JSONChallenge, 0, len(allChallenges))
+	openChallengeCount := 0
+	for _, c := range allChallenges {
+		jsonChallenges = append(jsonChallenges, challengeToJSON(c))
+		if c.Status == "open" {
+			openChallengeCount++
+		}
+	}
+
 	return JSONStatus{
 		Statistics: JSONStatistics{
-			TotalNodes:     len(nodes),
-			EpistemicState: epistemicCounts,
-			TaintState:     taintCounts,
+			TotalNodes:      len(nodes),
+			EpistemicState:  epistemicCounts,
+			TaintState:      taintCounts,
+			TotalChallenges: len(allChallenges),
+			OpenChallenges:  openChallengeCount,
 		},
 		Jobs: JSONJobs{
 			ProverJobs:   proverJobs,
 			VerifierJobs: verifierJobs,
 		},
-		Nodes: jsonNodes,
+		Nodes:      jsonNodes,
+		Challenges: jsonChallenges,
 	}
+}
+
+// challengeToJSON converts a state.Challenge to its JSON representation.
+func challengeToJSON(c *state.Challenge) JSONChallenge {
+	jc := JSONChallenge{
+		ID:       c.ID,
+		TargetID: c.NodeID.String(),
+		Target:   c.Target,
+		Reason:   c.Reason,
+		Status:   c.Status,
+		Severity: c.Severity,
+		Raised:   c.Created.String(),
+	}
+
+	// Add resolution fields if challenge is resolved
+	if c.Status == "resolved" && c.Resolution != "" {
+		jc.Resolution = c.Resolution
+	}
+
+	return jc
 }
 
 // RenderProverContextJSON renders prover context as JSON.
@@ -286,6 +353,7 @@ func RenderProverContextJSON(s *state.State, nodeID types.NodeID) string {
 		"parent":           nil,
 		"siblings":         []JSONNode{},
 		"children":         []JSONNode{},
+		"challenges":       []JSONChallenge{},
 		"available_defs":   []string{},
 		"available_lemmas": []string{},
 	}
@@ -321,6 +389,17 @@ func RenderProverContextJSON(s *state.State, nodeID types.NodeID) string {
 	ctx["siblings"] = siblings
 	ctx["children"] = children
 
+	// Add challenges for this node
+	allChallenges := s.AllChallenges()
+	nodeIDStr := nodeID.String()
+	nodeChallenges := []JSONChallenge{}
+	for _, c := range allChallenges {
+		if c.NodeID.String() == nodeIDStr {
+			nodeChallenges = append(nodeChallenges, challengeToJSON(c))
+		}
+	}
+	ctx["challenges"] = nodeChallenges
+
 	data, err := marshalJSON(ctx)
 	if err != nil {
 		return fmt.Sprintf(`{"error":"failed to marshal context for node %s"}`, nodeID.String())
@@ -348,6 +427,7 @@ func RenderVerifierContextJSON(s *state.State, challenge *node.Challenge) string
 		"reason":       challenge.Reason,
 		"raised":       challenge.Raised.String(),
 		"status":       string(challenge.Status),
+		"children":     []JSONNode{},
 	}
 
 	// Include resolution text for resolved challenges
@@ -356,8 +436,22 @@ func RenderVerifierContextJSON(s *state.State, challenge *node.Challenge) string
 	}
 
 	// Add node details
-	if n := s.GetNode(challenge.TargetID); n != nil {
-		ctx["node"] = nodeToJSON(n)
+	targetNode := s.GetNode(challenge.TargetID)
+	if targetNode != nil {
+		ctx["node"] = nodeToJSON(targetNode)
+
+		// Add children of the challenged node
+		allNodes := s.AllNodes()
+		targetIDStr := challenge.TargetID.String()
+		children := []JSONNode{}
+		for _, an := range allNodes {
+			if anParent, hasParent := an.ID.Parent(); hasParent {
+				if anParent.String() == targetIDStr {
+					children = append(children, nodeToJSON(an))
+				}
+			}
+		}
+		ctx["children"] = children
 	}
 
 	data, err := marshalJSON(ctx)
@@ -366,4 +460,64 @@ func RenderVerifierContextJSON(s *state.State, challenge *node.Challenge) string
 	}
 
 	return string(data)
+}
+
+// RenderChallengeJSON renders a single challenge as JSON.
+// Returns JSON string representation of the challenge.
+// Returns empty JSON object for nil challenge.
+func RenderChallengeJSON(c *state.Challenge) string {
+	if c == nil {
+		return "{}"
+	}
+
+	jc := challengeToJSON(c)
+
+	data, err := marshalJSON(jc)
+	if err != nil {
+		return fmt.Sprintf(`{"id":%q,"error":"failed to marshal challenge"}`, c.ID)
+	}
+
+	return string(data)
+}
+
+// RenderChallengesJSON renders a list of challenges as JSON array.
+// Returns JSON array string. Returns "[]" for nil or empty list.
+func RenderChallengesJSON(challenges []*state.Challenge) string {
+	if len(challenges) == 0 {
+		return "[]"
+	}
+
+	jsonChallenges := make([]JSONChallenge, 0, len(challenges))
+	for _, c := range challenges {
+		if c != nil {
+			jsonChallenges = append(jsonChallenges, challengeToJSON(c))
+		}
+	}
+
+	data, err := marshalJSON(jsonChallenges)
+	if err != nil {
+		return "[]"
+	}
+
+	return string(data)
+}
+
+// RenderNodeChallengesJSON renders all challenges for a specific node as JSON.
+// Returns JSON array string. Returns "[]" if no challenges exist for the node.
+func RenderNodeChallengesJSON(s *state.State, nodeID types.NodeID) string {
+	if s == nil {
+		return "[]"
+	}
+
+	allChallenges := s.AllChallenges()
+	nodeIDStr := nodeID.String()
+
+	var nodeChallenges []*state.Challenge
+	for _, c := range allChallenges {
+		if c.NodeID.String() == nodeIDStr {
+			nodeChallenges = append(nodeChallenges, c)
+		}
+	}
+
+	return RenderChallengesJSON(nodeChallenges)
 }

@@ -91,7 +91,10 @@ func TestDefRequest_RaiseAndSatisfy(t *testing.T) {
 	t.Log("Step 1: Raise a definition request")
 
 	// Create a pending definition request for the term "group"
-	pd := node.NewPendingDef("group", nodeID)
+	pd, err := node.NewPendingDef("group", nodeID)
+	if err != nil {
+		t.Fatalf("NewPendingDef failed: %v", err)
+	}
 
 	// Verify the pending def is in pending state
 	if !pd.IsPending() {
@@ -105,7 +108,7 @@ func TestDefRequest_RaiseAndSatisfy(t *testing.T) {
 	}
 
 	// Persist the pending definition to filesystem
-	err := fs.WritePendingDef(proofDir, nodeID, pd)
+	err = fs.WritePendingDef(proofDir, nodeID, pd)
 	if err != nil {
 		t.Fatalf("WritePendingDef failed: %v", err)
 	}
@@ -218,9 +221,18 @@ func TestDefRequest_MultipleRequestsOnSameNode(t *testing.T) {
 	}
 
 	// Create pending definitions for each child node
-	pd1 := node.NewPendingDef("group", child1ID)
-	pd2 := node.NewPendingDef("homomorphism", child2ID)
-	pd3 := node.NewPendingDef("kernel", child3ID)
+	pd1, err := node.NewPendingDef("group", child1ID)
+	if err != nil {
+		t.Fatalf("NewPendingDef (pd1) failed: %v", err)
+	}
+	pd2, err := node.NewPendingDef("homomorphism", child2ID)
+	if err != nil {
+		t.Fatalf("NewPendingDef (pd2) failed: %v", err)
+	}
+	pd3, err := node.NewPendingDef("kernel", child3ID)
+	if err != nil {
+		t.Fatalf("NewPendingDef (pd3) failed: %v", err)
+	}
 
 	// Write all pending definitions
 	for _, pd := range []*node.PendingDef{pd1, pd2, pd3} {
@@ -343,7 +355,10 @@ func TestDefRequest_StateTransitions(t *testing.T) {
 	// ==========================================================================
 	t.Log("Test 1: pending -> resolved transition")
 
-	pd := node.NewPendingDef("group", nodeID)
+	pd, err := node.NewPendingDef("group", nodeID)
+	if err != nil {
+		t.Fatalf("NewPendingDef failed: %v", err)
+	}
 
 	// Verify initial state
 	if pd.Status != node.PendingDefStatusPending {
@@ -400,7 +415,10 @@ func TestDefRequest_StateTransitions(t *testing.T) {
 		t.Fatalf("failed to append node created event: %v", err)
 	}
 
-	pd2 := node.NewPendingDef("ring", cancelNodeID)
+	pd2, err := node.NewPendingDef("ring", cancelNodeID)
+	if err != nil {
+		t.Fatalf("NewPendingDef (pd2) failed: %v", err)
+	}
 
 	// Verify initial state
 	if pd2.Status != node.PendingDefStatusPending {
@@ -441,7 +459,7 @@ func TestDefRequest_StateTransitions(t *testing.T) {
 	t.Log("Test 3: invalid state transitions")
 
 	// Try to resolve an already resolved pending def
-	err := pd.Resolve("another-def-id")
+	err = pd.Resolve("another-def-id")
 	if err == nil {
 		t.Error("expected error when resolving already resolved pending def")
 	}
@@ -478,13 +496,16 @@ func TestDefRequest_DeletePendingDef(t *testing.T) {
 	_, nodeID := initializeProofWithNodeForDefRequest(t, proofDir)
 
 	// Create and persist a pending definition
-	pd := node.NewPendingDef("field", nodeID)
+	pd, err := node.NewPendingDef("field", nodeID)
+	if err != nil {
+		t.Fatalf("NewPendingDef failed: %v", err)
+	}
 	if err := fs.WritePendingDef(proofDir, nodeID, pd); err != nil {
 		t.Fatalf("WritePendingDef failed: %v", err)
 	}
 
 	// Verify it exists
-	_, err := fs.ReadPendingDef(proofDir, nodeID)
+	_, err = fs.ReadPendingDef(proofDir, nodeID)
 	if err != nil {
 		t.Fatalf("ReadPendingDef failed: %v", err)
 	}
@@ -613,7 +634,10 @@ func TestDefRequest_LedgerDefAddedEvents(t *testing.T) {
 	}
 
 	// Create pending defs and resolve them using the definitions
-	pd := node.NewPendingDef("vector space", nodeID)
+	pd, err := node.NewPendingDef("vector space", nodeID)
+	if err != nil {
+		t.Fatalf("NewPendingDef failed: %v", err)
+	}
 	if err := pd.Resolve(defIDs[0]); err != nil {
 		t.Fatalf("Resolve failed: %v", err)
 	}

@@ -394,3 +394,109 @@ func TestValidateScopeBalance_LocalAssumeAtEnd_ScopeUnclosed(t *testing.T) {
 		t.Errorf("expected SCOPE_UNCLOSED error code, got %v", code)
 	}
 }
+
+// =============================================================================
+// ValidateScopeClosure Tests
+// =============================================================================
+
+func TestValidateScopeClosure_NilNode(t *testing.T) {
+	// Nil node should pass validation (nothing to check)
+	err := ValidateScopeClosure(nil, nil)
+
+	if err != nil {
+		t.Errorf("ValidateScopeClosure(nil, nil) = %v, want nil", err)
+	}
+}
+
+func TestValidateScopeClosure_NonLocalAssumeNode(t *testing.T) {
+	// Non-local_assume nodes should pass validation (nothing to check)
+	nodeTypes := []schema.NodeType{
+		schema.NodeTypeClaim,
+		schema.NodeTypeLocalDischarge,
+		schema.NodeTypeCase,
+		schema.NodeTypeQED,
+	}
+
+	for _, nt := range nodeTypes {
+		t.Run(string(nt), func(t *testing.T) {
+			n := makeTestNode(t, "1.1", nt, nil)
+			err := ValidateScopeClosure(n, nil)
+
+			if err != nil {
+				t.Errorf("ValidateScopeClosure(%s, nil) = %v, want nil", nt, err)
+			}
+		})
+	}
+}
+
+func TestValidateScopeClosure_LocalAssumeWithClosedScope(t *testing.T) {
+	// local_assume with discharged scope should pass validation
+	n := makeTestNode(t, "1.1", schema.NodeTypeLocalAssume, nil)
+	entry := makeTestEntry(t, "1.1", true) // discharged
+
+	err := ValidateScopeClosure(n, entry)
+
+	if err != nil {
+		t.Errorf("ValidateScopeClosure() = %v, want nil for discharged scope", err)
+	}
+}
+
+func TestValidateScopeClosure_LocalAssumeWithOpenScope_ScopeUnclosed(t *testing.T) {
+	// local_assume with active scope should return SCOPE_UNCLOSED
+	n := makeTestNode(t, "1.1", schema.NodeTypeLocalAssume, nil)
+	entry := makeTestEntry(t, "1.1", false) // active (not discharged)
+
+	err := ValidateScopeClosure(n, entry)
+
+	if err == nil {
+		t.Fatal("ValidateScopeClosure should return error for active scope")
+	}
+
+	code := errors.Code(err)
+	if code != errors.SCOPE_UNCLOSED {
+		t.Errorf("expected SCOPE_UNCLOSED error code, got %v", code)
+	}
+}
+
+func TestValidateScopeClosure_LocalAssumeWithNilScope_ScopeUnclosed(t *testing.T) {
+	// local_assume with nil scope entry should return SCOPE_UNCLOSED
+	n := makeTestNode(t, "1.1", schema.NodeTypeLocalAssume, nil)
+
+	err := ValidateScopeClosure(n, nil)
+
+	if err == nil {
+		t.Fatal("ValidateScopeClosure should return error for nil scope entry")
+	}
+
+	code := errors.Code(err)
+	if code != errors.SCOPE_UNCLOSED {
+		t.Errorf("expected SCOPE_UNCLOSED error code, got %v", code)
+	}
+}
+
+func TestValidateScopeClosure_ErrorMessageContainsNodeID(t *testing.T) {
+	// Error message should contain the node ID for debugging
+	n := makeTestNode(t, "1.2.3", schema.NodeTypeLocalAssume, nil)
+	entry := makeTestEntry(t, "1.2.3", false) // active
+
+	err := ValidateScopeClosure(n, entry)
+
+	if err == nil {
+		t.Fatal("Expected error but got nil")
+	}
+
+	errMsg := err.Error()
+	if !containsSubstring(errMsg, "1.2.3") {
+		t.Errorf("Error message should contain node ID '1.2.3', got: %s", errMsg)
+	}
+}
+
+// containsSubstring is a helper to check if a string contains a substring.
+func containsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
