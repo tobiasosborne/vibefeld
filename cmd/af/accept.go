@@ -162,6 +162,13 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 			return fmt.Errorf("error accepting node: %w", acceptErr)
 		}
 
+		// Load state to get verification summary
+		st, stateErr := svc.LoadState()
+		var summary verificationSummary
+		if stateErr == nil {
+			summary = getVerificationSummary(st, nodeIDs[0], withNote)
+		}
+
 		// Output result based on format
 		switch strings.ToLower(format) {
 		case "json":
@@ -173,16 +180,39 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 			if withNote != "" {
 				result["note"] = withNote
 			}
-			output, err := json.Marshal(result)
+
+			// Add verification summary to JSON output
+			if stateErr == nil {
+				verificationSummaryJSON := map[string]interface{}{
+					"challenges_raised":    summary.ChallengesRaised,
+					"challenges_resolved":  summary.ChallengesResolved,
+				}
+
+				if len(summary.Dependencies) > 0 {
+					deps := make([]map[string]string, len(summary.Dependencies))
+					for i, dep := range summary.Dependencies {
+						deps[i] = map[string]string{
+							"id":     dep.ID,
+							"status": dep.Status,
+						}
+					}
+					verificationSummaryJSON["dependencies"] = deps
+				}
+
+				result["verification_summary"] = verificationSummaryJSON
+			}
+
+			output, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {
 				return fmt.Errorf("error marshaling JSON: %w", err)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), string(output))
 		default:
-			if withNote != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated (with note: %q).\n", nodeIDs[0].String(), withNote)
-			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated.\n", nodeIDs[0].String())
+			fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated.\n", nodeIDs[0].String())
+
+			// Output verification summary
+			if stateErr == nil {
+				outputVerificationSummaryText(cmd, nodeIDs[0], summary)
 			}
 		}
 		return nil
@@ -323,6 +353,111 @@ func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID types.NodeID, chall
 
 	// Return error with just the summary
 	return fmt.Errorf("node %s has %d blocking challenge(s)", nodeID.String(), len(challenges))
+}
+
+// verificationSummary contains information about challenges and dependencies
+// for a node that was just accepted.
+type verificationSummary struct {
+	ChallengesRaised    int
+	ChallengesResolved  int
+	Dependencies        []dependencyInfo
+	Note                string
+}
+
+// dependencyInfo contains the ID and status of a dependency.
+type dependencyInfo struct {
+	ID     string
+	Status string
+}
+
+// getVerificationSummary retrieves challenge and dependency information for a node.
+func getVerificationSummary(st *state.State, nodeID types.NodeID, note string) verificationSummary {
+	summary := verificationSummary{
+		Note: note,
+	}
+
+	// Count challenges raised and resolved for this node
+	nodeIDStr := nodeID.String()
+	for _, c := range st.AllChallenges() {
+		if c.NodeID.String() == nodeIDStr {
+			summary.ChallengesRaised++
+			if c.Status == "resolved" {
+				summary.ChallengesResolved++
+			}
+		}
+	}
+
+	// Get dependency information
+	n := st.GetNode(nodeID)
+	if n != nil {
+		// Add regular dependencies
+		for _, depID := range n.Dependencies {
+			depNode := st.GetNode(depID)
+			status := "unknown"
+			if depNode != nil {
+				status = string(depNode.EpistemicState)
+			}
+			summary.Dependencies = append(summary.Dependencies, dependencyInfo{
+				ID:     depID.String(),
+				Status: status,
+			})
+		}
+
+		// Add context items (definitions, assumptions, externals)
+		for _, ctx := range n.Context {
+			// Try to find context item and its status
+			status := "unknown"
+
+			// Check if it's a definition
+			if def := st.GetDefinition(ctx); def != nil {
+				status = "definition"
+			} else if def := st.GetDefinitionByName(ctx); def != nil {
+				status = "definition"
+			}
+
+			// Check if it's an assumption
+			if a := st.GetAssumption(ctx); a != nil {
+				status = "assumed"
+			}
+
+			// Check if it's an external
+			if e := st.GetExternal(ctx); e != nil {
+				status = "external"
+			} else if e := st.GetExternalByName(ctx); e != nil {
+				status = "external"
+			}
+
+			// Check if it's a lemma
+			if l := st.GetLemma(ctx); l != nil {
+				status = "lemma"
+			}
+
+			summary.Dependencies = append(summary.Dependencies, dependencyInfo{
+				ID:     ctx,
+				Status: status,
+			})
+		}
+	}
+
+	return summary
+}
+
+// outputVerificationSummaryText outputs the verification summary in text format.
+func outputVerificationSummaryText(cmd *cobra.Command, nodeID types.NodeID, summary verificationSummary) {
+	fmt.Fprintf(cmd.OutOrStdout(), "\nVerification summary:\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "  Challenges: %d raised, %d resolved\n",
+		summary.ChallengesRaised, summary.ChallengesResolved)
+
+	if len(summary.Dependencies) > 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "  Dependencies:\n")
+		for _, dep := range summary.Dependencies {
+			fmt.Fprintf(cmd.OutOrStdout(), "    %s: %s\n", dep.ID, dep.Status)
+		}
+	}
+
+	if summary.Note != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "  Note: %s\n", summary.Note)
+	}
 }
 
 // extractNodeIDFromBlockingError attempts to extract the node ID from a blocking challenges error message.

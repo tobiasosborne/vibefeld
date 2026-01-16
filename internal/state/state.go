@@ -19,6 +19,7 @@ type Challenge struct {
 	Severity   string          // "critical", "major", "minor", or "note"
 	Created    types.Timestamp // When the challenge was raised
 	Resolution string          // Resolution text (populated when status is "resolved")
+	RaisedBy   string          // Agent ID who raised the challenge
 }
 
 // Amendment represents a single amendment to a node's statement.
@@ -225,6 +226,25 @@ func (s *State) GetBlockingChallengesForNode(nodeID types.NodeID) []*Challenge {
 // with Critical or Major severity that block acceptance.
 func (s *State) HasBlockingChallenges(nodeID types.NodeID) bool {
 	return len(s.GetBlockingChallengesForNode(nodeID)) > 0
+}
+
+// VerifierRaisedChallengeForNode returns true if the specified agent has raised
+// any challenge for the given node, even if that challenge was later resolved
+// or withdrawn. This is used to ensure verifiers engage with nodes before
+// accepting them.
+func (s *State) VerifierRaisedChallengeForNode(nodeID types.NodeID, agentID string) bool {
+	nodeIDStr := nodeID.String()
+	for _, c := range s.challenges {
+		// Check if this challenge is for the specified node
+		if c.NodeID.String() != nodeIDStr {
+			continue
+		}
+		// Check if this challenge was raised by the specified agent
+		if c.RaisedBy == agentID {
+			return true
+		}
+	}
+	return false
 }
 
 // AllNodes returns a slice of all nodes in the state.

@@ -15,6 +15,7 @@ import (
 
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/ledger"
+	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
@@ -1183,5 +1184,320 @@ func TestAcceptCommand_MultipleBlockingChallenges(t *testing.T) {
 	}
 	if !strings.Contains(output, "chal-major-2") {
 		t.Errorf("output should show 'chal-major-2', got: %q", output)
+	}
+}
+
+// =============================================================================
+// Verification Summary Tests
+// =============================================================================
+
+// resolveChallengeForNode is a test helper that resolves a challenge by appending
+// to the ledger. This bypasses the service layer to set up test fixtures.
+func resolveChallengeForNode(t *testing.T, proofDir string, challengeID string) {
+	t.Helper()
+	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
+	if err != nil {
+		t.Fatalf("failed to get ledger: %v", err)
+	}
+	event := ledger.NewChallengeResolved(challengeID)
+	if _, err := ldg.Append(event); err != nil {
+		t.Fatalf("failed to append challenge resolution: %v", err)
+	}
+}
+
+// TestAcceptCommand_ShowsVerificationSummary tests that after successful acceptance,
+// a verification summary is displayed showing challenge counts and dependencies.
+func TestAcceptCommand_ShowsVerificationSummary(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add some minor challenges (which don't block acceptance) and resolve them
+	addChallengeToNode(t, tmpDir, nodeID, "chal-minor-1", "statement", "Minor issue 1", "minor")
+	addChallengeToNode(t, tmpDir, nodeID, "chal-minor-2", "inference", "Minor issue 2", "note")
+	resolveChallengeForNode(t, tmpDir, "chal-minor-1")
+
+	// Accept the node - should succeed because only minor/note challenges
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v\nOutput: %s", err, output)
+	}
+
+	// Output should contain verification summary header
+	if !strings.Contains(output, "Verification summary") {
+		t.Errorf("output should contain 'Verification summary', got: %q", output)
+	}
+
+	// Output should show challenge counts
+	if !strings.Contains(output, "Challenges:") {
+		t.Errorf("output should contain challenge count info, got: %q", output)
+	}
+
+	// Should show "2 raised" (we added 2 challenges)
+	if !strings.Contains(output, "2 raised") {
+		t.Errorf("output should show '2 raised' challenges, got: %q", output)
+	}
+
+	// Should show "1 resolved" (we resolved 1 challenge)
+	if !strings.Contains(output, "1 resolved") {
+		t.Errorf("output should show '1 resolved' challenges, got: %q", output)
+	}
+}
+
+// TestAcceptCommand_ShowsVerificationSummaryJSON tests that after successful acceptance
+// with JSON format, a verification summary is included in the JSON output.
+func TestAcceptCommand_ShowsVerificationSummaryJSON(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add some minor challenges (which don't block acceptance) and resolve them
+	addChallengeToNode(t, tmpDir, nodeID, "chal-minor-1", "statement", "Minor issue 1", "minor")
+	addChallengeToNode(t, tmpDir, nodeID, "chal-minor-2", "inference", "Minor issue 2", "note")
+	resolveChallengeForNode(t, tmpDir, "chal-minor-1")
+
+	// Accept the node with JSON format
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir, "-f", "json")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v\nOutput: %s", err, output)
+	}
+
+	// Parse JSON output
+	var result map[string]interface{}
+	if jsonErr := json.Unmarshal([]byte(output), &result); jsonErr != nil {
+		t.Fatalf("output should be valid JSON, got error: %v\nOutput: %q", jsonErr, output)
+	}
+
+	// Should have accepted=true
+	if result["accepted"] != true {
+		t.Errorf("JSON should have accepted=true, got: %v", result["accepted"])
+	}
+
+	// Should have verification_summary
+	summary, ok := result["verification_summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("JSON should have verification_summary object, got: %v", result["verification_summary"])
+	}
+
+	// Should have challenges_raised
+	challengesRaised, ok := summary["challenges_raised"].(float64)
+	if !ok {
+		t.Fatalf("verification_summary should have challenges_raised, got: %v", summary["challenges_raised"])
+	}
+	if int(challengesRaised) != 2 {
+		t.Errorf("expected challenges_raised=2, got: %v", challengesRaised)
+	}
+
+	// Should have challenges_resolved
+	challengesResolved, ok := summary["challenges_resolved"].(float64)
+	if !ok {
+		t.Fatalf("verification_summary should have challenges_resolved, got: %v", summary["challenges_resolved"])
+	}
+	if int(challengesResolved) != 1 {
+		t.Errorf("expected challenges_resolved=1, got: %v", challengesResolved)
+	}
+}
+
+// TestAcceptCommand_ShowsVerificationSummaryWithNote tests that the acceptance note
+// appears in the verification summary.
+func TestAcceptCommand_ShowsVerificationSummaryWithNote(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	// Accept the node with a note
+	note := "Verified via algebraic manipulation"
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir, "--with-note", note)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v\nOutput: %s", err, output)
+	}
+
+	// Output should contain verification summary
+	if !strings.Contains(output, "Verification summary") {
+		t.Errorf("output should contain 'Verification summary', got: %q", output)
+	}
+
+	// Output should contain the note in the summary
+	if !strings.Contains(output, "Note:") {
+		t.Errorf("output should contain 'Note:' in verification summary, got: %q", output)
+	}
+
+	if !strings.Contains(output, note) {
+		t.Errorf("output should contain the note text %q, got: %q", note, output)
+	}
+}
+
+// TestAcceptCommand_ShowsVerificationSummaryWithNoteJSON tests that the acceptance note
+// appears in the JSON verification summary.
+func TestAcceptCommand_ShowsVerificationSummaryWithNoteJSON(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	// Accept the node with a note and JSON format
+	note := "Verified via algebraic manipulation"
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir, "--with-note", note, "-f", "json")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v\nOutput: %s", err, output)
+	}
+
+	// Parse JSON output
+	var result map[string]interface{}
+	if jsonErr := json.Unmarshal([]byte(output), &result); jsonErr != nil {
+		t.Fatalf("output should be valid JSON, got error: %v\nOutput: %q", jsonErr, output)
+	}
+
+	// Should have note field
+	resultNote, ok := result["note"].(string)
+	if !ok {
+		t.Fatalf("JSON should have note field, got: %v", result["note"])
+	}
+	if resultNote != note {
+		t.Errorf("expected note=%q, got: %q", note, resultNote)
+	}
+
+	// Should have verification_summary
+	_, ok = result["verification_summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("JSON should have verification_summary object, got: %v", result["verification_summary"])
+	}
+}
+
+// createNodeWithDependencies is a test helper that creates a node with dependencies
+// by directly appending to the ledger.
+func createNodeWithDependencies(t *testing.T, proofDir string, nodeID types.NodeID, deps []types.NodeID) {
+	t.Helper()
+	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
+	if err != nil {
+		t.Fatalf("failed to get ledger: %v", err)
+	}
+
+	n, err := node.NewNodeWithOptions(nodeID, schema.NodeTypeClaim, "Test statement with dependencies",
+		schema.InferenceModusPonens, node.NodeOptions{Dependencies: deps})
+	if err != nil {
+		t.Fatalf("failed to create node: %v", err)
+	}
+
+	event := ledger.NewNodeCreated(*n)
+	if _, err := ldg.Append(event); err != nil {
+		t.Fatalf("failed to append node: %v", err)
+	}
+}
+
+// TestAcceptCommand_ShowsVerificationSummaryWithDependencies tests that dependencies
+// are shown in the verification summary.
+func TestAcceptCommand_ShowsVerificationSummaryWithDependencies(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a child node with a dependency on the root
+	childID := mustParseNodeID(t, "1.1")
+	rootID := mustParseNodeID(t, "1")
+
+	// First accept the root node
+	if err := svc.AcceptNode(rootID); err != nil {
+		t.Fatalf("failed to accept root node: %v", err)
+	}
+
+	// Create child node that depends on the root (using test helper)
+	createNodeWithDependencies(t, tmpDir, childID, []types.NodeID{rootID})
+
+	// Accept the child node
+	output, err := executeAcceptCommand(t, "1.1", "-d", tmpDir)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v\nOutput: %s", err, output)
+	}
+
+	// Output should contain verification summary
+	if !strings.Contains(output, "Verification summary") {
+		t.Errorf("output should contain 'Verification summary', got: %q", output)
+	}
+
+	// Output should contain dependencies section
+	if !strings.Contains(output, "Dependencies:") {
+		t.Errorf("output should contain 'Dependencies:', got: %q", output)
+	}
+
+	// Should show the root node as a dependency with validated status
+	if !strings.Contains(output, "1:") && !strings.Contains(output, "1 :") {
+		t.Errorf("output should show dependency on node 1, got: %q", output)
+	}
+
+	if !strings.Contains(output, "validated") {
+		t.Errorf("output should show dependency status 'validated', got: %q", output)
+	}
+}
+
+// TestAcceptCommand_ShowsVerificationSummaryWithDependenciesJSON tests that dependencies
+// are shown in the JSON verification summary.
+func TestAcceptCommand_ShowsVerificationSummaryWithDependenciesJSON(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a child node with a dependency on the root
+	childID := mustParseNodeID(t, "1.1")
+	rootID := mustParseNodeID(t, "1")
+
+	// First accept the root node
+	if err := svc.AcceptNode(rootID); err != nil {
+		t.Fatalf("failed to accept root node: %v", err)
+	}
+
+	// Create child node that depends on the root (using test helper)
+	createNodeWithDependencies(t, tmpDir, childID, []types.NodeID{rootID})
+
+	// Accept the child node with JSON format
+	output, err := executeAcceptCommand(t, "1.1", "-d", tmpDir, "-f", "json")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v\nOutput: %s", err, output)
+	}
+
+	// Parse JSON output
+	var result map[string]interface{}
+	if jsonErr := json.Unmarshal([]byte(output), &result); jsonErr != nil {
+		t.Fatalf("output should be valid JSON, got error: %v\nOutput: %q", jsonErr, output)
+	}
+
+	// Should have verification_summary
+	summary, ok := result["verification_summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("JSON should have verification_summary object, got: %v", result["verification_summary"])
+	}
+
+	// Should have dependencies array
+	deps, ok := summary["dependencies"].([]interface{})
+	if !ok {
+		t.Fatalf("verification_summary should have dependencies array, got: %v", summary["dependencies"])
+	}
+
+	// Should have at least one dependency
+	if len(deps) == 0 {
+		t.Error("dependencies array should not be empty")
+	}
+
+	// First dependency should be node 1
+	if len(deps) > 0 {
+		firstDep, ok := deps[0].(map[string]interface{})
+		if !ok {
+			t.Fatalf("dependency should be an object, got: %T", deps[0])
+		}
+
+		if firstDep["id"] != "1" {
+			t.Errorf("expected dependency id='1', got: %v", firstDep["id"])
+		}
+
+		if firstDep["status"] != "validated" {
+			t.Errorf("expected dependency status='validated', got: %v", firstDep["status"])
+		}
 	}
 }

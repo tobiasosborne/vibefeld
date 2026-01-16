@@ -1092,3 +1092,192 @@ func TestHasBlockingChallenges_FalseForResolved(t *testing.T) {
 		t.Errorf("HasBlockingChallenges(%s) = true, want false (all blocking challenges resolved/withdrawn)", nodeID)
 	}
 }
+
+// TestVerifierRaisedChallengeForNode_TrueIfRaised verifies that the method returns true
+// when the specified agent has raised a challenge for the node.
+func TestVerifierRaisedChallengeForNode_TrueIfRaised(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a challenge raised by agent "verifier-1"
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "statement",
+		Reason:   "Unclear assumption",
+		Status:   "open",
+		Severity: "major",
+		RaisedBy: "verifier-1",
+	})
+
+	got := s.VerifierRaisedChallengeForNode(nodeID, "verifier-1")
+	if !got {
+		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = false, want true (agent raised a challenge)", nodeID, "verifier-1")
+	}
+}
+
+// TestVerifierRaisedChallengeForNode_TrueEvenIfResolved verifies that the method returns true
+// even when the challenge has been resolved.
+func TestVerifierRaisedChallengeForNode_TrueEvenIfResolved(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a resolved challenge raised by agent "verifier-1"
+	s.AddChallenge(&Challenge{
+		ID:         "ch-1",
+		NodeID:     nodeID,
+		Target:     "statement",
+		Reason:     "Was unclear",
+		Status:     "resolved",
+		Severity:   "major",
+		Resolution: "Statement clarified",
+		RaisedBy:   "verifier-1",
+	})
+
+	got := s.VerifierRaisedChallengeForNode(nodeID, "verifier-1")
+	if !got {
+		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = false, want true (agent raised a challenge, now resolved)", nodeID, "verifier-1")
+	}
+
+	// Also test with withdrawn status
+	s2 := NewState()
+	s2.AddChallenge(&Challenge{
+		ID:       "ch-2",
+		NodeID:   nodeID,
+		Target:   "inference",
+		Reason:   "Thought it was wrong",
+		Status:   "withdrawn",
+		Severity: "minor",
+		RaisedBy: "verifier-1",
+	})
+
+	got2 := s2.VerifierRaisedChallengeForNode(nodeID, "verifier-1")
+	if !got2 {
+		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = false, want true (agent raised a challenge, now withdrawn)", nodeID, "verifier-1")
+	}
+}
+
+// TestVerifierRaisedChallengeForNode_FalseForDifferentAgent verifies that the method returns false
+// when a different agent raised the challenge.
+func TestVerifierRaisedChallengeForNode_FalseForDifferentAgent(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a challenge raised by agent "verifier-1"
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "statement",
+		Reason:   "Unclear assumption",
+		Status:   "open",
+		Severity: "major",
+		RaisedBy: "verifier-1",
+	})
+
+	// Check for a different agent
+	got := s.VerifierRaisedChallengeForNode(nodeID, "verifier-2")
+	if got {
+		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = true, want false (different agent raised the challenge)", nodeID, "verifier-2")
+	}
+}
+
+// TestVerifierRaisedChallengeForNode_FalseForDifferentNode verifies that the method returns false
+// when the challenge is for a different node.
+func TestVerifierRaisedChallengeForNode_FalseForDifferentNode(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+	otherNodeID := mustParseNodeID(t, "1.1")
+
+	// Add a challenge on a different node
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   otherNodeID,
+		Target:   "statement",
+		Reason:   "Some issue",
+		Status:   "open",
+		Severity: "major",
+		RaisedBy: "verifier-1",
+	})
+
+	got := s.VerifierRaisedChallengeForNode(nodeID, "verifier-1")
+	if got {
+		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = true, want false (challenge is for different node)", nodeID, "verifier-1")
+	}
+}
+
+// TestVerifierRaisedChallengeForNode_FalseWhenNoRaisedBy verifies that the method returns false
+// when the challenge has no RaisedBy field set.
+func TestVerifierRaisedChallengeForNode_FalseWhenNoRaisedBy(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a challenge without RaisedBy (legacy challenge)
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "statement",
+		Reason:   "Some issue",
+		Status:   "open",
+		Severity: "major",
+		RaisedBy: "", // No agent specified
+	})
+
+	got := s.VerifierRaisedChallengeForNode(nodeID, "verifier-1")
+	if got {
+		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = true, want false (challenge has no RaisedBy)", nodeID, "verifier-1")
+	}
+}
+
+// TestVerifierRaisedChallengeForNode_MultipleChallenges verifies correct behavior
+// with multiple challenges from different agents.
+func TestVerifierRaisedChallengeForNode_MultipleChallenges(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add challenges from multiple agents
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   nodeID,
+		Target:   "statement",
+		Reason:   "Issue 1",
+		Status:   "resolved",
+		Severity: "major",
+		RaisedBy: "verifier-1",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-2",
+		NodeID:   nodeID,
+		Target:   "inference",
+		Reason:   "Issue 2",
+		Status:   "open",
+		Severity: "minor",
+		RaisedBy: "verifier-2",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-3",
+		NodeID:   nodeID,
+		Target:   "context",
+		Reason:   "Issue 3",
+		Status:   "withdrawn",
+		Severity: "note",
+		RaisedBy: "verifier-1",
+	})
+
+	// Verifier-1 raised challenges (ch-1 and ch-3)
+	got1 := s.VerifierRaisedChallengeForNode(nodeID, "verifier-1")
+	if !got1 {
+		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = false, want true", nodeID, "verifier-1")
+	}
+
+	// Verifier-2 raised a challenge (ch-2)
+	got2 := s.VerifierRaisedChallengeForNode(nodeID, "verifier-2")
+	if !got2 {
+		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = false, want true", nodeID, "verifier-2")
+	}
+
+	// Verifier-3 never raised any challenges
+	got3 := s.VerifierRaisedChallengeForNode(nodeID, "verifier-3")
+	if got3 {
+		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = true, want false", nodeID, "verifier-3")
+	}
+}

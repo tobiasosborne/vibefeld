@@ -1215,3 +1215,472 @@ func TestRefineCmd_WithDependsFlag_ShowsInHelp(t *testing.T) {
 		t.Errorf("expected help to show --depends flag, got: %q", output)
 	}
 }
+
+// ===========================================================================
+// Issue 1 (vibefeld-yu7j): Tests for breadth-first Next steps suggestions
+// ===========================================================================
+
+func TestRefineCommand_NextStepsShowsBreadthFirst(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "First subgoal",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Output should show sibling option first with "recommended for breadth"
+	if !strings.Contains(output, "--sibling") {
+		t.Errorf("expected Next steps to show --sibling flag, got: %q", output)
+	}
+	if !strings.Contains(output, "recommended for breadth") {
+		t.Errorf("expected Next steps to recommend breadth, got: %q", output)
+	}
+	// Sibling option should come before depth-first option
+	siblingIdx := strings.Index(output, "--sibling")
+	depthIdx := strings.Index(output, "depth-first")
+	if siblingIdx < 0 || depthIdx < 0 {
+		t.Errorf("expected both sibling and depth-first in output, got: %q", output)
+	}
+	if siblingIdx > depthIdx {
+		t.Errorf("expected sibling option before depth-first, got: %q", output)
+	}
+}
+
+func TestRefineCommand_NextStepsShowsParentID(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "First subgoal",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Output should show the child ID in the Next steps (1.1 in this case)
+	// which is the node where siblings would be added or children
+	if !strings.Contains(output, "af refine 1.1") {
+		t.Errorf("expected Next steps to show 'af refine 1.1', got: %q", output)
+	}
+}
+
+// ===========================================================================
+// Issue 2 (vibefeld-80uy): Tests for depth warning
+// ===========================================================================
+
+func TestRefineCommand_WarnsAtDepth4(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create nodes at depth 2, 3 to get to depth 4
+	// 1 (root, depth 1)
+	// 1.1 (depth 2, already created by first refine below)
+	cmd := newRefineTestCmd()
+	_, err = executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Level 2",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create 1.1: %v", err)
+	}
+
+	// Claim 1.1 and create 1.1.1 (depth 3)
+	id11, _ := types.Parse("1.1")
+	err = svc.ClaimNode(id11, "test-agent", time.Hour)
+	if err != nil {
+		t.Fatalf("failed to claim 1.1: %v", err)
+	}
+
+	cmd2 := newRefineTestCmd()
+	_, err = executeCommand(cmd2, "refine", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Level 3",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create 1.1.1: %v", err)
+	}
+
+	// Claim 1.1.1 and create 1.1.1.1 (depth 4) - should warn
+	id111, _ := types.Parse("1.1.1")
+	err = svc.ClaimNode(id111, "test-agent", time.Hour)
+	if err != nil {
+		t.Fatalf("failed to claim 1.1.1: %v", err)
+	}
+
+	cmd3 := newRefineTestCmd()
+	output, err := executeCommand(cmd3, "refine", "1.1.1",
+		"--owner", "test-agent",
+		"--statement", "Level 4 - should warn",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create 1.1.1.1: %v", err)
+	}
+
+	// Should contain warning about depth
+	if !strings.Contains(output, "Warning") {
+		t.Errorf("expected warning at depth 4, got: %q", output)
+	}
+	if !strings.Contains(output, "depth 4") {
+		t.Errorf("expected warning to mention 'depth 4', got: %q", output)
+	}
+	if !strings.Contains(output, "Consider adding siblings") {
+		t.Errorf("expected warning to suggest siblings, got: %q", output)
+	}
+}
+
+func TestRefineCommand_NoWarningAtDepth3(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create 1.1 (depth 2)
+	cmd := newRefineTestCmd()
+	_, err = executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Level 2",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create 1.1: %v", err)
+	}
+
+	// Claim 1.1 and create 1.1.1 (depth 3) - should NOT warn
+	id11, _ := types.Parse("1.1")
+	err = svc.ClaimNode(id11, "test-agent", time.Hour)
+	if err != nil {
+		t.Fatalf("failed to claim 1.1: %v", err)
+	}
+
+	cmd2 := newRefineTestCmd()
+	output, err := executeCommand(cmd2, "refine", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Level 3 - no warning",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create 1.1.1: %v", err)
+	}
+
+	// Should NOT contain warning
+	if strings.Contains(output, "Warning") {
+		t.Errorf("expected no warning at depth 3, got: %q", output)
+	}
+}
+
+// ===========================================================================
+// Issue 3 (vibefeld-1r6h): Tests for MaxDepth enforcement
+// ===========================================================================
+
+func TestRefineCommand_RejectsExceedingMaxDepth(t *testing.T) {
+	// Create a proof with a very low MaxDepth (2) to make testing easy
+	tmpDir, err := os.MkdirTemp("", "af-refine-maxdepth-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Initialize proof
+	err = service.Init(tmpDir, "Test conjecture", "test-author")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a custom meta.json with MaxDepth=2
+	metaContent := `{
+		"title": "Test Proof",
+		"conjecture": "Test conjecture",
+		"lock_timeout": 300000000000,
+		"max_depth": 2,
+		"max_children": 10,
+		"auto_correct_threshold": 0.8,
+		"version": "1.0",
+		"created": "2024-01-01T00:00:00Z"
+	}`
+	metaPath := tmpDir + "/meta.json"
+	err = os.WriteFile(metaPath, []byte(metaContent), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim root
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootID, _ := types.Parse("1")
+	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create 1.1 (depth 2) - should succeed (at MaxDepth)
+	cmd := newRefineTestCmd()
+	_, err = executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Level 2",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("expected success at MaxDepth, got: %v", err)
+	}
+
+	// Claim 1.1 and try to create 1.1.1 (depth 3) - should FAIL
+	id11, _ := types.Parse("1.1")
+	err = svc.ClaimNode(id11, "test-agent", time.Hour)
+	if err != nil {
+		t.Fatalf("failed to claim 1.1: %v", err)
+	}
+
+	cmd2 := newRefineTestCmd()
+	_, err = executeCommand(cmd2, "refine", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Level 3 - should fail",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error when exceeding MaxDepth, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "exceeds MaxDepth") && !strings.Contains(errStr, "depth 3") {
+		t.Errorf("expected error about MaxDepth exceeded, got: %q", errStr)
+	}
+	if !strings.Contains(errStr, "add breadth instead") {
+		t.Errorf("expected error to suggest adding breadth, got: %q", errStr)
+	}
+}
+
+func TestRefineCommand_AllowsAtMaxDepth(t *testing.T) {
+	// Create a proof with MaxDepth=3
+	tmpDir, err := os.MkdirTemp("", "af-refine-atmaxdepth-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Initialize proof
+	err = service.Init(tmpDir, "Test conjecture", "test-author")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a custom meta.json with MaxDepth=3
+	metaContent := `{
+		"title": "Test Proof",
+		"conjecture": "Test conjecture",
+		"lock_timeout": 300000000000,
+		"max_depth": 3,
+		"max_children": 10,
+		"auto_correct_threshold": 0.8,
+		"version": "1.0",
+		"created": "2024-01-01T00:00:00Z"
+	}`
+	metaPath := tmpDir + "/meta.json"
+	err = os.WriteFile(metaPath, []byte(metaContent), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim root
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootID, _ := types.Parse("1")
+	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create 1.1 (depth 2)
+	cmd := newRefineTestCmd()
+	_, err = executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "Level 2",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create 1.1: %v", err)
+	}
+
+	// Claim 1.1 and create 1.1.1 (depth 3) - should succeed (at MaxDepth)
+	id11, _ := types.Parse("1.1")
+	err = svc.ClaimNode(id11, "test-agent", time.Hour)
+	if err != nil {
+		t.Fatalf("failed to claim 1.1: %v", err)
+	}
+
+	cmd2 := newRefineTestCmd()
+	output, err := executeCommand(cmd2, "refine", "1.1",
+		"--owner", "test-agent",
+		"--statement", "Level 3 - should succeed",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected success at MaxDepth, got: %v", err)
+	}
+
+	// Should successfully create 1.1.1
+	if !strings.Contains(output, "1.1.1") {
+		t.Errorf("expected output to contain '1.1.1', got: %q", output)
+	}
+}
+
+// ===========================================================================
+// Issue 4 (vibefeld-cunz): Tests for --sibling flag
+// ===========================================================================
+
+func TestRefineCommand_SiblingFlag_CreatesAtSameLevel(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Create 1.1 first
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "First child",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create 1.1: %v", err)
+	}
+
+	// Now use --sibling on 1.1 to create 1.2 (sibling of 1.1)
+	cmd2 := newRefineTestCmd()
+	output, err := executeCommand(cmd2, "refine", "1.1",
+		"--sibling",
+		"--owner", "test-agent",
+		"--statement", "Sibling of 1.1",
+		"--dir", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error with --sibling, got: %v", err)
+	}
+
+	// Should create 1.2, not 1.1.1
+	if !strings.Contains(output, "1.2") {
+		t.Errorf("expected sibling at 1.2, got: %q", output)
+	}
+	if strings.Contains(output, "1.1.1") {
+		t.Errorf("expected sibling (1.2), not child (1.1.1), got: %q", output)
+	}
+
+	// Verify in state
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	siblingID, _ := types.Parse("1.2")
+	sibling := st.GetNode(siblingID)
+	if sibling == nil {
+		t.Error("expected sibling node 1.2 to exist")
+	}
+	if sibling != nil && sibling.Statement != "Sibling of 1.1" {
+		t.Errorf("expected statement 'Sibling of 1.1', got %q", sibling.Statement)
+	}
+}
+
+func TestRefineCommand_SiblingFlag_ErrorOnRoot(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Try to use --sibling on root node
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--sibling",
+		"--owner", "test-agent",
+		"--statement", "Cannot be sibling of root",
+		"--dir", tmpDir,
+	)
+
+	if err == nil {
+		t.Fatal("expected error when using --sibling on root, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "root") && !strings.Contains(errStr, "sibling") {
+		t.Errorf("expected error about root having no sibling, got: %q", errStr)
+	}
+}
+
+func TestRefineCommand_SiblingFlag_ShortForm(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Create 1.1 first
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"--statement", "First child",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("failed to create 1.1: %v", err)
+	}
+
+	// Use short form -b for --sibling
+	cmd2 := newRefineTestCmd()
+	output, err := executeCommand(cmd2, "refine", "1.1",
+		"-b",
+		"-o", "test-agent",
+		"-s", "Sibling via short flag",
+		"-d", tmpDir,
+	)
+
+	if err != nil {
+		t.Fatalf("expected no error with -b flag, got: %v", err)
+	}
+
+	// Should create 1.2
+	if !strings.Contains(output, "1.2") {
+		t.Errorf("expected sibling at 1.2 with -b flag, got: %q", output)
+	}
+}
+
+func TestRefineCommand_SiblingFlag_ShowsInHelp(t *testing.T) {
+	cmd := newRefineTestCmd()
+	output, err := executeCommand(cmd, "refine", "--help")
+
+	if err != nil {
+		t.Fatalf("expected no error for help, got: %v", err)
+	}
+
+	// Help should show the --sibling flag
+	if !strings.Contains(output, "--sibling") {
+		t.Errorf("expected help to show --sibling flag, got: %q", output)
+	}
+	if !strings.Contains(output, "-b") {
+		t.Errorf("expected help to show -b short flag, got: %q", output)
+	}
+}

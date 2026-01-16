@@ -32,6 +32,7 @@ func newRefineCmd() *cobra.Command {
 	var childrenJSON string
 	var depends string
 	var requiresValidated string
+	var sibling bool
 
 	cmd := &cobra.Command{
 		Use:   "refine <parent-id> [statement]...",
@@ -68,7 +69,7 @@ Examples:
 			if len(args) > 1 {
 				positionalStatements = args[1:]
 			}
-			return runRefine(cmd, args[0], owner, statement, nodeType, inference, dir, format, childrenJSON, depends, requiresValidated, positionalStatements)
+			return runRefine(cmd, args[0], owner, statement, nodeType, inference, dir, format, childrenJSON, depends, requiresValidated, positionalStatements, sibling)
 		},
 	}
 
@@ -86,11 +87,12 @@ Examples:
 	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of child specifications (mutually exclusive with --statement)")
 	cmd.Flags().StringVar(&depends, "depends", "", "Comma-separated list of node IDs this node depends on (e.g., 1.1,1.2)")
 	cmd.Flags().StringVar(&requiresValidated, "requires-validated", "", "Comma-separated list of node IDs that must be validated before this node can be accepted (e.g., 1.1,1.2,1.3,1.4)")
+	cmd.Flags().BoolVarP(&sibling, "sibling", "b", false, "Add sibling to specified node instead of child (creates at parent level)")
 
 	return cmd
 }
 
-func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends, requiresValidated string, positionalStatements []string) error {
+func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends, requiresValidated string, positionalStatements []string, sibling bool) error {
 	examples := render.GetExamples("af refine")
 
 	// Validate owner is not empty
@@ -125,10 +127,10 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 		return render.MissingFlagError("af refine", "statement", examples)
 	}
 
-	// Parse parent ID
-	parentID, err := types.Parse(parentIDStr)
+	// Parse node ID
+	nodeID, err := types.Parse(nodeIDStr)
 	if err != nil {
-		return render.InvalidNodeIDError("af refine", parentIDStr, examples)
+		return render.InvalidNodeIDError("af refine", nodeIDStr, examples)
 	}
 
 	// Create service
@@ -148,9 +150,29 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 		return fmt.Errorf("failed to load state: %v", err)
 	}
 
-	// Check if parent exists
-	if st.GetNode(parentID) == nil {
-		return fmt.Errorf("parent node %q does not exist", parentIDStr)
+	// Check if node exists
+	if st.GetNode(nodeID) == nil {
+		return fmt.Errorf("node %q does not exist", nodeIDStr)
+	}
+
+	// Handle --sibling flag: convert node ID to parent ID
+	var parentID types.NodeID
+	var parentIDStr string
+	if sibling {
+		// Cannot add sibling to root node
+		if nodeID.IsRoot() {
+			return fmt.Errorf("cannot add sibling to root node (root has no parent)")
+		}
+		// Get parent of specified node - that's where we'll add the sibling
+		var hasParent bool
+		parentID, hasParent = nodeID.Parent()
+		if !hasParent {
+			return fmt.Errorf("cannot add sibling: node %s has no parent", nodeIDStr)
+		}
+		parentIDStr = parentID.String()
+	} else {
+		parentID = nodeID
+		parentIDStr = nodeIDStr
 	}
 
 	// Handle multi-child mode with --children flag
@@ -241,6 +263,19 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 		return fmt.Errorf("failed to generate child ID: %v", err)
 	}
 
+	// Check MaxDepth config before creating node (Issue 3: vibefeld-1r6h)
+	cfg := svc.Config()
+	childDepth := childID.Depth()
+	if childDepth > cfg.MaxDepth {
+		return fmt.Errorf("depth %d exceeds MaxDepth %d; add breadth instead", childDepth, cfg.MaxDepth)
+	}
+
+	// Warn about deep nodes (Issue 2: vibefeld-80uy)
+	// Warn when creating a node at depth > 3
+	if childDepth > 3 {
+		cmd.Printf("Warning: Creating node at depth %d. Consider adding siblings to parent instead.\n\n", childDepth)
+	}
+
 	// Call the appropriate refine method based on dependencies
 	if len(dependencies) > 0 || len(validationDeps) > 0 {
 		err = svc.RefineNodeWithAllDeps(parentID, owner, childID, nodeType, statement, inferenceType, dependencies, validationDeps)
@@ -307,8 +342,18 @@ func runRefine(cmd *cobra.Command, parentIDStr, owner, statement, nodeTypeStr, i
 			cmd.Printf("  Requires validated: %s\n", strings.Join(valDepStrs, ", "))
 		}
 		cmd.Println("\nNext steps:")
-		cmd.Printf("  af refine %s    - Add more children to this node\n", childID.String())
-		cmd.Printf("  af status       - View proof status\n")
+		// Issue 1 (vibefeld-yu7j): Show breadth-first option prominently
+		// Suggest adding sibling first, then child (depth-first)
+		if siblingParentID, hasSiblingParent := childID.Parent(); hasSiblingParent {
+			cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", childID.String())
+			cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", childID.String())
+			// Show the parent ID explicitly in help text
+			_ = siblingParentID // parent where siblings would be added
+		} else {
+			// Root node case - can only go deeper
+			cmd.Printf("  af refine %s -s ...           - Add child\n", childID.String())
+		}
+		cmd.Printf("  af status                     - View proof status\n")
 	}
 
 	return nil
@@ -425,9 +470,17 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 		}
 		cmd.Println("\nNext steps:")
 		if len(createdChildren) > 0 {
-			cmd.Printf("  af refine %s    - Add children to the first new node\n", createdChildren[0].ID)
+			firstChildIDStr := createdChildren[0].ID
+			firstChildID, _ := types.Parse(firstChildIDStr)
+			// Issue 1 (vibefeld-yu7j): Show breadth-first option prominently
+			if _, hasSiblingParent := firstChildID.Parent(); hasSiblingParent {
+				cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", firstChildIDStr)
+				cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", firstChildIDStr)
+			} else {
+				cmd.Printf("  af refine %s -s ...           - Add child\n", firstChildIDStr)
+			}
 		}
-		cmd.Printf("  af status       - View proof status\n")
+		cmd.Printf("  af status                     - View proof status\n")
 	}
 
 	return nil
@@ -521,9 +574,17 @@ func runRefinePositional(cmd *cobra.Command, parentID types.NodeID, parentIDStr,
 		}
 		cmd.Println("\nNext steps:")
 		if len(createdChildren) > 0 {
-			cmd.Printf("  af refine %s    - Add children to the first new node\n", createdChildren[0].ID)
+			firstChildIDStr := createdChildren[0].ID
+			firstChildID, _ := types.Parse(firstChildIDStr)
+			// Issue 1 (vibefeld-yu7j): Show breadth-first option prominently
+			if _, hasSiblingParent := firstChildID.Parent(); hasSiblingParent {
+				cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", firstChildIDStr)
+				cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", firstChildIDStr)
+			} else {
+				cmd.Printf("  af refine %s -s ...           - Add child\n", firstChildIDStr)
+			}
 		}
-		cmd.Printf("  af status       - View proof status\n")
+		cmd.Printf("  af status                     - View proof status\n")
 	}
 
 	return nil
