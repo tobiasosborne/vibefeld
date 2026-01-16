@@ -2,7 +2,6 @@
 package fs
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -43,36 +42,10 @@ func WriteAssumption(basePath string, a *node.Assumption) error {
 		return errors.New("basePath is a file, not a directory")
 	}
 
-	// Create assumptions directory if it doesn't exist
-	assumpDir := filepath.Join(basePath, assumptionsDir)
-	if err := os.MkdirAll(assumpDir, 0755); err != nil {
-		return err
-	}
+	// Compute final path
+	filePath := filepath.Join(basePath, assumptionsDir, a.ID+".json")
 
-	// Marshal assumption to JSON with indentation for readability
-	data, err := json.MarshalIndent(a, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	// Write to file atomically (write to temp then rename)
-	filePath := filepath.Join(assumpDir, a.ID+".json")
-	tempPath := filePath + ".tmp"
-
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tempPath, filePath); err != nil {
-		// Clean up temp file on failure. Ignore error from Remove since:
-		// 1. The primary error (rename failure) is more important to return
-		// 2. The temp file may have already been cleaned up by another process
-		// 3. Leftover .tmp files are harmless and will be overwritten on next write
-		_ = os.Remove(tempPath)
-		return err
-	}
-
-	return nil
+	return WriteJSON(filePath, a)
 }
 
 // ReadAssumption reads an assumption from the assumptions/ subdirectory.
@@ -109,20 +82,17 @@ func ReadAssumption(basePath string, id string) (*node.Assumption, error) {
 		return nil, os.ErrNotExist
 	}
 
-	// Read file
-	data, err := os.ReadFile(filePath)
+	// Check for empty file before reading (preserve existing behavior)
+	info, err := os.Stat(filePath)
 	if err != nil {
 		return nil, err
 	}
-
-	// Handle empty file
-	if len(data) == 0 {
+	if info.Size() == 0 {
 		return nil, errors.New("assumption file is empty")
 	}
 
-	// Unmarshal JSON
 	var a node.Assumption
-	if err := json.Unmarshal(data, &a); err != nil {
+	if err := ReadJSON(filePath, &a); err != nil {
 		return nil, err
 	}
 

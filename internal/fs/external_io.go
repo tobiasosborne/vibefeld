@@ -2,7 +2,6 @@
 package fs
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -31,38 +30,10 @@ func WriteExternal(basePath string, ext *node.External) error {
 		return errors.New("external ID cannot be empty")
 	}
 
-	// Ensure externals directory exists
-	externalsDir := filepath.Join(basePath, externalsDirName)
-	if err := os.MkdirAll(externalsDir, 0755); err != nil {
-		return err
-	}
-
-	// Marshal external to JSON with indentation for readability
-	data, err := json.MarshalIndent(ext, "", "  ")
-	if err != nil {
-		return err
-	}
-
 	// Compute final path
-	extPath := filepath.Join(externalsDir, ext.ID+".json")
+	extPath := filepath.Join(basePath, externalsDirName, ext.ID+".json")
 
-	// Write to temp file first for atomic operation
-	tempPath := extPath + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
-	}
-
-	// Rename temp to final (atomic on POSIX)
-	if err := os.Rename(tempPath, extPath); err != nil {
-		// Clean up temp file on failure. Ignore error from Remove since:
-		// 1. The primary error (rename failure) is more important to return
-		// 2. The temp file may have already been cleaned up by another process
-		// 3. Leftover .tmp files are harmless and will be overwritten on next write
-		_ = os.Remove(tempPath)
-		return err
-	}
-
-	return nil
+	return WriteJSON(extPath, ext)
 }
 
 // ReadExternal reads an external reference from the externals/ subdirectory.
@@ -94,15 +65,8 @@ func ReadExternal(basePath string, id string) (*node.External, error) {
 		return nil, os.ErrNotExist
 	}
 
-	// Read file
-	data, err := os.ReadFile(extPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal JSON
 	var ext node.External
-	if err := json.Unmarshal(data, &ext); err != nil {
+	if err := ReadJSON(extPath, &ext); err != nil {
 		return nil, err
 	}
 

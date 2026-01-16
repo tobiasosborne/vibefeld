@@ -2,7 +2,6 @@
 package fs
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -35,38 +34,10 @@ func WritePendingDef(basePath string, nodeID types.NodeID, pd *node.PendingDef) 
 		return errors.New("pending def cannot be nil")
 	}
 
-	// Ensure pending_defs directory exists
-	pendingDefsDir := filepath.Join(basePath, pendingDefsDirName)
-	if err := os.MkdirAll(pendingDefsDir, 0755); err != nil {
-		return err
-	}
-
-	// Marshal pending def to JSON with indentation for readability
-	data, err := json.MarshalIndent(pd, "", "  ")
-	if err != nil {
-		return err
-	}
-
 	// Compute final path
-	defPath := filepath.Join(pendingDefsDir, nodeID.String()+".json")
+	defPath := filepath.Join(basePath, pendingDefsDirName, nodeID.String()+".json")
 
-	// Write to temp file first for atomic operation
-	tempPath := defPath + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
-	}
-
-	// Rename temp to final (atomic on POSIX)
-	if err := os.Rename(tempPath, defPath); err != nil {
-		// Clean up temp file on failure. Ignore error from Remove since:
-		// 1. The primary error (rename failure) is more important to return
-		// 2. The temp file may have already been cleaned up by another process
-		// 3. Leftover .tmp files are harmless and will be overwritten on next write
-		_ = os.Remove(tempPath)
-		return err
-	}
-
-	return nil
+	return WriteJSON(defPath, pd)
 }
 
 // ReadPendingDef reads a pending definition from the .af/pending_defs/ subdirectory.
@@ -83,18 +54,10 @@ func ReadPendingDef(basePath string, nodeID types.NodeID) (*node.PendingDef, err
 	}
 
 	// Build path
-	pendingDefsDir := filepath.Join(basePath, pendingDefsDirName)
-	defPath := filepath.Join(pendingDefsDir, nodeID.String()+".json")
+	defPath := filepath.Join(basePath, pendingDefsDirName, nodeID.String()+".json")
 
-	// Read file
-	data, err := os.ReadFile(defPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal JSON
 	var pd node.PendingDef
-	if err := json.Unmarshal(data, &pd); err != nil {
+	if err := ReadJSON(defPath, &pd); err != nil {
 		return nil, err
 	}
 

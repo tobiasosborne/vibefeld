@@ -2,9 +2,7 @@
 package fs
 
 import (
-	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -42,32 +40,10 @@ func WriteMeta(basePath string, meta *Meta) error {
 		return errors.New("created_at cannot be zero")
 	}
 
-	// Marshal meta to JSON with indentation for readability
-	data, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return err
-	}
-
 	// Compute final path
 	metaPath := filepath.Join(basePath, metaFileName)
 
-	// Write to temp file first for atomic operation
-	tempPath := metaPath + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return err
-	}
-
-	// Rename temp to final (atomic on POSIX)
-	if err := os.Rename(tempPath, metaPath); err != nil {
-		// Clean up temp file on failure. Ignore error from Remove since:
-		// 1. The primary error (rename failure) is more important to return
-		// 2. The temp file may have already been cleaned up by another process
-		// 3. Leftover .tmp files are harmless and will be overwritten on next write
-		_ = os.Remove(tempPath)
-		return err
-	}
-
-	return nil
+	return WriteJSON(metaPath, meta)
 }
 
 // ReadMeta reads metadata from meta.json in the proof directory.
@@ -81,15 +57,8 @@ func ReadMeta(basePath string) (*Meta, error) {
 	// Build path
 	metaPath := filepath.Join(basePath, metaFileName)
 
-	// Read file
-	data, err := os.ReadFile(metaPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal JSON
 	var meta Meta
-	if err := json.Unmarshal(data, &meta); err != nil {
+	if err := ReadJSON(metaPath, &meta); err != nil {
 		return nil, err
 	}
 
