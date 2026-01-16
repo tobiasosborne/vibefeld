@@ -7,10 +7,10 @@
 [![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://github.com/tobias/vibefeld)
 
 ```
-         _  _         __       _    _
- __ __ _(_)| |__  ___/ _| ___ | |__| |
- \ V  V /| || '_ \/ -_)  _/ -_)| / _` |
-  \_/\_/ |_||_.__/\___|_| \___||_\__,_|
+        _  _         __       _    _
+ __   _(_)| |__  ___/ _| ___ | |__| |
+ \ \ / /| || '_ \/ -_)  _/ -_)| / _` |
+  \_V_/ |_||_.__/\___|_| \___||_\__,_|
 
   Provers convince. Verifiers attack.
 ```
