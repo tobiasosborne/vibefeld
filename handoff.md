@@ -2,9 +2,9 @@
 
 ## What Was Accomplished This Session
 
-### Session 55 Summary: Implemented 6 Adversarial Workflow Fixes
+### Session 55 Summary: Implemented 10 Adversarial Workflow Fixes (2 batches)
 
-Spawned 4 parallel subagents to implement independent issues from the 22-step fix plan:
+**Batch 1:** 4 parallel subagents implementing core fixes
 
 | Issue | Description | Files |
 |-------|-------------|-------|
@@ -15,87 +15,80 @@ Spawned 4 parallel subagents to implement independent issues from the 22-step fi
 | `vibefeld-kzci` | Add HasBlockingChallenges helper | `internal/state/state.go` |
 | `vibefeld-3o9p` | Update prover job detection to use severity | `internal/jobs/prover.go` |
 
-### Implementation Details
+**Batch 2:** 4 parallel subagents implementing CLI enhancements
 
-1. **AcceptNode Blocking Checks (3 issues)** - Added checks at start of AcceptNode, AcceptNodeWithNote, AcceptNodeBulk that call `GetBlockingChallengesForNode()` and return `ErrBlockingChallenges` if any critical/major challenges exist. 10 tests added.
-
-2. **JSON Verification Checklist** - Added `RenderVerificationChecklistJSON()` returning structured JSON with node_id, items array (6 checklist categories), dependencies array with status, and challenge_command string. 9 tests added.
-
-3. **HasBlockingChallenges Helper** - Simple boolean wrapper around `GetBlockingChallengesForNode()`. 5 tests added.
-
-4. **Prover Job Severity** - Changed prover job detection to use `hasBlockingChallenges()` instead of `hasOpenChallenges()`. Only Critical/Major challenges now create prover jobs. 2 tests added.
+| Issue | Description | Files |
+|-------|-------------|-------|
+| `vibefeld-o152` | Show blocking challenges on accept failure | `cmd/af/accept.go` |
+| `vibefeld-4f5q` | Display verification checklist when verifier claims | `cmd/af/claim.go` |
+| `vibefeld-uv2f` | Add --checklist flag to af get command | `cmd/af/get.go` |
+| `vibefeld-msus` | Add challenge severity counts to jobs output | `cmd/af/jobs.go` |
 
 ### Tests Added
-- `internal/service/proof_test.go`: 10 new tests
-- `internal/render/verification_checklist_json_test.go`: 9 new tests (new file)
-- `internal/state/state_test.go`: 5 new tests
-- `internal/jobs/prover_test.go`: 2 new tests
+- Batch 1: 26 tests (service: 10, render: 9, state: 5, jobs: 2)
+- Batch 2: 24 tests (accept: 4, claim: 5, get: 11, jobs: 4)
 
-**Total: 26 new tests, all pass**
+**Total: 50 new tests, all pass**
 
 ## Current State
 
 ### Issue Statistics
 - **Total:** 391
-- **Open:** 12
-- **Closed:** 379 (6 closed this session)
+- **Open:** 8
+- **Closed:** 383 (10 closed this session)
 - **Blocked:** 2
-- **Ready to Work:** 10
+- **Ready to Work:** 6
 
 ### Test Status
 All tests pass. Build succeeds.
 
-### Newly Unblocked Issues (by closing the 6 above)
+### Remaining Work (All P1-P2)
 
-| Issue | Description | Priority |
-|-------|-------------|----------|
-| `vibefeld-o152` | Step 1.5: Update accept CLI to show blocking challenges on failure | P0 |
-| `vibefeld-4f5q` | Step 2.3: Show checklist when verifier claims a node | P0 |
-| `vibefeld-uv2f` | Step 2.4: Add --checklist flag to af show command | P0 |
-| `vibefeld-msus` | Step 4.4: Add challenge severity to jobs output | P1 |
+| Issue | Description | Priority | File |
+|-------|-------------|----------|------|
+| `vibefeld-yu7j` | Modify refine Next steps to show breadth first | P1 | cmd/af/refine.go |
+| `vibefeld-80uy` | Add depth warning when creating deep nodes | P1 | cmd/af/refine.go |
+| `vibefeld-1r6h` | Enforce MaxDepth config in refine | P1 | cmd/af/refine.go |
+| `vibefeld-cunz` | Add --sibling flag to refine command | P1 | cmd/af/refine.go |
+| `vibefeld-qhn9` | Track verifier challenge history per claim session | P2 | internal/state/ |
+| `vibefeld-ipxq` | Add verification summary to accept output | P2 | cmd/af/accept.go |
+
+**Note**: Issues 1-4 all modify `cmd/af/refine.go` - must be done sequentially or by one agent
 
 ## Next Steps
 
-### Immediate (P0) - Phase 1 & 2 Completion
-1. `vibefeld-o152` - Update accept CLI to show blocking challenges on failure (cmd/af/accept.go)
-2. `vibefeld-4f5q` - Show checklist when verifier claims node (cmd/af/claim.go)
-3. `vibefeld-uv2f` - Add --checklist flag to af show (cmd/af/show.go)
+### Immediate (P1) - Phase 3 (refine.go changes)
+These 4 issues all modify the same file - assign to ONE agent sequentially:
+1. `vibefeld-yu7j` - Modify refine next steps
+2. `vibefeld-80uy` - Add depth warning
+3. `vibefeld-1r6h` - Enforce MaxDepth
+4. `vibefeld-cunz` - Add --sibling flag
 
-### Then (P1) - Phases 3 & 4
-4. `vibefeld-yu7j` - Modify refine next steps (cmd/af/refine.go)
-5. `vibefeld-80uy` - Add depth warning (cmd/af/refine.go)
-6. `vibefeld-1r6h` - Enforce MaxDepth (cmd/af/refine.go)
-7. `vibefeld-cunz` - Add --sibling flag (cmd/af/refine.go)
-8. `vibefeld-msus` - Add challenge severity to jobs output (cmd/af/jobs.go)
-
-**Note**: Issues 4-7 all modify `cmd/af/refine.go` - run sequentially or carefully coordinate
-
-### Later (P2) - Phase 5
-9. `vibefeld-qhn9` - Track verifier challenge history per claim session
-10. `vibefeld-ipxq` - Add verification summary to accept output
+### Then (P2) - Phase 5
+5. `vibefeld-qhn9` - Track verifier challenge history (internal/state/)
+6. `vibefeld-ipxq` - Add verification summary to accept (cmd/af/accept.go)
 
 ## Key Files Changed This Session
 
 | File | Change |
 |------|--------|
-| `internal/service/proof.go` | Added blocking challenge checks to Accept methods |
-| `internal/service/proof_test.go` | 10 new tests |
+| `internal/service/proof.go` | Blocking challenge checks for Accept methods |
 | `internal/render/verification_checklist.go` | Added JSON output function |
-| `internal/render/verification_checklist_json_test.go` | NEW - 9 tests |
 | `internal/state/state.go` | Added `HasBlockingChallenges` method |
-| `internal/state/state_test.go` | 5 new tests |
 | `internal/jobs/prover.go` | Changed to use `hasBlockingChallenges()` |
-| `internal/jobs/prover_test.go` | 2 new tests |
+| `cmd/af/accept.go` | Show blocking challenges on failure |
+| `cmd/af/claim.go` | Show checklist for verifier claims |
+| `cmd/af/get.go` | Added --checklist flag |
+| `cmd/af/jobs.go` | Added severity counts to output |
 
 ## Blockers/Decisions Needed
 
-None - next issues are unblocked and ready.
+None - remaining issues are unblocked and ready.
 
 ## Session History
 
-**Session 55:** Implemented 6 adversarial workflow fixes (4 parallel subagents) - second batch of 22-step plan
+**Session 55:** Implemented 10 adversarial workflow fixes (2 batches, 8 parallel subagents) - P0 complete
 **Session 54:** Implemented 4 adversarial workflow fixes (4 parallel subagents) - first batch of 22-step plan
 **Session 53:** Deep analysis of adversarial workflow failure, created 22-step fix plan with dependencies
 **Session 52:** Implemented 9 features/fixes (3 batches, 7 parallel subagents) - BACKLOG CLEARED
 **Session 51:** Implemented 4 features (4 parallel subagents) - render viewmodels, lock docs, fs helpers, CONTRIBUTING.md
-**Session 50:** Implemented 4 features (4 parallel subagents) - fuzzy_flag, blocking, version, README
