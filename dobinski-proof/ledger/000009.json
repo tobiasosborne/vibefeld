@@ -1,1 +1,0 @@
-{"type":"def_added","timestamp":"2026-01-14T13:41:59Z","definition":{"id":"241b3c5183567d33","name":"absolute-convergence","definition":"A series sum_{n} a_n converges absolutely iff sum_{n} |a_n| converges. Absolutely convergent series can be rearranged without changing the sum.","created":"2026-01-14T13:41:59Z"}}

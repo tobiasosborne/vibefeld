@@ -1,8 +1,0 @@
-{
-  "id": "7a151906b0ce8a4a",
-  "name": "dominated-convergence",
-  "source": "Dominated Convergence Theorem: If |f_n| \u003c= g with g integrable and f_n -\u003e f pointwise, then integral of f_n -\u003e integral of f",
-  "content_hash": "74e2e3ceb9ae61064adad480b03ed4fbba3179fc30cf9ecee4bfaf5cdcfaf489",
-  "created": "2026-01-14T13:42:53Z",
-  "notes": ""
-}

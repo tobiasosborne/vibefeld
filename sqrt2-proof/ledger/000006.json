@@ -1,1 +1,0 @@
-{"type":"def_added","timestamp":"2026-01-14T12:55:08Z","definition":{"id":"f59c2a1babe5c5bb","name":"even","definition":"An integer n is even iff there exists an integer k such that n = 2k","created":"2026-01-14T12:55:08Z"}}

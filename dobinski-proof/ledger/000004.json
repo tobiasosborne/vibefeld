@@ -1,1 +1,0 @@
-{"type":"def_added","timestamp":"2026-01-14T13:41:53Z","definition":{"id":"c75d09275d917124","name":"Bell-number","definition":"B_n is the number of partitions of an n-element set. B_0 = 1 by convention (the empty set has exactly one partition: the empty collection).","created":"2026-01-14T13:41:53Z"}}

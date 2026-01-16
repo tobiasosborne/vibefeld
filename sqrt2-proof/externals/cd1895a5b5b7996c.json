@@ -1,8 +1,0 @@
-{
-  "id": "cd1895a5b5b7996c",
-  "name": "even-square-lemma",
-  "source": "For any integer n: n² even implies n even (contrapositive: n odd implies n² odd)",
-  "content_hash": "41d9d3f0c7e698cfc42ddd968575963a544ebee5624151cbdc701b5390f2ba06",
-  "created": "2026-01-14T12:55:35Z",
-  "notes": ""
-}

@@ -1,0 +1,1 @@
+{"type":"node_validated","timestamp":"2026-01-16T21:27:58.032460126Z","node_id":"1.4.5.5","note":"Verified: C(k,j)/k! = 1/(j!(k-j)!). Substituting m=k-j gives Σ_{k=j}^{∞} 1/(j!(k-j)!) = (1/j!)·Σ_{m=0}^{∞} 1/m! = e/j!. This is a standard identity connecting binomial coefficients to the exponential series."}

@@ -1,0 +1,1 @@
+{"type":"node_validated","timestamp":"2026-01-16T21:29:55.350797558Z","node_id":"1.4","note":"Children 1.4.1-1.4.3 establish sum exchange and inner sum extension. Child 1.4.5 completes the outer sum handling via the falling factorial approach."}

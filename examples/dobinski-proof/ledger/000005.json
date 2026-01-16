@@ -1,0 +1,1 @@
+{"type":"def_added","timestamp":"2026-01-16T21:09:39.885294184Z","definition":{"id":"c9ee4a33b5122a9d","name":"Stirling_second","definition":"S(n,k) is the Stirling number of the second kind, counting the number of ways to partition a set of n elements into exactly k non-empty subsets","created":"2026-01-16T21:09:39.884744517Z"}}

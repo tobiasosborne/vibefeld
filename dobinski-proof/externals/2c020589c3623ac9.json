@@ -1,8 +1,0 @@
-{
-  "id": "2c020589c3623ac9",
-  "name": "exp-series",
-  "source": "e^x = sum_{k\u003e=0} x^k/k! converges absolutely for all x in R",
-  "content_hash": "bf8b3408c63d8d578346c78740a83a7bb9962a26eec7117117970933fcbdf9e0",
-  "created": "2026-01-14T13:42:56Z",
-  "notes": ""
-}

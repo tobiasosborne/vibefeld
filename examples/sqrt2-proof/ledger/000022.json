@@ -1,0 +1,1 @@
+{"type":"node_validated","timestamp":"2026-01-16T20:56:33.079870507Z","node_id":"1.5","note":"Valid algebraic substitution: a=2k into a^2=2b^2 gives 4k^2=2b^2, dividing by 2 yields b^2=2k^2"}

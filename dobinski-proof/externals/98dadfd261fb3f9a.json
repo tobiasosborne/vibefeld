@@ -1,8 +1,0 @@
-{
-  "id": "98dadfd261fb3f9a",
-  "name": "stirling-recurrence",
-  "source": "S(n,k) = k*S(n-1,k) + S(n-1,k-1) with S(0,0)=1, S(n,0)=0 for n\u003e0",
-  "content_hash": "ebfa68afb91f9334b949f6a811740d2ff8e05bab2129cbb1d7f1d41ba5653de0",
-  "created": "2026-01-14T13:42:57Z",
-  "notes": ""
-}

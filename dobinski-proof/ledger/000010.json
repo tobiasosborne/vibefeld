@@ -1,1 +1,0 @@
-{"type":"def_added","timestamp":"2026-01-14T13:42:01Z","definition":{"id":"7dfa7ca87a923433","name":"moment","definition":"The n-th moment of a random variable X is E[X^n] = sum_k k^n P(X=k) for discrete X.","created":"2026-01-14T13:42:01Z"}}

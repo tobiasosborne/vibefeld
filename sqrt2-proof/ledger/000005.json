@@ -1,1 +1,0 @@
-{"type":"def_added","timestamp":"2026-01-14T12:55:07Z","definition":{"id":"2732b781a9ce4725","name":"coprime","definition":"Integers p, q are coprime (gcd(p,q) = 1) iff their only common positive divisor is 1","created":"2026-01-14T12:55:07Z"}}

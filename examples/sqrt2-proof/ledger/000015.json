@@ -1,0 +1,1 @@
+{"type":"node_validated","timestamp":"2026-01-16T20:56:07.193054335Z","node_id":"1.2","note":"Valid algebraic manipulation: squaring sqrt(2)=a/b gives 2=a^2/b^2, then multiplying by b^2 yields a^2=2b^2"}

@@ -1,0 +1,1 @@
+{"type":"proof_initialized","timestamp":"2026-01-16T21:08:48.432077225Z","conjecture":"Dobinski's Formula: For all non-negative integers n, the Bell number B_n equals (1/e) * Σ_{k=0}^{∞} (k^n / k\\!), where B_n counts the number of partitions of a set with n elements","author":"Claude"}

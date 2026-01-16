@@ -1,8 +1,0 @@
-{
-  "id": "4e4a608439d2c6c7",
-  "name": "stirling-falling-factorial",
-  "source": "k^n = sum_{j=0}^{n} S(n,j) * k^{underline{j}} - the Stirling number expansion",
-  "content_hash": "231f3e4a5f2824f7fb4ccc7e3ed62b9cbe82b34b5aa803226b81923b2a13cb39",
-  "created": "2026-01-14T13:43:00Z",
-  "notes": ""
-}
