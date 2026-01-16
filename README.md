@@ -1,86 +1,271 @@
-# Vibefeld (af)
+# Vibefeld
 
-CLI for adversarial proof verification. Multiple AI agents work concurrently as adversarial provers and verifiers, refining natural-language mathematical proof steps until rigorous acceptance.
+**Adversarial proof verification for the AI age.**
+
+[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://github.com/tobias/vibefeld)
+
+```
+         _  _         __       _    _
+ __ __ _(_)| |__  ___/ _| ___ | |__| |
+ \ V  V /| || '_ \/ -_)  _/ -_)| / _` |
+  \_/\_/ |_||_.__/\___|_| \___||_\__,_|
+
+  Provers convince. Verifiers attack.
+```
+
+---
+
+## The Dance
+
+```
+PROVER claims:  "Since a^2 = 2b^2, a must be even"
+
+VERIFIER attacks:
+  [CRITICAL] "Why does a^2 being equal to 2b^2 imply a is even?
+              You assume without justification."
+
+PROVER refines:
+  1.3.1  "a^2 = 2b^2 means a^2 is divisible by 2"
+  1.3.2  "If a were odd, a = 2k+1, then a^2 = 4k^2+4k+1 (odd)"
+  1.3.3  "But a^2 = 2b^2 is even. Contradiction. So a is even."
+
+VERIFIER validates: [ACCEPTED]
+```
+
+This is **adversarial verification**: AI agents that *attack* proofs, not just check them.
+
+---
+
+## What is Vibefeld?
+
+Vibefeld (codename: `af`) is a command-line framework for constructing rigorous natural-language mathematical proofs through adversarial collaboration between AI agents.
+
+Unlike traditional proof assistants that rely on formal logic kernels, Vibefeld orchestrates multiple AI agents in an **adversarial dance**: provers construct arguments, verifiers attack weaknesses. Every claim must survive scrutiny. Every gap gets challenged. The result is a machine-auditable proof tree with full history preserved -- including rejected paths and resolved disputes.
+
+**What makes this different:**
+- **Adversarial by design** -- Verifiers are *incentivized* to find flaws, not rubber-stamp claims
+- **Natural language** -- Write mathematics as you think it, not in formal syntax
+- **Event-sourced truth** -- Every state change is recorded; the proof is its history
+- **Multi-agent ready** -- Spawn concurrent prover/verifier agents with filesystem-level isolation
+- **Self-documenting** -- Agents need no external documentation; the CLI tells them exactly what to do
+
+---
+
+## Key Features
+
+- **Adversarial Verification** -- Provers convince, verifiers attack. Role isolation prevents bias.
+- **Event-Sourced Ledger** -- Append-only history. Current state derived from events. Nothing lost.
+- **Hierarchical Proofs** -- Lamport-style structured proofs with automatic ID assignment (1, 1.1, 1.1.1, ...)
+- **Taint Tracking** -- Epistemic uncertainty propagates. Admitted nodes taint their dependents.
+- **Challenge System** -- Structured objections with severity levels (critical/major/minor/note)
+- **Definition Management** -- Request, add, and track mathematical definitions
+- **Scope Tracking** -- Local assumptions with proper discharge enforcement
+- **Filesystem Concurrency** -- POSIX atomics for multi-agent safety. No database required.
+
+---
 
 ## Quick Start
 
-### Install
+### Installation
 
 ```bash
-# Install directly
-go install github.com/tobias/vibefeld/cmd/af@latest
-
-# Or build from source
+# Build from source
 git clone https://github.com/tobias/vibefeld.git
-cd vibefeld
-go build ./cmd/af
+cd vibefeld && go build ./cmd/af
+
+# Or install directly
+go install github.com/tobias/vibefeld/cmd/af@latest
 ```
 
-### Initialize a Proof
+### Your First Proof
 
 ```bash
-# Start a new proof
-af init --claim "The sum of first n natural numbers is n(n+1)/2"
+# Initialize a proof
+af init --claim "The square root of 2 is irrational"
 
-# Check proof status
+# See what needs work
 af status
 
-# Claim work as a prover
-af claim 1 --role prover
+# Claim the root node as a prover
+af claim 1 --role prover --owner prover-001
 
-# Refine a node with sub-claims
-af refine 1 --children "Base case: n=1" "Inductive step"
+# Break it down into steps
+af refine 1 --statement "Assume sqrt(2) = a/b where a,b are coprime"
+af refine 1 --statement "Then 2 = a^2/b^2, so a^2 = 2b^2"
+af refine 1 --statement "Therefore a^2 is even, so a is even"
+# ... continue building the proof
 
-# Release a claim
+# Release the claim
 af release 1
 
-# Accept a node (as verifier)
-af accept 1
+# As a verifier, challenge weak steps
+af claim 1.3 --role verifier --owner verifier-001
+af challenge 1.3 --reason "Why does a^2 even imply a is even?" --target inference
+
+# Check progress
+af progress
 ```
 
-## Key Concepts
+For a complete walkthrough, run `af tutorial`.
 
-### Prover/Verifier Roles
+---
 
-- **Provers** construct and refine proof steps, convincing verifiers of correctness
-- **Verifiers** challenge claims and attack weak arguments; they control acceptance
-- No agent plays both roles simultaneously
+## How It Works
 
-### Node States
+```
+                     +------------------+
+                     |   ORCHESTRATOR   |
+                     |  (spawns agents) |
+                     +--------+---------+
+                              |
+              +---------------+---------------+
+              |                               |
+      +-------v-------+               +-------v-------+
+      |    PROVER     |               |   VERIFIER    |
+      |  (constructs) |               |   (attacks)   |
+      +-------+-------+               +-------+-------+
+              |                               |
+              |      af claim / refine        |
+              |      af challenge / accept    |
+              |                               |
+              +---------------+---------------+
+                              |
+                     +--------v--------+
+                     |     LEDGER      |
+                     | (append-only)   |
+                     | (event-sourced) |
+                     +-----------------+
+```
 
-Nodes progress through workflow and epistemic states:
+1. **Provers propose** -- Add child nodes that break down claims into justified steps
+2. **Verifiers challenge** -- Raise objections targeting specific aspects (inference, scope, gaps, ...)
+3. **Provers address** -- Refine nodes to answer challenges or admit defeat
+4. **Verifiers accept** -- When all challenges resolved and children validated, node becomes validated
+5. **Proof completes** -- When the root node reaches `validated` state
 
-- **Workflow**: `available`, `claimed`, `blocked`
-- **Epistemic**: `pending`, `validated`, `admitted`, `refuted`, `archived`
+The **ledger** records every event. State is always derived from history. Full audit trail preserved.
 
-### Adversarial Verification
+---
 
-The framework ensures rigorous proofs through adversarial interaction:
+## Node States
 
-1. Provers submit claims and refinements
-2. Verifiers challenge questionable steps
-3. Provers must resolve challenges or see nodes refuted
-4. Only verifier-accepted nodes become validated
+| Epistemic State | Meaning |
+|-----------------|---------|
+| `pending` | Awaiting proof or verification |
+| `validated` | Accepted by adversarial verifier |
+| `admitted` | Assumed without full proof (introduces taint) |
+| `refuted` | Proven false |
+| `archived` | Superseded or abandoned branch |
+
+| Taint State | Meaning |
+|-------------|---------|
+| `clean` | No epistemic uncertainty in ancestry |
+| `self_admitted` | This node was admitted |
+| `tainted` | Depends on admitted/tainted ancestor |
+| `unresolved` | Taint not yet computed |
+
+---
+
+## Example: Dobinski's Formula
+
+A real proof constructed with Vibefeld (24 nodes, 7 challenges raised and resolved):
+
+```
+af status --dir examples/dobinski-proof
+
+1 [validated/clean] Dobinski's Formula: B_n = (1/e) * Sum(k^n / k!)
+  1.1 [validated/clean] By definition, B_n = Sum S(n,k)
+    1.1.1 [validated/clean] Every partition has exactly k blocks for some k
+    1.1.2 [validated/clean] Partitions form disjoint union by block count
+    ...
+  1.2 [validated/clean] S(n,k) counts surjections / k!
+  1.3 [validated/clean] Substituting the explicit formula...
+  1.4 [validated/clean] Exchanging order of summation...
+    1.4.4 [archived/clean] (Flawed approach, abandoned after challenge)
+    1.4.5 [validated/clean] Extension is well-defined
+      1.4.5.3 [validated/clean] k^n in terms of Stirling numbers
+      ...
+  1.8 [validated/clean] QED
+```
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Tutorial](docs/tutorial.md) | Step-by-step guide to your first proof |
+| [CLI Reference](docs/cli-reference.md) | Complete command documentation |
+| [Architecture](docs/architecture.md) | System design and data model |
+| [PRD](docs/prd.md) | Full product requirements document |
+| [Contributing](CONTRIBUTING.md) | How to contribute |
+
+Or just run `af --help` -- the CLI is fully self-documenting.
+
+---
 
 ## Common Commands
 
 | Command | Description |
 |---------|-------------|
-| `af init` | Initialize a new proof with a root claim |
-| `af status` | Show current proof state and available work |
-| `af claim` | Claim a node to work on (as prover or verifier) |
-| `af refine` | Break a claimed node into sub-claims |
-| `af release` | Release a claimed node |
-| `af accept` | Accept a node as valid (verifier only) |
-| `af challenge` | Raise a challenge against a node |
-| `af resolve-challenge` | Respond to an open challenge |
+| `af init` | Initialize a new proof workspace |
+| `af status` | Show proof tree with states and taint |
+| `af jobs` | List available prover/verifier work |
+| `af claim` | Claim a node for work |
+| `af refine` | Add child nodes to develop proof |
+| `af challenge` | Raise objection against a node |
+| `af accept` | Validate a node (verifier) |
+| `af progress` | Show completion metrics |
+| `af log` | View event history |
 
-Run `af --help` or `af <command> --help` for detailed usage.
+---
+
+## Project Status
+
+Vibefeld is under active development.
+
+**Working:**
+- Core proof workflow (init, refine, challenge, accept)
+- Event-sourced ledger with replay verification
+- Multi-agent concurrency via filesystem locks
+- Taint propagation
+- Scope tracking for local assumptions
+- Export to Markdown/LaTeX/PDF
+
+**Roadmap:**
+- [ ] Web UI for proof visualization
+- [ ] Export to Lean/Coq/Isabelle
+- [ ] Reference checker agent integration
+- [ ] Distributed storage backend
+- [ ] Schema extension protocol
+
+---
+
+## Philosophy
+
+> "The first principle is that you must not fool yourself -- and you are the easiest person to fool." -- Richard Feynman
+
+Traditional proof assistants trust the human to find their own errors. Vibefeld assumes you will miss things. That is why it deploys adversaries.
+
+Every proof in Vibefeld is a record of intellectual combat: claims made, challenges raised, weaknesses exposed, arguments refined. The final validated proof is not just correct -- it is *battle-tested*.
+
+---
 
 ## Requirements
 
 - Go 1.22+
+- POSIX-compliant filesystem (for atomic operations)
+
+---
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+<i>Provers convince. Verifiers attack. Truth emerges.</i>
+</p>

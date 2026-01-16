@@ -2,200 +2,246 @@
 
 ## Project Overview
 
-AF (Adversarial Proof Framework) is a command-line tool for collaborative construction of natural-language mathematical proofs. Multiple AI agents work concurrently as adversarial provers and verifiers, refining proof steps until rigorous acceptance.
+AF (Adversarial Proof Framework) is a CLI tool for collaborative construction of natural-language mathematical proofs. Multiple AI agents work as adversarial provers and verifiers, refining proof steps until rigorous acceptance.
 
 **Language**: Go 1.22+
 **CLI Framework**: Cobra
-**Estimated Size**: ~3000-3500 LOC
+**Status**: Feature-complete, in hardening phase
 
-## Project Laws
+## Quick Commands
 
-### Core Principles (Non-Negotiable)
+```bash
+# Build
+go build ./cmd/af
+
+# Test
+go test ./...
+
+# Run
+./af [command]
+./af --help
+```
+
+## Core Principles (The 9 Laws)
 
 1. **Adversarial Verification**: Provers convince, verifiers attack. No agent plays both roles.
 2. **Agent Isolation**: Each agent spawns fresh, claims one job, works, terminates. No context bleeding.
-3. **Append-Only Truth**: Ledger is source of truth. Current state is derived. Full history preserved including rejected paths.
+3. **Append-Only Truth**: Ledger is source of truth. Current state is derived. Full history preserved.
 4. **Filesystem Concurrency**: ACID guarantees via POSIX atomics. No database server.
-5. **Tool-Controlled Structure**: Hierarchical IDs, child assignment, and state transitions are enforced by the tool, never by agents.
-6. **Verifier Control**: Verifiers explicitly control all acceptance decisions. No automatic state transitions.
-7. **Serialized Writes**: Ledger writes are serialized. No gaps in sequence numbers.
+5. **Tool-Controlled Structure**: Hierarchical IDs and state transitions enforced by tool, not agents.
+6. **Verifier Control**: Verifiers explicitly control all acceptance decisions.
+7. **Serialized Writes**: Ledger writes serialized. No gaps in sequence numbers.
 8. **Taint Propagation**: Epistemic uncertainty propagates through dependencies.
 9. **Self-Documenting CLI**: The tool provides complete context; agents need no external documentation.
-
-### Development Principles
-
-1. **TDD (Tests First)**: Write tests before implementation. No exceptions.
-2. **Small Modules**: Target 200-300 LOC per module.
-3. **Tracer Bullet First**: Get minimal working CLI (`init`, `status`, `claim`, `refine`, `release`, `accept`) before expanding.
-
-### CLI Self-Documentation Requirements
-
-The `af` CLI must be fully self-documenting:
-- Zero external documentation required for agents
-- Forgiving input (fuzzy matching for commands/flags)
-- Guided workflow (every command output suggests next steps)
-- Role-specific context on claim
 
 ## Directory Structure
 
 ```
-cmd/af/           # CLI entry point and commands
+cmd/af/           # CLI commands (60+ commands)
 internal/
-  errors/         # Error types and codes
-  types/          # Core types (NodeID, timestamps)
-  hash/           # Content hash computation
-  schema/         # Inference types, node types, states
-  fuzzy/          # Levenshtein distance, fuzzy matching
-  config/         # Configuration loading
-  node/           # Node, Challenge, Definition structs
-  ledger/         # Event sourcing (append, read, replay)
-  lock/           # File-based lock manager
-  state/          # Derived state from event replay
-  scope/          # Scope tracking for local assumptions
-  taint/          # Taint propagation
-  jobs/           # Job detection (prover/verifier)
-  render/         # Human-readable and JSON output
-  fs/             # Filesystem operations
-  service/        # Proof service facade
   cli/            # CLI utilities (arg parsing, prompts)
+  config/         # Configuration loading
+  cycle/          # Cycle detection in dependencies
+  errors/         # Error types and exit codes
+  export/         # Export to LaTeX, Markdown
+  fs/             # Filesystem operations (atomic writes)
+  fuzzy/          # Levenshtein distance, fuzzy matching
+  hash/           # Content hash computation (SHA256)
+  hooks/          # External integration hooks
+  jobs/           # Job detection (prover/verifier)
+  ledger/         # Event sourcing (append, read, replay)
   lemma/          # Lemma extraction validation
-  testutil/       # Test helpers
+  lock/           # File-based lock manager
+  metrics/        # Proof quality metrics
+  node/           # Node, Challenge, Definition structs
+  patterns/       # Challenge pattern library
+  render/         # Human-readable and JSON output
+  schema/         # Inference types, node types, states
+  scope/          # Scope tracking for local assumptions
+  service/        # Proof service facade
+  shell/          # Interactive shell
+  state/          # Derived state from event replay
+  strategy/       # Proof strategy guidance
+  taint/          # Taint propagation
+  templates/      # Output templates
+  types/          # Core types (NodeID, timestamps)
 e2e/              # End-to-end tests
+examples/         # Example proofs (sqrt2, Dobinski)
+docs/             # Documentation (PRD, archived plans)
 ```
 
 ## Key Data Model
 
 ### Node States
-- **Workflow**: `available`, `claimed`, `blocked`
-- **Epistemic**: `pending`, `validated`, `admitted`, `refuted`, `archived`
-- **Taint**: `clean`, `self_admitted`, `tainted`, `unresolved`
+
+| Category | States |
+|----------|--------|
+| **Workflow** | `available`, `claimed`, `blocked` |
+| **Epistemic** | `pending`, `validated`, `admitted`, `refuted`, `archived` |
+| **Taint** | `clean`, `self_admitted`, `tainted`, `unresolved` |
 
 ### Hierarchical IDs
+
 - Root: `1`
 - Children: `1.1`, `1.2`, etc.
 - Grandchildren: `1.1.1`, `1.1.2`, etc.
 
-### Event Sourcing
-All state changes go through the ledger:
-- `ProofInitialized`, `NodeCreated`, `NodesClaimed`, `NodesReleased`
-- `ChallengeRaised`, `ChallengeResolved`, `ChallengeWithdrawn`
-- `NodeValidated`, `NodeAdmitted`, `NodeRefuted`, `NodeArchived`
-- `TaintRecomputed`, `DefAdded`, `LemmaExtracted`, etc.
+### Event Types
+
+`ProofInitialized`, `NodeCreated`, `NodesClaimed`, `NodesReleased`, `ChallengeRaised`, `ChallengeResolved`, `ChallengeWithdrawn`, `NodeValidated`, `NodeAdmitted`, `NodeRefuted`, `NodeArchived`, `TaintRecomputed`, `DefAdded`, `LemmaExtracted`
 
 ## Error Codes
 
-Exit codes:
-- 1 = retriable
-- 2 = blocked (pending definition)
-- 3 = logic error
-- 4 = corruption
+| Exit Code | Meaning |
+|-----------|---------|
+| 0 | Success |
+| 1 | Retriable (lock conflict, etc.) |
+| 2 | Blocked (pending definition) |
+| 3 | Logic error (invalid input) |
+| 4 | Corruption (ledger inconsistent) |
 
-## Beads Issue Tracker
+## CLI Commands
 
-This project uses beads (`bd`) for issue tracking.
+### Proof Management
+| Command | Description |
+|---------|-------------|
+| `init` | Initialize a new proof workspace |
+| `status` | Show proof tree with states and taint |
+| `progress` | Show completion metrics |
+| `health` | Detect stuck states |
 
-### Quick Reference
+### Job Discovery
+| Command | Description |
+|---------|-------------|
+| `jobs` | List available prover/verifier jobs |
+| `pending-defs` | List unresolved definition requests |
+| `pending-refs` | List unverified external references |
+
+### Agent Operations
+| Command | Description |
+|---------|-------------|
+| `claim` | Claim a node for work |
+| `release` | Release a claimed node |
+| `extend-claim` | Extend claim duration |
+
+### Prover Commands
+| Command | Description |
+|---------|-------------|
+| `refine` | Add child node(s) to develop proof |
+| `request-def` | Request a new definition |
+| `amend` | Correct a node statement |
+
+### Verifier Commands
+| Command | Description |
+|---------|-------------|
+| `challenge` | Raise objection to a node |
+| `resolve-challenge` | Mark challenge as resolved |
+| `withdraw-challenge` | Retract a challenge |
+| `accept` | Validate a node |
+
+### Escape Hatches
+| Command | Description |
+|---------|-------------|
+| `admit` | Accept without full proof (introduces taint) |
+| `refute` | Mark node as disproven |
+| `archive` | Abandon proof branch |
+
+### Reference Data
+| Command | Description |
+|---------|-------------|
+| `get` | Retrieve node with context |
+| `defs`, `def` | List/show definitions |
+| `assumptions`, `assumption` | List/show assumptions |
+| `schema`, `inferences`, `types` | Show valid inference rules and types |
+| `challenges` | List challenges across proof |
+| `deps` | Show dependency graph |
+| `scope` | Show scope information |
+
+### Administration
+| Command | Description |
+|---------|-------------|
+| `log` | Show event ledger |
+| `replay` | Rebuild state from ledger |
+| `reap` | Clear stale locks |
+| `recompute-taint` | Force taint recalculation |
+| `def-add`, `def-reject` | Human operator actions |
+| `extract-lemma` | Extract reusable subproof |
+| `export` | Export to LaTeX/Markdown |
+
+## Development Workflow
+
+### TDD Always
+
+1. Write test first
+2. Run test (should fail)
+3. Implement minimal code
+4. Run test (should pass)
+5. Refactor
+
+### Small Modules
+
+Target 200-300 LOC per module. Current packages average ~400 LOC.
+
+### Beads Issue Tracker
+
 ```bash
 bd list                    # List all open issues
-bd list --status open      # Filter by status
-bd ready                   # Show ready-to-work tasks
-bd show <issue-id>         # Show issue details
+bd ready                   # Show unblocked tasks
+bd show <id>               # View issue details
 bd update <id> --status in_progress  # Start work
-bd close <id>              # Close completed issue
-bd dep add <id> --needs <dep-id>     # Add dependency
-bd blocked                 # Show blocked issues
+bd close <id>              # Complete issue
+bd q "Task description"    # Quick-create issue
 ```
 
-### Issue Naming
-Issues use prefix `vibefeld-` followed by hash (e.g., `vibefeld-a3f2dd`).
+Issue naming: `vibefeld-<hash>` (e.g., `vibefeld-a3f2dd`)
 
-### Workflow
-1. `bd ready` to find unblocked tasks
-2. `bd update <id> --status in_progress` to claim
-3. Implement with TDD (tests first!)
-4. `bd close <id>` when done
+### Current Priorities
 
-## Implementation Phases
+1. **P0 Critical**: Lock error handling, test coverage for service/taint packages
+2. **P1 High**: Performance optimizations (challenge caching), TOCTOU fixes
+3. **P2 Medium**: CLI UX improvements, edge case tests
 
-See `docs/vibefeld-implementation-plan.md` for full details.
+## Documentation
 
-**Critical Path to Tracer Bullet**:
-1. Phase 0: Project Bootstrap (steps 1-7)
-2. Phase 1: Core Types and Error Handling (steps 8-15)
-3. Phase 2-5: Schema, Fuzzy, Config, Node Model
-4. Phase 6-8: Ledger, Locks, State/Replay
-5. Phase 9-14: Scope, Taint, Jobs, Validation, Rendering, Filesystem
-6. Phase 15-16: Service Layer and CLI Tracer Bullet Commands
+| Document | Location |
+|----------|----------|
+| PRD (full spec) | `docs/prd.md` |
+| Example proofs | `examples/sqrt2-proof/`, `examples/dobinski-proof/` |
+| State machines | `docs/archive/state-machines.md` |
+| Challenge workflow | `docs/archive/challenge-workflow.md` |
+| Lock protocol | `docs/archive/lock-protocol.md` |
 
-**Parallelizable after tracer bullet**: All remaining CLI commands (Phase 17-22).
+## Session Close Protocol
 
-## Adversarial Workflow Fix (PRIORITY)
-
-The core adversarial workflow has critical issues identified in Session 53. See:
-- `docs/FAILURE_REPORT_SESSION53.md` - What went wrong
-- `docs/ADVERSARIAL_WORKFLOW_FIX_PLAN.md` - Root cause analysis
-- `docs/ADVERSARIAL_WORKFLOW_IMPLEMENTATION_PLAN.md` - 22-step fix plan
-
-### Key Issues Found
-1. **Acceptance doesn't check blocking challenges** - `SeverityBlocksAcceptance()` exists but is never called
-2. **No verification checklist** - Verifiers have no guidance on what to check
-3. **Tool guides toward depth** - "Next steps" encourages child refinement over breadth
-4. **Job detection is CORRECT** - The bug is NOT in `internal/jobs/`
-
-### Critical Path (P0)
-Start with these two issues (no dependencies):
-1. `vibefeld-eo90` - Add `GetBlockingChallengesForNode` to State
-2. `vibefeld-45nt` - Create `RenderVerificationChecklist` function
-
-### Quick Reference
-```bash
-bd ready                    # See 10 unblocked issues
-bd blocked                  # See 12 blocked issues with dependencies
-bd show vibefeld-eo90       # View issue details
-```
-
-## Testing
-
-- Test files: `*_test.go` alongside implementation
-- Use table-driven tests
-- E2E tests in `e2e/` directory
-- Run: `go test ./...`
-
-## Build
-
-```bash
-go build ./cmd/af
-./af --version
-```
-
-## Landing the Plane
-
-When completing a work session or reaching a milestone, follow this **mandatory workflow**:
+When completing a work session, follow this **mandatory workflow**:
 
 ### 1. Update Issues
+
 ```bash
 bd close <id>                           # Close completed work
 bd update <id> --status in_progress     # Mark WIP items
-bd q "Remaining task description"       # File issues for follow-up work
+bd q "Remaining task description"       # File issues for follow-up
 ```
 
-### 2. Run Quality Gates (if code changed)
+### 2. Run Quality Gates
+
 ```bash
 go test ./...
 go build ./cmd/af
 ```
 
-### 3. Write `handoff.md`
-Create/update `handoff.md` with:
-- **What was accomplished**: Completed issues/tasks with brief descriptions
-- **Current state**: What's working, partially done, or broken
-- **Next steps**: Prioritized list of what to do next
-- **Blockers/Decisions needed**: Issues requiring human input
-- **Key files changed**: Summary of modified/created files
-- **Testing status**: What tests pass, what's untested
-- **Known issues**: Bugs, edge cases, or technical debt
+### 3. Update `handoff.md`
+
+Include:
+- What was accomplished
+- Current state (what works, what's broken)
+- Next steps (prioritized)
+- Key files changed
+- Testing status
+- Known issues
 
 ### 4. Sync and Push (MANDATORY)
+
 ```bash
 git add -A
 git commit -m "Description of changes"
@@ -205,4 +251,4 @@ git push
 git status   # MUST show "up to date with origin"
 ```
 
-**CRITICAL**: Work is NOT complete until `git push` succeeds. Never stop before pushing.
+**CRITICAL**: Work is NOT complete until `git push` succeeds.
