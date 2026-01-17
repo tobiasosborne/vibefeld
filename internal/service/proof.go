@@ -37,6 +37,14 @@ var ErrMaxChildrenExceeded = errors.New("maximum children per node exceeded")
 // unresolved blocking challenges (critical or major severity) on a node.
 var ErrBlockingChallenges = errors.New("node has unresolved blocking challenges")
 
+// ErrNotClaimed is returned when an operation requires a node to be claimed
+// but the node is not currently claimed by any owner.
+var ErrNotClaimed = errors.New("node is not claimed")
+
+// ErrOwnerMismatch is returned when an operation is attempted by an owner
+// that does not match the current claim owner of the node.
+var ErrOwnerMismatch = errors.New("owner does not match")
+
 // wrapSequenceMismatch converts ledger.ErrSequenceMismatch to ErrConcurrentModification
 // with additional context for the caller.
 func wrapSequenceMismatch(err error, operation string) error {
@@ -449,12 +457,12 @@ func (s *ProofService) RefreshClaim(id types.NodeID, owner string, timeout time.
 
 	// Check if node is claimed
 	if n.WorkflowState != schema.WorkflowClaimed {
-		return errors.New("node is not claimed")
+		return ErrNotClaimed
 	}
 
 	// Check if owner matches
 	if n.ClaimedBy != owner {
-		return fmt.Errorf("node is claimed by %s, not %s", n.ClaimedBy, owner)
+		return fmt.Errorf("%w: node is claimed by %s, not %s", ErrOwnerMismatch, n.ClaimedBy, owner)
 	}
 
 	// Get ledger and append refresh event with CAS
@@ -492,12 +500,12 @@ func (s *ProofService) ReleaseNode(id types.NodeID, owner string) error {
 
 	// Check if node is claimed
 	if n.WorkflowState != schema.WorkflowClaimed {
-		return errors.New("node is not claimed")
+		return ErrNotClaimed
 	}
 
 	// Check if owner matches
 	if n.ClaimedBy != owner {
-		return errors.New("owner does not match")
+		return ErrOwnerMismatch
 	}
 
 	// Get ledger and append release event with CAS
@@ -539,12 +547,12 @@ func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID t
 
 	// Check if parent is claimed
 	if parent.WorkflowState != schema.WorkflowClaimed {
-		return errors.New("parent node is not claimed")
+		return fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
 	}
 
 	// Check if owner matches
 	if parent.ClaimedBy != owner {
-		return errors.New("owner does not match")
+		return ErrOwnerMismatch
 	}
 
 	// Check if child already exists
@@ -609,12 +617,12 @@ func (s *ProofService) RefineNodeWithDeps(parentID types.NodeID, owner string, c
 
 	// Check if parent is claimed
 	if parent.WorkflowState != schema.WorkflowClaimed {
-		return errors.New("parent node is not claimed")
+		return fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
 	}
 
 	// Check if owner matches
 	if parent.ClaimedBy != owner {
-		return errors.New("owner does not match")
+		return ErrOwnerMismatch
 	}
 
 	// Check if child already exists
@@ -691,12 +699,12 @@ func (s *ProofService) RefineNodeWithAllDeps(parentID types.NodeID, owner string
 
 	// Check if parent is claimed
 	if parent.WorkflowState != schema.WorkflowClaimed {
-		return errors.New("parent node is not claimed")
+		return fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
 	}
 
 	// Check if owner matches
 	if parent.ClaimedBy != owner {
-		return errors.New("owner does not match")
+		return ErrOwnerMismatch
 	}
 
 	// Check if child already exists
@@ -1428,12 +1436,12 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 
 	// Check if parent is claimed
 	if parent.WorkflowState != schema.WorkflowClaimed {
-		return nil, errors.New("parent node is not claimed")
+		return nil, fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
 	}
 
 	// Check if owner matches
 	if parent.ClaimedBy != owner {
-		return nil, errors.New("owner does not match")
+		return nil, ErrOwnerMismatch
 	}
 
 	// Count existing children and validate that we can add all new children

@@ -1,63 +1,70 @@
-# Handoff - 2026-01-17 (Session 111)
+# Handoff - 2026-01-17 (Session 112)
 
 ## What Was Accomplished This Session
 
-### Session 111 Summary: Fixed Inconsistent Error Wrapping Patterns
+### Session 112 Summary: Fixed String Contains Error Checks with Proper Error Types
 
-Closed issue `vibefeld-mvpa` - "Code smell: Inconsistent error wrapping patterns"
+Closed issue `vibefeld-gd70` - "Code smell: String contains checks instead of error types"
 
 #### Problem
 
-The codebase had inconsistent error wrapping patterns in cmd/af files:
-- Some errors wrapped with `%w` (correct Go 1.13+ pattern, preserves error chain)
-- Some errors wrapped with `%v` (loses error chain)
-- Some bare `return err` (may or may not be appropriate)
+The `cmd/af/refine.go` file used `strings.Contains(err.Error(), ...)` to detect specific error conditions instead of using proper error type assertions with `errors.Is()`. This is fragile and can break if error messages change.
 
-The `%v` patterns were definitively incorrect as they break error unwrapping.
+Location: `cmd/af/refine.go` lines 125-131 and lines 382-385
+
+Bad patterns:
+```go
+if strings.Contains(err.Error(), "not claimed") { ... }
+if strings.Contains(err.Error(), "owner does not match") { ... }
+if strings.Contains(errStr, "no events") || strings.Contains(errStr, "empty") { ... }
+```
 
 #### Solution
 
-Changed all `%v` error wrapping to `%w` in cmd/af files:
+1. **Added sentinel errors to service package** (`internal/service/proof.go`):
+   - `ErrNotClaimed` - returned when a node is not claimed but operation requires it
+   - `ErrOwnerMismatch` - returned when the owner doesn't match the claim owner
 
-| File | Changes |
-|------|---------|
-| `amend.go` | 4 occurrences fixed |
-| `release.go` | 4 occurrences fixed |
-| `scope.go` | 2 occurrences fixed |
-| `deps.go` | 4 occurrences fixed |
-| `get.go` | 3 occurrences fixed |
-| `refine.go` | 5 occurrences fixed |
+2. **Updated service layer** to return these sentinel errors instead of `errors.New()`:
+   - `RefreshClaim()` - uses `ErrNotClaimed` and wraps `ErrOwnerMismatch` with context
+   - `ReleaseNode()` - uses `ErrNotClaimed` and `ErrOwnerMismatch`
+   - `RefineNode()` - uses wrapped `ErrNotClaimed` and `ErrOwnerMismatch`
+   - `RefineNodeWithDeps()` - same
+   - `RefineNodeWithAllDeps()` - same
+   - `RefineNodeBulk()` - same
 
-Total: 22 `%v` → `%w` conversions
+3. **Updated refine.go** to use `errors.Is()`:
+   - `handleRefineError()` now uses `errors.Is(err, service.ErrNotClaimed)` and `errors.Is(err, service.ErrOwnerMismatch)`
+   - State loading error check now uses `os.IsNotExist(err)` instead of string matching
 
 ### Files Changed
 
-- `cmd/af/amend.go` - Fixed 4 error wrapping patterns
-- `cmd/af/release.go` - Fixed 4 error wrapping patterns
-- `cmd/af/scope.go` - Fixed 2 error wrapping patterns
-- `cmd/af/deps.go` - Fixed 4 error wrapping patterns
-- `cmd/af/get.go` - Fixed 3 error wrapping patterns
-- `cmd/af/refine.go` - Fixed 5 error wrapping patterns
+- `internal/service/proof.go` - Added `ErrNotClaimed` and `ErrOwnerMismatch` sentinel errors, updated 8 return statements
+- `cmd/af/refine.go` - Added `errors` and `os` imports, updated `handleRefineError()` and state loading error check
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-mvpa** | Closed | Fixed all `%v` to `%w` error wrapping in cmd/af files |
+| **vibefeld-gd70** | Closed | Fixed by using errors.Is() with sentinel errors |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 73 (was 74)
-- **Closed:** 476 (was 475)
+- **Open:** 72 (was 73)
+- **Closed:** 477 (was 476)
 
 ### Test Status
 All tests pass. Build succeeds.
 
 ### Verification
 ```bash
-# Confirm no more %v error wrapping remains
-grep -rn 'return fmt\.Errorf.*%v", err)' cmd/af/
+# Confirm errors.Is() is now used
+grep -n "errors.Is" cmd/af/refine.go
+# Returns: handleRefineError function uses errors.Is()
+
+# Confirm no more strings.Contains for error checking
+grep -n "strings.Contains.*Error()" cmd/af/refine.go
 # Returns: No matches found
 ```
 
@@ -80,9 +87,9 @@ grep -rn 'return fmt\.Errorf.*%v", err)' cmd/af/
 6. Add benchmarks for critical paths (`vibefeld-qrzs`)
 
 ### P2 Code Quality
-7. String contains checks instead of error types (`vibefeld-gd70`)
-8. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
-9. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+7. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
+8. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+9. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
 
 ### Follow-up Work (Not Tracked as Issues)
 - Migrate remaining ~30 CLI files to use `cli.Must*` helpers (incremental, low priority)
@@ -99,15 +106,16 @@ go test ./...
 # Run integration tests
 go test -tags=integration ./...
 
-# Check for remaining inconsistent error patterns
-grep -rn 'return fmt\.Errorf.*%v", err)' cmd/af/
+# Check for remaining string-based error checks
+grep -rn 'strings.Contains.*Error()' cmd/af/
 ```
 
 ## Session History
 
-**Session 111:** Closed 1 issue (fixed inconsistent error wrapping - 22 `%v` → `%w` conversions in 6 cmd/af files)
-**Session 110:** Closed 1 issue (state package coverage 61.1% → 91.3% - added tests for ClaimRefreshed, NodeAmended, scope operations, replay.go unit tests)
-**Session 109:** Closed 1 issue (scope package coverage 59.5% → 100% - removed integration build tags, added sorting test)
+**Session 112:** Closed 1 issue (string contains error checks - added ErrNotClaimed/ErrOwnerMismatch sentinel errors, updated refine.go to use errors.Is())
+**Session 111:** Closed 1 issue (fixed inconsistent error wrapping - 22 `%v` to `%w` conversions in 6 cmd/af files)
+**Session 110:** Closed 1 issue (state package coverage 61.1% to 91.3% - added tests for ClaimRefreshed, NodeAmended, scope operations, replay.go unit tests)
+**Session 109:** Closed 1 issue (scope package coverage 59.5% to 100% - removed integration build tags, added sorting test)
 **Session 108:** Closed 1 issue (silent JSON unmarshal error - explicit error handling in claim.go)
 **Session 107:** Closed 1 issue (ledger test coverage - added tests for NewScopeOpened, NewScopeClosed, NewClaimRefreshed, Ledger.AppendIfSequence)
 **Session 106:** Closed 1 issue (ignored flag parsing errors - added cli.Must* helpers, updated 10 CLI files)

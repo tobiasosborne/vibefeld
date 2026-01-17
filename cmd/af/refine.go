@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -122,10 +124,10 @@ func findNextChildID(parentID types.NodeID, st *state.State, svc *service.ProofS
 
 // handleRefineError converts service-layer errors into user-friendly error messages.
 func handleRefineError(err error, parentIDStr, owner string) error {
-	if strings.Contains(err.Error(), "not claimed") {
+	if errors.Is(err, service.ErrNotClaimed) {
 		return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s -o %s -s ...' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
 	}
-	if strings.Contains(err.Error(), "owner does not match") {
+	if errors.Is(err, service.ErrOwnerMismatch) {
 		return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
 	}
 	return err
@@ -378,9 +380,8 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 	// Load state to determine next child ID
 	st, err := svc.LoadState()
 	if err != nil {
-		errStr := err.Error()
-		if strings.Contains(errStr, "no events") || strings.Contains(errStr, "empty") ||
-			strings.Contains(errStr, "no such file or directory") || strings.Contains(errStr, "does not exist") {
+		// Check for uninitialized proof (missing ledger directory or no events)
+		if os.IsNotExist(err) || errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("proof not initialized. Run 'af init' first")
 		}
 		return fmt.Errorf("failed to load state: %w", err)
