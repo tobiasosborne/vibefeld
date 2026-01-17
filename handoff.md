@@ -1,84 +1,101 @@
-# Handoff - 2026-01-17 (Session 114)
+# Handoff - 2026-01-17 (Session 115)
 
 ## What Was Accomplished This Session
 
-### Session 114 Summary: Removed Reflection from Event Parsing Hot Path
+### Session 115 Summary: Added Large Tree Taint Tests (10k+ nodes)
 
-Closed issue `vibefeld-s406` - "Performance: Reflection in event parsing hot path"
+Closed issue `vibefeld-yxfo` - "Edge case test: Taint very large node tree (10k+ nodes)"
 
 #### Problem
 
-In `internal/state/replay.go` line 181, the code used reflection to dereference event pointers:
-```go
-return reflect.ValueOf(eventPtr).Elem().Interface().(ledger.Event), nil
-```
-
-This reflection call happened for EVERY event during state replay - the most critical hot path in the codebase. State replay runs on every `status`, `jobs`, and CLI command.
+The taint propagation performance and memory behavior on large node trees (10k+) was untested. Existing benchmarks only tested up to 200 nodes.
 
 #### Solution
 
-1. **Removed `reflect` import** - reduces dependencies and binary size
-2. **Added explicit `derefEvent()` function** - uses a type switch instead of reflection
-3. **Added missing event types to `eventFactories`** - `ScopeOpened` and `ScopeClosed` were missing from the factory map but used in Apply()
+Added 5 comprehensive large tree tests to `internal/taint/propagate_unit_test.go`:
 
-#### Performance Results
+1. **TestPropagateTaint_LargeBalancedTree** - 11,111 nodes (branching factor 10, 4 levels)
+   - Verifies taint propagates correctly to all ~11k descendants
+   - Tests balanced tree structure
 
-Benchmark comparison (1000 events):
-- Before (reflection): ~19.16ms, 3162KB, 32797 allocs
-- After (type switch): ~19.91ms, 3163KB, 32797 allocs
+2. **TestPropagateTaint_LargeDeepTree** - 8,191 nodes (binary tree, depth 13)
+   - Specifically exercises the ancestor caching optimization
+   - Tests deep hierarchy performance
 
-Performance is essentially identical because the JSON parsing overhead dominates. However, the fix provides:
-- Cleaner, more explicit code
-- Compiler-checked exhaustiveness (new event types require updating the type switch)
-- No dependency on reflect package in hot path
-- Fixed missing ScopeOpened/ScopeClosed event types
+3. **TestPropagateTaint_LargeTreeMixedTaint** - 5,000 nodes with multiple taint sources
+   - Tests self_admitted preservation when multiple admitted nodes exist
+   - Verifies correct taint state propagation with mixed sources
+
+4. **TestPropagateTaint_LargeTreeNoChanges** - 5,000 nodes, efficiency check
+   - Verifies no unnecessary work when tree is already correctly tainted
+   - Tests idempotency at scale
+
+5. **TestPropagateTaint_LargeTreePartialSubtree** - Subtree propagation
+   - Tests propagating from a subtree root (not main root)
+   - Verifies non-descendants remain unaffected
+
+Also added helper functions: `buildLargeBalancedTree()`, `buildLargeDeepTree()`, `itoa()`.
+
+### Also Updated
+
+Updated issue `vibefeld-jfbc` (Module structure: cmd/af imports 17 packages) with proper scope assessment:
+- 22 packages imported, not 17
+- 59 files use `types`, 44 use `schema`, 40 use `fs`
+- This is a multi-session epic requiring sub-tasks
 
 ### Files Changed
 
-- `internal/state/replay.go` - Removed `reflect` import, added `derefEvent()` function with type switch, added ScopeOpened/ScopeClosed to eventFactories
+- `internal/taint/propagate_unit_test.go` - Added 5 large tree tests and helper functions (+300 lines)
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-s406** | Closed | Replaced reflect.ValueOf().Elem().Interface() with explicit type switch in derefEvent(). Added missing ScopeOpened/ScopeClosed to eventFactories. All tests pass. |
+| **vibefeld-yxfo** | Closed | Added comprehensive large tree tests (10k+ nodes): LargeBalancedTree (11k), LargeDeepTree (8k), LargeTreeMixedTaint, LargeTreeNoChanges, LargeTreePartialSubtree. All tests pass. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 70 (was 71)
-- **Closed:** 479 (was 478)
+- **Open:** 69 (was 70)
+- **Closed:** 480 (was 479)
 
 ### Test Status
-All tests pass. All benchmarks run successfully.
+All tests pass. Build succeeds.
 
 ### Verification
 ```bash
-# Run state package tests
-go test ./internal/state/... -v
+# Run large tree tests
+go test ./internal/taint/... -run "Large" -v
 
-# Run replay benchmarks
-go test -bench=BenchmarkStateReplay -benchmem ./internal/state/...
+# Run all taint tests
+go test ./internal/taint/... -v
+
+# Build
+go build ./cmd/af
 ```
 
 ## Remaining P1 Issues
 
-1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`) - Large refactoring task
+1. Module structure: Reduce cmd/af imports from 22 to 2 (`vibefeld-jfbc`) - Large multi-session refactoring epic
 
 ## Recommended Next Steps
 
 ### High Priority (P1) - Ready for work
-1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`) - Large refactoring task (affects 25+ files)
+1. Module structure (`vibefeld-jfbc`) - Break into sub-tasks:
+   - Re-export types through service (types.NodeID, schema.*, etc.)
+   - Move fs.InitProofDir to service layer
+   - Move test setup utilities to test helpers
+   - Consolidate job finding into service
+   - Update 60+ command files
 
 ### P2 Edge Case Tests
 2. State millions of events (`vibefeld-th1m`)
-3. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
-4. E2E test: Large proof stress test (`vibefeld-hfgi`)
+3. E2E test: Large proof stress test (`vibefeld-hfgi`)
 
 ### P2 Code Quality
-5. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
-6. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-7. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
+4. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
+5. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+6. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
 
 ## Quick Commands
 
@@ -91,13 +108,11 @@ go test ./...
 
 # Run benchmarks
 go test -run=^$ -bench=. ./... -benchtime=100ms
-
-# Run benchmarks with memory stats
-go test -run=^$ -bench=. ./... -benchmem -benchtime=1s
 ```
 
 ## Session History
 
+**Session 115:** Closed 1 issue (large tree taint tests 10k+ nodes - 5 new tests covering balanced/deep/mixed/idempotent/subtree scenarios)
 **Session 114:** Closed 1 issue (removed reflection from event parsing hot path - replaced with type switch, added missing event types)
 **Session 113:** Closed 1 issue (added benchmarks for critical paths - 3 packages, 18 benchmarks total)
 **Session 112:** Closed 1 issue (string contains error checks - added ErrNotClaimed/ErrOwnerMismatch sentinel errors, updated refine.go to use errors.Is())

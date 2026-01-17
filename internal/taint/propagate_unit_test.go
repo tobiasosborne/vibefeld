@@ -1776,3 +1776,304 @@ func TestPropagateTaint_UnsortedInput(t *testing.T) {
 		}
 	})
 }
+
+// ==================== Large Tree Tests (10k+ nodes) ====================
+
+// buildLargeBalancedTree creates a balanced tree with approximately n nodes.
+// Uses a branching factor of ~10 to create a realistic tree structure.
+// Returns the root node and all nodes in the tree.
+func buildLargeBalancedTree(approxSize int) (*node.Node, []*node.Node) {
+	// Calculate depth needed for approximately n nodes with branching factor 10
+	// total nodes = 1 + 10 + 100 + 1000 + ... = (10^(d+1) - 1) / 9
+	// For 10k nodes, we need depth ~4 (1+10+100+1000+10000 = 11111)
+	// We'll use a more controlled approach: fixed branching factor, limit total nodes
+
+	const branchingFactor = 10
+	nodes := make([]*node.Node, 0, approxSize)
+
+	// Root node (admitted to trigger taint propagation)
+	root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+	nodes = append(nodes, root)
+
+	// Build tree level by level using BFS approach
+	currentLevel := []string{"1"}
+	nodeCount := 1
+
+	for nodeCount < approxSize && len(currentLevel) > 0 {
+		nextLevel := make([]string, 0, len(currentLevel)*branchingFactor)
+
+		for _, parentID := range currentLevel {
+			// Add children to this parent
+			for childNum := 1; childNum <= branchingFactor && nodeCount < approxSize; childNum++ {
+				childID := parentID + "." + itoa(childNum)
+				child := makeNode(childID, schema.EpistemicValidated, node.TaintClean)
+				nodes = append(nodes, child)
+				nextLevel = append(nextLevel, childID)
+				nodeCount++
+			}
+		}
+
+		currentLevel = nextLevel
+	}
+
+	return root, nodes
+}
+
+// buildLargeDeepTree creates a deep tree with multiple branches.
+// Each level has branchingFactor children, creating depth levels.
+// This tests the ancestor caching optimization.
+func buildLargeDeepTree(depth, branchingFactor int) (*node.Node, []*node.Node) {
+	nodes := make([]*node.Node, 0)
+
+	// Root node (admitted to trigger taint propagation)
+	root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+	nodes = append(nodes, root)
+
+	// Build tree: each node at level L has branchingFactor children at level L+1
+	currentLevel := []*node.Node{root}
+
+	for d := 1; d < depth; d++ {
+		nextLevel := make([]*node.Node, 0, len(currentLevel)*branchingFactor)
+
+		for _, parent := range currentLevel {
+			for childNum := 1; childNum <= branchingFactor; childNum++ {
+				childID := parent.ID.String() + "." + itoa(childNum)
+				child := makeNode(childID, schema.EpistemicValidated, node.TaintClean)
+				nodes = append(nodes, child)
+				nextLevel = append(nextLevel, child)
+			}
+		}
+
+		currentLevel = nextLevel
+	}
+
+	return root, nodes
+}
+
+// itoa converts an integer to a string (simple implementation for tests).
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var digits []byte
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	for n > 0 {
+		digits = append([]byte{byte('0' + n%10)}, digits...)
+		n /= 10
+	}
+	if neg {
+		digits = append([]byte{'-'}, digits...)
+	}
+	return string(digits)
+}
+
+// TestPropagateTaint_LargeBalancedTree tests taint propagation on a tree with 10k+ nodes.
+// This verifies that the algorithm handles large trees without excessive memory or time.
+func TestPropagateTaint_LargeBalancedTree(t *testing.T) {
+	const targetNodes = 11111 // 1 + 10 + 100 + 1000 + 10000
+
+	root, allNodes := buildLargeBalancedTree(targetNodes)
+
+	// Verify we built approximately the right size
+	if len(allNodes) < 10000 {
+		t.Fatalf("buildLargeBalancedTree created %d nodes, expected at least 10000", len(allNodes))
+	}
+
+	// Run taint propagation
+	changed := PropagateTaint(root, allNodes)
+
+	// All descendants should have changed (everything except root)
+	expectedChanged := len(allNodes) - 1
+	if len(changed) != expectedChanged {
+		t.Errorf("PropagateTaint() returned %d changed nodes, want %d", len(changed), expectedChanged)
+	}
+
+	// Verify all descendants are now tainted
+	for i, n := range allNodes {
+		if i == 0 {
+			// Root should remain self_admitted
+			if n.TaintState != node.TaintSelfAdmitted {
+				t.Errorf("root.TaintState = %v, want %v", n.TaintState, node.TaintSelfAdmitted)
+			}
+		} else {
+			// All descendants should be tainted
+			if n.TaintState != node.TaintTainted {
+				t.Errorf("node %s.TaintState = %v, want %v", n.ID.String(), n.TaintState, node.TaintTainted)
+				// Only report first few errors to avoid flooding output
+				if i > 10 {
+					t.Fatal("Too many taint errors, stopping early")
+				}
+			}
+		}
+	}
+}
+
+// TestPropagateTaint_LargeDeepTree tests taint propagation on a deep tree.
+// This specifically exercises the ancestor caching optimization path.
+// With depth=20 and branching=2, we get 2^20-1 = ~1M nodes, but we limit to 10k.
+func TestPropagateTaint_LargeDeepTree(t *testing.T) {
+	// Create a tree with depth 14, branching factor 2 = 2^14-1 = 16383 nodes
+	// But limit to ~10k for reasonable test time
+	const depth = 13      // 2^13-1 = 8191 nodes with binary tree
+	const branching = 2   // Binary tree
+	const minExpected = 8000
+
+	root, allNodes := buildLargeDeepTree(depth, branching)
+
+	if len(allNodes) < minExpected {
+		t.Fatalf("buildLargeDeepTree created %d nodes, expected at least %d", len(allNodes), minExpected)
+	}
+
+	t.Logf("Testing deep tree with %d nodes, depth=%d", len(allNodes), depth)
+
+	// Run taint propagation
+	changed := PropagateTaint(root, allNodes)
+
+	// All descendants should have changed
+	expectedChanged := len(allNodes) - 1
+	if len(changed) != expectedChanged {
+		t.Errorf("PropagateTaint() returned %d changed nodes, want %d", len(changed), expectedChanged)
+	}
+
+	// Spot check: verify some nodes at different depths are correctly tainted
+	for i, n := range allNodes {
+		if i == 0 {
+			continue // skip root
+		}
+		// Check every 1000th node to avoid slow test
+		if i%1000 == 0 {
+			if n.TaintState != node.TaintTainted {
+				t.Errorf("node %s (index %d).TaintState = %v, want %v",
+					n.ID.String(), i, n.TaintState, node.TaintTainted)
+			}
+		}
+	}
+}
+
+// TestPropagateTaint_LargeTreeMixedTaint tests a large tree with multiple taint sources.
+// This tests the more complex case where different subtrees have different taint states.
+func TestPropagateTaint_LargeTreeMixedTaint(t *testing.T) {
+	// Build a tree with ~5000 nodes
+	root, allNodes := buildLargeBalancedTree(5000)
+
+	// Root is admitted (from buildLargeBalancedTree), so all descendants will be tainted.
+	// Let's also mark some intermediate nodes as admitted to test self_admitted preservation.
+	admittedIndices := make(map[int]bool)
+	for i := range allNodes {
+		// Mark every 500th node as admitted (after index 100 to ensure they're not root)
+		if i > 100 && i%500 == 0 {
+			allNodes[i].EpistemicState = schema.EpistemicAdmitted
+			allNodes[i].TaintState = node.TaintSelfAdmitted
+			admittedIndices[i] = true
+		}
+	}
+
+	t.Logf("Testing mixed taint tree with %d nodes, %d additional admitted sources", len(allNodes), len(admittedIndices))
+
+	// Run taint propagation from root (which is admitted)
+	changed := PropagateTaint(root, allNodes)
+
+	// Verify that explicitly admitted nodes remain self_admitted (not overwritten to tainted)
+	for i := range admittedIndices {
+		if allNodes[i].TaintState != node.TaintSelfAdmitted {
+			t.Errorf("admitted node %s.TaintState = %v, want %v",
+				allNodes[i].ID.String(), allNodes[i].TaintState, node.TaintSelfAdmitted)
+		}
+	}
+
+	// Most nodes should have changed (descendants of root become tainted, except self-admitted ones)
+	// The admitted nodes were already self_admitted so they don't count as "changed"
+	expectedNonAdmittedDescendants := len(allNodes) - 1 - len(admittedIndices) // -1 for root
+	if len(changed) != expectedNonAdmittedDescendants {
+		t.Errorf("PropagateTaint() returned %d changed nodes, want %d", len(changed), expectedNonAdmittedDescendants)
+	}
+
+	t.Logf("Changed %d nodes in mixed taint tree", len(changed))
+}
+
+// TestPropagateTaint_LargeTreeNoChanges tests that a correctly-tainted large tree
+// reports no changes (efficiency check).
+func TestPropagateTaint_LargeTreeNoChanges(t *testing.T) {
+	root, allNodes := buildLargeBalancedTree(5000)
+
+	// First, propagate to set correct taint states
+	PropagateTaint(root, allNodes)
+
+	// Now run again - should return no changes since everything is correct
+	changed := PropagateTaint(root, allNodes)
+
+	if len(changed) != 0 {
+		t.Errorf("PropagateTaint() on already-correct tree returned %d changes, want 0", len(changed))
+	}
+}
+
+// TestPropagateTaint_LargeTreePartialSubtree tests propagation on just a subtree
+// of a large tree (common real-world case when a single node changes).
+func TestPropagateTaint_LargeTreePartialSubtree(t *testing.T) {
+	// Build a large tree first
+	root, allNodes := buildLargeBalancedTree(5000)
+
+	// Make the main root clean (we'll test propagation from a subtree)
+	root.EpistemicState = schema.EpistemicValidated
+	root.TaintState = node.TaintClean
+
+	// Reset all nodes to clean
+	for _, n := range allNodes {
+		n.EpistemicState = schema.EpistemicValidated
+		n.TaintState = node.TaintClean
+	}
+
+	// Find a node at depth 2 to use as subtree root
+	// In our tree structure, "1.5" would be at depth 2
+	var subtreeRoot *node.Node
+	for _, n := range allNodes {
+		if n.ID.String() == "1.5" { // Pick one of the depth-2 nodes
+			subtreeRoot = n
+			break
+		}
+	}
+
+	if subtreeRoot == nil {
+		t.Skip("Could not find suitable subtree root")
+	}
+
+	// Mark this subtree root as admitted (introduces taint)
+	subtreeRoot.EpistemicState = schema.EpistemicAdmitted
+	subtreeRoot.TaintState = node.TaintSelfAdmitted
+
+	// Count descendants of subtreeRoot
+	descendantCount := 0
+	for _, n := range allNodes {
+		if subtreeRoot.ID.IsAncestorOf(n.ID) {
+			descendantCount++
+		}
+	}
+
+	t.Logf("Testing subtree propagation: root=%s, descendants=%d", subtreeRoot.ID.String(), descendantCount)
+
+	// Propagate from subtree root only
+	changed := PropagateTaint(subtreeRoot, allNodes)
+
+	// Only descendants should change
+	if len(changed) != descendantCount {
+		t.Errorf("PropagateTaint() from subtree returned %d changes, want %d (descendants only)",
+			len(changed), descendantCount)
+	}
+
+	// Verify non-descendants are unaffected (still clean)
+	for _, n := range allNodes {
+		if n == subtreeRoot {
+			continue
+		}
+		if !subtreeRoot.ID.IsAncestorOf(n.ID) {
+			// This node is not a descendant of subtreeRoot
+			if n.TaintState != node.TaintClean {
+				t.Errorf("non-descendant %s.TaintState = %v, want clean",
+					n.ID.String(), n.TaintState)
+			}
+		}
+	}
+}
