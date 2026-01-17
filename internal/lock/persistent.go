@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	aferrors "github.com/tobias/vibefeld/internal/errors"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -87,47 +88,141 @@ func NewPersistentManager(l *ledger.Ledger) (*PersistentManager, error) {
 	return pm, nil
 }
 
+// CorruptedEvent records details about a malformed event during replay.
+type CorruptedEvent struct {
+	Index     int    // Position in the event sequence
+	EventType string // The event type (if parseable), or "unknown"
+	Error     error  // The parsing error
+}
+
+// ReplayResult contains information about events skipped during replay.
+type ReplayResult struct {
+	CorruptedEvents []CorruptedEvent
+}
+
+// HasCorruption returns true if any events were skipped due to corruption.
+func (r *ReplayResult) HasCorruption() bool {
+	return len(r.CorruptedEvents) > 0
+}
+
 // replayLedger reads all events from the ledger and reconstructs lock state.
+// Returns an error if critical lock events are corrupted (lock_acquired, lock_released, lock_reaped).
 func (pm *PersistentManager) replayLedger() error {
 	events, err := pm.ledger.ReadAll()
 	if err != nil {
 		return fmt.Errorf("failed to read ledger events: %w", err)
 	}
 
-	for _, eventData := range events {
+	var corruptedEvents []CorruptedEvent
+
+	for i, eventData := range events {
 		// Parse the event type first
 		var base struct {
 			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(eventData, &base); err != nil {
-			continue // Skip malformed events
+			// Only record if this might be a lock event (we can't tell, so check raw data)
+			if isLikelyLockEvent(eventData) {
+				corruptedEvents = append(corruptedEvents, CorruptedEvent{
+					Index:     i,
+					EventType: "unknown",
+					Error:     fmt.Errorf("failed to parse event type: %w", err),
+				})
+			}
+			continue
 		}
 
 		switch ledger.EventType(base.Type) {
 		case EventLockAcquired:
 			var evt LockAcquired
 			if err := json.Unmarshal(eventData, &evt); err != nil {
-				continue // Skip malformed events
+				corruptedEvents = append(corruptedEvents, CorruptedEvent{
+					Index:     i,
+					EventType: string(EventLockAcquired),
+					Error:     fmt.Errorf("failed to parse lock_acquired event: %w", err),
+				})
+				continue
 			}
 			pm.applyLockAcquired(evt)
 
 		case EventLockReleased:
 			var evt LockReleased
 			if err := json.Unmarshal(eventData, &evt); err != nil {
-				continue // Skip malformed events
+				corruptedEvents = append(corruptedEvents, CorruptedEvent{
+					Index:     i,
+					EventType: string(EventLockReleased),
+					Error:     fmt.Errorf("failed to parse lock_released event: %w", err),
+				})
+				continue
 			}
 			pm.applyLockReleased(evt)
 
 		case ledger.EventLockReaped:
 			var evt ledger.LockReaped
 			if err := json.Unmarshal(eventData, &evt); err != nil {
-				continue // Skip malformed events
+				corruptedEvents = append(corruptedEvents, CorruptedEvent{
+					Index:     i,
+					EventType: string(ledger.EventLockReaped),
+					Error:     fmt.Errorf("failed to parse lock_reaped event: %w", err),
+				})
+				continue
 			}
 			pm.applyLockReaped(evt)
 		}
+		// Non-lock events are silently skipped (expected behavior)
+	}
+
+	// If any lock events were corrupted, return a corruption error
+	if len(corruptedEvents) > 0 {
+		return aferrors.Newf(aferrors.LEDGER_INCONSISTENT,
+			"lock ledger corruption: %d lock event(s) skipped during replay: %v",
+			len(corruptedEvents), formatCorruptedEvents(corruptedEvents))
 	}
 
 	return nil
+}
+
+// isLikelyLockEvent checks if raw event data might be a lock event.
+// This is used to detect corruption in events that can't be parsed.
+func isLikelyLockEvent(data []byte) bool {
+	// Check if the raw data contains lock event type strings
+	s := string(data)
+	return contains(s, "lock_acquired") || contains(s, "lock_released") || contains(s, "lock_reaped")
+}
+
+// contains checks if s contains substr (simple substring check).
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// formatCorruptedEvents formats corrupted events for error messages.
+func formatCorruptedEvents(events []CorruptedEvent) string {
+	if len(events) == 0 {
+		return ""
+	}
+	if len(events) == 1 {
+		e := events[0]
+		return fmt.Sprintf("[event %d (%s): %v]", e.Index, e.EventType, e.Error)
+	}
+	// For multiple events, summarize
+	result := "["
+	for i, e := range events {
+		if i > 0 {
+			result += ", "
+		}
+		result += fmt.Sprintf("event %d (%s)", e.Index, e.EventType)
+		if i >= 2 && len(events) > 3 {
+			result += fmt.Sprintf(", ... and %d more", len(events)-3)
+			break
+		}
+	}
+	result += "]"
+	return result
 }
 
 // applyLockAcquired applies a LockAcquired event to the in-memory state.

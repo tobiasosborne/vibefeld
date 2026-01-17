@@ -197,3 +197,16 @@ func TestComputeTaint_ArchivedNode(t *testing.T) {
 		t.Errorf("ComputeTaint() = %v, want %v", result, node.TaintClean)
 	}
 }
+
+func TestComputeTaint_NilNode(t *testing.T) {
+	// ComputeTaint should handle nil node gracefully by panicking
+	// (defensive behavior - caller must provide valid node)
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("ComputeTaint(nil, ...) should panic but did not")
+		}
+	}()
+
+	ancestors := []*node.Node{}
+	ComputeTaint(nil, ancestors)
+}

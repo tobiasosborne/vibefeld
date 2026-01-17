@@ -616,3 +616,132 @@ func TestWouldCreateCycle_MissingNode(t *testing.T) {
 		t.Errorf("WouldCreateCycle() returned HasCycle=true when source doesn't exist")
 	}
 }
+
+// ===========================================================================
+// Self-dependency edge case tests
+// ===========================================================================
+
+// TestDetectCycle_SelfDependency verifies that cycle detection catches when a node
+// depends on itself. This is the simplest form of circular dependency - a single
+// node forming a cycle of length 1.
+//
+// Graph: A -> A (self-loop)
+//
+// This tests the edge case where the dependency graph contains a self-loop,
+// which should be detected as a cycle immediately.
+func TestDetectCycle_SelfDependency(t *testing.T) {
+	t.Run("DetectCycleFrom detects self-dependency", func(t *testing.T) {
+		p := newMockProvider()
+
+		// Create a node that depends on itself
+		p.addNode("1.1", "1.1")
+		p.addNode("1")
+
+		id, _ := types.Parse("1.1")
+		result := cycle.DetectCycleFrom(p, id)
+
+		// Must detect the self-dependency as a cycle
+		if !result.HasCycle {
+			t.Error("DetectCycleFrom() should detect self-dependency A->A as a cycle")
+		}
+
+		// Path should contain at least 2 entries showing the self-loop
+		if len(result.Path) < 2 {
+			t.Errorf("cycle path should have at least 2 entries for self-dependency: got %v", result.Path)
+		}
+
+		// Path should start and end with the same node (the self-referencing node)
+		if len(result.Path) >= 2 {
+			if result.Path[0].String() != result.Path[len(result.Path)-1].String() {
+				t.Errorf("cycle path should start and end with same node: got %v", result.Path)
+			}
+			// The node in the path should be "1.1"
+			if result.Path[0].String() != "1.1" {
+				t.Errorf("cycle path should contain node 1.1: got %v", result.Path)
+			}
+		}
+
+		// Error message should be generated
+		errMsg := result.Error()
+		if errMsg == "" {
+			t.Error("CycleResult.Error() should return non-empty error message for self-dependency")
+		}
+		if !contains(errMsg, "1.1") {
+			t.Errorf("error message should mention the self-dependent node: got %q", errMsg)
+		}
+	})
+
+	t.Run("DetectAllCycles detects self-dependency", func(t *testing.T) {
+		p := newMockProvider()
+
+		// Create a node that depends on itself
+		p.addNode("1.1", "1.1")
+		p.addNode("1")
+
+		cycles := cycle.DetectAllCycles(p)
+
+		// Must detect at least one cycle
+		if len(cycles) == 0 {
+			t.Error("DetectAllCycles() should detect self-dependency as a cycle")
+		}
+
+		// Find the cycle containing 1.1
+		foundSelfLoop := false
+		for _, c := range cycles {
+			if c.HasCycle {
+				for _, nodeID := range c.Path {
+					if nodeID.String() == "1.1" {
+						foundSelfLoop = true
+						break
+					}
+				}
+			}
+			if foundSelfLoop {
+				break
+			}
+		}
+
+		if !foundSelfLoop {
+			t.Error("DetectAllCycles() should find cycle containing the self-dependent node 1.1")
+		}
+	})
+
+	t.Run("WouldCreateCycle detects proposed self-dependency", func(t *testing.T) {
+		p := newMockProvider()
+
+		// Create a node without self-dependency
+		p.addNode("1.1")
+		p.addNode("1")
+
+		// Check if adding 1.1 -> 1.1 would create a cycle
+		id, _ := types.Parse("1.1")
+		result := cycle.WouldCreateCycle(p, id, id)
+
+		if !result.HasCycle {
+			t.Error("WouldCreateCycle() should detect proposed self-dependency as a cycle")
+		}
+
+		// Path should show the self-reference
+		if len(result.Path) < 2 {
+			t.Errorf("cycle path should have at least 2 entries: got %v", result.Path)
+		}
+	})
+
+	t.Run("self-dependency among other dependencies", func(t *testing.T) {
+		p := newMockProvider()
+
+		// Create a node that has multiple dependencies including itself
+		// This tests that self-dependency is detected even when mixed with valid deps
+		p.addNode("1.3") // valid dependency target
+		p.addNode("1.2") // valid dependency target
+		p.addNode("1.1", "1.2", "1.1", "1.3") // depends on 1.2, itself, and 1.3
+		p.addNode("1")
+
+		id, _ := types.Parse("1.1")
+		result := cycle.DetectCycleFrom(p, id)
+
+		if !result.HasCycle {
+			t.Error("DetectCycleFrom() should detect self-dependency even among other valid dependencies")
+		}
+	})
+}

@@ -734,6 +734,163 @@ func TestReplay_InvalidJSON(t *testing.T) {
 	}
 }
 
+// TestReplay_CorruptedEventInMiddle verifies that state replay stops at the first
+// corrupted JSON event and returns an appropriate error. This tests the scenario
+// where valid events are followed by a corrupted event in the middle of the ledger.
+func TestReplay_CorruptedEventInMiddle(t *testing.T) {
+	dir := t.TempDir()
+
+	// Step 1: Create valid event at sequence 1
+	initEvent := ledger.NewProofInitialized("Test conjecture", "test-author")
+	seq1, err := ledger.Append(dir, initEvent)
+	if err != nil {
+		t.Fatalf("Append event 1 failed: %v", err)
+	}
+	if seq1 != 1 {
+		t.Fatalf("First event should have seq 1, got %d", seq1)
+	}
+
+	// Step 2: Create valid event at sequence 2 (NodeCreated)
+	nodeID := mustParseNodeID(t, "1")
+	n, _ := node.NewNode(nodeID, schema.NodeTypeClaim, "Root claim", schema.InferenceAssumption)
+	seq2, err := ledger.Append(dir, ledger.NewNodeCreated(*n))
+	if err != nil {
+		t.Fatalf("Append event 2 failed: %v", err)
+	}
+	if seq2 != 2 {
+		t.Fatalf("Second event should have seq 2, got %d", seq2)
+	}
+
+	// Step 3: Write corrupted JSON directly at sequence 3
+	corruptedPath := filepath.Join(dir, "000003.json")
+	corruptedJSON := []byte(`{"type":"node_created","corrupted json missing closing brace`)
+	if err := os.WriteFile(corruptedPath, corruptedJSON, 0644); err != nil {
+		t.Fatalf("WriteFile for corrupted event failed: %v", err)
+	}
+
+	// Step 4: Create valid event at sequence 4 (should never be reached)
+	validEventPath := filepath.Join(dir, "000004.json")
+	validEvent := `{"type":"proof_initialized","timestamp":"2025-01-01T00:00:00Z","conjecture":"unreachable","author":"test"}`
+	if err := os.WriteFile(validEventPath, []byte(validEvent), 0644); err != nil {
+		t.Fatalf("WriteFile for event 4 failed: %v", err)
+	}
+
+	// Step 5: Create ledger and attempt replay
+	ldg, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	// Verify the ledger has 4 events
+	count, err := ldg.Count()
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 4 {
+		t.Fatalf("Expected 4 events in ledger, got %d", count)
+	}
+
+	// Step 6: Replay should fail at the corrupted event
+	_, err = Replay(ldg)
+	if err == nil {
+		t.Fatal("Replay should return error for corrupted event in middle")
+	}
+
+	// Step 7: Verify error indicates the problem is at event 3
+	errStr := err.Error()
+	if !strings.Contains(errStr, "3") {
+		t.Errorf("Error should mention event sequence 3: got %q", errStr)
+	}
+
+	// The error should indicate invalid JSON or parsing failure
+	if !strings.Contains(errStr, "invalid JSON") && !strings.Contains(errStr, "read event") {
+		t.Errorf("Error should mention invalid JSON or read failure: got %q", errStr)
+	}
+}
+
+// TestReplay_CorruptedEventInMiddle_VariousCorruptions tests replay behavior with
+// different types of JSON corruption in the middle of the ledger.
+func TestReplay_CorruptedEventInMiddle_VariousCorruptions(t *testing.T) {
+	tests := []struct {
+		name           string
+		corruptedData  string
+		errorContains  string // what the error message should contain
+	}{
+		{
+			name:          "truncated JSON object",
+			corruptedData: `{"type":"node_created","timestamp":"2025-01-01T00:00:00Z"`,
+			errorContains: "invalid JSON",
+		},
+		{
+			name:          "completely malformed",
+			corruptedData: `not json at all {{{`,
+			errorContains: "invalid JSON",
+		},
+		{
+			name:          "binary garbage",
+			corruptedData: string([]byte{0x00, 0x01, 0x02, 0xff, 0xfe}),
+			errorContains: "invalid JSON",
+		},
+		{
+			name:          "empty file",
+			corruptedData: ``,
+			errorContains: "invalid JSON",
+		},
+		{
+			name:          "valid JSON but missing type field",
+			corruptedData: `{"timestamp":"2025-01-01T00:00:00Z","author":"test"}`,
+			errorContains: "type",
+		},
+		{
+			name:          "array instead of object",
+			corruptedData: `["not", "an", "object"]`,
+			errorContains: "type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+
+			// Create valid event at sequence 1
+			initEvent := ledger.NewProofInitialized("Test conjecture", "test-author")
+			if _, err := ledger.Append(dir, initEvent); err != nil {
+				t.Fatalf("Append event 1 failed: %v", err)
+			}
+
+			// Create valid event at sequence 2
+			nodeID := mustParseNodeID(t, "1")
+			n, _ := node.NewNode(nodeID, schema.NodeTypeClaim, "Root", schema.InferenceAssumption)
+			if _, err := ledger.Append(dir, ledger.NewNodeCreated(*n)); err != nil {
+				t.Fatalf("Append event 2 failed: %v", err)
+			}
+
+			// Write corrupted event at sequence 3
+			corruptedPath := filepath.Join(dir, "000003.json")
+			if err := os.WriteFile(corruptedPath, []byte(tt.corruptedData), 0644); err != nil {
+				t.Fatalf("WriteFile for corrupted event failed: %v", err)
+			}
+
+			// Create ledger and attempt replay
+			ldg, err := ledger.NewLedger(dir)
+			if err != nil {
+				t.Fatalf("NewLedger failed: %v", err)
+			}
+
+			// Replay should fail
+			_, err = Replay(ldg)
+			if err == nil {
+				t.Fatal("Replay should return error for corrupted event")
+			}
+
+			// Error should contain expected substring
+			if !strings.Contains(err.Error(), tt.errorContains) {
+				t.Errorf("Error should contain %q: got %q", tt.errorContains, err.Error())
+			}
+		})
+	}
+}
+
 // TestReplay_UnknownEventType verifies that Replay handles unknown event types gracefully.
 func TestReplay_UnknownEventType(t *testing.T) {
 	dir := t.TempDir()

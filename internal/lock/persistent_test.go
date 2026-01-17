@@ -1,10 +1,12 @@
 package lock_test
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	aferrors "github.com/tobias/vibefeld/internal/errors"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/lock"
 	"github.com/tobias/vibefeld/internal/types"
@@ -534,4 +536,245 @@ func TestPersistentManager_UnrelatedEvents(t *testing.T) {
 	if len(locks) != 0 {
 		t.Errorf("ListAll() returned %d locks, want 0 (unrelated events should be skipped)", len(locks))
 	}
+}
+
+// TestPersistentManager_CorruptedLockAcquiredEvent verifies corrupted lock_acquired events cause error.
+func TestPersistentManager_CorruptedLockAcquiredEvent(t *testing.T) {
+	l, dir := createTestLedger(t)
+
+	// Write a valid lock_acquired event
+	nodeID, _ := types.Parse("1.1")
+	evt := lock.NewLockAcquired(nodeID, "agent-001", types.Now())
+	if _, err := l.Append(evt); err != nil {
+		t.Fatalf("Append() unexpected error: %v", err)
+	}
+
+	// Write valid JSON that has wrong structure for lock_acquired (missing required fields)
+	// The JSON is valid, but node_id is the wrong type (number instead of string)
+	corruptedEvent := []byte(`{"type":"lock_acquired","node_id":123,"owner":"test"}`)
+	appendCorruptedEvent(t, dir, corruptedEvent)
+
+	// Re-open ledger and try to create manager - should fail with corruption error
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+
+	_, err = lock.NewPersistentManager(l2)
+	if err == nil {
+		t.Error("NewPersistentManager() with corrupted lock_acquired event expected error, got nil")
+	}
+
+	// Verify it's a corruption error (exit code 4)
+	if !aferrors.IsCorruption(err) {
+		t.Errorf("Expected corruption error, got: %v", err)
+	}
+}
+
+// TestPersistentManager_CorruptedLockReleasedEvent verifies corrupted lock_released events cause error.
+func TestPersistentManager_CorruptedLockReleasedEvent(t *testing.T) {
+	l, dir := createTestLedger(t)
+
+	// Write a valid lock_acquired event
+	nodeID, _ := types.Parse("1.1")
+	evt := lock.NewLockAcquired(nodeID, "agent-001", types.Now())
+	if _, err := l.Append(evt); err != nil {
+		t.Fatalf("Append() unexpected error: %v", err)
+	}
+
+	// Write valid JSON with wrong structure for lock_released (node_id is number instead of string)
+	corruptedEvent := []byte(`{"type":"lock_released","node_id":123,"owner":"test"}`)
+	appendCorruptedEvent(t, dir, corruptedEvent)
+
+	// Re-open ledger and try to create manager - should fail with corruption error
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+
+	_, err = lock.NewPersistentManager(l2)
+	if err == nil {
+		t.Error("NewPersistentManager() with corrupted lock_released event expected error, got nil")
+	}
+
+	// Verify it's a corruption error
+	if !aferrors.IsCorruption(err) {
+		t.Errorf("Expected corruption error, got: %v", err)
+	}
+}
+
+// TestPersistentManager_CorruptedLockReapedEvent verifies corrupted lock_reaped events cause error.
+func TestPersistentManager_CorruptedLockReapedEvent(t *testing.T) {
+	l, dir := createTestLedger(t)
+
+	// Write a valid lock_acquired event
+	nodeID, _ := types.Parse("1.1")
+	evt := lock.NewLockAcquired(nodeID, "agent-001", types.Now())
+	if _, err := l.Append(evt); err != nil {
+		t.Fatalf("Append() unexpected error: %v", err)
+	}
+
+	// Write valid JSON with wrong structure for lock_reaped (node_id is object instead of string)
+	corruptedEvent := []byte(`{"type":"lock_reaped","node_id":{"invalid":"object"},"owner":"test"}`)
+	appendCorruptedEvent(t, dir, corruptedEvent)
+
+	// Re-open ledger and try to create manager - should fail with corruption error
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+
+	_, err = lock.NewPersistentManager(l2)
+	if err == nil {
+		t.Error("NewPersistentManager() with corrupted lock_reaped event expected error, got nil")
+	}
+
+	// Verify it's a corruption error
+	if !aferrors.IsCorruption(err) {
+		t.Errorf("Expected corruption error, got: %v", err)
+	}
+}
+
+// TestPersistentManager_MalformedLockAcquiredArrayField verifies lock_acquired with array node_id causes error.
+func TestPersistentManager_MalformedLockAcquiredArrayField(t *testing.T) {
+	l, dir := createTestLedger(t)
+
+	// Write a valid event first
+	proofEvt := ledger.NewProofInitialized("test conjecture", "test author")
+	if _, err := l.Append(proofEvt); err != nil {
+		t.Fatalf("Append() unexpected error: %v", err)
+	}
+
+	// Write valid JSON but with node_id as an array (wrong type)
+	// This is valid JSON but will fail to unmarshal into LockAcquired struct
+	corruptedEvent := []byte(`{"type":"lock_acquired","node_id":[1,2,3],"owner":"test","expires_at":"2024-01-01T00:00:00Z"}`)
+	appendCorruptedEvent(t, dir, corruptedEvent)
+
+	// Re-open ledger and try to create manager - should fail
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+
+	_, err = lock.NewPersistentManager(l2)
+	if err == nil {
+		t.Error("NewPersistentManager() with malformed lock_acquired event expected error, got nil")
+	}
+
+	// Verify it's a corruption error
+	if !aferrors.IsCorruption(err) {
+		t.Errorf("Expected corruption error, got: %v", err)
+	}
+}
+
+// TestPersistentManager_NonLockEventIgnored verifies non-lock events are silently ignored (no error).
+func TestPersistentManager_NonLockEventIgnored(t *testing.T) {
+	l, dir := createTestLedger(t)
+
+	// Write a valid lock event with expiration time 1 hour in the future
+	nodeID, _ := types.Parse("1.1")
+	futureExpiry := types.FromTime(time.Now().Add(1 * time.Hour))
+	evt := lock.NewLockAcquired(nodeID, "agent-001", futureExpiry)
+	if _, err := l.Append(evt); err != nil {
+		t.Fatalf("Append() unexpected error: %v", err)
+	}
+
+	// Write a non-lock event with valid JSON (some custom event type)
+	nonLockEvent := []byte(`{"type":"custom_event","data":"something"}`)
+	appendCorruptedEvent(t, dir, nonLockEvent)
+
+	// Re-open ledger - should succeed because non-lock events are ignored
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+
+	pm, err := lock.NewPersistentManager(l2)
+	if err != nil {
+		t.Fatalf("NewPersistentManager() unexpected error for non-lock event: %v", err)
+	}
+
+	// Lock should still be present
+	if !pm.IsLocked(nodeID) {
+		t.Error("Lock should still exist when non-lock events are present")
+	}
+}
+
+// TestPersistentManager_MultipleCorruptedEventsReported verifies multiple corruptions are reported.
+func TestPersistentManager_MultipleCorruptedEventsReported(t *testing.T) {
+	_, dir := createTestLedger(t)
+
+	// Write multiple corrupted lock events (valid JSON but wrong field types)
+	corruptedEvent1 := []byte(`{"type":"lock_acquired","node_id":123,"owner":"test"}`)
+	corruptedEvent2 := []byte(`{"type":"lock_released","node_id":456,"owner":"test"}`)
+	corruptedEvent3 := []byte(`{"type":"lock_reaped","node_id":789,"owner":"test"}`)
+
+	appendCorruptedEvent(t, dir, corruptedEvent1)
+	appendCorruptedEvent(t, dir, corruptedEvent2)
+	appendCorruptedEvent(t, dir, corruptedEvent3)
+
+	// Re-open ledger
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+
+	_, err = lock.NewPersistentManager(l2)
+	if err == nil {
+		t.Error("NewPersistentManager() with multiple corrupted events expected error, got nil")
+	}
+
+	// Error message should mention "3 lock event(s)"
+	errMsg := err.Error()
+	if !containsSubstr(errMsg, "3 lock event(s)") {
+		t.Errorf("Error message should mention '3 lock event(s)', got: %s", errMsg)
+	}
+}
+
+// appendCorruptedEvent creates a corrupted event file directly in the ledger directory.
+// It finds the next sequence number and writes a corrupted JSON file.
+func appendCorruptedEvent(t *testing.T, dir string, data []byte) {
+	t.Helper()
+
+	// Find next sequence number by counting existing event files
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("Failed to read ledger directory: %v", err)
+	}
+
+	maxSeq := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		// Parse filenames like "000001.json"
+		if len(name) > 5 && name[len(name)-5:] == ".json" {
+			base := name[:len(name)-5]
+			var seq int
+			if _, err := fmt.Sscanf(base, "%d", &seq); err == nil {
+				if seq > maxSeq {
+					maxSeq = seq
+				}
+			}
+		}
+	}
+
+	nextSeq := maxSeq + 1
+	filename := fmt.Sprintf("%06d.json", nextSeq)
+	filepath := dir + "/" + filename
+
+	if err := os.WriteFile(filepath, data, 0644); err != nil {
+		t.Fatalf("Failed to write corrupted event file: %v", err)
+	}
+}
+
+// containsSubstr checks if s contains substr.
+func containsSubstr(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
