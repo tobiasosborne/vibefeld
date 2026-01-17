@@ -292,15 +292,7 @@ func collectDefinitionNames(s *state.State, targetNode *node.Node) []string {
 
 	// Also check all definitions added to state by looking at all nodes' contexts
 	for _, n := range s.AllNodes() {
-		for _, entry := range n.Context {
-			if strings.HasPrefix(entry, "def:") {
-				name := strings.TrimPrefix(entry, "def:")
-				// Only include if definition exists in state
-				if s.GetDefinition(name) != nil {
-					nameSet[name] = true
-				}
-			}
-		}
+		addDefinitionNamesFromNode(s, n, nameSet)
 	}
 
 	// Convert map to slice
@@ -310,6 +302,21 @@ func collectDefinitionNames(s *state.State, targetNode *node.Node) []string {
 	}
 
 	return result
+}
+
+// addDefinitionNamesFromNode extracts definition names from a single node's context
+// and adds them to nameSet if the definition exists in state.
+func addDefinitionNamesFromNode(s *state.State, n *node.Node, nameSet map[string]bool) {
+	for _, entry := range n.Context {
+		if !strings.HasPrefix(entry, "def:") {
+			continue
+		}
+		name := strings.TrimPrefix(entry, "def:")
+		if s.GetDefinition(name) == nil {
+			continue
+		}
+		nameSet[name] = true
+	}
 }
 
 // renderAssumptions writes the assumptions section.

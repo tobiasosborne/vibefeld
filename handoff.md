@@ -1,45 +1,37 @@
-# Handoff - 2026-01-17 (Session 148)
+# Handoff - 2026-01-17 (Session 149)
 
 ## What Was Accomplished This Session
 
-### Session 148 Summary: Closed 3 issues (2 already-fixed, 1 CLI improvement)
+### Session 149 Summary: Closed 1 issue (Code smell fix)
 
-1. **vibefeld-0yyy** - "Code smell: Deep nesting in accept.go validation"
-   - Investigation found this was already fixed in commit `3bcd076` (Session 103)
-   - The `runAccept` function was refactored with helper functions and guard clauses
-   - Original lines 157-170 are now in `outputNoPendingNodes` and are clean
-
-2. **vibefeld-8d5o** - "Error handling: JSON unmarshal errors not checked in claim.go"
-   - Investigation found this was already fixed in commit `ac83c39`
-   - The error is now handled explicitly - adds `verification_checklist_error` field on failure
-
-3. **vibefeld-jnhb** - "CLI UX: Add common mistakes examples to challenge help"
-   - Added "Common mistakes" section to `af challenge --help` output
-   - 4 examples: statement vs inference confusion, severity misuse, domain target guidance
+1. **vibefeld-wkbj** - "Code smell: Deep nesting in prover_context.go loops"
+   - Refactored `collectDefinitionNames` function (lines 294-304)
+   - Extracted `addDefinitionNamesFromNode` helper function
+   - Used early continues to flatten the nested logic
+   - Original: 5 levels deep (for → for → if → if → assignment)
+   - After: 2 levels (for → helper with early continues)
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `cmd/af/challenge.go` | Added Common mistakes section to help text |
+| `internal/render/prover_context.go` | Extracted addDefinitionNamesFromNode helper, flattened nesting |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-0yyy** | Closed | Already fixed in commit 3bcd076 - runAccept uses guard clauses and helpers |
-| **vibefeld-8d5o** | Closed | Already fixed in commit ac83c39 - JSON errors now reported explicitly |
-| **vibefeld-jnhb** | Closed | Added Common mistakes section to challenge help text |
+| **vibefeld-wkbj** | Closed | Refactored deep nesting by extracting helper and using early continues |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 31 (was 36)
-- **Closed:** 518 (was 513)
+- **Open:** 30 (was 31)
+- **Closed:** 519 (was 518)
 
 ### Test Status
 - Build: PASS
-- Unit tests: PASS (for challenge-related code)
+- Unit tests: PASS for render package
 - Pre-existing failures in lock package (unrelated to this session)
 
 ### Known Issues (Pre-existing)
@@ -51,13 +43,10 @@
 go build ./cmd/af
 
 # Run tests for modified packages
-go test ./cmd/af/...
+go test ./internal/render/...
 
 # Run all tests
 go test ./...
-
-# Verify challenge help
-./af challenge --help | grep -A5 "Common mistakes"
 ```
 
 ## Remaining P1 Issues
@@ -100,6 +89,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 149:** Closed 1 issue (Code smell - deep nesting in prover_context.go, extracted addDefinitionNamesFromNode helper)
 **Session 148:** Closed 3 issues (2 already-fixed: accept.go nesting, claim.go JSON error; 1 new: challenge help common mistakes)
 **Session 147:** Closed 1 issue (Code smell - deep nesting in refine.go, already fixed in ff54f25)
 **Session 146:** Closed 1 issue (Code smell - duplicate verification summary building, added lookupContextStatus helper)
