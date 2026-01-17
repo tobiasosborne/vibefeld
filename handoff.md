@@ -1,47 +1,40 @@
-# Handoff - 2026-01-17 (Session 60)
+# Handoff - 2026-01-17 (Session 61)
 
 ## What Was Accomplished This Session
 
-### Session 60 Summary: Closed 6 Issues with 5 Parallel Agents
+### Session 61 Summary: Closed 4 Issues with 4 Parallel Agents
 
-**Deployed 5 subagents in parallel (each on separate packages to avoid conflicts):**
+**Deployed 4 subagents in parallel (each on separate packages to avoid conflicts):**
 
 #### Issues Closed
 
-| Issue | Package | Tests Added | Result |
-|-------|---------|-------------|--------|
-| **vibefeld-vaso** | state | `TestReplay_WithLedgerGaps` | 9 subtests for gap detection |
-| **vibefeld-96x0** | taint | `TestPropagateTaint_WithCircularDependencies` | 8 subtests for termination |
-| **vibefeld-o6o5** | node | `TestContentHashCollision` | Verifies hash behavior |
-| **vibefeld-cufx** | node | `TestDetectCycle_TransitiveCircular` | A→B→C→A detection |
-| **vibefeld-vth9** | render | 65 test functions | Coverage 34% → 42.7% |
-| **vibefeld-9s34** | fs | 24 test functions | Coverage 33.6% → 80.3% |
+| Issue | Package | Change Type | Description |
+|-------|---------|-------------|-------------|
+| **vibefeld-7drr** | lock | Bug fix | Rewrote `replayLedger()` to detect corrupted lock events and return `LEDGER_INCONSISTENT` error |
+| **vibefeld-rn2d** | taint | Test | `TestComputeTaint_NilNode` - verifies panic on nil input |
+| **vibefeld-9pzw** | state | Test | `TestReplay_CorruptedEventInMiddle` - verifies replay stops at corrupted JSON |
+| **vibefeld-hg47** | cycle | Test | `TestDetectCycle_SelfDependency` - verifies self-loop detection |
 
 #### Files Changed
 
 ```
-internal/state/replay_test.go         (+157 lines) - Ledger gap tests
-internal/taint/propagate_unit_test.go (+251 lines) - Circular dependency tests
-internal/node/node_test.go            (+73 lines) - Hash collision tests
-internal/node/cycle_test.go           (+102 lines) - Transitive cycle tests
-internal/render/json_unit_test.go     (+1500 lines) - New comprehensive JSON tests
-internal/fs/coverage_test.go          (+1000 lines) - New comprehensive coverage tests
+internal/lock/persistent.go       (+105 lines) - Corrupted event detection & error handling
+internal/lock/persistent_test.go  (+243 lines) - Corruption error tests
+internal/taint/compute_test.go    (+13 lines)  - Nil node panic test
+internal/state/replay_test.go     (+157 lines) - Corrupted JSON event tests
+internal/cycle/cycle_test.go      (+129 lines) - Self-dependency tests
 ```
 
-**Total: ~3083 lines of tests added**
+**Total: ~647 lines changed (642 insertions, 5 deletions)**
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 144 (was 150)
-- **Closed:** 405 (was 399)
+- **Open:** 140 (was 144)
+- **Closed:** 409 (was 405)
 
 ### Test Status
 All tests pass. Build succeeds.
-
-### Coverage Improvements This Session
-- render: 34% → **42.7%** (+8.7%)
-- fs: 33.6% → **80.3%** (+46.7%)
 
 ## Remaining P0 Issues
 
@@ -59,8 +52,8 @@ bd list --status=open | grep P0
 
 ### High Priority (P1)
 1. Fix TOCTOU race condition (`vibefeld-ckbi`)
-2. Fix silent ledger corruption skip (`vibefeld-7drr`)
-3. Cache challenge map (`vibefeld-7a8j`)
+2. Cache challenge map (`vibefeld-7a8j`)
+3. Additional edge case tests for ledger, lock, state packages
 
 ## Quick Commands
 
@@ -77,6 +70,7 @@ go test ./...
 
 ## Session History
 
+**Session 61:** Closed 4 issues with 4 parallel agents (lock corruption fix + 3 edge case tests)
 **Session 60:** Closed 6 P0 issues with 5 parallel agents (+3083 lines tests)
 **Session 59:** Closed 5 P0 issues with 5 parallel agents (+3970 lines tests/fixes)
 **Session 58:** Comprehensive code review with 10 parallel agents, created 158 issues
