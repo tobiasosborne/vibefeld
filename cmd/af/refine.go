@@ -21,6 +21,18 @@ type childSpec struct {
 	Inference string `json:"inference"`
 }
 
+// validateNodeTypeAndInference validates node type and inference strings,
+// returning the parsed types or an error with proper formatting.
+func validateNodeTypeAndInference(cmdName, nodeTypeStr, inferenceStr string, examples []string) (schema.NodeType, schema.InferenceType, error) {
+	if err := schema.ValidateNodeType(nodeTypeStr); err != nil {
+		return "", "", render.InvalidValueError(cmdName, "type", nodeTypeStr, render.ValidNodeTypes, examples)
+	}
+	if err := schema.ValidateInference(inferenceStr); err != nil {
+		return "", "", render.InvalidValueError(cmdName, "justification", inferenceStr, render.ValidInferenceTypes, examples)
+	}
+	return schema.NodeType(nodeTypeStr), schema.InferenceType(inferenceStr), nil
+}
+
 // newRefineCmd creates the refine command for adding child nodes to a proof.
 func newRefineCmd() *cobra.Command {
 	var owner string
@@ -186,17 +198,11 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 	}
 
 	// Single-child mode (original behavior)
-	// Validate node type
-	if err := schema.ValidateNodeType(nodeTypeStr); err != nil {
-		return render.InvalidValueError("af refine", "type", nodeTypeStr, render.ValidNodeTypes, examples)
+	// Validate node type and inference type
+	nodeType, inferenceType, err := validateNodeTypeAndInference("af refine", nodeTypeStr, inferenceStr, examples)
+	if err != nil {
+		return err
 	}
-	nodeType := schema.NodeType(nodeTypeStr)
-
-	// Validate inference type
-	if err := schema.ValidateInference(inferenceStr); err != nil {
-		return render.InvalidValueError("af refine", "justification", inferenceStr, render.ValidInferenceTypes, examples)
-	}
-	inferenceType := schema.InferenceType(inferenceStr)
 
 	// Validate definition citations in statement
 	if err := lemma.ValidateDefCitations(statement, st); err != nil {
@@ -389,24 +395,20 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 				examples)
 		}
 
-		// Validate and apply default type
+		// Apply defaults for type and inference
 		childType := child.Type
 		if childType == "" {
 			childType = "claim" // default
 		}
-		if err := schema.ValidateNodeType(childType); err != nil {
-			return render.InvalidValueError("af refine", "type",
-				fmt.Sprintf("child %d: %s", i+1, childType), render.ValidNodeTypes, examples)
-		}
-
-		// Validate and apply default inference
 		childInference := child.Inference
 		if childInference == "" {
 			childInference = "assumption" // default
 		}
-		if err := schema.ValidateInference(childInference); err != nil {
-			return render.InvalidValueError("af refine", "justification",
-				fmt.Sprintf("child %d: %s", i+1, childInference), render.ValidInferenceTypes, examples)
+
+		// Validate type and inference
+		nodeType, inferenceType, err := validateNodeTypeAndInference("af refine", childType, childInference, examples)
+		if err != nil {
+			return fmt.Errorf("child %d: %w", i+1, err)
 		}
 
 		// Validate definition citations in statement
@@ -415,9 +417,9 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 		}
 
 		specs[i] = service.ChildSpec{
-			NodeType:  schema.NodeType(childType),
+			NodeType:  nodeType,
 			Statement: child.Statement,
-			Inference: schema.InferenceType(childInference),
+			Inference: inferenceType,
 		}
 	}
 
@@ -492,17 +494,11 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 func runRefinePositional(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owner, nodeTypeStr, inferenceStr, format string, svc *service.ProofService, st *state.State, statements []string) error {
 	examples := render.GetExamples("af refine")
 
-	// Validate node type (will be used for all children)
-	if err := schema.ValidateNodeType(nodeTypeStr); err != nil {
-		return render.InvalidValueError("af refine", "type", nodeTypeStr, render.ValidNodeTypes, examples)
+	// Validate node type and inference type (will be used for all children)
+	nodeType, inferenceType, err := validateNodeTypeAndInference("af refine", nodeTypeStr, inferenceStr, examples)
+	if err != nil {
+		return err
 	}
-	nodeType := schema.NodeType(nodeTypeStr)
-
-	// Validate inference type (will be used for all children)
-	if err := schema.ValidateInference(inferenceStr); err != nil {
-		return render.InvalidValueError("af refine", "justification", inferenceStr, render.ValidInferenceTypes, examples)
-	}
-	inferenceType := schema.InferenceType(inferenceStr)
 
 	// Convert positional statements to ChildSpec and validate each
 	specs := make([]service.ChildSpec, len(statements))

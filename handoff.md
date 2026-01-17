@@ -1,44 +1,45 @@
-# Handoff - 2026-01-17 (Session 101)
+# Handoff - 2026-01-17 (Session 102)
 
 ## What Was Accomplished This Session
 
-### Session 101 Summary: Similar Collection Function Code Smell
+### Session 102 Summary: Duplicate Node Type/Inference Validation Code Smell
 
-Closed issue `vibefeld-k40c` - "Code smell: Similar patterns in collectAssumptionIDs and collectExternalIDs"
+Closed issue `vibefeld-zcam` - "Code smell: Duplicate node type/inference validation"
 
-Created a generic `collectContextEntries(prefix string, targetNode *node.Node) []string` helper function that extracts IDs from node context and scope fields with a given prefix.
+Created a `validateNodeTypeAndInference(cmdName, nodeTypeStr, inferenceStr string, examples []string)` helper function that validates both node type and inference strings, returning the parsed types or a properly formatted error.
 
-Both `collectAssumptionIDs` and `collectExternalIDs` now delegate to this helper:
-- `collectAssumptionIDs` calls `collectContextEntries("assume:", targetNode)`
-- `collectExternalIDs` calls `collectContextEntries("ext:", targetNode)`
+Consolidated 3 duplicate validation code paths in `cmd/af/refine.go`:
+- Single-child mode (lines ~200-211) → now uses helper
+- Positional statements mode (lines ~501-511) → now uses helper
+- Multi-child JSON mode (lines ~403-416) → now uses helper with error wrapping for per-child context
 
 #### Changes Made
 
-- Created `collectContextEntries` generic helper function
-- Simplified `collectAssumptionIDs` to 1-line delegation
-- Simplified `collectExternalIDs` to 1-line delegation
-- Net reduction: 22 lines of code
+- Created `validateNodeTypeAndInference` helper function (lines 24-33)
+- Simplified single-child validation to one helper call
+- Simplified positional validation to one helper call
+- Refactored multi-child validation to use helper with `fmt.Errorf("child %d: %w", i+1, err)` wrapping
 
 #### Impact
 
-- DRY: Eliminated nearly identical code patterns
-- Easier maintenance: Changes to collection logic only need to happen in one place
-- Cleaner function signatures: Helper takes only the parameters it needs
+- DRY: Eliminated nearly identical validation logic in 3 places
+- Easier maintenance: Validation changes only need to happen in one place
+- Consistent error formatting: All paths now use the same `render.InvalidValueError` formatting
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-k40c** | Closed | Created collectContextEntries generic helper. Both functions now delegate to it. |
+| **vibefeld-zcam** | Closed | Extracted validateNodeTypeAndInference helper function, consolidated 3 duplicate validation code paths |
 
 ### Files Changed
-- `internal/render/prover_context.go` (-22 lines net)
+- `cmd/af/refine.go` (net reduction in code)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 83 (was 84)
-- **Closed:** 466 (was 465)
+- **Open:** 82 (was 83)
+- **Closed:** 467 (was 466)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -75,12 +76,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run render package tests
-go test ./internal/render/...
+# Run refine command tests
+go test ./cmd/af/... -run Refine
 ```
 
 ## Session History
 
+**Session 102:** Closed 1 issue (duplicate node type/inference validation code - extracted validateNodeTypeAndInference helper)
 **Session 101:** Closed 1 issue (similar collection function code smell - created collectContextEntries helper)
 **Session 100:** Closed 1 issue (duplicate definition name collection code - removed redundant loop)
 **Session 99:** Closed 1 issue (duplicate state counting code refactoring)
