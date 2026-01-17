@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"reflect"
 
 	"github.com/tobias/vibefeld/internal/ledger"
 )
@@ -152,6 +151,8 @@ var eventFactories = map[ledger.EventType]eventFactory{
 	ledger.EventLemmaExtracted:      func() ledger.Event { return &ledger.LemmaExtracted{} },
 	ledger.EventLockReaped:          func() ledger.Event { return &ledger.LockReaped{} },
 	ledger.EventClaimRefreshed:      func() ledger.Event { return &ledger.ClaimRefreshed{} },
+	ledger.EventScopeOpened:         func() ledger.Event { return &ledger.ScopeOpened{} },
+	ledger.EventScopeClosed:         func() ledger.Event { return &ledger.ScopeClosed{} },
 }
 
 // parseEvent parses raw JSON bytes into a typed Event.
@@ -176,7 +177,57 @@ func parseEvent(data []byte) (ledger.Event, error) {
 		return nil, fmt.Errorf("failed to parse %s: %w", eventType, err)
 	}
 
-	// Dereference pointer to get value type (required for Apply's type assertions)
-	// Uses reflection to avoid a separate type switch for each event type
-	return reflect.ValueOf(eventPtr).Elem().Interface().(ledger.Event), nil
+	// Dereference pointer to get value type (required for Apply's type assertions).
+	// This type switch avoids reflection overhead in the hot path.
+	return derefEvent(eventPtr), nil
+}
+
+// derefEvent dereferences an event pointer to return the value type.
+// This eliminates reflection overhead in the event parsing hot path.
+func derefEvent(eventPtr ledger.Event) ledger.Event {
+	switch e := eventPtr.(type) {
+	case *ledger.ProofInitialized:
+		return *e
+	case *ledger.NodeCreated:
+		return *e
+	case *ledger.NodesClaimed:
+		return *e
+	case *ledger.NodesReleased:
+		return *e
+	case *ledger.ChallengeRaised:
+		return *e
+	case *ledger.ChallengeResolved:
+		return *e
+	case *ledger.ChallengeWithdrawn:
+		return *e
+	case *ledger.ChallengeSuperseded:
+		return *e
+	case *ledger.NodeValidated:
+		return *e
+	case *ledger.NodeAdmitted:
+		return *e
+	case *ledger.NodeRefuted:
+		return *e
+	case *ledger.NodeArchived:
+		return *e
+	case *ledger.NodeAmended:
+		return *e
+	case *ledger.TaintRecomputed:
+		return *e
+	case *ledger.DefAdded:
+		return *e
+	case *ledger.LemmaExtracted:
+		return *e
+	case *ledger.LockReaped:
+		return *e
+	case *ledger.ClaimRefreshed:
+		return *e
+	case *ledger.ScopeOpened:
+		return *e
+	case *ledger.ScopeClosed:
+		return *e
+	default:
+		// Should never happen since factory already validated the type
+		return eventPtr
+	}
 }

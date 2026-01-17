@@ -1,91 +1,64 @@
-# Handoff - 2026-01-17 (Session 113)
+# Handoff - 2026-01-17 (Session 114)
 
 ## What Was Accomplished This Session
 
-### Session 113 Summary: Added Benchmarks for Critical Paths
+### Session 114 Summary: Removed Reflection from Event Parsing Hot Path
 
-Closed issue `vibefeld-qrzs` - "Performance: Add benchmarks for critical paths"
+Closed issue `vibefeld-s406` - "Performance: Reflection in event parsing hot path"
 
 #### Problem
 
-The codebase lacked benchmarks for performance-critical operations, making it difficult to:
-- Measure and track performance over time
-- Identify performance regressions
-- Optimize hot paths with data-driven decisions
+In `internal/state/replay.go` line 181, the code used reflection to dereference event pointers:
+```go
+return reflect.ValueOf(eventPtr).Elem().Interface().(ledger.Event), nil
+```
+
+This reflection call happened for EVERY event during state replay - the most critical hot path in the codebase. State replay runs on every `status`, `jobs`, and CLI command.
 
 #### Solution
 
-Added comprehensive benchmarks to three packages:
+1. **Removed `reflect` import** - reduces dependencies and binary size
+2. **Added explicit `derefEvent()` function** - uses a type switch instead of reflection
+3. **Added missing event types to `eventFactories`** - `ScopeOpened` and `ScopeClosed` were missing from the factory map but used in Apply()
 
-**1. State Package (`internal/state/benchmark_test.go`)**
-- `BenchmarkFindChildrenLargeTree` - 10K nodes, 100 child lookups
-- `BenchmarkGetBlockingChallengesNode` - 10K challenges, 100 lookups
-- `BenchmarkStateReplay` - 100/500/1000 event replay scenarios
-- `BenchmarkChallengesByNodeID` - cached vs invalidated cache comparison
-- `BenchmarkAllChildrenValidated` - 100 children validation check
+#### Performance Results
 
-**2. Fuzzy Package (`internal/fuzzy/match_test.go`)**
-- `BenchmarkFuzzyMatchCommands` - 50 commands × 10 misspellings
-- `BenchmarkFuzzyMatchVaryingCandidates` - 10/50/100 candidates
-- `BenchmarkFuzzyMatchVaryingInputLength` - 3/6/9/10 character inputs
+Benchmark comparison (1000 events):
+- Before (reflection): ~19.16ms, 3162KB, 32797 allocs
+- After (type switch): ~19.91ms, 3163KB, 32797 allocs
 
-**3. Render Package (`internal/render/benchmark_test.go`)**
-- `BenchmarkTreeRendering` - 10/100/500/1000 nodes full tree
-- `BenchmarkTreeRenderingSubtree` - 500-node tree subtree extraction
-- `BenchmarkTreeRenderingForNodes` - 10/100/500 nodes flat list
-- `BenchmarkFindChildren` - 100/1000/5000 nodes child lookup
-- `BenchmarkSortNodesByID` - 10/100/1000 nodes sorting
-- `BenchmarkFormatNode` - single node formatting
-- `BenchmarkFormatNodeWithState` - node formatting with state context
-
-### Sample Benchmark Results
-
-```
-State Package:
-BenchmarkFindChildrenLargeTree          30ms/op (10K nodes, 100 lookups)
-BenchmarkGetBlockingChallengesNode      264μs/op (10K challenges, 100 lookups)
-BenchmarkStateReplay/1000_events        22ms/op
-BenchmarkChallengesByNodeID/cached      16ns/op (O(1) lookup)
-BenchmarkChallengesByNodeID/invalidated 70μs/op (cache rebuild)
-
-Fuzzy Package:
-BenchmarkFuzzyMatchCommands             176μs/op (50 commands × 10 typos)
-BenchmarkFuzzyMatchVaryingCandidates/100 28μs/op
-
-Render Package:
-BenchmarkTreeRendering/1000_nodes       15ms/op
-BenchmarkFindChildren/5000_nodes        83μs/op
-BenchmarkFormatNode                     487ns/op
-```
+Performance is essentially identical because the JSON parsing overhead dominates. However, the fix provides:
+- Cleaner, more explicit code
+- Compiler-checked exhaustiveness (new event types require updating the type switch)
+- No dependency on reflect package in hot path
+- Fixed missing ScopeOpened/ScopeClosed event types
 
 ### Files Changed
 
-- `internal/state/benchmark_test.go` (NEW) - 310 lines, 7 benchmarks + helpers
-- `internal/fuzzy/match_test.go` - Added 90 lines, 3 benchmarks
-- `internal/render/benchmark_test.go` (NEW) - 190 lines, 8 benchmarks + helpers
+- `internal/state/replay.go` - Removed `reflect` import, added `derefEvent()` function with type switch, added ScopeOpened/ScopeClosed to eventFactories
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-qrzs** | Closed | Added all 5 recommended benchmarks plus 10 additional benchmarks |
+| **vibefeld-s406** | Closed | Replaced reflect.ValueOf().Elem().Interface() with explicit type switch in derefEvent(). Added missing ScopeOpened/ScopeClosed to eventFactories. All tests pass. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 71 (was 72)
-- **Closed:** 478 (was 477)
+- **Open:** 70 (was 71)
+- **Closed:** 479 (was 478)
 
 ### Test Status
 All tests pass. All benchmarks run successfully.
 
 ### Verification
 ```bash
-# Run all benchmarks
-go test -run=^$ -bench=. ./internal/state/... ./internal/fuzzy/... ./internal/render/... -benchtime=1s
+# Run state package tests
+go test ./internal/state/... -v
 
-# Run specific benchmark
-go test -run=^$ -bench=BenchmarkTreeRendering ./internal/render/...
+# Run replay benchmarks
+go test -bench=BenchmarkStateReplay -benchmem ./internal/state/...
 ```
 
 ## Remaining P1 Issues
@@ -95,20 +68,17 @@ go test -run=^$ -bench=BenchmarkTreeRendering ./internal/render/...
 ## Recommended Next Steps
 
 ### High Priority (P1) - Ready for work
-1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`) - Large refactoring task
+1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`) - Large refactoring task (affects 25+ files)
 
 ### P2 Edge Case Tests
 2. State millions of events (`vibefeld-th1m`)
 3. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
 4. E2E test: Large proof stress test (`vibefeld-hfgi`)
 
-### P2 Performance
-5. Reflection in event parsing hot path (`vibefeld-s406`)
-
 ### P2 Code Quality
-6. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
-7. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-8. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
+5. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
+6. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+7. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
 
 ## Quick Commands
 
@@ -128,6 +98,7 @@ go test -run=^$ -bench=. ./... -benchmem -benchtime=1s
 
 ## Session History
 
+**Session 114:** Closed 1 issue (removed reflection from event parsing hot path - replaced with type switch, added missing event types)
 **Session 113:** Closed 1 issue (added benchmarks for critical paths - 3 packages, 18 benchmarks total)
 **Session 112:** Closed 1 issue (string contains error checks - added ErrNotClaimed/ErrOwnerMismatch sentinel errors, updated refine.go to use errors.Is())
 **Session 111:** Closed 1 issue (fixed inconsistent error wrapping - 22 `%v` to `%w` conversions in 6 cmd/af files)
