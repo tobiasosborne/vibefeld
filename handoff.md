@@ -1,119 +1,87 @@
-# Handoff - 2026-01-16 (Session 58)
+# Handoff - 2026-01-17 (Session 59)
 
 ## What Was Accomplished This Session
 
-### Session 58 Summary: Comprehensive Code Review (10 Parallel Agents)
+### Session 59 Summary: Closed 5 P0 Issues with 5 Parallel Agents
 
-**Conducted a major code review of the feature-complete vibefeld/af tool using 10 specialized review agents in parallel:**
+**Deployed 5 subagents in parallel to tackle critical issues from the code review:**
 
-#### Review Agents Deployed
-1. **Unit Test Coverage** - Analyzed test coverage across 26 packages
-2. **Edge Cases & Error Handling** - Identified untested edge cases
-3. **E2E/Integration Tests** - Reviewed end-to-end test coverage
-4. **Module Structure** - Analyzed package dependencies and layering
-5. **API Design** - Evaluated interfaces and method signatures
-6. **Code Smells** - Found anti-patterns and maintainability issues
-7. **Efficiency/Performance** - Identified hot paths and optimizations
-8. **Error Handling Patterns** - Reviewed error infrastructure
-9. **CLI UX & Documentation** - Assessed self-documentation quality
-10. **Security & Concurrency** - Found thread safety and security issues
+#### Issues Closed
 
-#### Key Findings
+| Issue | Description | Result |
+|-------|-------------|--------|
+| **vibefeld-pirf** | Lock release errors ignored in ledger/append.go | Fixed with `releaseLock()` helper that logs errors |
+| **vibefeld-h6uu** | Service package 22.7% coverage | Improved to **75.7%** (+116 tests) |
+| **vibefeld-1nkc** | Taint package 15.1% coverage | Improved to **100%** (+72 tests) |
+| **vibefeld-hmnh** | Edge case: rename fails mid-batch | Added 8 tests for batch rename failures |
+| **vibefeld-lf7w** | E2E: blocking challenges | Added 6 E2E tests verifying acceptance blocking |
 
-**Critical Issues (P0):**
-- Lock release errors ignored (`ledger/append.go:74,157,245`) - can cause deadlocks
-- service package has only 22.7% test coverage
-- taint package has only 15.1% test coverage
-- Missing tests for circular dependencies and ledger gaps
-- No E2E test for blocking challenges preventing acceptance
+#### Files Changed
 
-**High Priority (P1):**
-- TOCTOU race condition in file permissions
-- Challenge map rebuilt on every call (performance)
-- cmd/af imports 17 packages instead of using service facade
-- CLI doesn't explain challenge severity levels
+```
+internal/ledger/append.go           (+17 lines) - Bug fix for lock release
+internal/ledger/append_test.go      (+105 lines) - Tests for bug fix
+internal/fs/error_injection_test.go (+440 lines) - Edge case tests
+internal/service/service_test.go    (+1900 lines) - New comprehensive tests
+internal/taint/propagate_unit_test.go (+900 lines) - New comprehensive tests
+e2e/acceptance_blocking_test.go     (+570 lines) - New E2E tests
+```
 
-**Overall Grades:**
-- Error Handling Infrastructure: **A-**
-- Test Coverage: **B-** (strong unit tests, gaps in service/taint)
-- Architecture: **B+** (clean layering, some coupling issues)
-- CLI UX: **7/10** (good help, missing workflow guidance)
-
-#### Issues Created
-
-**158 issues registered from all review findings:**
-
-| Category | Count |
-|----------|-------|
-| Security/Concurrency | 12 |
-| Test Coverage | 7 |
-| Edge Cases | 49 |
-| E2E Tests | 11 |
-| Performance | 8 |
-| Code Smells | 24 |
-| API Design | 11 |
-| Module Structure | 4 |
-| Error Handling | 3 |
-| CLI UX | 29 |
-
-**Priority Distribution:**
-- P0 (Critical): 11
-- P1 (High): 25
-- P2 (Medium): 67
-- P3 (Low): 43
-- P4 (Backlog): 4
-
-### Files Changed
-- No code changes - this was a review-only session
-- 158 new beads issues created
+**Total: ~3970 lines of tests and fixes added**
 
 ## Current State
 
 ### Issue Statistics
-- **Total:** 549
-- **Open:** 155
-- **Closed:** 394
+- **Open:** 150 (was 155)
+- **Closed:** 399 (was 394)
 
 ### Test Status
-All tests pass. Build succeeds. af v0.1.0
+All tests pass. Build succeeds.
 
-## Recommended Action Plan
+### Coverage Improvements
+- service: 22.7% → **75.7%**
+- taint: 15.1% → **100%**
 
-### Phase 1: Security & Stability (Immediate)
-1. Fix lock release error handling (`vibefeld-pirf`)
-2. Address TOCTOU race condition (`vibefeld-ckbi`)
-3. Stop silently swallowing errors in Config() (`vibefeld-tigb`)
+## Remaining P0 Issues
 
-### Phase 2: Test Coverage (High Priority)
-1. Add tests for service package - target 70%+ (`vibefeld-h6uu`)
-2. Add tests for taint.Propagate() (`vibefeld-1nkc`)
-3. Add blocking-challenge acceptance E2E test (`vibefeld-lf7w`)
+```bash
+bd list --status=open | grep P0
+```
 
-### Phase 3: Performance
-1. Cache challenge map with invalidation (`vibefeld-7a8j`)
-2. Index challenges by node ID for O(1) lookup (`vibefeld-q9kb`)
+- vibefeld-vaso: Edge case test: State replay with ledger gaps
+- vibefeld-96x0: Edge case test: Taint circular dependencies infinite loop
+- vibefeld-o6o5: Edge case test: Node content hash collision
+- vibefeld-cufx: Edge case test: Node circular transitive dependency
+- vibefeld-usra: E2E test: Service layer full integration
+- vibefeld-rmnn: E2E test: Concurrent multi-agent with challenges
 
-### Phase 4: Architecture Cleanup
-1. Refactor cmd/af to use service facade (`vibefeld-jfbc`)
-2. Split ProofOperations interface (`vibefeld-hn7l`)
-3. Consolidate RefineNode variants (`vibefeld-ns9q`)
+## Recommended Next Steps
+
+### Immediate (P0 remaining)
+1. Add remaining edge case tests (vibefeld-vaso, vibefeld-96x0, vibefeld-o6o5, vibefeld-cufx)
+2. Add remaining E2E tests (vibefeld-usra, vibefeld-rmnn)
+
+### High Priority (P1)
+1. Fix TOCTOU race condition (`vibefeld-ckbi`)
+2. Fix silent ledger corruption skip (`vibefeld-7drr`)
+3. Cache challenge map (`vibefeld-7a8j`)
 
 ## Quick Commands
 
 ```bash
-# See critical issues
+# See remaining P0 issues
 bd list --status=open | grep P0
 
 # See all ready work
 bd ready
 
-# See issues by category
-bd list --status=open | grep "Edge case"
-bd list --status=open | grep "CLI UX"
+# Run tests
+go test ./...
 ```
 
 ## Session History
 
+**Session 59:** Closed 5 P0 issues with 5 parallel agents (+3970 lines tests/fixes)
 **Session 58:** Comprehensive code review with 10 parallel agents, created 158 issues
 **Session 57:** Created two example proofs (sqrt2, Dobinski) with adversarial verification
 **Session 56:** Closed final 2 issues (pagination + RaisedBy) - PROJECT COMPLETE
