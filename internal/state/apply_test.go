@@ -1595,3 +1595,296 @@ func TestApplyNodeRefutedOnlyAffectsMatchingChallenges(t *testing.T) {
 		t.Errorf("Challenge on node 2 should still be open: got %q", chalNode2.Status)
 	}
 }
+
+// TestApplyClaimRefreshed verifies that ClaimRefreshed event updates claim timeout.
+func TestApplyClaimRefreshed(t *testing.T) {
+	s := NewState()
+
+	// Add a claimed node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	originalTimeout := types.Now()
+	n.WorkflowState = schema.WorkflowClaimed
+	n.ClaimedBy = "agent-123"
+	n.ClaimedAt = originalTimeout
+	s.AddNode(n)
+
+	// Apply ClaimRefreshed event with new timeout
+	newTimeout := types.Now()
+	event := ledger.NewClaimRefreshed(nodeID, "agent-123", newTimeout)
+
+	err = Apply(s, event)
+	if err != nil {
+		t.Fatalf("Apply ClaimRefreshed failed: %v", err)
+	}
+
+	// Verify timeout was updated
+	got := s.GetNode(nodeID)
+	if got.ClaimedAt != newTimeout {
+		t.Errorf("ClaimedAt not updated: got %v, want %v", got.ClaimedAt, newTimeout)
+	}
+
+	// Verify workflow state remains claimed
+	if got.WorkflowState != schema.WorkflowClaimed {
+		t.Errorf("WorkflowState changed unexpectedly: got %q, want %q", got.WorkflowState, schema.WorkflowClaimed)
+	}
+
+	// Verify owner remains the same
+	if got.ClaimedBy != "agent-123" {
+		t.Errorf("ClaimedBy changed unexpectedly: got %q, want %q", got.ClaimedBy, "agent-123")
+	}
+}
+
+// TestApplyClaimRefreshed_NonExistentNode verifies error when refreshing claim on non-existent node.
+func TestApplyClaimRefreshed_NonExistentNode(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+	event := ledger.NewClaimRefreshed(nodeID, "agent-123", types.Now())
+
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when refreshing claim on non-existent node")
+	}
+
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Error should mention 'not found': got %q", err.Error())
+	}
+}
+
+// TestApplyClaimRefreshed_NotClaimed verifies error when refreshing claim on unclaimed node.
+func TestApplyClaimRefreshed_NotClaimed(t *testing.T) {
+	s := NewState()
+
+	// Add an unclaimed node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	// Node is available by default
+	s.AddNode(n)
+
+	event := ledger.NewClaimRefreshed(nodeID, "agent-123", types.Now())
+
+	err = Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when refreshing claim on unclaimed node")
+	}
+
+	if !strings.Contains(err.Error(), "not claimed") {
+		t.Errorf("Error should mention 'not claimed': got %q", err.Error())
+	}
+}
+
+// TestApplyClaimRefreshed_WrongOwner verifies error when refreshing claim with wrong owner.
+func TestApplyClaimRefreshed_WrongOwner(t *testing.T) {
+	s := NewState()
+
+	// Add a claimed node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	n.WorkflowState = schema.WorkflowClaimed
+	n.ClaimedBy = "agent-123"
+	n.ClaimedAt = types.Now()
+	s.AddNode(n)
+
+	// Try to refresh with a different owner
+	event := ledger.NewClaimRefreshed(nodeID, "agent-456", types.Now())
+
+	err = Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when refreshing claim with wrong owner")
+	}
+
+	if !strings.Contains(err.Error(), "claimed by") {
+		t.Errorf("Error should mention ownership mismatch: got %q", err.Error())
+	}
+}
+
+// TestApplyNodeAmended verifies that NodeAmended event updates node statement.
+func TestApplyNodeAmended(t *testing.T) {
+	s := NewState()
+
+	// Add a node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Original statement", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	s.AddNode(n)
+
+	// Apply NodeAmended event
+	event := ledger.NewNodeAmended(nodeID, "Original statement", "Amended statement", "prover-agent")
+
+	err = Apply(s, event)
+	if err != nil {
+		t.Fatalf("Apply NodeAmended failed: %v", err)
+	}
+
+	// Verify statement was updated
+	got := s.GetNode(nodeID)
+	if got.Statement != "Amended statement" {
+		t.Errorf("Statement not updated: got %q, want %q", got.Statement, "Amended statement")
+	}
+
+	// Verify content hash was recomputed
+	expectedHash := got.ComputeContentHash()
+	if got.ContentHash != expectedHash {
+		t.Errorf("ContentHash not recomputed: got %q, want %q", got.ContentHash, expectedHash)
+	}
+}
+
+// TestApplyNodeAmended_NonExistentNode verifies error when amending non-existent node.
+func TestApplyNodeAmended_NonExistentNode(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+	event := ledger.NewNodeAmended(nodeID, "old", "new", "owner")
+
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when amending non-existent node")
+	}
+
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Error should mention 'not found': got %q", err.Error())
+	}
+}
+
+// TestApplyNodeAmended_RecordsAmendmentHistory verifies that amendments are tracked.
+func TestApplyNodeAmended_RecordsAmendmentHistory(t *testing.T) {
+	s := NewState()
+
+	// Add a node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Original statement", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	s.AddNode(n)
+
+	// Apply multiple amendments
+	event1 := ledger.NewNodeAmended(nodeID, "Original statement", "First amendment", "owner1")
+	if err := Apply(s, event1); err != nil {
+		t.Fatalf("Apply first NodeAmended failed: %v", err)
+	}
+
+	event2 := ledger.NewNodeAmended(nodeID, "First amendment", "Second amendment", "owner2")
+	if err := Apply(s, event2); err != nil {
+		t.Fatalf("Apply second NodeAmended failed: %v", err)
+	}
+
+	// Verify amendment history
+	history := s.GetAmendmentHistory(nodeID)
+	if len(history) != 2 {
+		t.Fatalf("Expected 2 amendments in history, got %d", len(history))
+	}
+
+	if history[0].PreviousStatement != "Original statement" {
+		t.Errorf("First amendment previous: got %q, want %q", history[0].PreviousStatement, "Original statement")
+	}
+	if history[0].NewStatement != "First amendment" {
+		t.Errorf("First amendment new: got %q, want %q", history[0].NewStatement, "First amendment")
+	}
+	if history[0].Owner != "owner1" {
+		t.Errorf("First amendment owner: got %q, want %q", history[0].Owner, "owner1")
+	}
+
+	if history[1].PreviousStatement != "First amendment" {
+		t.Errorf("Second amendment previous: got %q, want %q", history[1].PreviousStatement, "First amendment")
+	}
+	if history[1].NewStatement != "Second amendment" {
+		t.Errorf("Second amendment new: got %q, want %q", history[1].NewStatement, "Second amendment")
+	}
+}
+
+// TestApplyScopeOpened verifies that ScopeOpened event opens a scope.
+func TestApplyScopeOpened(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Apply ScopeOpened event
+	event := ledger.NewScopeOpened(nodeID, "Assume P(x) holds")
+
+	err := Apply(s, event)
+	if err != nil {
+		t.Fatalf("Apply ScopeOpened failed: %v", err)
+	}
+
+	// Verify scope was opened
+	scope := s.GetScope(nodeID)
+	if scope == nil {
+		t.Fatal("Scope not found after ScopeOpened event")
+	}
+
+	if scope.Discharged != nil {
+		t.Error("Scope should be active (Discharged=nil) after opening")
+	}
+
+	if scope.Statement != "Assume P(x) holds" {
+		t.Errorf("Scope statement: got %q, want %q", scope.Statement, "Assume P(x) holds")
+	}
+
+	// Verify active scopes list
+	activeScopes := s.GetActiveScopes()
+	if len(activeScopes) != 1 {
+		t.Errorf("Expected 1 active scope, got %d", len(activeScopes))
+	}
+}
+
+// TestApplyScopeClosed verifies that ScopeClosed event closes a scope.
+func TestApplyScopeClosed(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// First open a scope
+	openEvent := ledger.NewScopeOpened(nodeID, "Assume P(x) holds")
+	if err := Apply(s, openEvent); err != nil {
+		t.Fatalf("Apply ScopeOpened failed: %v", err)
+	}
+
+	// Verify scope is active
+	if len(s.GetActiveScopes()) != 1 {
+		t.Fatal("Scope should be active before closing")
+	}
+
+	// Apply ScopeClosed event
+	dischargeID := mustParseNodeID(t, "1.1")
+	closeEvent := ledger.NewScopeClosed(nodeID, dischargeID)
+
+	err := Apply(s, closeEvent)
+	if err != nil {
+		t.Fatalf("Apply ScopeClosed failed: %v", err)
+	}
+
+	// Verify scope is now closed
+	scope := s.GetScope(nodeID)
+	if scope == nil {
+		t.Fatal("Scope not found after ScopeClosed event")
+	}
+
+	if scope.Discharged == nil {
+		t.Error("Scope should be inactive (Discharged!=nil) after closing")
+	}
+
+	// Verify no active scopes remain
+	activeScopes := s.GetActiveScopes()
+	if len(activeScopes) != 0 {
+		t.Errorf("Expected 0 active scopes after closing, got %d", len(activeScopes))
+	}
+
+	// Verify scope is still in all scopes list
+	allScopes := s.GetAllScopes()
+	if len(allScopes) != 1 {
+		t.Errorf("Expected 1 scope in all scopes, got %d", len(allScopes))
+	}
+}

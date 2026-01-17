@@ -1,46 +1,66 @@
-# Handoff - 2026-01-17 (Session 109)
+# Handoff - 2026-01-17 (Session 110)
 
 ## What Was Accomplished This Session
 
-### Session 109 Summary: Improved scope Package Test Coverage to 100%
+### Session 110 Summary: Improved state Package Test Coverage 61.1% → 91.3%
 
-Closed issue `vibefeld-h179` - "MEDIUM: scope package has only 59.5% test coverage"
+Closed issue `vibefeld-hpof` - "MEDIUM: state package has only 57% test coverage"
 
 #### Problem
 
-The `internal/scope` package had only 59.5% test coverage. Key functions like `InheritScope`, `ValidateScope`, `ValidateScopeClosure`, and `ValidateScopeBalance` were showing 0% coverage.
-
-#### Root Cause
-
-The test files `inherit_test.go` and `validate_test.go` had `//go:build integration` build tags, meaning they only ran with `-tags=integration`. This meant comprehensive tests existed but weren't running in the default test suite.
+The `internal/state` package had only 61.1% test coverage. Several key functions had 0% coverage:
+- `replay.go`: `Replay`, `ReplayWithVerify`, `replayInternal`, `extractEventType`, `parseEvent`
+- `apply.go`: `applyClaimRefreshed`, `applyNodeAmended`, `applyScopeOpened`, `applyScopeClosed`
+- `state.go`: `GetDefinitionByName`, `OpenChallenges`, `LatestSeq`, `SetLatestSeq`, `AddAmendment`, `GetAmendmentHistory`, scope operations
 
 #### Solution
 
-1. **Removed integration build tags** from `inherit_test.go` and `validate_test.go` so tests run by default
-2. **Added test for sorting edge case** in `GetContainingScopes` - the bubble sort swap logic wasn't being exercised because existing tests happened to add scopes in already-sorted order. Added `TestTracker_GetContainingScopes_SortsOutermostFirst` which adds scopes in reverse order to trigger the swap.
+1. **Added tests for apply.go functions** (`apply_test.go`):
+   - `TestApplyClaimRefreshed` - happy path and error cases (non-existent node, not claimed, wrong owner)
+   - `TestApplyNodeAmended` - happy path, error cases, and amendment history tracking
+   - `TestApplyScopeOpened` - scope opening
+   - `TestApplyScopeClosed` - scope closing
 
-Coverage improved: **59.5% → 100%**
+2. **Added tests for state.go methods** (`state_test.go`):
+   - `TestGetDefinitionByName` - retrieving definitions by name
+   - `TestOpenChallenges` - filtering only open challenges
+   - `TestLatestSeqAndSetLatestSeq` - sequence number getter/setter
+   - `TestAddAmendmentAndGetAmendmentHistory` - amendment tracking per-node
+   - `TestScopeOperations` - opening, closing, and querying scopes
+   - `TestScopeTracker` - access to underlying scope tracker
+
+3. **Created new unit test file** (`replay_unit_test.go`):
+   - `TestExtractEventType_*` - tests for all 20 event types, whitespace variations, malformed JSON
+   - `TestParseEvent_*` - tests for parsing various event types, error handling
+   - `TestReplay_NilLedger` / `TestReplayWithVerify_NilLedger` - nil ledger handling
+   - `TestEventFactoriesCompleteness` - verifies all event types have factories
+
+Coverage improved: **61.1% → 91.3%** (30% improvement!)
 
 ### Files Changed
 
-- `internal/scope/inherit_test.go` - Removed `//go:build integration` tag
-- `internal/scope/validate_test.go` - Removed `//go:build integration` tag
-- `internal/scope/tracker_test.go` - Added `TestTracker_GetContainingScopes_SortsOutermostFirst` test
+- `internal/state/apply_test.go` - Added ~300 lines of new tests
+- `internal/state/state_test.go` - Added ~360 lines of new tests
+- `internal/state/replay_unit_test.go` - New file with ~330 lines of unit tests
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-h179** | Closed | Test coverage improved from 59.5% to 100% |
+| **vibefeld-hpof** | Closed | Test coverage improved from 61.1% to 91.3% |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 75 (was 76)
-- **Closed:** 474 (was 473)
+- **Open:** 74 (was 75)
+- **Closed:** 475 (was 474)
 
 ### Test Status
 All tests pass. Build succeeds.
+
+### Coverage Summary
+- state package: 91.3% (was 61.1%)
+- Remaining gaps: `replayInternal` (8%) - requires integration tests (filesystem-based)
 
 ## Remaining P1 Issues
 
@@ -51,20 +71,17 @@ All tests pass. Build succeeds.
 ### High Priority (P1) - Ready for work
 1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`) - Large refactoring task
 
-### P2 Test Coverage
-2. state package test coverage - 57% (`vibefeld-hpof`)
-
 ### P2 Edge Case Tests
-3. State millions of events (`vibefeld-th1m`)
-4. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
-5. E2E test: Large proof stress test (`vibefeld-hfgi`)
+2. State millions of events (`vibefeld-th1m`)
+3. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
+4. E2E test: Large proof stress test (`vibefeld-hfgi`)
 
 ### P2 Performance
-6. Reflection in event parsing hot path (`vibefeld-s406`)
-7. Add benchmarks for critical paths (`vibefeld-qrzs`)
+5. Reflection in event parsing hot path (`vibefeld-s406`)
+6. Add benchmarks for critical paths (`vibefeld-qrzs`)
 
 ### P2 Code Quality
-8. Inconsistent error wrapping patterns (`vibefeld-mvpa`)
+7. Inconsistent error wrapping patterns (`vibefeld-mvpa`)
 
 ### Follow-up Work (Not Tracked as Issues)
 - Migrate remaining ~30 CLI files to use `cli.Must*` helpers (incremental, low priority)
@@ -81,12 +98,13 @@ go test ./...
 # Run integration tests
 go test -tags=integration ./...
 
-# Check scope package coverage
-go test -cover ./internal/scope/...
+# Check state package coverage
+go test -cover ./internal/state/...
 ```
 
 ## Session History
 
+**Session 110:** Closed 1 issue (state package coverage 61.1% → 91.3% - added tests for ClaimRefreshed, NodeAmended, scope operations, replay.go unit tests)
 **Session 109:** Closed 1 issue (scope package coverage 59.5% → 100% - removed integration build tags, added sorting test)
 **Session 108:** Closed 1 issue (silent JSON unmarshal error - explicit error handling in claim.go)
 **Session 107:** Closed 1 issue (ledger test coverage - added tests for NewScopeOpened, NewScopeClosed, NewClaimRefreshed, Ledger.AppendIfSequence)

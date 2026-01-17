@@ -1699,6 +1699,362 @@ func TestState_NonExistentDependencyResolution_SelfReference(t *testing.T) {
 	}
 }
 
+// TestGetDefinitionByName verifies retrieving definitions by name.
+func TestGetDefinitionByName(t *testing.T) {
+	s := NewState()
+
+	// Create and add a definition
+	def, err := node.NewDefinition("prime-number", "A number divisible only by 1 and itself")
+	if err != nil {
+		t.Fatalf("Failed to create definition: %v", err)
+	}
+	s.AddDefinition(def)
+
+	// Retrieve by name
+	got := s.GetDefinitionByName("prime-number")
+	if got == nil {
+		t.Fatal("GetDefinitionByName returned nil for existing definition")
+	}
+	if got.ID != def.ID {
+		t.Errorf("GetDefinitionByName returned wrong definition: got ID %s, want %s", got.ID, def.ID)
+	}
+	if got.Name != def.Name {
+		t.Errorf("GetDefinitionByName returned wrong name: got %q, want %q", got.Name, def.Name)
+	}
+
+	// Verify non-existent name returns nil
+	notFound := s.GetDefinitionByName("non-existent")
+	if notFound != nil {
+		t.Errorf("GetDefinitionByName for non-existent name returned non-nil: %v", notFound)
+	}
+}
+
+// TestGetDefinitionByName_MultipleDefinitions verifies GetDefinitionByName with multiple definitions.
+func TestGetDefinitionByName_MultipleDefinitions(t *testing.T) {
+	s := NewState()
+
+	// Add multiple definitions
+	def1, _ := node.NewDefinition("even-number", "Divisible by 2")
+	def2, _ := node.NewDefinition("odd-number", "Not divisible by 2")
+	def3, _ := node.NewDefinition("prime-number", "Only divisors are 1 and itself")
+	s.AddDefinition(def1)
+	s.AddDefinition(def2)
+	s.AddDefinition(def3)
+
+	// Verify each can be found by name
+	tests := []struct {
+		name     string
+		expected *node.Definition
+	}{
+		{"even-number", def1},
+		{"odd-number", def2},
+		{"prime-number", def3},
+	}
+
+	for _, tt := range tests {
+		got := s.GetDefinitionByName(tt.name)
+		if got == nil {
+			t.Errorf("GetDefinitionByName(%q) returned nil", tt.name)
+			continue
+		}
+		if got.ID != tt.expected.ID {
+			t.Errorf("GetDefinitionByName(%q) returned wrong definition: got ID %s, want %s", tt.name, got.ID, tt.expected.ID)
+		}
+	}
+}
+
+// TestOpenChallenges verifies the OpenChallenges method returns only open challenges.
+func TestOpenChallenges(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add challenges with various statuses
+	s.AddChallenge(&Challenge{
+		ID:       "ch-open1",
+		NodeID:   nodeID,
+		Status:   "open",
+		Severity: "major",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-open2",
+		NodeID:   nodeID,
+		Status:   "open",
+		Severity: "minor",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-resolved",
+		NodeID:   nodeID,
+		Status:   "resolved",
+		Severity: "major",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-withdrawn",
+		NodeID:   nodeID,
+		Status:   "withdrawn",
+		Severity: "critical",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-superseded",
+		NodeID:   nodeID,
+		Status:   "superseded",
+		Severity: "major",
+	})
+
+	// Get open challenges
+	open := s.OpenChallenges()
+
+	// Should only have the 2 open ones
+	if len(open) != 2 {
+		t.Errorf("OpenChallenges returned %d challenges, want 2", len(open))
+	}
+
+	// Verify they are the right ones
+	foundOpen1 := false
+	foundOpen2 := false
+	for _, c := range open {
+		if c.ID == "ch-open1" {
+			foundOpen1 = true
+		}
+		if c.ID == "ch-open2" {
+			foundOpen2 = true
+		}
+		if c.Status != "open" {
+			t.Errorf("OpenChallenges returned challenge with status %q, want %q", c.Status, "open")
+		}
+	}
+	if !foundOpen1 {
+		t.Error("OpenChallenges did not return ch-open1")
+	}
+	if !foundOpen2 {
+		t.Error("OpenChallenges did not return ch-open2")
+	}
+}
+
+// TestOpenChallenges_Empty verifies OpenChallenges returns empty slice when no open challenges.
+func TestOpenChallenges_Empty(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add only non-open challenges
+	s.AddChallenge(&Challenge{
+		ID:     "ch-resolved",
+		NodeID: nodeID,
+		Status: "resolved",
+	})
+
+	open := s.OpenChallenges()
+	if open != nil && len(open) != 0 {
+		t.Errorf("OpenChallenges returned %d challenges, want 0", len(open))
+	}
+}
+
+// TestLatestSeqAndSetLatestSeq verifies the LatestSeq getter and setter.
+func TestLatestSeqAndSetLatestSeq(t *testing.T) {
+	s := NewState()
+
+	// Initial value should be 0
+	if got := s.LatestSeq(); got != 0 {
+		t.Errorf("Initial LatestSeq: got %d, want 0", got)
+	}
+
+	// Set a value
+	s.SetLatestSeq(42)
+	if got := s.LatestSeq(); got != 42 {
+		t.Errorf("LatestSeq after SetLatestSeq(42): got %d, want 42", got)
+	}
+
+	// Update the value
+	s.SetLatestSeq(100)
+	if got := s.LatestSeq(); got != 100 {
+		t.Errorf("LatestSeq after SetLatestSeq(100): got %d, want 100", got)
+	}
+}
+
+// TestAddAmendmentAndGetAmendmentHistory verifies amendment tracking.
+func TestAddAmendmentAndGetAmendmentHistory(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Initially no amendments
+	history := s.GetAmendmentHistory(nodeID)
+	if len(history) != 0 {
+		t.Errorf("Initial history length: got %d, want 0", len(history))
+	}
+
+	// Add first amendment
+	s.AddAmendment(nodeID, Amendment{
+		Timestamp:         types.Now(),
+		PreviousStatement: "Original",
+		NewStatement:      "First edit",
+		Owner:             "owner1",
+	})
+
+	history = s.GetAmendmentHistory(nodeID)
+	if len(history) != 1 {
+		t.Fatalf("History length after 1 amendment: got %d, want 1", len(history))
+	}
+	if history[0].PreviousStatement != "Original" {
+		t.Errorf("First amendment PreviousStatement: got %q, want %q", history[0].PreviousStatement, "Original")
+	}
+
+	// Add second amendment
+	s.AddAmendment(nodeID, Amendment{
+		Timestamp:         types.Now(),
+		PreviousStatement: "First edit",
+		NewStatement:      "Second edit",
+		Owner:             "owner2",
+	})
+
+	history = s.GetAmendmentHistory(nodeID)
+	if len(history) != 2 {
+		t.Fatalf("History length after 2 amendments: got %d, want 2", len(history))
+	}
+	if history[1].NewStatement != "Second edit" {
+		t.Errorf("Second amendment NewStatement: got %q, want %q", history[1].NewStatement, "Second edit")
+	}
+}
+
+// TestGetAmendmentHistory_DifferentNodes verifies amendments are tracked per-node.
+func TestGetAmendmentHistory_DifferentNodes(t *testing.T) {
+	s := NewState()
+
+	node1ID := mustParseNodeID(t, "1")
+	node2ID := mustParseNodeID(t, "1.1")
+
+	// Add amendments to node 1
+	s.AddAmendment(node1ID, Amendment{
+		PreviousStatement: "Node1 Original",
+		NewStatement:      "Node1 Edit 1",
+		Owner:             "owner1",
+	})
+	s.AddAmendment(node1ID, Amendment{
+		PreviousStatement: "Node1 Edit 1",
+		NewStatement:      "Node1 Edit 2",
+		Owner:             "owner1",
+	})
+
+	// Add amendment to node 2
+	s.AddAmendment(node2ID, Amendment{
+		PreviousStatement: "Node2 Original",
+		NewStatement:      "Node2 Edit 1",
+		Owner:             "owner2",
+	})
+
+	// Verify node 1 has 2 amendments
+	history1 := s.GetAmendmentHistory(node1ID)
+	if len(history1) != 2 {
+		t.Errorf("Node 1 history length: got %d, want 2", len(history1))
+	}
+
+	// Verify node 2 has 1 amendment
+	history2 := s.GetAmendmentHistory(node2ID)
+	if len(history2) != 1 {
+		t.Errorf("Node 2 history length: got %d, want 1", len(history2))
+	}
+}
+
+// TestScopeOperations verifies scope opening, closing, and querying.
+func TestScopeOperations(t *testing.T) {
+	s := NewState()
+
+	node1ID := mustParseNodeID(t, "1")
+	node2ID := mustParseNodeID(t, "1.1")
+
+	// Initially no scopes
+	if len(s.GetActiveScopes()) != 0 {
+		t.Errorf("Initial active scopes: got %d, want 0", len(s.GetActiveScopes()))
+	}
+	if len(s.GetAllScopes()) != 0 {
+		t.Errorf("Initial all scopes: got %d, want 0", len(s.GetAllScopes()))
+	}
+
+	// Open first scope
+	if err := s.OpenScope(node1ID, "Assume P(x)"); err != nil {
+		t.Fatalf("OpenScope failed: %v", err)
+	}
+
+	// Verify scope is active
+	activeScopes := s.GetActiveScopes()
+	if len(activeScopes) != 1 {
+		t.Errorf("Active scopes after opening 1: got %d, want 1", len(activeScopes))
+	}
+
+	// Get scope info
+	scopeInfo := s.GetScopeInfo(node1ID)
+	if scopeInfo == nil {
+		t.Fatal("GetScopeInfo returned nil")
+	}
+
+	// Get scope directly
+	scope := s.GetScope(node1ID)
+	if scope == nil {
+		t.Fatal("GetScope returned nil")
+	}
+	if scope.Discharged != nil {
+		t.Error("Scope should be active (Discharged=nil)")
+	}
+	if scope.Statement != "Assume P(x)" {
+		t.Errorf("Scope statement: got %q, want %q", scope.Statement, "Assume P(x)")
+	}
+
+	// Open second scope
+	if err := s.OpenScope(node2ID, "Assume Q(y)"); err != nil {
+		t.Fatalf("OpenScope for node2 failed: %v", err)
+	}
+
+	// Verify two active scopes
+	if len(s.GetActiveScopes()) != 2 {
+		t.Errorf("Active scopes after opening 2: got %d, want 2", len(s.GetActiveScopes()))
+	}
+
+	// Close first scope
+	if err := s.CloseScope(node1ID); err != nil {
+		t.Fatalf("CloseScope failed: %v", err)
+	}
+
+	// Verify one active scope
+	if len(s.GetActiveScopes()) != 1 {
+		t.Errorf("Active scopes after closing 1: got %d, want 1", len(s.GetActiveScopes()))
+	}
+
+	// All scopes should still include both
+	if len(s.GetAllScopes()) != 2 {
+		t.Errorf("All scopes after closing 1: got %d, want 2", len(s.GetAllScopes()))
+	}
+
+	// Verify closed scope is no longer active
+	scope1 := s.GetScope(node1ID)
+	if scope1 == nil {
+		t.Fatal("GetScope for closed scope returned nil")
+	}
+	if scope1.Discharged == nil {
+		t.Error("Closed scope should not be active (Discharged should be set)")
+	}
+}
+
+// TestScopeTracker verifies access to the underlying scope tracker.
+func TestScopeTracker(t *testing.T) {
+	s := NewState()
+
+	tracker := s.ScopeTracker()
+	if tracker == nil {
+		t.Fatal("ScopeTracker returned nil")
+	}
+
+	// Verify it's the same tracker used internally
+	nodeID := mustParseNodeID(t, "1")
+	if err := s.OpenScope(nodeID, "Test"); err != nil {
+		t.Fatalf("OpenScope failed: %v", err)
+	}
+
+	// Accessing via tracker should show the scope
+	scopes := tracker.GetActiveScopes()
+	if len(scopes) != 1 {
+		t.Errorf("Tracker GetActiveScopes: got %d, want 1", len(scopes))
+	}
+}
+
 // TestState_MutationSafety documents the current behavior where returned objects
 // are mutable and can affect internal state. This is intentional - the state
 // package returns pointers to the actual stored objects for performance and to
