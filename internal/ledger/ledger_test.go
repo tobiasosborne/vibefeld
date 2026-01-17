@@ -714,3 +714,110 @@ func TestLedger_CountUpdatesAfterAppend(t *testing.T) {
 		}
 	}
 }
+
+// TestLedger_AppendIfSequence_Success verifies CAS append succeeds when sequence matches.
+func TestLedger_AppendIfSequence_Success(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	// Append initial event
+	event1 := NewProofInitialized("CAS test 1", "agent-cas")
+	seq1, err := ledger.Append(event1)
+	if err != nil {
+		t.Fatalf("First append failed: %v", err)
+	}
+	if seq1 != 1 {
+		t.Errorf("First append: seq = %d, want 1", seq1)
+	}
+
+	// Use AppendIfSequence with correct expected sequence (1)
+	event2 := NewChallengeResolved("chal-cas")
+	seq2, err := ledger.AppendIfSequence(event2, 1)
+	if err != nil {
+		t.Fatalf("AppendIfSequence failed: %v", err)
+	}
+	if seq2 != 2 {
+		t.Errorf("AppendIfSequence: seq = %d, want 2", seq2)
+	}
+
+	// Verify both events are in ledger
+	count, err := ledger.Count()
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("Count = %d, want 2", count)
+	}
+}
+
+// TestLedger_AppendIfSequence_Failure verifies CAS append fails when sequence mismatches.
+func TestLedger_AppendIfSequence_Failure(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	// Append initial event
+	event1 := NewProofInitialized("CAS mismatch test", "agent-cas")
+	_, err = ledger.Append(event1)
+	if err != nil {
+		t.Fatalf("First append failed: %v", err)
+	}
+
+	// Append second event
+	event2 := NewChallengeResolved("chal-cas")
+	_, err = ledger.Append(event2)
+	if err != nil {
+		t.Fatalf("Second append failed: %v", err)
+	}
+
+	// Now ledger is at sequence 2. Try AppendIfSequence with expected sequence 1.
+	event3 := NewChallengeWithdrawn("chal-cas-mismatch")
+	_, err = ledger.AppendIfSequence(event3, 1) // Expecting seq 1, but ledger is at 2
+
+	if err == nil {
+		t.Fatal("AppendIfSequence should fail when sequence mismatches")
+	}
+
+	// Verify the event was NOT appended (still only 2 events)
+	count, err := ledger.Count()
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("Ledger should still have 2 events, got %d", count)
+	}
+}
+
+// TestLedger_AppendIfSequence_EmptyLedger verifies CAS append on empty ledger.
+func TestLedger_AppendIfSequence_EmptyLedger(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	// AppendIfSequence on empty ledger with expected sequence 0 should succeed
+	event := NewProofInitialized("Empty ledger CAS", "agent-cas")
+	seq, err := ledger.AppendIfSequence(event, 0)
+
+	if err != nil {
+		t.Fatalf("AppendIfSequence should succeed on empty ledger with expected 0: %v", err)
+	}
+	if seq != 1 {
+		t.Errorf("seq = %d, want 1", seq)
+	}
+
+	// Verify event was appended
+	count, err := ledger.Count()
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Count = %d, want 1", count)
+	}
+}

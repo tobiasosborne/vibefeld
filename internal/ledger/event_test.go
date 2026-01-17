@@ -811,3 +811,165 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+// TestScopeOpenedEvent tests ScopeOpened event creation and serialization.
+func TestScopeOpenedEvent(t *testing.T) {
+	t.Run("creation with valid data", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.2")
+		event := NewScopeOpened(nodeID, "Assume P(x) for some x")
+
+		if event.Type() != EventScopeOpened {
+			t.Errorf("Type() = %q, want %q", event.Type(), EventScopeOpened)
+		}
+		if event.NodeID.String() != "1.2" {
+			t.Errorf("NodeID = %q, want %q", event.NodeID.String(), "1.2")
+		}
+		if event.Statement != "Assume P(x) for some x" {
+			t.Errorf("Statement = %q, want %q", event.Statement, "Assume P(x) for some x")
+		}
+		if event.Timestamp().IsZero() {
+			t.Error("Timestamp should not be zero")
+		}
+	})
+
+	t.Run("JSON roundtrip", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.3.4")
+		original := NewScopeOpened(nodeID, "Assume n is even")
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		var decoded ScopeOpened
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if decoded.Type() != original.Type() {
+			t.Errorf("Type mismatch: got %q, want %q", decoded.Type(), original.Type())
+		}
+		if decoded.NodeID.String() != original.NodeID.String() {
+			t.Errorf("NodeID mismatch: got %q, want %q", decoded.NodeID.String(), original.NodeID.String())
+		}
+		if decoded.Statement != original.Statement {
+			t.Errorf("Statement mismatch: got %q, want %q", decoded.Statement, original.Statement)
+		}
+	})
+}
+
+// TestScopeClosedEvent tests ScopeClosed event creation and serialization.
+func TestScopeClosedEvent(t *testing.T) {
+	t.Run("creation with valid data", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.2")
+		dischargeNodeID, _ := types.Parse("1.2.3")
+		event := NewScopeClosed(nodeID, dischargeNodeID)
+
+		if event.Type() != EventScopeClosed {
+			t.Errorf("Type() = %q, want %q", event.Type(), EventScopeClosed)
+		}
+		if event.NodeID.String() != "1.2" {
+			t.Errorf("NodeID = %q, want %q", event.NodeID.String(), "1.2")
+		}
+		if event.DischargeNodeID.String() != "1.2.3" {
+			t.Errorf("DischargeNodeID = %q, want %q", event.DischargeNodeID.String(), "1.2.3")
+		}
+		if event.Timestamp().IsZero() {
+			t.Error("Timestamp should not be zero")
+		}
+	})
+
+	t.Run("JSON roundtrip", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.4")
+		dischargeNodeID, _ := types.Parse("1.4.5.6")
+		original := NewScopeClosed(nodeID, dischargeNodeID)
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		var decoded ScopeClosed
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if decoded.Type() != original.Type() {
+			t.Errorf("Type mismatch: got %q, want %q", decoded.Type(), original.Type())
+		}
+		if decoded.NodeID.String() != original.NodeID.String() {
+			t.Errorf("NodeID mismatch: got %q, want %q", decoded.NodeID.String(), original.NodeID.String())
+		}
+		if decoded.DischargeNodeID.String() != original.DischargeNodeID.String() {
+			t.Errorf("DischargeNodeID mismatch: got %q, want %q", decoded.DischargeNodeID.String(), original.DischargeNodeID.String())
+		}
+	})
+}
+
+// TestClaimRefreshedEvent tests ClaimRefreshed event creation and serialization.
+func TestClaimRefreshedEvent(t *testing.T) {
+	t.Run("creation with valid data", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.5")
+		newTimeout := types.Now()
+		event := NewClaimRefreshed(nodeID, "agent-prover-42", newTimeout)
+
+		if event.Type() != EventClaimRefreshed {
+			t.Errorf("Type() = %q, want %q", event.Type(), EventClaimRefreshed)
+		}
+		if event.NodeID.String() != "1.5" {
+			t.Errorf("NodeID = %q, want %q", event.NodeID.String(), "1.5")
+		}
+		if event.Owner != "agent-prover-42" {
+			t.Errorf("Owner = %q, want %q", event.Owner, "agent-prover-42")
+		}
+		if event.NewTimeout.IsZero() {
+			t.Error("NewTimeout should not be zero")
+		}
+		if event.Timestamp().IsZero() {
+			t.Error("Timestamp should not be zero")
+		}
+	})
+
+	t.Run("JSON roundtrip", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.6.7")
+		newTimeout := types.Now()
+		original := NewClaimRefreshed(nodeID, "verifier-99", newTimeout)
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		var decoded ClaimRefreshed
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if decoded.Type() != original.Type() {
+			t.Errorf("Type mismatch: got %q, want %q", decoded.Type(), original.Type())
+		}
+		if decoded.NodeID.String() != original.NodeID.String() {
+			t.Errorf("NodeID mismatch: got %q, want %q", decoded.NodeID.String(), original.NodeID.String())
+		}
+		if decoded.Owner != original.Owner {
+			t.Errorf("Owner mismatch: got %q, want %q", decoded.Owner, original.Owner)
+		}
+		if !decoded.NewTimeout.Equal(original.NewTimeout) {
+			t.Errorf("NewTimeout mismatch: got %v, want %v", decoded.NewTimeout, original.NewTimeout)
+		}
+	})
+
+	t.Run("JSON fields", func(t *testing.T) {
+		nodeID, _ := types.Parse("1")
+		event := NewClaimRefreshed(nodeID, "owner", types.Now())
+		data, _ := json.Marshal(event)
+		jsonStr := string(data)
+
+		expectedFields := []string{`"type"`, `"timestamp"`, `"node_id"`, `"owner"`, `"new_timeout"`}
+		for _, field := range expectedFields {
+			if !contains(jsonStr, field) {
+				t.Errorf("JSON missing field %s: %s", field, jsonStr)
+			}
+		}
+	})
+}
