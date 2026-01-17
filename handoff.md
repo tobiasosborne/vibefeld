@@ -1,28 +1,33 @@
-# Handoff - 2026-01-17 (Session 131)
+# Handoff - 2026-01-17 (Session 132)
 
 ## What Was Accomplished This Session
 
-### Session 131 Summary: Closed duplicate issue (getting started guide)
+### Session 132 Summary: Role-specific help filtering
 
-Closed 1 issue this session:
+Implemented role-specific command filtering for the help command:
 
-1. **vibefeld-w2r7** - "CLI UX: No 'getting started' guide in help"
-   - Verified this was already fixed in commit `c85f0fc` (2026-01-17)
-   - The root command's Long description already contains a comprehensive "Typical Workflow" section with 6 numbered steps
-   - Shows: init → status → claim/refine/release → challenge → resolve-challenge → accept
-   - Issue was a duplicate of `vibefeld-ugda` which was closed previously
+1. **vibefeld-fsqm** - "CLI UX: No role-specific command filtering"
+   - Added `--role` flag to the help command
+   - `af help --role prover` shows only prover-relevant commands
+   - `af help --role verifier` shows only verifier-relevant commands
+   - Commands are now categorized into sections:
+     - Prover Actions (refine, amend, request-def, resolve-challenge)
+     - Verifier Actions (accept, challenge)
+     - Job Management (claim, release, extend-claim, jobs, shell, wizard, tutorial)
+     - Reference (status, get, deps, challenges, defs, etc.)
+     - Administration (init, def-add, replay, etc.)
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-w2r7** | Closed | Already fixed - 'Typical Workflow' section exists in main.go Long description (added in commit c85f0fc on 2026-01-17) |
+| **vibefeld-fsqm** | Closed | Implemented role-specific help filtering with --role prover/verifier flags |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 52 (was 53)
-- **Closed:** 497 (was 496)
+- **Open:** 51 (was 52)
+- **Closed:** 498 (was 497)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -38,13 +43,17 @@ go test ./...
 go build ./cmd/af
 
 # Test the feature manually
-./af status --help        # See new urgent mode documentation
-./af status --urgent      # Show urgent items only (text)
-./af status -u --format json  # Show urgent items only (JSON)
+./af help                 # See all commands, categorized
+./af help --role prover   # See prover-relevant commands only
+./af help --role verifier # See verifier-relevant commands only
+./af help refine          # Still works for specific command help
 ```
 
 ### Known Issue
 Pre-existing duplicate test declarations in `internal/render/` (`json_unit_test.go` vs `json_test.go` with `integration` tag). Running with `-tags=integration` fails compilation due to duplicate test names. Tests pass without integration tag.
+
+### Note: withdraw-challenge command unregistered
+During this work, discovered that `withdraw_challenge.go` exists but the command was never registered with `rootCmd.AddCommand()`. This is a pre-existing issue (not introduced in this session).
 
 ## Remaining P1 Issues
 
@@ -68,7 +77,6 @@ Pre-existing duplicate test declarations in `internal/render/` (`json_unit_test.
 
 ### P2 CLI UX
 6. Add role-specific context section to each command's help (`vibefeld-n7bl`)
-7. No role-specific command filtering (`vibefeld-fsqm`)
 
 ## Quick Commands
 
@@ -88,6 +96,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 132:** Closed 1 issue (CLI UX - role-specific help filtering with --role prover/verifier)
 **Session 131:** Closed 1 issue (CLI UX - verified getting started guide already fixed, closed duplicate)
 **Session 130:** Closed 1 issue (CLI UX - status --urgent flag for filtering urgent items)
 **Session 129:** Closed 1 issue (CLI UX - challenge severity/blocking display in prover context)
