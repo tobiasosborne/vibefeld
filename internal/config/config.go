@@ -77,7 +77,7 @@ func Load(path string) (*Config, error) {
 		cfg.MaxDepth = 20
 	}
 	if cfg.MaxChildren == 0 {
-		cfg.MaxChildren = 10
+		cfg.MaxChildren = 20
 	}
 	if cfg.WarnDepth == 0 {
 		cfg.WarnDepth = 3
@@ -96,7 +96,7 @@ func Default() *Config {
 	return &Config{
 		LockTimeout:          5 * time.Minute,
 		MaxDepth:             20,
-		MaxChildren:          10,
+		MaxChildren:          20,
 		WarnDepth:            3,
 		AutoCorrectThreshold: 0.8,
 		Version:              "1.0",
@@ -136,8 +136,8 @@ func Validate(c *Config) error {
 		return fmt.Errorf("max_depth must be between 1 and %d, got %d", MaxDepthLimit, c.MaxDepth)
 	}
 
-	if c.MaxChildren < 1 || c.MaxChildren > 50 {
-		return fmt.Errorf("max_children must be between 1 and 50, got %d", c.MaxChildren)
+	if c.MaxChildren < 1 || c.MaxChildren > 100 {
+		return fmt.Errorf("max_children must be between 1 and 100, got %d", c.MaxChildren)
 	}
 
 	if c.AutoCorrectThreshold < 0.0 || c.AutoCorrectThreshold > 1.0 {

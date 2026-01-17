@@ -20,8 +20,8 @@ func TestDefault_HasCorrectValues(t *testing.T) {
 		t.Errorf("Default() MaxDepth = %d, want 20", cfg.MaxDepth)
 	}
 
-	if cfg.MaxChildren != 10 {
-		t.Errorf("Default() MaxChildren = %d, want 10", cfg.MaxChildren)
+	if cfg.MaxChildren != 20 {
+		t.Errorf("Default() MaxChildren = %d, want 20", cfg.MaxChildren)
 	}
 
 	if cfg.WarnDepth != 3 {
@@ -185,8 +185,8 @@ func TestLoad_MissingFields(t *testing.T) {
 	if loaded.MaxDepth != 20 {
 		t.Errorf("Load() with missing MaxDepth = %d, want default 20", loaded.MaxDepth)
 	}
-	if loaded.MaxChildren != 10 {
-		t.Errorf("Load() with missing MaxChildren = %d, want default 10", loaded.MaxChildren)
+	if loaded.MaxChildren != 20 {
+		t.Errorf("Load() with missing MaxChildren = %d, want default 20", loaded.MaxChildren)
 	}
 	if loaded.AutoCorrectThreshold != 0.8 {
 		t.Errorf("Load() with missing AutoCorrectThreshold = %f, want default 0.8", loaded.AutoCorrectThreshold)
@@ -248,7 +248,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 				Conjecture:           "Valid Conjecture",
 				LockTimeout:          5 * time.Minute,
 				MaxDepth:             20,
-				MaxChildren:          10,
+				MaxChildren:          20,
 				AutoCorrectThreshold: 0.8,
 				Version:              "1.0",
 				Created:              time.Now(),
@@ -274,7 +274,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 				Conjecture:           "Max Conjecture",
 				LockTimeout:          1 * time.Hour,
 				MaxDepth:             100,
-				MaxChildren:          50,
+				MaxChildren:          100,
 				AutoCorrectThreshold: 1.0,
 				Version:              "1.0",
 				Created:              time.Now(),
@@ -287,7 +287,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 				Conjecture:           "Test",
 				LockTimeout:          5 * time.Minute,
 				MaxDepth:             20,
-				MaxChildren:          10,
+				MaxChildren:          20,
 				AutoCorrectThreshold: 0.8,
 				SchemaPath:           "/path/to/schema.json",
 				Version:              "1.0",
@@ -417,9 +417,9 @@ func TestValidate_MaxChildrenBounds(t *testing.T) {
 		{"zero children", 0, true},
 		{"negative children", -1, true},
 		{"valid minimum", 1, false},
-		{"valid middle", 25, false},
-		{"valid maximum", 50, false},
-		{"exceeds maximum", 51, true},
+		{"valid middle", 50, false},
+		{"valid maximum", 100, false},
+		{"exceeds maximum", 101, true},
 		{"far exceeds maximum", 500, true},
 	}
 

@@ -2235,8 +2235,8 @@ func TestProofService_LoadConfig(t *testing.T) {
 	if cfg.MaxDepth != 20 {
 		t.Errorf("Default MaxDepth = %d, want 20", cfg.MaxDepth)
 	}
-	if cfg.MaxChildren != 10 {
-		t.Errorf("Default MaxChildren = %d, want 10", cfg.MaxChildren)
+	if cfg.MaxChildren != 20 {
+		t.Errorf("Default MaxChildren = %d, want 20", cfg.MaxChildren)
 	}
 	if cfg.LockTimeout != 5*time.Minute {
 		t.Errorf("Default LockTimeout = %v, want 5m", cfg.LockTimeout)
@@ -2332,8 +2332,8 @@ func TestProofService_CreateNode_MaxChildrenExceeded(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	// Default MaxChildren is 10, create 10 children of root
-	for i := 1; i <= 10; i++ {
+	// Default MaxChildren is 20, create 20 children of root
+	for i := 1; i <= 20; i++ {
 		idStr := fmt.Sprintf("1.%d", i)
 		childID := mustParseNodeID(t, idStr)
 		err = svc.CreateNode(childID, schema.NodeTypeClaim, fmt.Sprintf("Child %d", i), schema.InferenceAssumption)
@@ -2342,12 +2342,12 @@ func TestProofService_CreateNode_MaxChildrenExceeded(t *testing.T) {
 		}
 	}
 
-	// 11th child should fail
-	childID := mustParseNodeID(t, "1.11")
-	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Child 11", schema.InferenceAssumption)
+	// 21st child should fail
+	childID := mustParseNodeID(t, "1.21")
+	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Child 21", schema.InferenceAssumption)
 
 	if err == nil {
-		t.Error("CreateNode() with 11th child should fail with MaxChildrenExceeded")
+		t.Error("CreateNode() with 21st child should fail with MaxChildrenExceeded")
 	}
 	if err != nil && !errors.Is(err, ErrMaxChildrenExceeded) {
 		t.Errorf("CreateNode() error = %v, want ErrMaxChildrenExceeded", err)
@@ -2419,8 +2419,8 @@ func TestProofService_RefineNode_MaxChildrenExceeded(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	// Create 10 children of root directly
-	for i := 1; i <= 10; i++ {
+	// Create 20 children of root directly
+	for i := 1; i <= 20; i++ {
 		idStr := fmt.Sprintf("1.%d", i)
 		childID := mustParseNodeID(t, idStr)
 		err = svc.CreateNode(childID, schema.NodeTypeClaim, fmt.Sprintf("Child %d", i), schema.InferenceAssumption)
@@ -2437,12 +2437,12 @@ func TestProofService_RefineNode_MaxChildrenExceeded(t *testing.T) {
 		t.Fatalf("ClaimNode() unexpected error: %v", err)
 	}
 
-	// Try to refine (add 11th child)
-	childID := mustParseNodeID(t, "1.11")
-	err = svc.RefineNode(parentID, owner, childID, schema.NodeTypeClaim, "Child 11", schema.InferenceAssumption)
+	// Try to refine (add 21st child)
+	childID := mustParseNodeID(t, "1.21")
+	err = svc.RefineNode(parentID, owner, childID, schema.NodeTypeClaim, "Child 21", schema.InferenceAssumption)
 
 	if err == nil {
-		t.Error("RefineNode() with 11th child should fail with MaxChildrenExceeded")
+		t.Error("RefineNode() with 21st child should fail with MaxChildrenExceeded")
 	}
 	if err != nil && !errors.Is(err, ErrMaxChildrenExceeded) {
 		t.Errorf("RefineNode() error = %v, want ErrMaxChildrenExceeded", err)
@@ -2510,8 +2510,8 @@ func TestProofService_RefineNodeBulk_MaxChildrenExceeded(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	// Create 8 children of root directly
-	for i := 1; i <= 8; i++ {
+	// Create 18 children of root directly
+	for i := 1; i <= 18; i++ {
 		idStr := fmt.Sprintf("1.%d", i)
 		childID := mustParseNodeID(t, idStr)
 		err = svc.CreateNode(childID, schema.NodeTypeClaim, fmt.Sprintf("Child %d", i), schema.InferenceAssumption)
@@ -2528,17 +2528,17 @@ func TestProofService_RefineNodeBulk_MaxChildrenExceeded(t *testing.T) {
 		t.Fatalf("ClaimNode() unexpected error: %v", err)
 	}
 
-	// Try to bulk add 3 more children (would make 11, exceeding max 10)
+	// Try to bulk add 3 more children (would make 21, exceeding max 20)
 	children := []ChildSpec{
-		{NodeType: schema.NodeTypeClaim, Statement: "Child 9", Inference: schema.InferenceAssumption},
-		{NodeType: schema.NodeTypeClaim, Statement: "Child 10", Inference: schema.InferenceAssumption},
-		{NodeType: schema.NodeTypeClaim, Statement: "Child 11", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 19", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 20", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 21", Inference: schema.InferenceAssumption},
 	}
 
 	_, err = svc.RefineNodeBulk(parentID, owner, children)
 
 	if err == nil {
-		t.Error("RefineNodeBulk() adding 3 children to parent with 8 should fail with MaxChildrenExceeded")
+		t.Error("RefineNodeBulk() adding 3 children to parent with 18 should fail with MaxChildrenExceeded")
 	}
 	if err != nil && !errors.Is(err, ErrMaxChildrenExceeded) {
 		t.Errorf("RefineNodeBulk() error = %v, want ErrMaxChildrenExceeded", err)
@@ -2558,8 +2558,8 @@ func TestProofService_RefineNodeBulk_AtMaxChildren(t *testing.T) {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	// Create 8 children of root directly
-	for i := 1; i <= 8; i++ {
+	// Create 18 children of root directly
+	for i := 1; i <= 18; i++ {
 		idStr := fmt.Sprintf("1.%d", i)
 		childID := mustParseNodeID(t, idStr)
 		err = svc.CreateNode(childID, schema.NodeTypeClaim, fmt.Sprintf("Child %d", i), schema.InferenceAssumption)
@@ -2576,10 +2576,10 @@ func TestProofService_RefineNodeBulk_AtMaxChildren(t *testing.T) {
 		t.Fatalf("ClaimNode() unexpected error: %v", err)
 	}
 
-	// Add exactly 2 more children (makes 10, exactly at max)
+	// Add exactly 2 more children (makes 20, exactly at max)
 	children := []ChildSpec{
-		{NodeType: schema.NodeTypeClaim, Statement: "Child 9", Inference: schema.InferenceAssumption},
-		{NodeType: schema.NodeTypeClaim, Statement: "Child 10", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 19", Inference: schema.InferenceAssumption},
+		{NodeType: schema.NodeTypeClaim, Statement: "Child 20", Inference: schema.InferenceAssumption},
 	}
 
 	childIDs, err := svc.RefineNodeBulk(parentID, owner, children)
