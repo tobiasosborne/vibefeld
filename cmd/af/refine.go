@@ -335,25 +335,25 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 	hasChildren := strings.TrimSpace(childrenJSON) != ""
 	hasPositional := len(positionalStatements) > 0
 
-	// Count how many input methods are being used
-	inputMethodCount := 0
+	// Count how many input methods are active (--statement, --children, positional args)
+	activeInputMethods := 0
 	if hasStatement {
-		inputMethodCount++
+		activeInputMethods++
 	}
 	if hasChildren {
-		inputMethodCount++
+		activeInputMethods++
 	}
 	if hasPositional {
-		inputMethodCount++
+		activeInputMethods++
 	}
 
-	if inputMethodCount > 1 {
+	if activeInputMethods > 1 {
 		return render.NewUsageError("af refine",
 			"--statement, --children, and positional statements are mutually exclusive; use only one",
 			examples)
 	}
 
-	if inputMethodCount == 0 {
+	if activeInputMethods == 0 {
 		return render.MissingFlagError("af refine", "statement", examples)
 	}
 
