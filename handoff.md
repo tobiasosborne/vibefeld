@@ -1,36 +1,38 @@
-# Handoff - 2026-01-17 (Session 86)
+# Handoff - 2026-01-17 (Session 87)
 
 ## What Was Accomplished This Session
 
-### Session 86 Summary: Node Empty vs Nil Dependencies Edge Case Test
+### Session 87 Summary: FS Directory Doesn't Exist Edge Case Test
 
-Closed issue `vibefeld-pxf2` - "Edge case test: Node empty dependencies array vs nil"
+Closed issue `vibefeld-ymxl` - "Edge case test: FS directory doesn't exist"
 
-Created comprehensive edge case tests in `internal/node/empty_vs_nil_deps_test.go` covering:
-- **Content hash consistency** - nil and empty slices produce the same hash for Dependencies, ValidationDeps, and Context
-- **JSON serialization** - both nil and empty slices are omitted from JSON due to `omitempty`
-- **JSON roundtrip preservation** - content hash remains valid after marshal/unmarshal
-- **Hash stability after modifications** - switching between nil and empty does not change the hash
-- **All slice field combinations** - all nil, all empty, mixed combinations all produce identical hashes
-- **Validation function behavior** - `ValidateDepExistence` and `ValidateValidationDepExistence` treat nil and empty the same
+Added comprehensive edge case tests in `internal/fs/json_io_test.go` for `WriteJSON` behavior when parent directories don't exist or creation fails:
+
+1. **file_blocks_parent_directory_creation** - Tests that `WriteJSON` correctly fails when a file exists at a path that should be a directory (e.g., trying to write to `parent/child/test.json` when `parent` is a file, not a directory)
+
+2. **deeply_nested_missing_parents_success** - Verifies that `WriteJSON` successfully creates all missing parent directories (e.g., `a/b/c/d/e/test.json`)
+
+3. **parent_is_symlink_to_file** - Tests that `WriteJSON` correctly fails when a symlink in the parent path points to a file instead of a directory
+
+4. **empty_path_error** - Tests that `WriteJSON` fails gracefully for empty path input
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-pxf2** | Closed | Added comprehensive edge case tests |
+| **vibefeld-ymxl** | Closed | Added comprehensive edge case tests |
 
 ### Files Changed
-- `internal/node/empty_vs_nil_deps_test.go` (new file, ~280 lines)
+- `internal/fs/json_io_test.go` (+90 lines)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 98 (was 99)
-- **Closed:** 451 (was 450)
+- **Open:** 97 (was 98)
+- **Closed:** 452 (was 451)
 
 ### Test Status
-All tests pass (14 new test cases across 2 test functions). Build succeeds.
+All tests pass (4 new test cases in `TestWriteJSON_MissingParentDirectory`). Build succeeds.
 
 ## Remaining P0 Issues
 
@@ -62,12 +64,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new empty vs nil deps tests
-go test -v ./internal/node/... -run "EmptyVsNilDependencies"
+# Run the new fs directory edge case tests
+go test -v ./internal/fs/... -run "TestWriteJSON_MissingParentDirectory"
 ```
 
 ## Session History
 
+**Session 87:** Closed 1 issue (FS directory doesn't exist edge case tests)
 **Session 86:** Closed 1 issue (node empty vs nil dependencies edge case tests)
 **Session 85:** Closed 1 issue (node very long statement edge case tests)
 **Session 84:** Closed 1 issue (node empty statement test already existed)

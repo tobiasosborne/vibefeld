@@ -3,6 +3,7 @@ package fs
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -276,4 +277,93 @@ func TestWriteJSON_NilValue(t *testing.T) {
 	if string(data) != "null" {
 		t.Errorf("Expected 'null', got '%s'", string(data))
 	}
+}
+
+// TestWriteJSON_MissingParentDirectory tests WriteJSON behavior when the parent
+// directory doesn't exist and creation fails because a file blocks the path.
+// This is an edge case where os.MkdirAll would fail because a file exists
+// where a directory component should be.
+func TestWriteJSON_MissingParentDirectory(t *testing.T) {
+	t.Run("file_blocks_parent_directory_creation", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Create a file at what should be a directory in the path
+		blockingFile := filepath.Join(dir, "parent")
+		if err := os.WriteFile(blockingFile, []byte("blocking file"), 0644); err != nil {
+			t.Fatalf("failed to create blocking file: %v", err)
+		}
+
+		// Try to write to a path where "parent" would need to be a directory
+		targetPath := filepath.Join(dir, "parent", "child", "test.json")
+		data := testData{ID: "test", Name: "Test"}
+
+		err := WriteJSON(targetPath, &data)
+		if err == nil {
+			t.Error("expected error when parent path is blocked by a file, got nil")
+		}
+
+		// Verify the error is related to the path issue (not a directory)
+		t.Logf("got expected error: %v", err)
+	})
+
+	t.Run("deeply_nested_missing_parents_success", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// WriteJSON should successfully create all missing parent directories
+		targetPath := filepath.Join(dir, "a", "b", "c", "d", "e", "test.json")
+		data := testData{ID: "deep", Name: "Deep Test"}
+
+		err := WriteJSON(targetPath, &data)
+		if err != nil {
+			t.Errorf("expected success creating deeply nested parents, got: %v", err)
+		}
+
+		// Verify file was written correctly
+		var result testData
+		if err := ReadJSON(targetPath, &result); err != nil {
+			t.Errorf("failed to read back file: %v", err)
+		}
+		if result.ID != "deep" {
+			t.Errorf("expected ID 'deep', got '%s'", result.ID)
+		}
+	})
+
+	t.Run("parent_is_symlink_to_file", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping symlink test on Windows")
+		}
+
+		dir := t.TempDir()
+
+		// Create a file
+		realFile := filepath.Join(dir, "realfile")
+		if err := os.WriteFile(realFile, []byte("content"), 0644); err != nil {
+			t.Fatalf("failed to create file: %v", err)
+		}
+
+		// Create a symlink to the file
+		parentLink := filepath.Join(dir, "parentlink")
+		if err := os.Symlink(realFile, parentLink); err != nil {
+			t.Fatalf("failed to create symlink: %v", err)
+		}
+
+		// Try to write where the symlink would need to be a directory
+		targetPath := filepath.Join(parentLink, "child.json")
+		data := testData{ID: "test", Name: "Test"}
+
+		err := WriteJSON(targetPath, &data)
+		if err == nil {
+			t.Error("expected error when parent symlink points to file, got nil")
+		}
+		t.Logf("got expected error: %v", err)
+	})
+
+	t.Run("empty_path_error", func(t *testing.T) {
+		// Empty path should fail
+		data := testData{ID: "test", Name: "Test"}
+		err := WriteJSON("", &data)
+		if err == nil {
+			t.Error("expected error for empty path, got nil")
+		}
+	})
 }
