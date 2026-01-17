@@ -3,6 +3,7 @@ package ledger
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -475,5 +476,58 @@ func TestAcquireLock_NonExistentDir(t *testing.T) {
 	if err == nil {
 		lock.Release()
 		t.Error("Acquire should fail with non-existent directory")
+	}
+}
+
+// TestRelease_VerifiesOwnership verifies that Release checks lock file ownership.
+func TestRelease_VerifiesOwnership(t *testing.T) {
+	dir := t.TempDir()
+	lock1 := NewLedgerLock(dir)
+
+	// Agent 1 acquires the lock
+	err := lock1.Acquire("agent-001", 1*time.Second)
+	if err != nil {
+		t.Fatalf("Acquire failed: %v", err)
+	}
+
+	// Manually overwrite the lock file with a different agent ID
+	// This simulates a scenario where the lock file has been replaced
+	lockPath := filepath.Join(dir, "ledger.lock")
+	meta := `{"agent_id":"agent-INTRUDER","acquired_at":"2025-01-01T00:00:00Z"}`
+	err = os.WriteFile(lockPath, []byte(meta), 0600)
+	if err != nil {
+		t.Fatalf("Failed to overwrite lock file: %v", err)
+	}
+
+	// Release should fail because lock file now has different agent ID
+	err = lock1.Release()
+	if err == nil {
+		t.Error("Release should fail when lock file ownership doesn't match")
+	}
+	if err != nil && !strings.Contains(err.Error(), "ownership mismatch") {
+		t.Errorf("Expected ownership mismatch error, got: %v", err)
+	}
+}
+
+// TestRelease_OwnershipMatchSucceeds verifies that Release succeeds when ownership matches.
+func TestRelease_OwnershipMatchSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	lock := NewLedgerLock(dir)
+
+	err := lock.Acquire("agent-owner", 1*time.Second)
+	if err != nil {
+		t.Fatalf("Acquire failed: %v", err)
+	}
+
+	// Release should succeed because we acquired with the same agent ID
+	err = lock.Release()
+	if err != nil {
+		t.Errorf("Release should succeed when ownership matches: %v", err)
+	}
+
+	// Verify lock file is removed
+	lockPath := filepath.Join(dir, "ledger.lock")
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Error("Lock file should be removed after successful release")
 	}
 }

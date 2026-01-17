@@ -15,6 +15,7 @@ import (
 type LedgerLock struct {
 	dir      string
 	held     bool
+	agentID  string // The agent ID that acquired the lock (empty if not held)
 	mu       sync.Mutex
 	lockPath string
 }
@@ -98,11 +99,13 @@ func (l *LedgerLock) tryAcquire(agentID string) error {
 	}
 
 	l.held = true
+	l.agentID = agentID
 	return nil
 }
 
 // Release releases the lock if held.
-// Returns an error if the lock is not held or was already released.
+// Returns an error if the lock is not held, was already released, or if
+// the lock file metadata doesn't match the agent ID that acquired it.
 func (l *LedgerLock) Release() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -111,12 +114,28 @@ func (l *LedgerLock) Release() error {
 		return errors.New("lock not held")
 	}
 
-	err := os.Remove(l.lockPath)
+	// Verify ownership by reading lock file metadata
+	data, err := os.ReadFile(l.lockPath)
+	if err != nil {
+		return errors.New("failed to read lock file: " + err.Error())
+	}
+
+	var meta lockMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return errors.New("failed to parse lock file: " + err.Error())
+	}
+
+	if meta.AgentID != l.agentID {
+		return errors.New("lock ownership mismatch: lock held by " + meta.AgentID + ", not " + l.agentID)
+	}
+
+	err = os.Remove(l.lockPath)
 	if err != nil {
 		return err
 	}
 
 	l.held = false
+	l.agentID = ""
 	return nil
 }
 

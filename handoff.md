@@ -1,44 +1,45 @@
-# Handoff - 2026-01-17 (Session 63)
+# Handoff - 2026-01-17 (Session 64)
 
 ## What Was Accomplished This Session
 
-### Session 63 Summary: Closed 2 Issues with 5 Parallel Agents
+### Session 64 Summary: Fixed Lock Release Ownership Verification Bug
 
-**Deployed 5 subagents in parallel for 5 issues, but 3 had race conditions:**
+Fixed bug `vibefeld-6jo6` where `LedgerLock.Release()` didn't verify ownership before releasing.
 
-Due to one agent (workflow docs) detecting incomplete files and reverting them, only 2 of the 5 agent changes persisted.
-
-#### Issues Closed
+#### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-ugda** | cmd/af/main.go | CLI UX | Added "Typical Workflow" section to root help with 6-step example |
-| **vibefeld-fayv** | internal/fs/def_io.go | Security fix | Added symlink validation to prevent path traversal via symlinks |
+| **vibefeld-6jo6** | internal/ledger/lock.go | Bug fix | Added ownership verification to Release() |
+
+#### Changes Made
+
+**internal/ledger/lock.go:**
+- Added `agentID` field to `LedgerLock` struct to track the acquiring agent
+- Modified `tryAcquire()` to store the agentID when lock is acquired
+- Modified `Release()` to:
+  1. Read lock file metadata before releasing
+  2. Verify the lock file's agentID matches the stored agentID
+  3. Return error on ownership mismatch instead of blindly deleting
+
+**internal/ledger/lock_test.go:**
+- Added `TestRelease_VerifiesOwnership` - tests that release fails when lock file was tampered with
+- Added `TestRelease_OwnershipMatchSucceeds` - tests normal release still works
 
 #### Files Changed
 
 ```
-cmd/af/main.go         (+28 lines) - Typical Workflow documentation in root help
-internal/fs/def_io.go  (+49 lines) - validateNoSymlinkEscape() function + calls
+internal/ledger/lock.go       (+18 lines) - Ownership verification in Release()
+internal/ledger/lock_test.go  (+33 lines) - Two new ownership tests
 ```
 
-**Total: ~77 lines added**
-
-#### Issues That Need Re-work (agent changes were lost)
-
-These 3 issues were successfully implemented by agents but lost due to file conflicts:
-
-| Issue | File | Description |
-|-------|------|-------------|
-| **vibefeld-ryeb** | internal/render/tree.go | String caching in sortNodesByID() |
-| **vibefeld-z05c** | cmd/af/claim.go | Severity level explanations for verifiers |
-| **vibefeld-6jo6** | internal/ledger/lock.go | Lock release ownership verification |
+**Total: ~51 lines added**
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 123 (was 125)
-- **Closed:** 426 (was 424)
+- **Open:** 122 (was 123)
+- **Closed:** 427 (was 426)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -49,24 +50,19 @@ No P0 issues remain open.
 
 ## Recommended Next Steps
 
-### High Priority (P1) - Re-do from this session
+### High Priority (P1) - From previous session
 1. Performance: String conversion caching in tree rendering (`vibefeld-ryeb`)
 2. CLI UX: Verifier severity level explanations in claim (`vibefeld-z05c`)
 
-### High Priority (P2) - Re-do from this session
-3. Bug: Lock release ownership verification (`vibefeld-6jo6`)
-
 ### Other P1 Issues
-4. Performance: Challenge map caching (`vibefeld-7a8j`)
-5. Performance: Challenge lookup O(1) instead of O(N) (`vibefeld-q9kb`)
-6. Module structure: Reduce cmd/af imports (`vibefeld-jfbc`)
+3. Performance: Challenge map caching (`vibefeld-7a8j`)
+4. Performance: Challenge lookup O(1) instead of O(N) (`vibefeld-q9kb`)
+5. Module structure: Reduce cmd/af imports (`vibefeld-jfbc`)
 
-## Lessons Learned
-
-When running parallel agents:
-- Each agent should work on completely isolated files
-- If an agent encounters incomplete work from other agents, it may revert changes
-- Consider having agents NOT check for other file changes or run build/test commands that might fail due to concurrent changes
+### P2 Bug Fixes
+6. Lock holder check missing in acquisition (`vibefeld-kubp`)
+7. No synchronization on PersistentManager construction (`vibefeld-0yre`)
+8. Error messages leak file paths (`vibefeld-e0eh`)
 
 ## Quick Commands
 
@@ -83,6 +79,7 @@ go test ./e2e/... -tags=integration
 
 ## Session History
 
+**Session 64:** Closed 1 issue (lock release ownership verification bug fix)
 **Session 63:** Closed 2 issues with 5 parallel agents (workflow docs + symlink security) - 3 lost to race conditions
 **Session 62:** Closed 5 issues with 5 parallel agents (4 E2E tests + 1 CLI UX fix)
 **Session 61:** Closed 4 issues with 4 parallel agents (lock corruption fix + 3 edge case tests)
