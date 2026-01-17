@@ -674,13 +674,37 @@ func (s *ProofService) RefineNodeWithDeps(parentID types.NodeID, owner string, c
 // Returns an error if the parent is not claimed by the owner, any dependency doesn't exist,
 // or validation fails.
 //
+// Deprecated: Use Refine(RefineSpec{...}) instead, which provides a cleaner API
+// by consolidating all parameters into a single struct.
+//
 // Returns ErrMaxDepthExceeded if the child node's depth would exceed config.MaxDepth.
 // Returns ErrMaxChildrenExceeded if the parent node already has config.MaxChildren children.
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefineNodeWithAllDeps(parentID types.NodeID, owner string, childID types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType, dependencies []types.NodeID, validationDeps []types.NodeID) error {
+	return s.Refine(RefineSpec{
+		ParentID:       parentID,
+		Owner:          owner,
+		ChildID:        childID,
+		NodeType:       nodeType,
+		Statement:      statement,
+		Inference:      inference,
+		Dependencies:   dependencies,
+		ValidationDeps: validationDeps,
+	})
+}
+
+// Refine adds a child node to a claimed parent node using a RefineSpec.
+// This is the preferred API for creating child nodes as it consolidates
+// all parameters into a single struct.
+//
+// Returns ErrMaxDepthExceeded if the child node's depth would exceed config.MaxDepth.
+// Returns ErrMaxChildrenExceeded if the parent node already has config.MaxChildren children.
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) Refine(spec RefineSpec) error {
 	// Validate depth against config
-	if err := s.validateDepth(childID.Depth()); err != nil {
+	if err := s.validateDepth(spec.ChildID.Depth()); err != nil {
 		return err
 	}
 
@@ -692,7 +716,7 @@ func (s *ProofService) RefineNodeWithAllDeps(parentID types.NodeID, owner string
 	expectedSeq := st.LatestSeq()
 
 	// Check if parent node exists
-	parent := st.GetNode(parentID)
+	parent := st.GetNode(spec.ParentID)
 	if parent == nil {
 		return errors.New("parent node not found")
 	}
@@ -703,34 +727,34 @@ func (s *ProofService) RefineNodeWithAllDeps(parentID types.NodeID, owner string
 	}
 
 	// Check if owner matches
-	if parent.ClaimedBy != owner {
+	if parent.ClaimedBy != spec.Owner {
 		return ErrOwnerMismatch
 	}
 
 	// Check if child already exists
-	if st.GetNode(childID) != nil {
+	if st.GetNode(spec.ChildID) != nil {
 		return errors.New("child node already exists")
 	}
 
 	// Validate child count for parent
-	if err := s.validateChildCount(st, parentID); err != nil {
+	if err := s.validateChildCount(st, spec.ParentID); err != nil {
 		return err
 	}
 
 	// Validate external citations in the statement
-	if err := lemma.ValidateExtCitations(statement, st); err != nil {
+	if err := lemma.ValidateExtCitations(spec.Statement, st); err != nil {
 		return err
 	}
 
 	// Validate that all reference dependencies exist
-	for _, depID := range dependencies {
+	for _, depID := range spec.Dependencies {
 		if st.GetNode(depID) == nil {
 			return fmt.Errorf("invalid dependency: node %s not found", depID.String())
 		}
 	}
 
 	// Validate that all validation dependencies exist
-	for _, valDepID := range validationDeps {
+	for _, valDepID := range spec.ValidationDeps {
 		if st.GetNode(valDepID) == nil {
 			return fmt.Errorf("invalid validation dependency: node %s not found", valDepID.String())
 		}
@@ -738,10 +762,10 @@ func (s *ProofService) RefineNodeWithAllDeps(parentID types.NodeID, owner string
 
 	// Create the child node with both dependency types
 	opts := node.NodeOptions{
-		Dependencies:   dependencies,
-		ValidationDeps: validationDeps,
+		Dependencies:   spec.Dependencies,
+		ValidationDeps: spec.ValidationDeps,
 	}
-	child, err := node.NewNodeWithOptions(childID, nodeType, statement, inference, opts)
+	child, err := node.NewNodeWithOptions(spec.ChildID, spec.NodeType, spec.Statement, spec.Inference, opts)
 	if err != nil {
 		return err
 	}
@@ -754,7 +778,7 @@ func (s *ProofService) RefineNodeWithAllDeps(parentID types.NodeID, owner string
 
 	event := ledger.NewNodeCreated(*child)
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	return wrapSequenceMismatch(err, "RefineNodeWithAllDeps")
+	return wrapSequenceMismatch(err, "Refine")
 }
 
 // AcceptNode validates a node, marking it as verified correct.
@@ -1360,6 +1384,37 @@ type ChildSpec struct {
 	NodeType  schema.NodeType
 	Statement string
 	Inference schema.InferenceType
+}
+
+// RefineSpec specifies parameters for refining a node with a child.
+// This struct consolidates the many parameters of RefineNodeWithAllDeps
+// into a single, cleaner API.
+type RefineSpec struct {
+	// ParentID is the node to add a child to (required).
+	ParentID types.NodeID
+
+	// Owner is the agent who has claimed the parent node (required).
+	Owner string
+
+	// ChildID is the ID for the new child node (required).
+	ChildID types.NodeID
+
+	// NodeType is the type of the new node (required).
+	NodeType schema.NodeType
+
+	// Statement is the content of the new node (required).
+	Statement string
+
+	// Inference is the inference type used to derive the statement (required).
+	Inference schema.InferenceType
+
+	// Dependencies are logical cross-references to other nodes (optional).
+	// These represent nodes that are referenced in the reasoning (e.g., "by step 1.2").
+	Dependencies []types.NodeID
+
+	// ValidationDeps specify nodes that must be validated before this node
+	// can be accepted (optional).
+	ValidationDeps []types.NodeID
 }
 
 // AllocateChildID allocates the next available child ID for a parent node atomically.

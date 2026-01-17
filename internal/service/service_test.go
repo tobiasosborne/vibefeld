@@ -895,6 +895,155 @@ func TestRefineNodeWithAllDeps_InvalidValidationDep(t *testing.T) {
 }
 
 // =============================================================================
+// Refine Tests (using RefineSpec)
+// =============================================================================
+
+func TestRefine_Success(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	rootID := parseNodeID(t, "1")
+
+	err := svc.ClaimNode(rootID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Create first child using Refine
+	child1ID := parseNodeID(t, "1.1")
+	err = svc.Refine(RefineSpec{
+		ParentID:  rootID,
+		Owner:     "agent-001",
+		ChildID:   child1ID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "First child via Refine",
+		Inference: schema.InferenceModusPonens,
+	})
+	if err != nil {
+		t.Fatalf("Refine() unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	child1 := st.GetNode(child1ID)
+	if child1 == nil {
+		t.Fatal("Child node not found")
+	}
+	if child1.Statement != "First child via Refine" {
+		t.Errorf("Statement = %q, want %q", child1.Statement, "First child via Refine")
+	}
+}
+
+func TestRefine_WithDependencies(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	rootID := parseNodeID(t, "1")
+
+	err := svc.ClaimNode(rootID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	// Create first child
+	child1ID := parseNodeID(t, "1.1")
+	err = svc.Refine(RefineSpec{
+		ParentID:  rootID,
+		Owner:     "agent-001",
+		ChildID:   child1ID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "First step",
+		Inference: schema.InferenceAssumption,
+	})
+	if err != nil {
+		t.Fatalf("Refine() for first child unexpected error: %v", err)
+	}
+
+	// Create second child with both dependency types using RefineSpec
+	child2ID := parseNodeID(t, "1.2")
+	err = svc.Refine(RefineSpec{
+		ParentID:       rootID,
+		Owner:          "agent-001",
+		ChildID:        child2ID,
+		NodeType:       schema.NodeTypeClaim,
+		Statement:      "Second step using first",
+		Inference:      schema.InferenceModusPonens,
+		Dependencies:   []types.NodeID{child1ID},
+		ValidationDeps: []types.NodeID{child1ID},
+	})
+	if err != nil {
+		t.Fatalf("Refine() with dependencies unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	child2 := st.GetNode(child2ID)
+	if child2 == nil {
+		t.Fatal("Child node not found")
+	}
+	if len(child2.Dependencies) != 1 {
+		t.Errorf("Dependencies count = %d, want 1", len(child2.Dependencies))
+	}
+	if len(child2.ValidationDeps) != 1 {
+		t.Errorf("ValidationDeps count = %d, want 1", len(child2.ValidationDeps))
+	}
+}
+
+func TestRefine_ParentNotClaimed(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	rootID := parseNodeID(t, "1")
+	childID := parseNodeID(t, "1.1")
+
+	// Don't claim the parent
+	err := svc.Refine(RefineSpec{
+		ParentID:  rootID,
+		Owner:     "agent-001",
+		ChildID:   childID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "Child",
+		Inference: schema.InferenceModusPonens,
+	})
+	if err == nil {
+		t.Error("Refine() expected error for unclaimed parent, got nil")
+	}
+	if !errors.Is(err, ErrNotClaimed) {
+		t.Errorf("Refine() error = %v, want ErrNotClaimed", err)
+	}
+}
+
+func TestRefine_InvalidDependency(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	rootID := parseNodeID(t, "1")
+
+	err := svc.ClaimNode(rootID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	childID := parseNodeID(t, "1.1")
+	nonExistentDep := parseNodeID(t, "1.99")
+
+	err = svc.Refine(RefineSpec{
+		ParentID:     rootID,
+		Owner:        "agent-001",
+		ChildID:      childID,
+		NodeType:     schema.NodeTypeClaim,
+		Statement:    "Child",
+		Inference:    schema.InferenceModusPonens,
+		Dependencies: []types.NodeID{nonExistentDep},
+	})
+	if err == nil {
+		t.Error("Refine() expected error for non-existent dependency, got nil")
+	}
+}
+
+// =============================================================================
 // RefineNodeBulk Tests
 // =============================================================================
 

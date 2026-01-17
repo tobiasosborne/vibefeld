@@ -1,56 +1,71 @@
-# Handoff - 2026-01-17 (Session 118)
+# Handoff - 2026-01-17 (Session 119)
 
 ## What Was Accomplished This Session
 
-### Session 118 Summary: Fixed Deferred Lock Release Error Handling
+### Session 119 Summary: Consolidated RefineNodeWithAllDeps Parameters into RefineSpec Struct
 
-Closed issue `vibefeld-kspa` - "Error handling: Deferred lock.Release() error not checked"
+Closed issue `vibefeld-agzw` - "API design: Too many parameters in RefineNodeWithAllDeps"
 
 #### Problem
 
-In `internal/ledger/lock_test.go`, there were 10 instances of `defer lock.Release()` that silently ignored the error return value. While this is common in test code, it's better practice to log these errors to avoid masking potential issues.
+The `RefineNodeWithAllDeps` method had 8 parameters (including receiver), making it difficult to call and maintain:
+
+```go
+func (s *ProofService) RefineNodeWithAllDeps(
+    parentID types.NodeID,
+    owner string,
+    childID types.NodeID,
+    nodeType schema.NodeType,
+    statement string,
+    inference schema.InferenceType,
+    dependencies []types.NodeID,
+    validationDeps []types.NodeID,
+) error
+```
 
 #### Solution
 
-Added a `deferRelease()` test helper function that:
-1. Properly checks the error from `Release()`
-2. Logs any errors using `t.Logf()` for visibility
-3. Calls `t.Helper()` for accurate stack traces
+Added a `RefineSpec` struct that consolidates all parameters with clear documentation:
 
-Updated all 10 deferred lock release calls to use this helper:
-- `TestAcquireLock_Success`
-- `TestAcquireLock_ContainsMetadata`
-- `TestAcquireLock_Exclusive`
-- `TestReleaseLock_AllowsReacquisition`
-- `TestAcquireLock_Timeout`
-- `TestAcquireLock_ZeroTimeout`
-- `TestAcquireLock_TableDriven` (preLock setup)
-- `TestLockFilePermissions`
-- `TestMultipleLocksInDifferentDirs` (lock1 and lock2)
+```go
+type RefineSpec struct {
+    ParentID       types.NodeID        // required
+    Owner          string              // required
+    ChildID        types.NodeID        // required
+    NodeType       schema.NodeType     // required
+    Statement      string              // required
+    Inference      schema.InferenceType // required
+    Dependencies   []types.NodeID      // optional - logical references
+    ValidationDeps []types.NodeID      // optional - must-validate-first
+}
+```
+
+Added a new `Refine(spec RefineSpec) error` method that is now the preferred API. The existing `RefineNodeWithAllDeps` is now a thin wrapper marked as deprecated, maintaining backwards compatibility.
 
 ### Files Changed
 
-- `internal/ledger/lock_test.go` - Added `deferRelease()` helper, updated 10 deferred release calls
+- `internal/service/proof.go` - Added `RefineSpec` struct, new `Refine()` method, updated `RefineNodeWithAllDeps` to delegate to `Refine()`
+- `internal/service/service_test.go` - Added 4 new tests: `TestRefine_Success`, `TestRefine_WithDependencies`, `TestRefine_ParentNotClaimed`, `TestRefine_InvalidDependency`
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-kspa** | Closed | Added deferRelease() test helper that logs errors instead of silently ignoring them. All 10 deferred lock.Release() calls in lock_test.go now use this helper. |
+| **vibefeld-agzw** | Closed | Added RefineSpec struct and new Refine(spec) method with cleaner API. RefineNodeWithAllDeps is now a thin wrapper delegating to Refine. Added 4 unit tests for the new method. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 66 (was 67)
-- **Closed:** 483 (was 482)
+- **Open:** 65 (was 66)
+- **Closed:** 484 (was 483)
 
 ### Test Status
 All tests pass. Build succeeds.
 
 ### Verification
 ```bash
-# Run ledger tests
-go test ./internal/ledger/... -v
+# Run service tests
+go test ./internal/service/... -v -run "Refine"
 
 # Run all tests
 go test ./...
@@ -97,6 +112,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 119:** Closed 1 issue (RefineNodeWithAllDeps parameter consolidation - added RefineSpec struct and Refine() method)
 **Session 118:** Closed 1 issue (deferred lock.Release() error handling - added deferRelease() test helper)
 **Session 117:** Closed 1 issue (large event count test - 10K events, discovered O(n) ledger append overhead, fixed duplicate test names)
 **Session 116:** Closed 1 issue (E2E large proof stress tests - 5 new tests with 100+ nodes, concurrent operations, deep hierarchy, wide tree, and rapid reloads)
