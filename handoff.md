@@ -1,42 +1,43 @@
-# Handoff - 2026-01-17 (Session 138)
+# Handoff - 2026-01-17 (Session 139)
 
 ## What Was Accomplished This Session
 
-### Session 138 Summary: Add null bytes edge case test for node statements
+### Session 139 Summary: Add invalid UTF-8 edge case test for node statements
 
-Added missing edge case test for node statements containing null bytes to verify JSON serialization handles them correctly.
+Added missing edge case test for node statements containing invalid UTF-8 byte sequences to document JSON serialization behavior.
 
-1. **vibefeld-3994** - "Edge case test: Node statement with null bytes"
-   - Added `TestNewNode_StatementWithNullBytes` to `internal/node/node_test.go`
-   - Tests 5 scenarios: null at end, null in middle, multiple nulls, null at start, nulls surrounding text
-   - Verifies node creation succeeds with null bytes
-   - Verifies statement is preserved exactly through node creation
-   - Verifies JSON serialization/deserialization round-trip preserves null bytes
-   - Verifies content hash remains consistent after round-trip
+1. **vibefeld-70c2** - "Edge case test: Node invalid UTF-8 in statement"
+   - Added `TestNode_InvalidUTF8` to `internal/node/node_test.go`
+   - Tests 8 scenarios: truncated 2/3/4-byte sequences, standalone continuation byte, invalid start bytes, overlong encoding, mixed valid/invalid, and valid UTF-8 control
+   - Documents known limitation: JSON round-trip modifies invalid UTF-8 (replaces with U+FFFD)
+   - Verifies node creation succeeds regardless of UTF-8 validity
+   - Verifies statement is preserved exactly in memory before serialization
+   - Verifies hash verification passes before JSON round-trip
+   - Documents that VerifyContentHash() will fail after JSON round-trip for invalid UTF-8
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `internal/node/node_test.go` | Added TestNewNode_StatementWithNullBytes (67 lines) |
+| `internal/node/node_test.go` | Added TestNode_InvalidUTF8 (~130 lines), added unicode/utf8 import |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-3994** | Closed | Added TestNewNode_StatementWithNullBytes test to internal/node/node_test.go. Test verifies that null bytes in node statements are handled correctly during node creation and JSON serialization/deserialization round-trips. |
+| **vibefeld-70c2** | Closed | Added TestNode_InvalidUTF8 test documenting behavior with invalid UTF-8 sequences |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 45 (was 46)
-- **Closed:** 504 (was 503)
+- **Open:** 44 (was 45)
+- **Closed:** 505 (was 504)
 
 ### Test Status
 All tests pass for node package. Build succeeds.
 - Unit tests: PASS
 - Build: PASS
-- New tests: PASS (5 sub-tests total)
+- New tests: PASS (8 sub-tests total)
 
 ### Known Issues (Pre-existing)
 1. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
@@ -46,7 +47,7 @@ All tests pass for node package. Build succeeds.
 ### Verification
 ```bash
 # Run the new test
-go test ./internal/node/... -run "TestNewNode_StatementWithNullBytes" -v
+go test ./internal/node/... -run "TestNode_InvalidUTF8" -v
 
 # Run all node tests
 go test ./internal/node/...
@@ -93,6 +94,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 139:** Closed 1 issue (Edge case test - invalid UTF-8 in node statements, documenting JSON round-trip behavior)
 **Session 138:** Closed 1 issue (Edge case test - null bytes in node statements JSON serialization)
 **Session 137:** Closed 1 issue (Bug fix - whitespace owner validation inconsistency in JSON unmarshal)
 **Session 136:** Closed 1 issue (Edge case test - far-future timestamp JSON unmarshaling in lock package)
