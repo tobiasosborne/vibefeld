@@ -65,6 +65,12 @@ func ReadDefinition(basePath string, id string) (*node.Definition, error) {
 		return nil, os.ErrNotExist
 	}
 
+	// Resolve symlinks to prevent symlink-based path traversal attacks
+	// A symlink like defs/mydef.json -> /etc/passwd would bypass the above checks
+	if err := validateNoSymlinkEscape(defPath, defsDir); err != nil {
+		return nil, os.ErrNotExist
+	}
+
 	var def node.Definition
 	if err := ReadJSON(defPath, &def); err != nil {
 		return nil, err
@@ -145,6 +151,12 @@ func DeleteDefinition(basePath string, id string) error {
 		return os.ErrNotExist
 	}
 
+	// Resolve symlinks to prevent symlink-based path traversal attacks
+	// A symlink like defs/mydef.json -> /etc/passwd would bypass the above checks
+	if err := validateNoSymlinkEscape(defPath, defsDir); err != nil {
+		return os.ErrNotExist
+	}
+
 	// Remove file
 	return os.Remove(defPath)
 }
@@ -179,4 +191,41 @@ func containsPathTraversal(id string) bool {
 		return true
 	}
 	return false
+}
+
+// validateNoSymlinkEscape checks that the target path, after resolving symlinks,
+// remains within the allowed directory. This prevents symlink-based path traversal
+// attacks where a file like defs/mydef.json could be a symlink to /etc/passwd.
+func validateNoSymlinkEscape(targetPath, allowedDir string) error {
+	// First, resolve the allowed directory to handle any symlinks in the base path
+	resolvedAllowedDir, err := filepath.EvalSymlinks(allowedDir)
+	if err != nil {
+		// If allowed dir doesn't exist or can't be resolved, that's an error
+		return err
+	}
+
+	// Check if the target file exists (EvalSymlinks requires the file to exist)
+	if _, err := os.Lstat(targetPath); err != nil {
+		// File doesn't exist - no symlink to follow, so no escape possible
+		// Return nil to let the caller handle the non-existence normally
+		return nil
+	}
+
+	// Resolve any symlinks in the target path
+	resolvedTarget, err := filepath.EvalSymlinks(targetPath)
+	if err != nil {
+		// If we can't resolve the symlink, treat as potential escape
+		return err
+	}
+
+	// Clean both paths for consistent comparison
+	cleanTarget := filepath.Clean(resolvedTarget)
+	cleanAllowed := filepath.Clean(resolvedAllowedDir)
+
+	// Verify resolved path is still within allowed directory
+	if !strings.HasPrefix(cleanTarget, cleanAllowed+string(filepath.Separator)) {
+		return errors.New("path escapes allowed directory via symlink")
+	}
+
+	return nil
 }

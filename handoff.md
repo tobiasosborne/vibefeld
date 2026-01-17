@@ -1,54 +1,72 @@
-# Handoff - 2026-01-17 (Session 62)
+# Handoff - 2026-01-17 (Session 63)
 
 ## What Was Accomplished This Session
 
-### Session 62 Summary: Closed 5 Issues with 5 Parallel Agents
+### Session 63 Summary: Closed 2 Issues with 5 Parallel Agents
 
-**Deployed 5 subagents in parallel (each on separate files to avoid conflicts):**
+**Deployed 5 subagents in parallel for 5 issues, but 3 had race conditions:**
+
+Due to one agent (workflow docs) detecting incomplete files and reverting them, only 2 of the 5 agent changes persisted.
 
 #### Issues Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-fv0f** | e2e/cli_workflow_test.go | New E2E test | CLI command chaining workflow tests (init→claim→refine→release→accept) |
-| **vibefeld-q0fd** | e2e/taint_jobs_integration_test.go | New E2E test | Taint affects job detection tests |
-| **vibefeld-izn5** | e2e/scope_acceptance_test.go | New E2E test | Scope balance validation on accept tests |
-| **vibefeld-ssux** | e2e/lock_ledger_coordination_test.go | New E2E test | Lock-Ledger coordination tests (9 test functions) |
-| **vibefeld-gudd** | cmd/af/challenge.go | CLI UX | Challenge severity help text improved with clear blocking explanation |
+| **vibefeld-ugda** | cmd/af/main.go | CLI UX | Added "Typical Workflow" section to root help with 6-step example |
+| **vibefeld-fayv** | internal/fs/def_io.go | Security fix | Added symlink validation to prevent path traversal via symlinks |
 
 #### Files Changed
 
 ```
-e2e/cli_workflow_test.go           (+501 lines) - CLI command sequence tests
-e2e/taint_jobs_integration_test.go (+378 lines) - Taint-jobs integration tests
-e2e/scope_acceptance_test.go       (+290 lines) - Scope balance validation tests
-e2e/lock_ledger_coordination_test.go (+762 lines) - Lock-ledger coordination tests
-cmd/af/challenge.go                (+8 lines)  - Improved severity help text
+cmd/af/main.go         (+28 lines) - Typical Workflow documentation in root help
+internal/fs/def_io.go  (+49 lines) - validateNoSymlinkEscape() function + calls
 ```
 
-**Total: ~1939 lines added**
+**Total: ~77 lines added**
+
+#### Issues That Need Re-work (agent changes were lost)
+
+These 3 issues were successfully implemented by agents but lost due to file conflicts:
+
+| Issue | File | Description |
+|-------|------|-------------|
+| **vibefeld-ryeb** | internal/render/tree.go | String caching in sortNodesByID() |
+| **vibefeld-z05c** | cmd/af/claim.go | Severity level explanations for verifiers |
+| **vibefeld-6jo6** | internal/ledger/lock.go | Lock release ownership verification |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 125 (was 140)
-- **Closed:** 424 (was 409)
+- **Open:** 123 (was 125)
+- **Closed:** 426 (was 424)
 
 ### Test Status
 All tests pass. Build succeeds.
 
 ## Remaining P0 Issues
 
-No P0 issues remain open (all closed in sessions 60-61).
+No P0 issues remain open.
 
 ## Recommended Next Steps
 
-### High Priority (P1)
-1. Performance: Challenge map caching (`vibefeld-7a8j`)
-2. Performance: String conversion optimization in tree rendering (`vibefeld-ryeb`)
-3. Performance: Challenge lookup O(1) instead of O(N) (`vibefeld-q9kb`)
-4. Module structure: Reduce cmd/af imports (`vibefeld-jfbc`)
-5. CLI UX: Cross-command workflow documentation (`vibefeld-ugda`)
+### High Priority (P1) - Re-do from this session
+1. Performance: String conversion caching in tree rendering (`vibefeld-ryeb`)
+2. CLI UX: Verifier severity level explanations in claim (`vibefeld-z05c`)
+
+### High Priority (P2) - Re-do from this session
+3. Bug: Lock release ownership verification (`vibefeld-6jo6`)
+
+### Other P1 Issues
+4. Performance: Challenge map caching (`vibefeld-7a8j`)
+5. Performance: Challenge lookup O(1) instead of O(N) (`vibefeld-q9kb`)
+6. Module structure: Reduce cmd/af imports (`vibefeld-jfbc`)
+
+## Lessons Learned
+
+When running parallel agents:
+- Each agent should work on completely isolated files
+- If an agent encounters incomplete work from other agents, it may revert changes
+- Consider having agents NOT check for other file changes or run build/test commands that might fail due to concurrent changes
 
 ## Quick Commands
 
@@ -65,6 +83,7 @@ go test ./e2e/... -tags=integration
 
 ## Session History
 
+**Session 63:** Closed 2 issues with 5 parallel agents (workflow docs + symlink security) - 3 lost to race conditions
 **Session 62:** Closed 5 issues with 5 parallel agents (4 E2E tests + 1 CLI UX fix)
 **Session 61:** Closed 4 issues with 4 parallel agents (lock corruption fix + 3 edge case tests)
 **Session 60:** Closed 6 P0 issues with 5 parallel agents (+3083 lines tests)
