@@ -1,43 +1,38 @@
-# Handoff - 2026-01-17 (Session 79)
+# Handoff - 2026-01-17 (Session 80)
 
 ## What Was Accomplished This Session
 
-### Session 79 Summary: State Mutation Safety Tests
+### Session 80 Summary: Taint Nil Ancestors List Edge Case Test
 
-Closed issue `vibefeld-bvvz` - "Edge case test: State mutation after GetNode()"
+Closed issue `vibefeld-pxjl` - "Edge case test: Taint nil ancestors list"
 
-Added comprehensive tests documenting that returned objects from state getters are mutable references to internal state. The test covers all entity types and collection methods.
+Added comprehensive table-driven test documenting that a `nil` ancestors list is treated identically to an empty slice, covering all epistemic states.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-bvvz** | internal/state/state_test.go | Test | Added TestState_MutationSafety with 11 subtests |
+| **vibefeld-pxjl** | internal/taint/compute_test.go | Test | Added TestComputeTaint_NilAncestorsList with 5 subtests |
 
 #### Changes Made
 
-**internal/state/state_test.go:**
-- Added `TestState_MutationSafety` - Documents that returned objects are mutable and affect internal state
-- Subtests cover:
-  - `node mutation affects internal state` - Basic node.Statement mutation
-  - `node epistemic state mutation affects internal state` - Epistemic state changes
-  - `definition mutation affects internal state` - Definition.Content mutation
-  - `assumption mutation affects internal state` - Assumption.Statement mutation
-  - `external mutation affects internal state` - External.Source mutation
-  - `lemma mutation affects internal state` - Lemma.Statement mutation
-  - `challenge mutation affects internal state` - Challenge.Reason mutation
-  - `AllNodes returns mutable references` - Collection method returns mutable refs
-  - `AllChallenges returns mutable references` - Collection method returns mutable refs
-  - `AllLemmas returns mutable references` - Collection method returns mutable refs
-  - `GetChallengesForNode returns mutable references` - Cached lookup returns mutable refs
+**internal/taint/compute_test.go:**
+- Added `TestComputeTaint_NilAncestorsList` - Documents that nil ancestors behaves identically to empty slice
+- Subtests cover all epistemic states:
+  - `pending node with nil ancestors is unresolved`
+  - `validated node with nil ancestors is clean`
+  - `admitted node with nil ancestors is self_admitted`
+  - `refuted node with nil ancestors is clean`
+  - `archived node with nil ancestors is clean`
+- Each subtest also verifies nil behaves identically to empty slice
 
 All tests pass.
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 107 (was 108)
-- **Closed:** 442 (was 441)
+- **Open:** 106 (was 107)
+- **Closed:** 443 (was 442)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -53,7 +48,7 @@ No P0 issues remain open.
 
 ### P2 Test Coverage
 2. ledger package test coverage - 58.6% (`vibefeld-4pba`)
-3. state package test coverage - 57% (`vibefeld-hpof`) - improved this session
+3. state package test coverage - 57% (`vibefeld-hpof`)
 4. scope package test coverage - 59.5% (`vibefeld-h179`)
 
 ### P2 Edge Case Tests
@@ -72,12 +67,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run new mutation safety tests
-go test -v ./internal/state/... -run "TestState_MutationSafety"
+# Run new nil ancestors test
+go test -v ./internal/taint/... -run "TestComputeTaint_NilAncestorsList"
 ```
 
 ## Session History
 
+**Session 80:** Closed 1 issue (taint nil ancestors list edge case test)
 **Session 79:** Closed 1 issue (state mutation safety tests)
 **Session 78:** Closed 1 issue (state non-existent dependency resolution tests)
 **Session 77:** Closed 1 issue (lock high concurrency tests - 150+ goroutines)

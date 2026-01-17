@@ -210,3 +210,59 @@ func TestComputeTaint_NilNode(t *testing.T) {
 	ancestors := []*node.Node{}
 	ComputeTaint(nil, ancestors)
 }
+
+func TestComputeTaint_NilAncestorsList(t *testing.T) {
+	// Test that nil ancestors list is treated identically to empty slice
+	// for all epistemic states. This documents that nil is a valid input
+	// representing a root node with no ancestors.
+	tests := []struct {
+		name      string
+		epistemic schema.EpistemicState
+		want      node.TaintState
+	}{
+		{
+			name:      "pending node with nil ancestors is unresolved",
+			epistemic: schema.EpistemicPending,
+			want:      node.TaintUnresolved,
+		},
+		{
+			name:      "validated node with nil ancestors is clean",
+			epistemic: schema.EpistemicValidated,
+			want:      node.TaintClean,
+		},
+		{
+			name:      "admitted node with nil ancestors is self_admitted",
+			epistemic: schema.EpistemicAdmitted,
+			want:      node.TaintSelfAdmitted,
+		},
+		{
+			name:      "refuted node with nil ancestors is clean",
+			epistemic: schema.EpistemicRefuted,
+			want:      node.TaintClean,
+		},
+		{
+			name:      "archived node with nil ancestors is clean",
+			epistemic: schema.EpistemicArchived,
+			want:      node.TaintClean,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n := makeTestNode("1", tt.epistemic, node.TaintUnresolved)
+
+			// Pass nil explicitly (not empty slice) to verify nil handling
+			result := ComputeTaint(n, nil)
+
+			if result != tt.want {
+				t.Errorf("ComputeTaint() = %v, want %v", result, tt.want)
+			}
+
+			// Also verify nil behaves identically to empty slice
+			resultEmpty := ComputeTaint(n, []*node.Node{})
+			if result != resultEmpty {
+				t.Errorf("nil vs empty mismatch: nil=%v, empty=%v", result, resultEmpty)
+			}
+		})
+	}
+}
