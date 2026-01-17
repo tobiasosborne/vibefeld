@@ -367,3 +367,133 @@ func TestWriteJSON_MissingParentDirectory(t *testing.T) {
 		}
 	})
 }
+
+// TestReadJSON_PathIsFile tests ReadJSON behavior when path components that
+// should be directories are actually files, or when trying to read a directory.
+// This edge case can produce confusing errors that should be handled gracefully.
+func TestReadJSON_PathIsFile(t *testing.T) {
+	t.Run("path_is_directory_not_file", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Try to read a directory as if it were a JSON file
+		var result testData
+		err := ReadJSON(dir, &result)
+		if err == nil {
+			t.Error("expected error when reading a directory, got nil")
+		}
+
+		// On Unix, reading a directory returns "is a directory" error
+		// On Windows, it may return a different error
+		t.Logf("got expected error when reading directory: %v", err)
+	})
+
+	t.Run("parent_path_component_is_file", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Create a regular file where a directory component should be
+		blockingFile := filepath.Join(dir, "notadir")
+		if err := os.WriteFile(blockingFile, []byte("I am a file"), 0644); err != nil {
+			t.Fatalf("failed to create blocking file: %v", err)
+		}
+
+		// Try to read a path where "notadir" would need to be a directory
+		targetPath := filepath.Join(dir, "notadir", "data.json")
+		var result testData
+		err := ReadJSON(targetPath, &result)
+		if err == nil {
+			t.Error("expected error when parent path component is a file, got nil")
+		}
+
+		// The error should indicate the path problem (not a directory, or file not found)
+		t.Logf("got expected error when parent is file: %v", err)
+	})
+
+	t.Run("deeply_nested_file_blocks_path", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Create a deeply nested structure where one component is a file
+		nestedDir := filepath.Join(dir, "a", "b")
+		if err := os.MkdirAll(nestedDir, 0755); err != nil {
+			t.Fatalf("failed to create nested directories: %v", err)
+		}
+
+		// Create a file at what should be directory "c"
+		blockingFile := filepath.Join(nestedDir, "c")
+		if err := os.WriteFile(blockingFile, []byte("blocking"), 0644); err != nil {
+			t.Fatalf("failed to create blocking file: %v", err)
+		}
+
+		// Try to read through this blocked path
+		targetPath := filepath.Join(dir, "a", "b", "c", "d", "data.json")
+		var result testData
+		err := ReadJSON(targetPath, &result)
+		if err == nil {
+			t.Error("expected error when nested path blocked by file, got nil")
+		}
+		t.Logf("got expected error for deeply nested blocked path: %v", err)
+	})
+
+	t.Run("symlink_to_directory", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping symlink test on Windows")
+		}
+
+		dir := t.TempDir()
+
+		// Create a subdirectory with a valid JSON file
+		subdir := filepath.Join(dir, "realdir")
+		if err := os.MkdirAll(subdir, 0755); err != nil {
+			t.Fatalf("failed to create subdirectory: %v", err)
+		}
+		jsonFile := filepath.Join(subdir, "data.json")
+		original := testData{ID: "symlink-test", Name: "Via Symlink"}
+		if err := WriteJSON(jsonFile, &original); err != nil {
+			t.Fatalf("failed to write JSON: %v", err)
+		}
+
+		// Create a symlink to the directory
+		symlink := filepath.Join(dir, "link")
+		if err := os.Symlink(subdir, symlink); err != nil {
+			t.Fatalf("failed to create symlink: %v", err)
+		}
+
+		// Read through the symlink - this should work
+		targetPath := filepath.Join(symlink, "data.json")
+		var result testData
+		if err := ReadJSON(targetPath, &result); err != nil {
+			t.Errorf("expected success reading through symlink to directory, got: %v", err)
+		}
+		if result.ID != "symlink-test" {
+			t.Errorf("expected ID 'symlink-test', got '%s'", result.ID)
+		}
+	})
+
+	t.Run("symlink_to_file_as_directory", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping symlink test on Windows")
+		}
+
+		dir := t.TempDir()
+
+		// Create a regular file
+		realFile := filepath.Join(dir, "realfile")
+		if err := os.WriteFile(realFile, []byte("content"), 0644); err != nil {
+			t.Fatalf("failed to create file: %v", err)
+		}
+
+		// Create a symlink to the file
+		symlink := filepath.Join(dir, "filelink")
+		if err := os.Symlink(realFile, symlink); err != nil {
+			t.Fatalf("failed to create symlink: %v", err)
+		}
+
+		// Try to read a path through the symlink as if it were a directory
+		targetPath := filepath.Join(symlink, "data.json")
+		var result testData
+		err := ReadJSON(targetPath, &result)
+		if err == nil {
+			t.Error("expected error when symlink to file used as directory, got nil")
+		}
+		t.Logf("got expected error for symlink-to-file as directory: %v", err)
+	})
+}
