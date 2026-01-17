@@ -1621,3 +1621,158 @@ func TestPropagateTaint_DuplicateNodes(t *testing.T) {
 		}
 	})
 }
+
+// TestPropagateTaint_UnsortedInput verifies that PropagateTaint correctly handles
+// allNodes provided in completely arbitrary order. This tests that sortByDepth()
+// properly orders descendants before processing.
+func TestPropagateTaint_UnsortedInput(t *testing.T) {
+	t.Run("chaotic order with multiple depths", func(t *testing.T) {
+		// Create a tree with multiple levels and branches
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child1 := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		child2 := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+		grandchild11 := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		grandchild12 := makeNode("1.1.2", schema.EpistemicValidated, node.TaintClean)
+		grandchild21 := makeNode("1.2.1", schema.EpistemicValidated, node.TaintClean)
+		greatGrand := makeNode("1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Provide nodes in completely chaotic order:
+		// deepest first, then shallow, then middle, interleaved
+		allNodes := []*node.Node{
+			greatGrand,   // depth 4
+			grandchild21, // depth 3
+			child1,       // depth 2
+			grandchild11, // depth 3
+			root,         // depth 1
+			grandchild12, // depth 3
+			child2,       // depth 2
+		}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// All descendants should be tainted (root is admitted with self-admitted taint)
+		for _, n := range []*node.Node{child1, child2, grandchild11, grandchild12, grandchild21, greatGrand} {
+			if n.TaintState != node.TaintTainted {
+				t.Errorf("%s.TaintState = %v, want %v", n.ID.String(), n.TaintState, node.TaintTainted)
+			}
+		}
+
+		// Should return 6 changed nodes (all descendants)
+		if len(changed) != 6 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 6", len(changed))
+		}
+	})
+
+	t.Run("siblings interleaved with cousins", func(t *testing.T) {
+		// Verify that same-depth nodes from different branches are handled correctly
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child1 := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		child2 := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+		child3 := makeNode("1.3", schema.EpistemicValidated, node.TaintClean)
+		gc11 := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		gc21 := makeNode("1.2.1", schema.EpistemicValidated, node.TaintClean)
+		gc31 := makeNode("1.3.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Interleave cousins (same depth, different branches)
+		allNodes := []*node.Node{
+			gc21, gc11, gc31, // grandchildren first (depth 3)
+			child3, child1, child2, // children in scrambled order (depth 2)
+			root, // root last
+		}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// All descendants should be tainted
+		allDesc := []*node.Node{child1, child2, child3, gc11, gc21, gc31}
+		for _, n := range allDesc {
+			if n.TaintState != node.TaintTainted {
+				t.Errorf("%s.TaintState = %v, want %v", n.ID.String(), n.TaintState, node.TaintTainted)
+			}
+		}
+
+		if len(changed) != 6 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 6", len(changed))
+		}
+	})
+
+	t.Run("worst case reverse depth order", func(t *testing.T) {
+		// This is the worst case for caching: if not sorted, parent taint
+		// wouldn't be computed before child
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		c := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		gc := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		ggc := makeNode("1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+		gggc := makeNode("1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Strictly reverse depth order
+		allNodes := []*node.Node{gggc, ggc, gc, c, root}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// Verify all nodes tainted correctly
+		for _, n := range []*node.Node{c, gc, ggc, gggc} {
+			if n.TaintState != node.TaintTainted {
+				t.Errorf("%s.TaintState = %v, want %v", n.ID.String(), n.TaintState, node.TaintTainted)
+			}
+		}
+
+		if len(changed) != 4 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 4", len(changed))
+		}
+	})
+
+	t.Run("unresolved propagation with unsorted input", func(t *testing.T) {
+		// Test that unresolved taint (from pending nodes) propagates correctly
+		// even when input is unsorted
+		root := makeNode("1", schema.EpistemicPending, node.TaintUnresolved)
+		child1 := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		child2 := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+		grandchild := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Unsorted: grandchild, child2, child1, root
+		allNodes := []*node.Node{grandchild, child2, child1, root}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// All descendants should become unresolved (not tainted)
+		for _, n := range []*node.Node{child1, child2, grandchild} {
+			if n.TaintState != node.TaintUnresolved {
+				t.Errorf("%s.TaintState = %v, want %v", n.ID.String(), n.TaintState, node.TaintUnresolved)
+			}
+		}
+
+		if len(changed) != 3 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 3", len(changed))
+		}
+	})
+
+	t.Run("mixed taint types with unsorted siblings", func(t *testing.T) {
+		// Root clean, but one child is admitted (self-admitted)
+		// Grandchildren under the admitted child should be tainted
+		root := makeNode("1", schema.EpistemicValidated, node.TaintClean)
+		admittedChild := makeNode("1.1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		cleanChild := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+		gcUnderAdmitted := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		gcUnderClean := makeNode("1.2.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Unsorted with siblings interleaved
+		allNodes := []*node.Node{gcUnderClean, gcUnderAdmitted, cleanChild, admittedChild, root}
+
+		// Propagate from admittedChild (not root)
+		changed := PropagateTaint(admittedChild, allNodes)
+
+		// Only gcUnderAdmitted is a descendant of admittedChild
+		if gcUnderAdmitted.TaintState != node.TaintTainted {
+			t.Errorf("gcUnderAdmitted.TaintState = %v, want %v", gcUnderAdmitted.TaintState, node.TaintTainted)
+		}
+
+		// gcUnderClean should remain clean (not a descendant of admittedChild)
+		if gcUnderClean.TaintState != node.TaintClean {
+			t.Errorf("gcUnderClean.TaintState = %v, want %v (should not be affected)", gcUnderClean.TaintState, node.TaintClean)
+		}
+
+		if len(changed) != 1 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+		}
+	})
+}
