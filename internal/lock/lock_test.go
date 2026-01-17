@@ -922,6 +922,125 @@ func TestClaimLock_HighConcurrency_MixedOperations(t *testing.T) {
 	}
 }
 
+// TestUnmarshalJSON_FutureTimestamps verifies UnmarshalJSON correctly handles
+// far-future timestamps without overflow or parsing errors. This is important
+// because time.Time has an upper limit (year 292277026596) and some systems
+// may have issues with dates far in the future.
+func TestUnmarshalJSON_FutureTimestamps(t *testing.T) {
+	tests := []struct {
+		name       string
+		expiresAt  string
+		acquiredAt string
+		wantErr    bool
+	}{
+		{
+			name:       "year 3000",
+			acquiredAt: "3000-01-01T00:00:00.000000000Z",
+			expiresAt:  "3000-01-01T01:00:00.000000000Z",
+			wantErr:    false,
+		},
+		{
+			name:       "year 9999 - max common representation",
+			acquiredAt: "9999-01-01T00:00:00.000000000Z",
+			expiresAt:  "9999-12-31T23:59:59.999999999Z",
+			wantErr:    false,
+		},
+		{
+			name:       "year 2999 - millennium boundary",
+			acquiredAt: "2999-12-31T23:59:59.000000000Z",
+			expiresAt:  "2999-12-31T23:59:59.999999999Z",
+			wantErr:    false,
+		},
+		{
+			name:       "100 years from now",
+			acquiredAt: "2126-01-17T12:00:00.000000000Z",
+			expiresAt:  "2126-01-17T13:00:00.000000000Z",
+			wantErr:    false,
+		},
+		{
+			name:       "year 5000 - mid-range future",
+			acquiredAt: "5000-06-15T10:30:00.000000000Z",
+			expiresAt:  "5000-06-15T11:30:00.000000000Z",
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonData := []byte(`{
+				"node_id": "1.2.3",
+				"owner": "future-agent",
+				"acquired_at": "` + tt.acquiredAt + `",
+				"expires_at": "` + tt.expiresAt + `"
+			}`)
+
+			var lk lock.ClaimLock
+			err := json.Unmarshal(jsonData, &lk)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("json.Unmarshal() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+			}
+
+			// Verify the lock was parsed correctly
+			if lk.NodeID().String() != "1.2.3" {
+				t.Errorf("NodeID() = %q, want \"1.2.3\"", lk.NodeID().String())
+			}
+
+			if lk.Owner() != "future-agent" {
+				t.Errorf("Owner() = %q, want \"future-agent\"", lk.Owner())
+			}
+
+			// Verify timestamps are not zero (meaning they were parsed)
+			if lk.AcquiredAt().IsZero() {
+				t.Error("AcquiredAt() is zero after unmarshal")
+			}
+
+			if lk.ExpiresAt().IsZero() {
+				t.Error("ExpiresAt() is zero after unmarshal")
+			}
+
+			// Verify ExpiresAt is after AcquiredAt
+			if !lk.ExpiresAt().After(lk.AcquiredAt()) {
+				t.Errorf("ExpiresAt() %v should be after AcquiredAt() %v",
+					lk.ExpiresAt(), lk.AcquiredAt())
+			}
+
+			// Lock should NOT be expired (far future)
+			if lk.IsExpired() {
+				t.Error("IsExpired() = true for far-future lock, want false")
+			}
+
+			// Verify JSON roundtrip preserves the timestamps
+			data, err := json.Marshal(&lk)
+			if err != nil {
+				t.Fatalf("json.Marshal() unexpected error: %v", err)
+			}
+
+			var restored lock.ClaimLock
+			if err := json.Unmarshal(data, &restored); err != nil {
+				t.Fatalf("json.Unmarshal() roundtrip unexpected error: %v", err)
+			}
+
+			if !restored.AcquiredAt().Equal(lk.AcquiredAt()) {
+				t.Errorf("AcquiredAt after roundtrip: got %v, want %v",
+					restored.AcquiredAt(), lk.AcquiredAt())
+			}
+
+			if !restored.ExpiresAt().Equal(lk.ExpiresAt()) {
+				t.Errorf("ExpiresAt after roundtrip: got %v, want %v",
+					restored.ExpiresAt(), lk.ExpiresAt())
+			}
+		})
+	}
+}
+
 // TestMultipleLocks verifies multiple locks can coexist independently
 func TestMultipleLocks(t *testing.T) {
 	nodeID1, err := types.Parse("1.1")
