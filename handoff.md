@@ -1,50 +1,46 @@
-# Handoff - 2026-01-17 (Session 107)
+# Handoff - 2026-01-17 (Session 108)
 
 ## What Was Accomplished This Session
 
-### Session 107 Summary: Improved Ledger Package Test Coverage
+### Session 108 Summary: Fixed Silent JSON Unmarshal Error in claim.go
 
-Closed issue `vibefeld-4pba` - "MEDIUM: ledger package has only 58.6% test coverage"
+Closed issue `vibefeld-o8l0` - "Code smell: Silent JSON unmarshal error in claim.go"
 
-The original issue reported 58.6% coverage, but this was measured without the `integration` build tag. With the tag, coverage was already 81.0%. Added tests for the remaining uncovered event constructors and the Ledger facade wrapper.
+#### Problem
 
-#### Changes
+In `cmd/af/claim.go` lines 165-166, a JSON unmarshal error was silently ignored:
 
-**Updated File: `internal/ledger/event_test.go`**
-- Added `TestScopeOpenedEvent` - Tests NewScopeOpened event creation and JSON roundtrip
-- Added `TestScopeClosedEvent` - Tests NewScopeClosed event creation and JSON roundtrip
-- Added `TestClaimRefreshedEvent` - Tests NewClaimRefreshed event creation, JSON roundtrip, and field verification
+```go
+if err := json.Unmarshal([]byte(checklistJSON), &checklist); err == nil {
+    result["verification_checklist"] = checklist
+}
+```
 
-**Updated File: `internal/ledger/ledger_test.go`**
-- Added `TestLedger_AppendIfSequence_Success` - Tests CAS append succeeds when sequence matches
-- Added `TestLedger_AppendIfSequence_Failure` - Tests CAS append fails when sequence mismatches
-- Added `TestLedger_AppendIfSequence_EmptyLedger` - Tests CAS append on empty ledger with expected sequence 0
+If unmarshaling failed, the `verification_checklist` field was simply omitted from the JSON output without any indication of the problem.
 
-#### Coverage Improvement
+#### Solution
 
-| Function | Before | After |
-|----------|--------|-------|
-| `NewScopeOpened` | 0% | 100% |
-| `NewScopeClosed` | 0% | 100% |
-| `NewClaimRefreshed` | 0% | 100% |
-| `Ledger.AppendIfSequence` | 0% | 100% |
-| **Total Package** | 81.0% | 82.1% |
+Changed the error handling to be explicit:
+- On success: outputs `verification_checklist` with the parsed data
+- On failure: outputs `verification_checklist_error` with the error message
+
+Added a comment explaining that while `RenderVerificationChecklistJSON` always returns valid JSON (even on internal errors), we handle parse errors defensively in case the contract changes.
+
+### Files Changed
+
+- `cmd/af/claim.go` (+5 lines) - Explicit error handling for checklist JSON parsing
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-4pba** | Closed | Added tests for NewScopeOpened, NewScopeClosed, NewClaimRefreshed, and Ledger.AppendIfSequence. Coverage improved from 81.0% to 82.1%. |
-
-### Files Changed
-- `internal/ledger/event_test.go` (added 3 test functions)
-- `internal/ledger/ledger_test.go` (added 3 test functions)
+| **vibefeld-o8l0** | Closed | Now outputs verification_checklist_error field instead of silently ignoring parse failures |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 77 (was 78)
-- **Closed:** 472 (was 471)
+- **Open:** 76 (was 77)
+- **Closed:** 473 (was 472)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -86,12 +82,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run ledger tests with coverage
-go test -tags=integration -cover ./internal/ledger/...
+# Run integration tests
+go test -tags=integration ./...
 ```
 
 ## Session History
 
+**Session 108:** Closed 1 issue (silent JSON unmarshal error - explicit error handling in claim.go)
 **Session 107:** Closed 1 issue (ledger test coverage - added tests for NewScopeOpened, NewScopeClosed, NewClaimRefreshed, Ledger.AppendIfSequence)
 **Session 106:** Closed 1 issue (ignored flag parsing errors - added cli.Must* helpers, updated 10 CLI files)
 **Session 105:** Closed 1 issue (collectDefinitionNames redundant loops - now uses collectContextEntries helper)

@@ -162,8 +162,12 @@ func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string
 		if targetNode != nil {
 			checklistJSON := render.RenderVerificationChecklistJSON(targetNode, st)
 			// Parse the checklist JSON and add it to the result
+			// RenderVerificationChecklistJSON always returns valid JSON, but we handle
+			// parse errors defensively in case the contract changes
 			var checklist interface{}
-			if err := json.Unmarshal([]byte(checklistJSON), &checklist); err == nil {
+			if err := json.Unmarshal([]byte(checklistJSON), &checklist); err != nil {
+				result["verification_checklist_error"] = fmt.Sprintf("failed to parse checklist: %v", err)
+			} else {
 				result["verification_checklist"] = checklist
 			}
 		}
