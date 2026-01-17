@@ -1,39 +1,50 @@
-# Handoff - 2026-01-17 (Session 89)
+# Handoff - 2026-01-17 (Session 90)
 
 ## What Was Accomplished This Session
 
-### Session 89 Summary: FS Read During Concurrent Write Edge Case Tests
+### Session 90 Summary: Ledger Permission Changes Mid-Operation Edge Case Tests
 
-Closed issue `vibefeld-w17s` - "Edge case test: FS read during concurrent write"
+Closed issue `vibefeld-hzrs` - "Edge case test: Permission changes mid-operation"
 
-Added comprehensive edge case tests in `internal/fs/json_io_test.go` for race conditions between `ReadJSON` and `WriteJSON` atomic write operations:
+Added 4 comprehensive edge case tests in `internal/ledger/append_test.go` for handling file permission changes during ledger operations:
 
-1. **TestReadJSON_ConcurrentWrite** - Tests that concurrent reads during atomic writes (temp file + rename) don't cause data corruption. Verifies:
-   - No partial reads (reading mix of old/new data)
-   - Reads return either complete old or complete new version
-   - No panics or unexpected errors beyond file-not-found during rename window
+1. **TestAppendBatch_FilePermissionChangesMidOperation** - Tests that when directory permissions change to read-only after initial event but before batch append, the operation fails gracefully and:
+   - Does not corrupt existing ledger events
+   - Properly cleans up temp files
+   - Returns appropriate error
 
-2. **TestReadJSON_ConcurrentWriteLargeData** - Same test with larger payloads (100 entries, 1000+ char padding) to increase the window for potential race conditions. Verifies internal consistency of read data matches the version number.
+2. **TestAppend_ChmodFailsOnTempFile** - Tests single-event append when directory is read-only:
+   - Operation fails at temp file creation
+   - No partial files left behind
+   - Directory remains clean
 
-Both tests run with race detector enabled and confirm the atomic write pattern is safe.
+3. **TestAppendBatch_PartialChmodFailure** - Tests batch append with multiple events when directory becomes read-only:
+   - Verifies cleanup of all temp files
+   - Original ledger state preserved
+   - No residual temp files
+
+4. **TestAppendIfSequence_PermissionDeniedMidOperation** - Tests CAS append when permissions change:
+   - Sequence-conditional append fails cleanly
+   - Ledger count unchanged
+   - No temp file residue
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-w17s** | Closed | Added TestReadJSON_ConcurrentWrite and TestReadJSON_ConcurrentWriteLargeData tests |
+| **vibefeld-hzrs** | Closed | Added 4 tests for permission changes mid-operation |
 
 ### Files Changed
-- `internal/fs/json_io_test.go` (+215 lines)
+- `internal/ledger/append_test.go` (+175 lines)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 95 (was 96)
-- **Closed:** 454 (was 453)
+- **Open:** 94 (was 95)
+- **Closed:** 455 (was 454)
 
 ### Test Status
-All tests pass (including race detection). Build succeeds.
+All tests pass (including integration tests with race detection). Build succeeds.
 
 ## Remaining P0 Issues
 
@@ -50,11 +61,11 @@ No P0 issues remain open.
 4. scope package test coverage - 59.5% (`vibefeld-h179`)
 
 ### P2 Edge Case Tests
-5. Permission changes mid-operation (`vibefeld-hzrs`)
-6. Concurrent metadata corruption (`vibefeld-be56`)
-7. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
-8. State millions of events (`vibefeld-th1m`)
-9. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
+5. Concurrent metadata corruption (`vibefeld-be56`)
+6. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
+7. State millions of events (`vibefeld-th1m`)
+8. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
+9. FS permission denied mid-operation (`vibefeld-9znk`)
 
 ## Quick Commands
 
@@ -65,12 +76,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new concurrent read/write tests
-go test -v ./internal/fs/... -run "TestReadJSON_Concurrent" -race
+# Run the new permission change tests
+go test -v -tags=integration ./internal/ledger/... -run "TestAppendBatch_FilePermissionChangesMidOperation|TestAppend_ChmodFailsOnTempFile|TestAppendBatch_PartialChmodFailure|TestAppendIfSequence_PermissionDeniedMidOperation"
 ```
 
 ## Session History
 
+**Session 90:** Closed 1 issue (ledger permission changes mid-operation edge case tests)
 **Session 89:** Closed 1 issue (FS read during concurrent write edge case tests)
 **Session 88:** Closed 1 issue (FS path is file edge case tests)
 **Session 87:** Closed 1 issue (FS directory doesn't exist edge case tests)

@@ -1150,6 +1150,235 @@ func TestAppendBatch_DirectoryDeletedMidBatch(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// File Permission Changes Mid-Operation Tests
+// =============================================================================
+
+// TestAppendBatch_FilePermissionChangesMidOperation verifies that AppendBatch
+// handles gracefully when the directory permissions change mid-operation.
+// This tests the edge case where: lock acquired, then chmod fails on temp file.
+func TestAppendBatch_FilePermissionChangesMidOperation(t *testing.T) {
+	// Create a directory manually so we can manipulate permissions
+	dir, err := os.MkdirTemp("", "ledger-perm-change-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() {
+		// Restore permissions for cleanup
+		os.Chmod(dir, 0755)
+		os.RemoveAll(dir)
+	}()
+
+	// First, append an event successfully to establish the ledger
+	event1 := NewProofInitialized("Permission test 1", "agent-perm")
+	seq1, err := Append(dir, event1)
+	if err != nil {
+		t.Fatalf("Initial append failed: %v", err)
+	}
+	if seq1 != 1 {
+		t.Errorf("Expected seq 1, got %d", seq1)
+	}
+
+	// Now make the directory read-only
+	// This will cause temp file creation to fail when AppendBatch tries to write
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatalf("Failed to make directory read-only: %v", err)
+	}
+
+	// Try to append more events - should fail due to read-only directory
+	events := []Event{
+		NewChallengeResolved("chal-perm-1"),
+		NewChallengeWithdrawn("chal-perm-2"),
+	}
+
+	_, err = AppendBatch(dir, events)
+	if err == nil {
+		t.Fatal("AppendBatch should fail when directory is read-only")
+	}
+
+	// Restore permissions to verify ledger state
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatalf("Failed to restore directory permissions: %v", err)
+	}
+
+	// Verify original event is still intact
+	count, err := Count(dir)
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Ledger should still have 1 event, got %d", count)
+	}
+
+	// Verify no temp files were left behind
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasSuffix(name, ".tmp") || strings.HasPrefix(name, ".event-") {
+			t.Errorf("Temp file %q remains after failed batch append", name)
+		}
+	}
+}
+
+// TestAppend_ChmodFailsOnTempFile verifies that Append handles the case
+// where chmod fails on the temp file after successful write and sync.
+// This simulates permission changes happening between file operations.
+func TestAppend_ChmodFailsOnTempFile(t *testing.T) {
+	// Create a directory
+	dir, err := os.MkdirTemp("", "ledger-chmod-fail-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() {
+		os.Chmod(dir, 0755)
+		os.RemoveAll(dir)
+	}()
+
+	// Make directory read-only to prevent new file creation
+	// This causes temp file creation to fail, which is a chmod-adjacent failure
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatalf("Failed to make directory read-only: %v", err)
+	}
+
+	event := NewProofInitialized("Chmod fail test", "agent-chmod")
+	_, err = AppendWithTimeout(dir, event, 100*time.Millisecond)
+
+	if err == nil {
+		t.Fatal("AppendWithTimeout should fail when directory is read-only")
+	}
+
+	// Restore permissions
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatalf("Failed to restore directory permissions: %v", err)
+	}
+
+	// Verify no files were created
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+	if len(entries) > 0 {
+		t.Errorf("Expected empty directory after failed append, found %d entries", len(entries))
+	}
+}
+
+// TestAppendBatch_PartialChmodFailure verifies that AppendBatch cleans up
+// properly when chmod fails partway through a batch operation.
+// This tests the cleanup logic in the chmod loop of AppendBatch.
+func TestAppendBatch_PartialChmodFailure(t *testing.T) {
+	// Create a directory
+	dir, err := os.MkdirTemp("", "ledger-partial-chmod-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() {
+		os.Chmod(dir, 0755)
+		os.RemoveAll(dir)
+	}()
+
+	// First, create a successful event
+	event1 := NewProofInitialized("Partial chmod test", "agent-partial")
+	if _, err := Append(dir, event1); err != nil {
+		t.Fatalf("Initial append failed: %v", err)
+	}
+
+	// Try to append a batch - first make directory read-only to cause failure
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatalf("Failed to make directory read-only: %v", err)
+	}
+
+	events := []Event{
+		NewChallengeResolved("chal-partial-1"),
+		NewChallengeWithdrawn("chal-partial-2"),
+		NewChallengeResolved("chal-partial-3"),
+	}
+
+	_, err = AppendBatch(dir, events)
+	if err == nil {
+		t.Fatal("AppendBatch should fail when directory becomes read-only")
+	}
+
+	// Restore permissions for verification
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatalf("Failed to restore directory permissions: %v", err)
+	}
+
+	// Verify only original event exists
+	count, err := Count(dir)
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Ledger should have only 1 event (original), got %d", count)
+	}
+
+	// Verify no temp files remain
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasSuffix(name, ".tmp") || strings.HasPrefix(name, ".") {
+			t.Errorf("Temp file %q remains after failed batch append", name)
+		}
+	}
+}
+
+// TestAppendIfSequence_PermissionDeniedMidOperation verifies that AppendIfSequence
+// handles permission changes gracefully during the CAS operation.
+func TestAppendIfSequence_PermissionDeniedMidOperation(t *testing.T) {
+	// Create a directory
+	dir, err := os.MkdirTemp("", "ledger-cas-perm-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() {
+		os.Chmod(dir, 0755)
+		os.RemoveAll(dir)
+	}()
+
+	// Create an initial event
+	event1 := NewProofInitialized("CAS perm test", "agent-cas-perm")
+	seq, err := Append(dir, event1)
+	if err != nil {
+		t.Fatalf("Initial append failed: %v", err)
+	}
+	if seq != 1 {
+		t.Errorf("Expected seq 1, got %d", seq)
+	}
+
+	// Make directory read-only
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatalf("Failed to make directory read-only: %v", err)
+	}
+
+	// Try AppendIfSequence - should fail due to permission
+	event2 := NewChallengeResolved("chal-cas-perm")
+	_, err = AppendIfSequenceWithTimeout(dir, event2, 1, 100*time.Millisecond)
+
+	if err == nil {
+		t.Fatal("AppendIfSequence should fail when directory is read-only")
+	}
+
+	// Restore permissions
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatalf("Failed to restore directory permissions: %v", err)
+	}
+
+	// Verify ledger is unchanged
+	count, err := Count(dir)
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Ledger should still have 1 event, got %d", count)
+	}
+}
+
 // TestReleaseLock_DirectoryDeletedWhileHoldingLock verifies that releaseLock
 // logs an error when the directory (and thus lock file) is deleted while holding the lock.
 // This tests the "orphaned lock" scenario mentioned in the issue.
