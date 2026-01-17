@@ -8,6 +8,15 @@ import (
 	"github.com/tobias/vibefeld/internal/types"
 )
 
+// Challenge status values for state.Challenge.
+// These mirror node.ChallengeStatus constants for use with the string-typed Status field.
+const (
+	ChallengeStatusOpen       = string(node.ChallengeStatusOpen)
+	ChallengeStatusResolved   = string(node.ChallengeStatusResolved)
+	ChallengeStatusWithdrawn  = string(node.ChallengeStatusWithdrawn)
+	ChallengeStatusSuperseded = string(node.ChallengeStatusSuperseded)
+)
+
 // Challenge represents a challenge tracked in the state.
 // This is a simplified representation of node.Challenge for state tracking.
 type Challenge struct {
@@ -15,7 +24,7 @@ type Challenge struct {
 	NodeID     types.NodeID    // The node being challenged
 	Target     string          // What aspect of the node is challenged
 	Reason     string          // Explanation of the challenge
-	Status     string          // "open", "resolved", or "withdrawn"
+	Status     string          // One of ChallengeStatusOpen, ChallengeStatusResolved, or ChallengeStatusWithdrawn
 	Severity   string          // "critical", "major", "minor", or "note"
 	Created    types.Timestamp // When the challenge was raised
 	Resolution string          // Resolution text (populated when status is "resolved")
@@ -247,7 +256,7 @@ func (s *State) ChallengeMapForJobs() map[string][]*node.Challenge {
 func (s *State) OpenChallenges() []*Challenge {
 	var open []*Challenge
 	for _, c := range s.challenges {
-		if c.Status == "open" {
+		if c.Status == ChallengeStatusOpen {
 			open = append(open, c)
 		}
 	}
@@ -265,7 +274,7 @@ func (s *State) GetBlockingChallengesForNode(nodeID types.NodeID) []*Challenge {
 	challenges := s.GetChallengesForNode(nodeID)
 	for _, c := range challenges {
 		// Must be open (not resolved or withdrawn)
-		if c.Status != "open" {
+		if c.Status != ChallengeStatusOpen {
 			continue
 		}
 		// Must be a blocking severity (critical or major)

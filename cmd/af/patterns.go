@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/patterns"
 	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/state"
 )
 
 // newPatternsCmd creates the patterns command with subcommands.
@@ -490,7 +491,7 @@ func runPatternsExtract(cmd *cobra.Command, dir string, jsonOutput bool) error {
 	// Count resolved challenges
 	resolvedCount := 0
 	for _, c := range challenges {
-		if c.Status == "resolved" {
+		if c.Status == state.ChallengeStatusResolved {
 			resolvedCount++
 		}
 	}

@@ -478,7 +478,7 @@ func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) 
 	openCount := 0
 	blockingCount := 0
 	for _, c := range nodeChallenges {
-		if c.Status == "open" {
+		if c.Status == state.ChallengeStatusOpen {
 			openCount++
 			if isBlockingSeverity(c.Severity) {
 				blockingCount++
@@ -496,10 +496,10 @@ func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) 
 	// Sort by: status (open first), then severity (critical > major > minor > note), then ID
 	sort.Slice(nodeChallenges, func(i, j int) bool {
 		// Open challenges come first
-		if nodeChallenges[i].Status == "open" && nodeChallenges[j].Status != "open" {
+		if nodeChallenges[i].Status == state.ChallengeStatusOpen && nodeChallenges[j].Status != state.ChallengeStatusOpen {
 			return true
 		}
-		if nodeChallenges[i].Status != "open" && nodeChallenges[j].Status == "open" {
+		if nodeChallenges[i].Status != state.ChallengeStatusOpen && nodeChallenges[j].Status == state.ChallengeStatusOpen {
 			return false
 		}
 		// Within same status, sort by severity (more severe first)
@@ -521,7 +521,7 @@ func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) 
 		if c.Severity != "" {
 			sb.WriteString(c.Severity)
 			// Mark blocking challenges clearly
-			if c.Status == "open" && isBlockingSeverity(c.Severity) {
+			if c.Status == state.ChallengeStatusOpen && isBlockingSeverity(c.Severity) {
 				sb.WriteString(" (BLOCKING)")
 			}
 			sb.WriteString(" - ")
@@ -534,14 +534,14 @@ func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) 
 		sb.WriteString(")\n")
 
 		// Show resolution text for resolved challenges
-		if c.Status == "resolved" && c.Resolution != "" {
+		if c.Status == state.ChallengeStatusResolved && c.Resolution != "" {
 			sb.WriteString("       Resolution: \"")
 			sb.WriteString(c.Resolution)
 			sb.WriteString("\"\n")
 		}
 
 		// Show actionable guidance for open challenges
-		if c.Status == "open" {
+		if c.Status == state.ChallengeStatusOpen {
 			sb.WriteString("       -> Address with: af refine ")
 			sb.WriteString(c.NodeID.String())
 			sb.WriteString(" --children '[{\"statement\":\"...\",\"addresses_challenges\":[\"")

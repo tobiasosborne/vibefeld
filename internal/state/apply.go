@@ -266,7 +266,7 @@ func applyLemmaExtracted(s *State, e ledger.LemmaExtracted) error {
 }
 
 // applyChallengeRaised handles the ChallengeRaised event.
-// This adds a new challenge to the state with status "open".
+// This adds a new challenge to the state with status ChallengeStatusOpen.
 func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
 	// Default to "major" if severity not set (backward compatibility)
 	severity := e.Severity
@@ -278,7 +278,7 @@ func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
 		NodeID:   e.NodeID,
 		Target:   e.Target,
 		Reason:   e.Reason,
-		Status:   "open",
+		Status:   ChallengeStatusOpen,
 		Severity: severity,
 		RaisedBy: e.RaisedBy,
 		Created:  e.EventTime,
@@ -288,31 +288,31 @@ func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
 }
 
 // applyChallengeResolved handles the ChallengeResolved event.
-// This updates the challenge status to "resolved".
+// This updates the challenge status to ChallengeStatusResolved.
 func applyChallengeResolved(s *State, e ledger.ChallengeResolved) error {
 	c := s.GetChallenge(e.ChallengeID)
 	if c == nil {
 		return fmt.Errorf("challenge %s not found", e.ChallengeID)
 	}
-	c.Status = "resolved"
+	c.Status = ChallengeStatusResolved
 	s.InvalidateChallengeCache() // status changed, cache is now stale
 	return nil
 }
 
 // applyChallengeWithdrawn handles the ChallengeWithdrawn event.
-// This updates the challenge status to "withdrawn".
+// This updates the challenge status to ChallengeStatusWithdrawn.
 func applyChallengeWithdrawn(s *State, e ledger.ChallengeWithdrawn) error {
 	c := s.GetChallenge(e.ChallengeID)
 	if c == nil {
 		return fmt.Errorf("challenge %s not found", e.ChallengeID)
 	}
-	c.Status = "withdrawn"
+	c.Status = ChallengeStatusWithdrawn
 	s.InvalidateChallengeCache() // status changed, cache is now stale
 	return nil
 }
 
 // applyChallengeSuperseded handles the ChallengeSuperseded event.
-// This updates the challenge status to "superseded".
+// This updates the challenge status to ChallengeStatusSuperseded.
 // Per PRD p.177, a challenge is superseded when its parent node is archived or refuted,
 // making the challenge moot.
 func applyChallengeSuperseded(s *State, e ledger.ChallengeSuperseded) error {
@@ -320,7 +320,7 @@ func applyChallengeSuperseded(s *State, e ledger.ChallengeSuperseded) error {
 	if c == nil {
 		return fmt.Errorf("challenge %s not found", e.ChallengeID)
 	}
-	c.Status = "superseded"
+	c.Status = ChallengeStatusSuperseded
 	s.InvalidateChallengeCache() // status changed, cache is now stale
 	return nil
 }
@@ -333,8 +333,8 @@ func supersedeOpenChallengesForNode(s *State, nodeID types.NodeID) {
 	challenges := s.GetChallengesForNode(nodeID)
 	modified := false
 	for _, c := range challenges {
-		if c.Status == "open" {
-			c.Status = "superseded"
+		if c.Status == ChallengeStatusOpen {
+			c.Status = ChallengeStatusSuperseded
 			modified = true
 		}
 	}

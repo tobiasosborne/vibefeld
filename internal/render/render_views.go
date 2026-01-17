@@ -674,7 +674,7 @@ func renderChallengesView(sb *strings.Builder, challenges []ChallengeView) {
 	// Count open challenges
 	openCount := 0
 	for _, c := range challenges {
-		if c.Status == "open" {
+		if c.Status == ChallengeStatusOpen {
 			openCount++
 		}
 	}
@@ -687,10 +687,10 @@ func renderChallengesView(sb *strings.Builder, challenges []ChallengeView) {
 	sorted := make([]ChallengeView, len(challenges))
 	copy(sorted, challenges)
 	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].Status == "open" && sorted[j].Status != "open" {
+		if sorted[i].Status == ChallengeStatusOpen && sorted[j].Status != ChallengeStatusOpen {
 			return true
 		}
-		if sorted[i].Status != "open" && sorted[j].Status == "open" {
+		if sorted[i].Status != ChallengeStatusOpen && sorted[j].Status == ChallengeStatusOpen {
 			return false
 		}
 		return sorted[i].ID < sorted[j].ID
@@ -706,14 +706,14 @@ func renderChallengesView(sb *strings.Builder, challenges []ChallengeView) {
 		sb.WriteString(c.Status)
 		sb.WriteString(")\n")
 
-		if c.Status == "resolved" && c.Resolution != "" {
+		if c.Status == ChallengeStatusResolved && c.Resolution != "" {
 			sb.WriteString("       Resolution: \"")
 			sb.WriteString(c.Resolution)
 			sb.WriteString("\"\n")
 		}
 
 		// Show actionable guidance for open challenges
-		if c.Status == "open" {
+		if c.Status == ChallengeStatusOpen {
 			sb.WriteString("       -> Address with: af refine ")
 			sb.WriteString(c.TargetID)
 			sb.WriteString(" --children '[{\"statement\":\"...\",\"addresses_challenges\":[\"")
@@ -801,7 +801,7 @@ func renderChallengeInfoView(sb *strings.Builder, c ChallengeView) {
 	sb.WriteString(c.Status)
 	sb.WriteString("\n")
 
-	if c.Status == "resolved" && c.Resolution != "" {
+	if c.Status == ChallengeStatusResolved && c.Resolution != "" {
 		sb.WriteString("Resolution: ")
 		sb.WriteString(c.Resolution)
 		sb.WriteString("\n")

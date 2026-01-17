@@ -258,7 +258,7 @@ func renderChallengesJSON(challenges []*state.Challenge) string {
 func countOpenChallenges(challenges []*state.Challenge) int {
 	count := 0
 	for _, c := range challenges {
-		if c.Status == "open" {
+		if c.Status == state.ChallengeStatusOpen {
 			count++
 		}
 	}

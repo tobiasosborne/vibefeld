@@ -1,38 +1,50 @@
-# Handoff - 2026-01-17 (Session 150)
+# Handoff - 2026-01-17 (Session 151)
 
 ## What Was Accomplished This Session
 
-### Session 150 Summary: Closed 1 issue (Code smell fix)
+### Session 151 Summary: Closed 1 issue (Code smell fix)
 
-1. **vibefeld-yf63** - "Code smell: Magic numbers for text truncation"
-   - Added `maxStatementDisplay` and `maxContentDisplay` constants to prover_context.go
-   - Replaced 4 magic number truncation patterns with the new constants:
-     - Sibling statements: `[:47]` → `[:maxStatementDisplay-3]`
-     - Dependency statements: `[:47]` → `[:maxStatementDisplay-3]`
-     - Definition content: `[:57]` → `[:maxContentDisplay-3]`
-     - Assumption statements: `[:57]` → `[:maxContentDisplay-3]`
+1. **vibefeld-mnh1** - "Code smell: Challenge status strings not constants"
+   - Added challenge status constants to `internal/state/state.go`:
+     - `ChallengeStatusOpen`, `ChallengeStatusResolved`, `ChallengeStatusWithdrawn`, `ChallengeStatusSuperseded`
+   - Added view model constants to `internal/render/viewmodels.go`:
+     - `ChallengeStatusOpen`, `ChallengeStatusResolved`, `ChallengeStatusWithdrawn`
+   - Updated all hardcoded string comparisons across 11 files
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `internal/render/prover_context.go` | Added truncation constants, replaced 4 magic number patterns |
+| `internal/state/state.go` | Added 4 challenge status constants, updated 2 usages |
+| `internal/state/apply.go` | Updated 6 usages to use constants |
+| `internal/render/viewmodels.go` | Added 3 challenge status constants |
+| `internal/render/render_views.go` | Updated 6 usages to use constants |
+| `internal/render/prover_context.go` | Updated 7 usages to use state constants |
+| `internal/render/json.go` | Updated 3 usages to use state constants |
+| `internal/metrics/metrics.go` | Updated 4 usages to use state constants |
+| `internal/patterns/patterns.go` | Updated 1 usage to use state constants |
+| `cmd/af/patterns.go` | Added state import, updated 1 usage |
+| `cmd/af/accept.go` | Updated 1 usage |
+| `cmd/af/jobs.go` | Updated 1 usage |
+| `cmd/af/challenges.go` | Updated 1 usage |
+| `cmd/af/replay.go` | Updated 2 usages |
+| `cmd/af/wizard.go` | Added state import, updated 1 usage |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-yf63** | Closed | Added constants and replaced all magic number truncation patterns |
+| **vibefeld-mnh1** | Closed | Added challenge status constants in state and render packages, updated all hardcoded string comparisons |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 29 (was 30)
-- **Closed:** 520 (was 519)
+- **Open:** 28 (was 29)
+- **Closed:** 521 (was 520)
 
 ### Test Status
 - Build: PASS
-- Unit tests: PASS for render package
+- Unit tests: PASS for all modified packages (state, render, metrics, patterns, cmd/af)
 - Pre-existing failures in lock package (unrelated to this session)
 
 ### Known Issues (Pre-existing)
@@ -44,7 +56,7 @@
 go build ./cmd/af
 
 # Run tests for modified packages
-go test ./internal/render/...
+go test ./internal/state/... ./internal/render/... ./internal/patterns/... ./internal/metrics/... ./cmd/af/...
 
 # Run all tests
 go test ./...
@@ -90,6 +102,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 151:** Closed 1 issue (Code smell - challenge status strings not constants, added constants in state and render packages)
 **Session 150:** Closed 1 issue (Code smell - magic numbers for truncation in prover_context.go, added constants)
 **Session 149:** Closed 1 issue (Code smell - deep nesting in prover_context.go, extracted addDefinitionNamesFromNode helper)
 **Session 148:** Closed 3 issues (2 already-fixed: accept.go nesting, claim.go JSON error; 1 new: challenge help common mistakes)

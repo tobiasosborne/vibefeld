@@ -109,9 +109,9 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		challenges := st.AllChallenges()
 		stats.Challenges.Total = len(challenges)
 		for _, c := range challenges {
-			if c.Status == "resolved" {
+			if c.Status == state.ChallengeStatusResolved {
 				stats.Challenges.Resolved++
-			} else if c.Status == "open" {
+			} else if c.Status == state.ChallengeStatusOpen {
 				stats.Challenges.Open++
 			}
 		}

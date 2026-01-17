@@ -474,7 +474,7 @@ func getVerificationSummary(st *state.State, nodeID types.NodeID, note string) v
 	for _, c := range st.AllChallenges() {
 		if c.NodeID.String() == nodeIDStr {
 			summary.ChallengesRaised++
-			if c.Status == "resolved" {
+			if c.Status == state.ChallengeStatusResolved {
 				summary.ChallengesResolved++
 			}
 		}

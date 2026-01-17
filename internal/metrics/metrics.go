@@ -180,9 +180,9 @@ func OverallQuality(st *state.State) *QualityReport {
 
 	// Count challenges by status
 	for _, c := range challenges {
-		if c.Status == "open" {
+		if c.Status == state.ChallengeStatusOpen {
 			report.OpenChallenges++
-		} else if c.Status == "resolved" {
+		} else if c.Status == state.ChallengeStatusResolved {
 			report.ResolvedChallenges++
 		}
 	}
@@ -275,9 +275,9 @@ func SubtreeQuality(st *state.State, rootID types.NodeID) *QualityReport {
 	for _, c := range challenges {
 		if subtreeNodeIDs[c.NodeID.String()] {
 			report.TotalChallenges++
-			if c.Status == "open" {
+			if c.Status == state.ChallengeStatusOpen {
 				report.OpenChallenges++
-			} else if c.Status == "resolved" {
+			} else if c.Status == state.ChallengeStatusResolved {
 				report.ResolvedChallenges++
 			}
 		}

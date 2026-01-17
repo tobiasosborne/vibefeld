@@ -281,7 +281,7 @@ func (a *Analyzer) AnalyzeResolvedChallenges(challenges []*state.Challenge) []*P
 
 	for _, c := range challenges {
 		// Only analyze resolved challenges (not open or withdrawn)
-		if c.Status != "resolved" {
+		if c.Status != state.ChallengeStatusResolved {
 			continue
 		}
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/state"
 	"github.com/tobias/vibefeld/internal/templates"
 )
 
@@ -339,7 +340,7 @@ func runWizardRespondChallenge(cmd *cobra.Command, dir string) error {
 	}, 0)
 
 	for _, c := range challenges {
-		if c.Status == "open" {
+		if c.Status == state.ChallengeStatusOpen {
 			openChallenges = append(openChallenges, &struct {
 				ID       string
 				NodeID   string

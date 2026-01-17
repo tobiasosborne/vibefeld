@@ -361,7 +361,7 @@ func statusToJSON(s *state.State, nodes []*node.Node) JSONStatus {
 	openChallengeCount := 0
 	for _, c := range allChallenges {
 		jsonChallenges = append(jsonChallenges, challengeToJSON(c))
-		if c.Status == "open" {
+		if c.Status == state.ChallengeStatusOpen {
 			openChallengeCount++
 		}
 	}
@@ -420,7 +420,7 @@ func statusToJSONWithPagination(s *state.State, nodes []*node.Node, totalNodes, 
 	openChallengeCount := 0
 	for _, c := range allChallenges {
 		jsonChallenges = append(jsonChallenges, challengeToJSON(c))
-		if c.Status == "open" {
+		if c.Status == state.ChallengeStatusOpen {
 			openChallengeCount++
 		}
 	}
@@ -464,7 +464,7 @@ func challengeToJSON(c *state.Challenge) JSONChallenge {
 	}
 
 	// Add resolution fields if challenge is resolved
-	if c.Status == "resolved" && c.Resolution != "" {
+	if c.Status == state.ChallengeStatusResolved && c.Resolution != "" {
 		jc.Resolution = c.Resolution
 	}
 

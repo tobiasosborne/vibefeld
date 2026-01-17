@@ -165,7 +165,7 @@ func buildSeverityMap(challenges []*state.Challenge) map[string]*severityCounts 
 
 	for _, c := range challenges {
 		// Only count open challenges
-		if c.Status != "open" {
+		if c.Status != state.ChallengeStatusOpen {
 			continue
 		}
 

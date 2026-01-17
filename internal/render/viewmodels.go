@@ -25,6 +25,13 @@ type NodeView struct {
 	Depth          int      // Depth in the tree (root = 1)
 }
 
+// Challenge status values for ChallengeView.Status field.
+const (
+	ChallengeStatusOpen      = "open"
+	ChallengeStatusResolved  = "resolved"
+	ChallengeStatusWithdrawn = "withdrawn"
+)
+
 // ChallengeView is a view model representing a challenge for rendering.
 type ChallengeView struct {
 	ID         string // Unique challenge identifier
@@ -32,7 +39,7 @@ type ChallengeView struct {
 	Target     string // What aspect is challenged (statement, inference, etc.)
 	TargetDesc string // Description of the challenge target
 	Reason     string // Explanation of the challenge
-	Status     string // open, resolved, withdrawn
+	Status     string // One of ChallengeStatusOpen, ChallengeStatusResolved, or ChallengeStatusWithdrawn
 	Severity   string // critical, major, minor, note
 	Raised     string // ISO8601 timestamp when raised
 	Resolution string // Resolution text (if resolved)
