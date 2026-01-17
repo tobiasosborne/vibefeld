@@ -801,3 +801,212 @@ func TestRenderStatus_HeaderFormat(t *testing.T) {
 		t.Error("Missing 'Proof Status' header")
 	}
 }
+
+// =============================================================================
+// Urgent Mode Tests
+// =============================================================================
+
+// TestFilterUrgentNodes_NilState tests that nil state returns empty slice
+func TestFilterUrgentNodes_NilState(t *testing.T) {
+	result := FilterUrgentNodes(nil)
+	if result != nil {
+		t.Errorf("expected nil for nil state, got %v", result)
+	}
+}
+
+// TestFilterUrgentNodes_EmptyState tests filtering with no nodes
+func TestFilterUrgentNodes_EmptyState(t *testing.T) {
+	s := state.NewState()
+	result := FilterUrgentNodes(s)
+	if len(result) != 0 {
+		t.Errorf("expected empty slice for empty state, got %d items", len(result))
+	}
+}
+
+// TestFilterUrgentNodes_ProverJobs tests that prover jobs are included
+func TestFilterUrgentNodes_ProverJobs(t *testing.T) {
+	s := state.NewState()
+	// Create prover job: available + pending
+	addStatusTestNode(t, s, "1", "Root claim", schema.WorkflowAvailable, schema.EpistemicPending, node.TaintClean)
+	addStatusTestNode(t, s, "1.1", "Step 1", schema.WorkflowAvailable, schema.EpistemicPending, node.TaintClean)
+	// Not a prover job: claimed
+	addStatusTestNode(t, s, "1.2", "Step 2", schema.WorkflowClaimed, schema.EpistemicPending, node.TaintClean)
+	// Not a prover job: validated
+	addStatusTestNode(t, s, "1.3", "Step 3", schema.WorkflowAvailable, schema.EpistemicValidated, node.TaintClean)
+
+	result := FilterUrgentNodes(s)
+
+	// Should have 2 prover jobs
+	proverCount := 0
+	for _, item := range result {
+		if item.Category == "prover_job" {
+			proverCount++
+		}
+	}
+	if proverCount != 2 {
+		t.Errorf("expected 2 prover jobs, got %d", proverCount)
+	}
+}
+
+// TestFilterUrgentNodes_VerifierJobs tests that verifier jobs are included
+func TestFilterUrgentNodes_VerifierJobs(t *testing.T) {
+	s := state.NewState()
+	// Create verifier job: claimed + pending + all children validated
+	addStatusTestNode(t, s, "1", "Root claim", schema.WorkflowClaimed, schema.EpistemicPending, node.TaintClean)
+	addStatusTestNode(t, s, "1.1", "Step 1", schema.WorkflowClaimed, schema.EpistemicValidated, node.TaintClean)
+	addStatusTestNode(t, s, "1.2", "Step 2", schema.WorkflowClaimed, schema.EpistemicValidated, node.TaintClean)
+
+	// Another verifier job (no children = ready for verification)
+	addStatusTestNode(t, s, "1.1.1", "Sub-step", schema.WorkflowClaimed, schema.EpistemicPending, node.TaintClean)
+
+	result := FilterUrgentNodes(s)
+
+	// Should have 2 verifier jobs
+	verifierCount := 0
+	for _, item := range result {
+		if item.Category == "verifier_job" {
+			verifierCount++
+		}
+	}
+	if verifierCount != 2 {
+		t.Errorf("expected 2 verifier jobs, got %d", verifierCount)
+	}
+}
+
+// TestFilterUrgentNodes_NoUrgentItems tests when there are no urgent items
+func TestFilterUrgentNodes_NoUrgentItems(t *testing.T) {
+	s := state.NewState()
+	// All validated - no urgent items
+	addStatusTestNode(t, s, "1", "Root", schema.WorkflowClaimed, schema.EpistemicValidated, node.TaintClean)
+	addStatusTestNode(t, s, "1.1", "Step 1", schema.WorkflowClaimed, schema.EpistemicValidated, node.TaintClean)
+
+	result := FilterUrgentNodes(s)
+
+	if len(result) != 0 {
+		t.Errorf("expected 0 urgent items for fully validated proof, got %d", len(result))
+	}
+}
+
+// TestRenderStatusUrgent_NilState tests rendering urgent status for nil state
+func TestRenderStatusUrgent_NilState(t *testing.T) {
+	result := RenderStatusUrgent(nil)
+	if result == "" {
+		t.Error("expected non-empty result for nil state")
+	}
+	if !strings.Contains(strings.ToLower(result), "no") && !strings.Contains(strings.ToLower(result), "initialized") {
+		t.Errorf("expected result to indicate no state, got: %q", result)
+	}
+}
+
+// TestRenderStatusUrgent_EmptyState tests rendering urgent status for empty state
+func TestRenderStatusUrgent_EmptyState(t *testing.T) {
+	s := state.NewState()
+	result := RenderStatusUrgent(s)
+	if result == "" {
+		t.Error("expected non-empty result for empty state")
+	}
+	if !strings.Contains(strings.ToLower(result), "no") {
+		t.Errorf("expected result to indicate no proof, got: %q", result)
+	}
+}
+
+// TestRenderStatusUrgent_NoUrgentItems tests rendering when no urgent items exist
+func TestRenderStatusUrgent_NoUrgentItems(t *testing.T) {
+	s := state.NewState()
+	addStatusTestNode(t, s, "1", "Root", schema.WorkflowClaimed, schema.EpistemicValidated, node.TaintClean)
+
+	result := RenderStatusUrgent(s)
+
+	if !strings.Contains(result, "Urgent Items") {
+		t.Error("expected 'Urgent Items' header")
+	}
+	if !strings.Contains(strings.ToLower(result), "no urgent") {
+		t.Errorf("expected 'no urgent' message, got: %q", result)
+	}
+}
+
+// TestRenderStatusUrgent_WithProverJobs tests rendering urgent status with prover jobs
+func TestRenderStatusUrgent_WithProverJobs(t *testing.T) {
+	s := state.NewState()
+	addStatusTestNode(t, s, "1", "Root claim", schema.WorkflowAvailable, schema.EpistemicPending, node.TaintClean)
+	addStatusTestNode(t, s, "1.1", "Step 1", schema.WorkflowAvailable, schema.EpistemicPending, node.TaintClean)
+
+	result := RenderStatusUrgent(s)
+
+	if !strings.Contains(result, "Prover Jobs") {
+		t.Error("expected 'Prover Jobs' section")
+	}
+	if !strings.Contains(result, "Root claim") {
+		t.Error("expected to see 'Root claim' in output")
+	}
+	if !strings.Contains(result, "Summary") {
+		t.Error("expected 'Summary' section")
+	}
+}
+
+// TestRenderStatusUrgent_WithVerifierJobs tests rendering urgent status with verifier jobs
+func TestRenderStatusUrgent_WithVerifierJobs(t *testing.T) {
+	s := state.NewState()
+	// Verifier job: claimed + pending + no children
+	addStatusTestNode(t, s, "1", "Root claim", schema.WorkflowClaimed, schema.EpistemicPending, node.TaintClean)
+
+	result := RenderStatusUrgent(s)
+
+	if !strings.Contains(result, "Verifier Jobs") {
+		t.Error("expected 'Verifier Jobs' section")
+	}
+	if !strings.Contains(result, "Root claim") {
+		t.Error("expected to see 'Root claim' in output")
+	}
+}
+
+// TestRenderStatusUrgent_Sections tests that all sections appear in correct order
+func TestRenderStatusUrgent_Sections(t *testing.T) {
+	s := state.NewState()
+	// Create both prover and verifier jobs
+	addStatusTestNode(t, s, "1", "Root", schema.WorkflowAvailable, schema.EpistemicPending, node.TaintClean)
+	addStatusTestNode(t, s, "1.1", "Step 1", schema.WorkflowClaimed, schema.EpistemicPending, node.TaintClean)
+
+	result := RenderStatusUrgent(s)
+
+	// Check for expected sections
+	if !strings.Contains(result, "Urgent Items") {
+		t.Error("expected 'Urgent Items' header")
+	}
+	if !strings.Contains(result, "Summary") {
+		t.Error("expected 'Summary' section")
+	}
+
+	// Prover Jobs section should come before Verifier Jobs
+	proverPos := strings.Index(result, "Prover Jobs")
+	verifierPos := strings.Index(result, "Verifier Jobs")
+	if proverPos > verifierPos {
+		t.Error("Prover Jobs should appear before Verifier Jobs")
+	}
+}
+
+// TestTruncateStatement tests the statement truncation helper
+func TestTruncateStatement(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		maxLen   int
+		expected string
+	}{
+		{"short string", "hello", 10, "hello"},
+		{"exact length", "hello", 5, "hello"},
+		{"needs truncation", "hello world", 8, "hello..."},
+		{"very short max", "hello", 3, "..."},
+		{"zero max", "hello", 0, "..."},
+		{"empty string", "", 10, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := truncateStatement(tt.input, tt.maxLen)
+			if result != tt.expected {
+				t.Errorf("truncateStatement(%q, %d) = %q, want %q", tt.input, tt.maxLen, result, tt.expected)
+			}
+		})
+	}
+}

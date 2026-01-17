@@ -663,3 +663,90 @@ func RenderNodeChallengesJSON(s *state.State, nodeID types.NodeID) string {
 
 	return RenderChallengesJSON(nodeChallenges)
 }
+
+// JSONUrgentStatus represents urgent proof status in JSON format.
+type JSONUrgentStatus struct {
+	BlockingChallenges []JSONUrgentItem `json:"blocking_challenges"`
+	ProverJobs         []JSONUrgentItem `json:"prover_jobs"`
+	VerifierJobs       []JSONUrgentItem `json:"verifier_jobs"`
+	Summary            JSONUrgentSummary `json:"summary"`
+}
+
+// JSONUrgentItem represents a single urgent item in JSON format.
+type JSONUrgentItem struct {
+	NodeID    string `json:"node_id"`
+	Statement string `json:"statement"`
+	Details   string `json:"details"`
+}
+
+// JSONUrgentSummary represents the summary of urgent items.
+type JSONUrgentSummary struct {
+	TotalItems         int `json:"total_items"`
+	BlockingChallenges int `json:"blocking_challenges"`
+	ProverJobs         int `json:"prover_jobs"`
+	VerifierJobs       int `json:"verifier_jobs"`
+}
+
+// RenderStatusUrgentJSON renders only urgent items as JSON.
+// Returns JSON string representation of urgent items.
+// Returns error JSON for nil state.
+func RenderStatusUrgentJSON(s *state.State) string {
+	if s == nil {
+		return `{"error":"no proof state initialized"}`
+	}
+
+	nodes := s.AllNodes()
+	if len(nodes) == 0 {
+		return `{"blocking_challenges":[],"prover_jobs":[],"verifier_jobs":[],"summary":{"total_items":0,"blocking_challenges":0,"prover_jobs":0,"verifier_jobs":0}}`
+	}
+
+	urgentItems := FilterUrgentNodes(s)
+
+	// Group by category
+	var blockingChallenges, proverJobs, verifierJobs []JSONUrgentItem
+	for _, item := range urgentItems {
+		jsonItem := JSONUrgentItem{
+			NodeID:    item.NodeID,
+			Statement: item.Statement,
+			Details:   item.Details,
+		}
+		switch item.Category {
+		case "blocking_challenge":
+			blockingChallenges = append(blockingChallenges, jsonItem)
+		case "prover_job":
+			proverJobs = append(proverJobs, jsonItem)
+		case "verifier_job":
+			verifierJobs = append(verifierJobs, jsonItem)
+		}
+	}
+
+	// Ensure non-nil slices for JSON
+	if blockingChallenges == nil {
+		blockingChallenges = []JSONUrgentItem{}
+	}
+	if proverJobs == nil {
+		proverJobs = []JSONUrgentItem{}
+	}
+	if verifierJobs == nil {
+		verifierJobs = []JSONUrgentItem{}
+	}
+
+	status := JSONUrgentStatus{
+		BlockingChallenges: blockingChallenges,
+		ProverJobs:         proverJobs,
+		VerifierJobs:       verifierJobs,
+		Summary: JSONUrgentSummary{
+			TotalItems:         len(urgentItems),
+			BlockingChallenges: len(blockingChallenges),
+			ProverJobs:         len(proverJobs),
+			VerifierJobs:       len(verifierJobs),
+		},
+	}
+
+	data, err := marshalJSON(status)
+	if err != nil {
+		return `{"error":"failed to marshal urgent status"}`
+	}
+
+	return string(data)
+}

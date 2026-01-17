@@ -202,3 +202,176 @@ func renderLegend(sb *strings.Builder) {
 	sb.WriteString(fmt.Sprintf("  %s       - Depends on tainted/refuted node\n", ColorTaintState(node.TaintTainted)))
 	sb.WriteString(fmt.Sprintf("  %s    - Taint status not yet computed\n", ColorTaintState(node.TaintUnresolved)))
 }
+
+// UrgentItem represents a single urgent work item for display.
+type UrgentItem struct {
+	NodeID    string
+	Statement string
+	Category  string // "blocking_challenge", "prover_job", "verifier_job"
+	Details   string // Additional context (e.g., challenge reason)
+}
+
+// FilterUrgentNodes returns nodes that need immediate attention:
+// 1. Nodes with open blocking challenges (critical or major severity)
+// 2. Available prover jobs (available + pending)
+// 3. Ready verifier jobs (claimed + pending + all children validated)
+func FilterUrgentNodes(s *state.State) []UrgentItem {
+	if s == nil {
+		return nil
+	}
+
+	var items []UrgentItem
+	seenNodes := make(map[string]bool)
+
+	// 1. Nodes with blocking challenges (highest priority)
+	for _, challenge := range s.OpenChallenges() {
+		if !schema.SeverityBlocksAcceptance(schema.ChallengeSeverity(challenge.Severity)) {
+			continue
+		}
+		nodeIDStr := challenge.NodeID.String()
+		if seenNodes[nodeIDStr] {
+			continue
+		}
+		seenNodes[nodeIDStr] = true
+
+		n := s.GetNode(challenge.NodeID)
+		statement := ""
+		if n != nil {
+			statement = n.Statement
+		}
+		items = append(items, UrgentItem{
+			NodeID:   nodeIDStr,
+			Statement: statement,
+			Category: "blocking_challenge",
+			Details:  fmt.Sprintf("[%s] %s: %s", challenge.Severity, challenge.Target, challenge.Reason),
+		})
+	}
+
+	// 2. Prover jobs: available + pending
+	for _, n := range s.AllNodes() {
+		nodeIDStr := n.ID.String()
+		if seenNodes[nodeIDStr] {
+			continue
+		}
+		if n.WorkflowState == schema.WorkflowAvailable && n.EpistemicState == schema.EpistemicPending {
+			seenNodes[nodeIDStr] = true
+			items = append(items, UrgentItem{
+				NodeID:    nodeIDStr,
+				Statement: n.Statement,
+				Category:  "prover_job",
+				Details:   "Needs refinement",
+			})
+		}
+	}
+
+	// 3. Verifier jobs: claimed + pending + all children validated
+	for _, n := range s.AllNodes() {
+		nodeIDStr := n.ID.String()
+		if seenNodes[nodeIDStr] {
+			continue
+		}
+		if n.WorkflowState == schema.WorkflowClaimed && n.EpistemicState == schema.EpistemicPending {
+			if s.AllChildrenValidated(n.ID) {
+				seenNodes[nodeIDStr] = true
+				items = append(items, UrgentItem{
+					NodeID:    nodeIDStr,
+					Statement: n.Statement,
+					Category:  "verifier_job",
+					Details:   "Ready for verification",
+				})
+			}
+		}
+	}
+
+	return items
+}
+
+// RenderStatusUrgent renders only urgent items that need immediate attention.
+// This provides a focused view for agents to quickly find actionable work.
+func RenderStatusUrgent(s *state.State) string {
+	if s == nil {
+		return "No proof state initialized."
+	}
+
+	nodes := s.AllNodes()
+	if len(nodes) == 0 {
+		return "No proof initialized. Run 'af init' to start a new proof."
+	}
+
+	urgentItems := FilterUrgentNodes(s)
+
+	var sb strings.Builder
+	sb.WriteString("=== Urgent Items ===\n\n")
+
+	if len(urgentItems) == 0 {
+		sb.WriteString("No urgent items. Proof is progressing normally.\n")
+		return sb.String()
+	}
+
+	// Group by category
+	var blockingChallenges, proverJobs, verifierJobs []UrgentItem
+	for _, item := range urgentItems {
+		switch item.Category {
+		case "blocking_challenge":
+			blockingChallenges = append(blockingChallenges, item)
+		case "prover_job":
+			proverJobs = append(proverJobs, item)
+		case "verifier_job":
+			verifierJobs = append(verifierJobs, item)
+		}
+	}
+
+	// Render blocking challenges first (most urgent)
+	if len(blockingChallenges) > 0 {
+		sb.WriteString(fmt.Sprintf("--- Blocking Challenges (%d) ---\n", len(blockingChallenges)))
+		for _, item := range blockingChallenges {
+			sb.WriteString(fmt.Sprintf("  %s: %s\n", item.NodeID, truncateStatement(item.Statement, 50)))
+			sb.WriteString(fmt.Sprintf("    %s\n", item.Details))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Render prover jobs
+	if len(proverJobs) > 0 {
+		sb.WriteString(fmt.Sprintf("--- Prover Jobs (%d) ---\n", len(proverJobs)))
+		for _, item := range proverJobs {
+			sb.WriteString(fmt.Sprintf("  %s: %s\n", item.NodeID, truncateStatement(item.Statement, 50)))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Render verifier jobs
+	if len(verifierJobs) > 0 {
+		sb.WriteString(fmt.Sprintf("--- Verifier Jobs (%d) ---\n", len(verifierJobs)))
+		for _, item := range verifierJobs {
+			sb.WriteString(fmt.Sprintf("  %s: %s\n", item.NodeID, truncateStatement(item.Statement, 50)))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Summary
+	sb.WriteString("--- Summary ---\n")
+	sb.WriteString(fmt.Sprintf("Total urgent items: %d\n", len(urgentItems)))
+	if len(blockingChallenges) > 0 {
+		sb.WriteString(fmt.Sprintf("  Blocking challenges: %d (resolve before accepting)\n", len(blockingChallenges)))
+	}
+	if len(proverJobs) > 0 {
+		sb.WriteString(fmt.Sprintf("  Prover jobs: %d (claim and refine)\n", len(proverJobs)))
+	}
+	if len(verifierJobs) > 0 {
+		sb.WriteString(fmt.Sprintf("  Verifier jobs: %d (review and accept/challenge)\n", len(verifierJobs)))
+	}
+
+	return sb.String()
+}
+
+// truncateStatement truncates a statement to maxLen characters, adding "..." if needed.
+func truncateStatement(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return "..."
+	}
+	return s[:maxLen-3] + "..."
+}

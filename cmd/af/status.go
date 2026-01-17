@@ -29,12 +29,19 @@ Pagination:
   --limit controls how many nodes to show (0 = unlimited)
   --offset skips the first N nodes before displaying
 
+Urgent mode:
+  Use --urgent to show only items needing immediate attention:
+  - Nodes with blocking challenges (critical or major severity)
+  - Available prover jobs (nodes needing refinement)
+  - Ready verifier jobs (nodes ready for review)
+
 Examples:
   af status                        Show proof status in current directory
   af status --dir /path/to/proof   Show status for specific proof directory
   af status --format json          Output in JSON format
   af status --limit 10             Show only the first 10 nodes
-  af status --limit 10 --offset 5  Show 10 nodes, starting from the 6th`,
+  af status --limit 10 --offset 5  Show 10 nodes, starting from the 6th
+  af status --urgent               Show only urgent items needing attention`,
 		RunE: runStatus,
 	}
 
@@ -42,6 +49,7 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
 	cmd.Flags().IntP("limit", "l", 0, "Maximum nodes to display (0 = unlimited)")
 	cmd.Flags().IntP("offset", "o", 0, "Number of nodes to skip")
+	cmd.Flags().BoolP("urgent", "u", false, "Show only urgent items (blocking challenges, available jobs)")
 
 	return cmd
 }
@@ -53,6 +61,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	format := cli.MustString(cmd, "format")
 	limit := cli.MustInt(cmd, "limit")
 	offset := cli.MustInt(cmd, "offset")
+	urgent := cli.MustBool(cmd, "urgent")
 
 	// Validate pagination flags
 	if limit < 0 {
@@ -92,6 +101,18 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	st, err := svc.LoadState()
 	if err != nil {
 		return fmt.Errorf("error loading proof state: %w", err)
+	}
+
+	// Urgent mode: show only urgent items
+	if urgent {
+		if format == "json" {
+			output := render.RenderStatusUrgentJSON(st)
+			fmt.Fprintln(cmd.OutOrStdout(), output)
+			return nil
+		}
+		output := render.RenderStatusUrgent(st)
+		fmt.Fprint(cmd.OutOrStdout(), output)
+		return nil
 	}
 
 	// Output based on format with pagination support

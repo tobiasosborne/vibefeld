@@ -49,7 +49,7 @@ func TestStatusCmd_ExpectedFlags(t *testing.T) {
 	cmd := newStatusCmd()
 
 	// Check expected flags exist
-	expectedFlags := []string{"format", "dir"}
+	expectedFlags := []string{"format", "dir", "urgent"}
 	for _, flagName := range expectedFlags {
 		if cmd.Flags().Lookup(flagName) == nil && cmd.PersistentFlags().Lookup(flagName) == nil {
 			t.Errorf("expected status command to have flag %q", flagName)
@@ -60,6 +60,7 @@ func TestStatusCmd_ExpectedFlags(t *testing.T) {
 	shortFlags := map[string]string{
 		"f": "format",
 		"d": "dir",
+		"u": "urgent",
 	}
 
 	for short, long := range shortFlags {
@@ -89,6 +90,15 @@ func TestStatusCmd_DefaultFlagValues(t *testing.T) {
 	}
 	if formatFlag.DefValue != "text" {
 		t.Errorf("expected default format to be 'text', got %q", formatFlag.DefValue)
+	}
+
+	// Check default urgent value
+	urgentFlag := cmd.Flags().Lookup("urgent")
+	if urgentFlag == nil {
+		t.Fatal("expected urgent flag to exist")
+	}
+	if urgentFlag.DefValue != "false" {
+		t.Errorf("expected default urgent to be 'false', got %q", urgentFlag.DefValue)
 	}
 }
 

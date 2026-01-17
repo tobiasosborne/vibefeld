@@ -1,59 +1,69 @@
-# Handoff - 2026-01-17 (Session 129)
+# Handoff - 2026-01-17 (Session 130)
 
 ## What Was Accomplished This Session
 
-### Session 129 Summary: Challenge severity/blocking display in prover context
+### Session 130 Summary: Status command `--urgent` flag for filtering urgent items
 
 Closed 1 issue this session:
 
-1. **vibefeld-6rsx** - "CLI UX: Prover doesn't see which challenges are blocking vs non-blocking"
-   - Added severity display (critical/major/minor/note) to each challenge
-   - Added `(BLOCKING)` indicator for critical/major challenges
-   - Added blocking count to header: `Challenges (2 total, 2 open, 1 blocking)`
-   - Added warning message when blocking challenges exist
-   - Sorted challenges by severity (most severe first)
+1. **vibefeld-pysc** - "CLI UX: Status output doesn't highlight urgent items"
+   - Added `--urgent` / `-u` flag to status command
+   - Filters to show only urgent items needing immediate attention:
+     - Nodes with blocking challenges (critical or major severity)
+     - Available prover jobs (available + pending nodes needing refinement)
+     - Ready verifier jobs (claimed + pending with all children validated)
+   - Groups items by category with counts
+   - Includes summary section
+   - Supports JSON output format with `--urgent --format json`
 
 #### Changes Made
 
 | File | Change |
 |------|--------|
-| `internal/render/prover_context.go` | Added `isBlockingSeverity()` and `severityOrder()` helpers; updated `renderChallenges()` to show severity, blocking indicators, and blocking counts |
-| `internal/render/prover_context_test.go` | Added `TestRenderProverContext_ChallengeSeverityAndBlocking` and `TestRenderProverContext_NonBlockingChallengesOnly` tests |
+| `cmd/af/status.go` | Added `--urgent` flag, updated help text with urgent mode documentation |
+| `cmd/af/status_test.go` | Added tests for urgent flag existence and default value |
+| `internal/render/status.go` | Added `UrgentItem` struct, `FilterUrgentNodes()` function, `RenderStatusUrgent()` function, `truncateStatement()` helper |
+| `internal/render/status_test.go` | Added 13 tests for urgent mode (filtering, rendering, edge cases) |
+| `internal/render/json.go` | Added `JSONUrgentStatus`, `JSONUrgentItem`, `JSONUrgentSummary` structs, `RenderStatusUrgentJSON()` function |
 
-### Example Output (af claim with challenges)
+### Example Output (af status --urgent)
 
-**Before:**
 ```
-Challenges (2 total, 2 open):
-  [ch-001] "Missing case for n=0" (open)
-  [ch-002] "Not rigorous enough" (open)
-```
+=== Urgent Items ===
 
-**After:**
-```
-Challenges (2 total, 2 open, 1 blocking):
-  [ch-002] critical (BLOCKING) - "Not rigorous enough" (open)
-  [ch-001] minor - "Missing case for n=0" (open)
+--- Blocking Challenges (1) ---
+  1.2: Proof step needs justification
+    [critical] statement: Missing justification for claim
 
-  ⚠ Blocking challenges (critical/major) must be resolved before acceptance.
+--- Prover Jobs (2) ---
+  1: Root theorem to prove
+  1.1: First lemma
+
+--- Verifier Jobs (1) ---
+  1.3: Completed step ready for review
+
+--- Summary ---
+Total urgent items: 4
+  Blocking challenges: 1 (resolve before accepting)
+  Prover jobs: 2 (claim and refine)
+  Verifier jobs: 1 (review and accept/challenge)
 ```
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-6rsx** | Closed | Implemented severity and blocking status display in prover context |
+| **vibefeld-pysc** | Closed | Added --urgent flag to status command to filter and show only urgent items |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 54 (was 55)
-- **Closed:** 495 (was 494)
+- **Open:** 53 (was 54)
+- **Closed:** 496 (was 495)
 
 ### Test Status
 All tests pass. Build succeeds.
 - Unit tests: PASS
-- E2E blocking tests: PASS
 - Build: PASS
 
 ### Verification
@@ -65,10 +75,9 @@ go test ./...
 go build ./cmd/af
 
 # Test the feature manually
-cd /tmp && mkdir test && cd test
-af init --conjecture "Test" --author "test"
-af challenge 1 --target statement --reason "Test" --severity critical
-af claim 1 --owner prover --role prover  # See new severity display
+./af status --help        # See new urgent mode documentation
+./af status --urgent      # Show urgent items only (text)
+./af status -u --format json  # Show urgent items only (JSON)
 ```
 
 ### Known Issue
@@ -117,6 +126,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 130:** Closed 1 issue (CLI UX - status --urgent flag for filtering urgent items)
 **Session 129:** Closed 1 issue (CLI UX - challenge severity/blocking display in prover context)
 **Session 128:** Closed 1 issue (CLI UX - challenge target guidance for verifiers)
 **Session 127:** Closed 1 issue (CLI UX - verification checklist examples for all 6 categories)
