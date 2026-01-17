@@ -146,18 +146,10 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 			"blocking_count":  blockingCount,
 		}
 		if len(node.ValidationDeps) > 0 {
-			valDepStrs := make([]string, len(node.ValidationDeps))
-			for i, d := range node.ValidationDeps {
-				valDepStrs[i] = d.String()
-			}
-			result["validation_deps"] = valDepStrs
+			result["validation_deps"] = types.ToStringSlice(node.ValidationDeps)
 		}
 		if len(node.Dependencies) > 0 {
-			refDepStrs := make([]string, len(node.Dependencies))
-			for i, d := range node.Dependencies {
-				refDepStrs[i] = d.String()
-			}
-			result["reference_deps"] = refDepStrs
+			result["reference_deps"] = types.ToStringSlice(node.Dependencies)
 		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {

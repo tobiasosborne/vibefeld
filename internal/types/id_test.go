@@ -1130,3 +1130,71 @@ func BenchmarkLess_Sorting(b *testing.B) {
 		}
 	}
 }
+
+// TestToStringSlice verifies conversion of NodeID slice to string slice
+func TestToStringSlice(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []string
+		want   []string
+	}{
+		{
+			name:  "empty slice",
+			input: []string{},
+			want:  []string{},
+		},
+		{
+			name:  "single element",
+			input: []string{"1.1"},
+			want:  []string{"1.1"},
+		},
+		{
+			name:  "multiple elements",
+			input: []string{"1", "1.1", "1.2.3"},
+			want:  []string{"1", "1.1", "1.2.3"},
+		},
+		{
+			name:  "preserves order",
+			input: []string{"1.3", "1.1", "1.2"},
+			want:  []string{"1.3", "1.1", "1.2"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse input strings to NodeIDs
+			ids := make([]NodeID, len(tt.input))
+			for i, s := range tt.input {
+				var err error
+				ids[i], err = Parse(s)
+				if err != nil {
+					t.Fatalf("Parse(%q) error: %v", s, err)
+				}
+			}
+
+			got := ToStringSlice(ids)
+
+			if len(got) != len(tt.want) {
+				t.Errorf("ToStringSlice() len = %d, want %d", len(got), len(tt.want))
+				return
+			}
+
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("ToStringSlice()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestToStringSlice_NilInput verifies nil input returns empty slice
+func TestToStringSlice_NilInput(t *testing.T) {
+	got := ToStringSlice(nil)
+	if got == nil {
+		t.Error("ToStringSlice(nil) returned nil, want empty slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("ToStringSlice(nil) len = %d, want 0", len(got))
+	}
+}

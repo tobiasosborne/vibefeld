@@ -44,13 +44,7 @@ func (r CycleResult) Error() string {
 		return ""
 	}
 
-	// Build path string
-	pathStrs := make([]string, len(r.Path))
-	for i, id := range r.Path {
-		pathStrs[i] = id.String()
-	}
-
-	return "circular dependency detected: " + strings.Join(pathStrs, " -> ")
+	return "circular dependency detected: " + strings.Join(types.ToStringSlice(r.Path), " -> ")
 }
 
 // color constants for DFS-based cycle detection using three-color algorithm

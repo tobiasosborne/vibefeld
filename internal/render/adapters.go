@@ -47,18 +47,12 @@ func NodeToView(n *node.Node) NodeView {
 
 	// Convert dependencies
 	if len(n.Dependencies) > 0 {
-		view.Dependencies = make([]string, len(n.Dependencies))
-		for i, dep := range n.Dependencies {
-			view.Dependencies[i] = dep.String()
-		}
+		view.Dependencies = types.ToStringSlice(n.Dependencies)
 	}
 
 	// Convert validation dependencies
 	if len(n.ValidationDeps) > 0 {
-		view.ValidationDeps = make([]string, len(n.ValidationDeps))
-		for i, dep := range n.ValidationDeps {
-			view.ValidationDeps[i] = dep.String()
-		}
+		view.ValidationDeps = types.ToStringSlice(n.ValidationDeps)
 	}
 
 	// Convert scope

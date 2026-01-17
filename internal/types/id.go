@@ -290,3 +290,13 @@ func (n NodeID) Less(other NodeID) bool {
 	// All compared parts are equal; shorter ID is "less"
 	return len(n.parts) < len(other.parts)
 }
+
+// ToStringSlice converts a slice of NodeIDs to a slice of strings.
+// This is a common operation when serializing dependencies or IDs for output.
+func ToStringSlice(ids []NodeID) []string {
+	result := make([]string, len(ids))
+	for i, id := range ids {
+		result[i] = id.String()
+	}
+	return result
+}

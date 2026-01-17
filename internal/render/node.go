@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobias/vibefeld/internal/types"
 )
 
 const (
@@ -66,19 +67,11 @@ func RenderNodeVerbose(n *node.Node) string {
 	}
 
 	if len(n.Dependencies) > 0 {
-		deps := make([]string, len(n.Dependencies))
-		for i, dep := range n.Dependencies {
-			deps[i] = dep.String()
-		}
-		sb.WriteString(fmt.Sprintf("Depends on: %s\n", strings.Join(deps, ", ")))
+		sb.WriteString(fmt.Sprintf("Depends on: %s\n", strings.Join(types.ToStringSlice(n.Dependencies), ", ")))
 	}
 
 	if len(n.ValidationDeps) > 0 {
-		deps := make([]string, len(n.ValidationDeps))
-		for i, dep := range n.ValidationDeps {
-			deps[i] = dep.String()
-		}
-		sb.WriteString(fmt.Sprintf("Requires validated: %s\n", strings.Join(deps, ", ")))
+		sb.WriteString(fmt.Sprintf("Requires validated: %s\n", strings.Join(types.ToStringSlice(n.ValidationDeps), ", ")))
 	}
 
 	if len(n.Scope) > 0 {

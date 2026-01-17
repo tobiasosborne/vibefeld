@@ -126,11 +126,7 @@ func runReap(cmd *cobra.Command, args []string) error {
 	result := reapResult{
 		DryRun: dryRun,
 		Count:  len(toReap),
-		Reaped: make([]string, len(toReap)),
-	}
-
-	for i, id := range toReap {
-		result.Reaped[i] = id.String()
+		Reaped: types.ToStringSlice(toReap),
 	}
 
 	// If not dry run, actually release the nodes

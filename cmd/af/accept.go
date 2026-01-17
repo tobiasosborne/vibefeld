@@ -266,12 +266,7 @@ func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID
 		return fmt.Errorf("error accepting nodes: %w", err)
 	}
 
-	acceptedStrs := make([]string, len(nodeIDs))
-	for i, id := range nodeIDs {
-		acceptedStrs[i] = id.String()
-	}
-
-	return outputBulkAcceptance(cmd, acceptedStrs, format)
+	return outputBulkAcceptance(cmd, types.ToStringSlice(nodeIDs), format)
 }
 
 // outputBulkAcceptance outputs the result of a bulk node acceptance.

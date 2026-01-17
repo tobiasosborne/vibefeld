@@ -181,10 +181,7 @@ func (n *Node) ComputeContentHash() string {
 
 	// Add sorted dependencies
 	if len(n.Dependencies) > 0 {
-		depStrings := make([]string, len(n.Dependencies))
-		for i, dep := range n.Dependencies {
-			depStrings[i] = dep.String()
-		}
+		depStrings := types.ToStringSlice(n.Dependencies)
 		sort.Strings(depStrings)
 		sb.WriteString("|dependencies:")
 		sb.WriteString(strings.Join(depStrings, ","))
@@ -192,10 +189,7 @@ func (n *Node) ComputeContentHash() string {
 
 	// Add sorted validation dependencies
 	if len(n.ValidationDeps) > 0 {
-		valDepStrings := make([]string, len(n.ValidationDeps))
-		for i, dep := range n.ValidationDeps {
-			valDepStrings[i] = dep.String()
-		}
+		valDepStrings := types.ToStringSlice(n.ValidationDeps)
 		sort.Strings(valDepStrings)
 		sb.WriteString("|validation_deps:")
 		sb.WriteString(strings.Join(valDepStrings, ","))

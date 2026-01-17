@@ -307,18 +307,12 @@ func nodeToJSON(n *node.Node) JSONNode {
 
 	// Convert dependencies
 	if len(n.Dependencies) > 0 {
-		jn.Dependencies = make([]string, len(n.Dependencies))
-		for i, dep := range n.Dependencies {
-			jn.Dependencies[i] = dep.String()
-		}
+		jn.Dependencies = types.ToStringSlice(n.Dependencies)
 	}
 
 	// Convert validation dependencies
 	if len(n.ValidationDeps) > 0 {
-		jn.ValidationDeps = make([]string, len(n.ValidationDeps))
-		for i, dep := range n.ValidationDeps {
-			jn.ValidationDeps[i] = dep.String()
-		}
+		jn.ValidationDeps = types.ToStringSlice(n.ValidationDeps)
 	}
 
 	// Convert scope

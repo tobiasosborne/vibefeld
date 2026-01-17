@@ -281,19 +281,11 @@ func nodeToJSONFull(n *node.Node, challenges []*state.Challenge, amendments []st
 	}
 
 	if len(n.Dependencies) > 0 {
-		deps := make([]string, len(n.Dependencies))
-		for i, dep := range n.Dependencies {
-			deps[i] = dep.String()
-		}
-		result["dependencies"] = deps
+		result["dependencies"] = types.ToStringSlice(n.Dependencies)
 	}
 
 	if len(n.ValidationDeps) > 0 {
-		deps := make([]string, len(n.ValidationDeps))
-		for i, dep := range n.ValidationDeps {
-			deps[i] = dep.String()
-		}
-		result["validation_deps"] = deps
+		result["validation_deps"] = types.ToStringSlice(n.ValidationDeps)
 	}
 
 	if len(n.Scope) > 0 {

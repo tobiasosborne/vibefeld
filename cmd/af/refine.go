@@ -209,18 +209,10 @@ func formatRefineOutput(cmd *cobra.Command, format string, params refineOutputPa
 			"statement": params.Statement,
 		}
 		if len(params.Dependencies) > 0 {
-			depStrs := make([]string, len(params.Dependencies))
-			for i, dep := range params.Dependencies {
-				depStrs[i] = dep.String()
-			}
-			result["depends_on"] = depStrs
+			result["depends_on"] = types.ToStringSlice(params.Dependencies)
 		}
 		if len(params.ValidationDeps) > 0 {
-			valDepStrs := make([]string, len(params.ValidationDeps))
-			for i, dep := range params.ValidationDeps {
-				valDepStrs[i] = dep.String()
-			}
-			result["requires_validated"] = valDepStrs
+			result["requires_validated"] = types.ToStringSlice(params.ValidationDeps)
 		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
@@ -237,18 +229,10 @@ func formatRefineOutput(cmd *cobra.Command, format string, params refineOutputPa
 	cmd.Printf("  Type:   %s\n", params.NodeTypeStr)
 	cmd.Printf("  Statement: %s\n", params.Statement)
 	if len(params.Dependencies) > 0 {
-		depStrs := make([]string, len(params.Dependencies))
-		for i, dep := range params.Dependencies {
-			depStrs[i] = dep.String()
-		}
-		cmd.Printf("  Depends on: %s\n", strings.Join(depStrs, ", "))
+		cmd.Printf("  Depends on: %s\n", strings.Join(types.ToStringSlice(params.Dependencies), ", "))
 	}
 	if len(params.ValidationDeps) > 0 {
-		valDepStrs := make([]string, len(params.ValidationDeps))
-		for i, dep := range params.ValidationDeps {
-			valDepStrs[i] = dep.String()
-		}
-		cmd.Printf("  Requires validated: %s\n", strings.Join(valDepStrs, ", "))
+		cmd.Printf("  Requires validated: %s\n", strings.Join(types.ToStringSlice(params.ValidationDeps), ", "))
 	}
 	cmd.Println("\nNext steps:")
 	if siblingParentID, hasSiblingParent := params.ChildID.Parent(); hasSiblingParent {
