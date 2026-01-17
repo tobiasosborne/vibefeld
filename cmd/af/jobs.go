@@ -40,7 +40,14 @@ Examples:
   af jobs                     List all available jobs
   af jobs --role prover       List only prover jobs
   af jobs --role verifier     List only verifier jobs
-  af jobs --format json       Output in JSON format`,
+  af jobs --format json       Output in JSON format
+
+Workflow:
+  To start working on a job, use 'af claim <node-id>' to claim it first.
+  This prevents other agents from working on the same node. Once claimed,
+  use the appropriate command for your role:
+    Prover:   af refine <id>, af amend <id>, af resolve-challenge <id>
+    Verifier: af accept <id>, af challenge <id>`,
 		RunE: runJobs,
 	}
 
@@ -262,7 +269,7 @@ func renderJobsWithSeverity(jobResult *jobs.JobResult, severityMap map[string]*s
 		for _, n := range verifierJobs {
 			renderJobNodeWithSeverity(&sb, n, severityMap[n.ID.String()])
 		}
-		sb.WriteString("\nNext: Run 'af accept <id>' to validate or 'af challenge <id>' to raise objections.\n")
+		sb.WriteString("\nNext: Run 'af claim <id>' to claim a verifier job, then 'af accept <id>' to validate or 'af challenge <id>' to raise objections.\n")
 	}
 
 	return sb.String()

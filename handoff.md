@@ -1,54 +1,42 @@
-# Handoff - 2026-01-17 (Session 122)
+# Handoff - 2026-01-17 (Session 123)
 
 ## What Was Accomplished This Session
 
-### Session 122 Summary: Added Workflow sections to CLI help text
+### Session 123 Summary: Added claim workflow guidance to jobs command
 
-Closed issue `vibefeld-rg7n` - "CLI UX: Missing 'Next Steps' in help text itself"
+Closed 2 issues this session:
 
-#### Problem
+1. **vibefeld-ep41** - "CLI UX: resolve-challenge and withdraw-challenge lack workflow context"
+   - Status: Already fixed by previous session (commit f72e534)
+   - Closed as already resolved
 
-Command help showed examples but didn't guide users to logical next commands. For example, `af claim --help` showed how to claim a node but didn't mention what to do next (use `af refine` as prover or `af accept`/`af challenge` as verifier).
+2. **vibefeld-oryn** - "CLI UX: Jobs command should suggest how to claim"
+   - Added Workflow section to jobs command help explaining the claim workflow
+   - Updated verifier jobs output to mention claiming before accepting/challenging
 
-#### Solution
+#### Changes Made
 
-Added a "Workflow:" section to the `Long` description of 9 key commands:
-
-| Command | Workflow Guidance Added |
-|---------|------------------------|
-| `init` | Use `af status`, then `af jobs`, then `af claim` |
-| `claim` | Prover: use `af refine`. Verifier: use `af challenge`/`af accept`. Use `af release` if can't complete |
-| `refine` | Continue with `af refine` or use `af status` |
-| `accept` | Use `af status`, `af progress`, or `af jobs` for next work |
-| `challenge` | Use `af challenges` to monitor, `af resolve-challenge`/`af withdraw-challenge` to handle |
-| `release` | Use `af jobs` or `af claim` for other work |
-| `resolve-challenge` | Use `af challenges`, then `af accept` when clear |
-| `withdraw-challenge` | Use `af challenges`, then `af accept` when clear |
-| `admit` | Use `af status` to see taint, consider `af accept` later |
+| File | Change |
+|------|--------|
+| `cmd/af/jobs.go` | Added Workflow section to Long description explaining how to claim jobs |
+| `cmd/af/jobs.go` | Updated verifier jobs output to mention `af claim` before `af accept`/`af challenge` |
 
 ### Files Changed
 
-- `cmd/af/init.go` - Added Workflow section
-- `cmd/af/claim.go` - Added Workflow section
-- `cmd/af/refine.go` - Added Workflow section
-- `cmd/af/accept.go` - Added Workflow section
-- `cmd/af/challenge.go` - Added Workflow section
-- `cmd/af/release.go` - Added Workflow section
-- `cmd/af/resolve_challenge.go` - Added Workflow section
-- `cmd/af/withdraw_challenge.go` - Added Workflow section
-- `cmd/af/admit.go` - Added Workflow section
+- `cmd/af/jobs.go` - Added Workflow section and updated verifier output
 
-### Issue Closed
+### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-rg7n** | Closed | Added Workflow section to help text for 9 key commands |
+| **vibefeld-ep41** | Closed | Already fixed by commit f72e534 (Session 122) |
+| **vibefeld-oryn** | Closed | Added claim workflow guidance to jobs command |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 62 (was 63)
-- **Closed:** 487 (was 486)
+- **Open:** 60 (was 62)
+- **Closed:** 489 (was 487)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -57,8 +45,8 @@ All tests pass. Build succeeds.
 
 ### Verification
 ```bash
-# Verify workflow section in help
-./af claim --help | grep -A5 "Workflow:"
+# Verify workflow section in jobs help
+./af jobs --help | grep -A8 "Workflow:"
 
 # Run tests
 go test ./...
@@ -87,6 +75,11 @@ go build ./cmd/af
 4. Multiple error types inconsistency (`vibefeld-npeg`)
 5. Bulk operations not truly atomic (`vibefeld-gvep`)
 
+### P2 CLI UX
+6. Add role-specific context section to each command's help (`vibefeld-n7bl`)
+7. No role-specific command filtering (`vibefeld-fsqm`)
+8. No 'getting started' guide in help (`vibefeld-w2r7`)
+
 ## Quick Commands
 
 ```bash
@@ -105,6 +98,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 123:** Closed 2 issues (CLI UX - jobs command claim guidance, verified ep41 already fixed)
 **Session 122:** Closed 1 issue (CLI UX - added Workflow sections to 9 command help texts)
 **Session 121:** Closed 1 issue (Config() silent error swallowing - now returns error, updated all callers)
 **Session 120:** Closed 1 issue (RefineNode method consolidation - updated RefineNode and RefineNodeWithDeps to delegate to Refine)
