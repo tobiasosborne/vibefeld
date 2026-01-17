@@ -14,6 +14,16 @@ import (
 	"github.com/tobias/vibefeld/internal/types"
 )
 
+// writeJSONOutput marshals data as indented JSON and writes to the command's output.
+func writeJSONOutput(cmd *cobra.Command, data interface{}) error {
+	output, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling JSON: %w", err)
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), string(output))
+	return nil
+}
+
 func newAcceptCmd() *cobra.Command {
 	var acceptAll bool
 	var withNote string
@@ -149,12 +159,10 @@ func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params ac
 func outputNoPendingNodes(cmd *cobra.Command, format string) {
 	switch strings.ToLower(format) {
 	case "json":
-		result := map[string]interface{}{
+		_ = writeJSONOutput(cmd, map[string]interface{}{
 			"accepted": []string{},
 			"message":  "no pending nodes to accept",
-		}
-		output, _ := json.MarshalIndent(result, "", "  ")
-		fmt.Fprintln(cmd.OutOrStdout(), string(output))
+		})
 	default:
 		fmt.Fprintln(cmd.OutOrStdout(), "No pending nodes to accept.")
 	}
@@ -236,11 +244,7 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID types.NodeID, withNote, f
 			result["verification_summary"] = verificationSummaryJSON
 		}
 
-		output, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("error marshaling JSON: %w", err)
-		}
-		fmt.Fprintln(cmd.OutOrStdout(), string(output))
+		return writeJSONOutput(cmd, result)
 	default:
 		fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated.\n", nodeID.String())
 		if hasSummary {
@@ -274,16 +278,11 @@ func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID
 func outputBulkAcceptance(cmd *cobra.Command, acceptedStrs []string, format string) error {
 	switch strings.ToLower(format) {
 	case "json":
-		result := map[string]interface{}{
+		return writeJSONOutput(cmd, map[string]interface{}{
 			"accepted": acceptedStrs,
 			"count":    len(acceptedStrs),
 			"status":   "validated",
-		}
-		output, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("error marshaling JSON: %w", err)
-		}
-		fmt.Fprintln(cmd.OutOrStdout(), string(output))
+		})
 	default:
 		fmt.Fprintf(cmd.OutOrStdout(), "Accepted %d nodes:\n", len(acceptedStrs))
 		for _, idStr := range acceptedStrs {
@@ -428,12 +427,9 @@ func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID types.NodeID, chall
 		},
 	}
 
-	output, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
-		return fmt.Errorf("error marshaling JSON: %w", err)
+	if err := writeJSONOutput(cmd, response); err != nil {
+		return err
 	}
-
-	fmt.Fprintln(cmd.OutOrStdout(), string(output))
 
 	// Return error with just the summary
 	return fmt.Errorf("node %s has %d blocking challenge(s)", nodeID.String(), len(challenges))
