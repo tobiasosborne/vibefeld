@@ -243,6 +243,21 @@ func (n *NodeID) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Equal returns true if this NodeID equals other.
+// Comparison is performed directly on the internal integer parts without
+// string conversion, making it efficient for equality checks.
+func (n NodeID) Equal(other NodeID) bool {
+	if len(n.parts) != len(other.parts) {
+		return false
+	}
+	for i := range n.parts {
+		if n.parts[i] != other.parts[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Less returns true if this NodeID is lexicographically less than other.
 // Comparison is performed directly on the internal integer parts without
 // string parsing, making it efficient for sorting operations.

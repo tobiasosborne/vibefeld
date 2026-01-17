@@ -152,9 +152,9 @@ func renderSubtree(
 
 // findChildren finds all direct children of a given node ID.
 // If customRoot is set, only finds children that are descendants of customRoot.
+// Uses NodeID.Equal() for efficient comparison without string allocations.
 func findChildren(parentID types.NodeID, allNodes []*node.Node, customRoot *types.NodeID) []*node.Node {
 	var children []*node.Node
-	parentStr := parentID.String()
 
 	for _, n := range allNodes {
 		// Check if this node is a direct child of the parent
@@ -163,7 +163,7 @@ func findChildren(parentID types.NodeID, allNodes []*node.Node, customRoot *type
 			continue
 		}
 
-		if parent.String() == parentStr {
+		if parent.Equal(parentID) {
 			// If customRoot is set, only include nodes that are descendants
 			if customRoot != nil {
 				// Check if node is under the custom root
@@ -179,16 +179,12 @@ func findChildren(parentID types.NodeID, allNodes []*node.Node, customRoot *type
 }
 
 // isDescendantOrEqual returns true if nodeID is equal to or a descendant of ancestorID.
+// Uses NodeID methods directly to avoid string allocations.
 func isDescendantOrEqual(nodeID, ancestorID types.NodeID) bool {
-	nodeStr := nodeID.String()
-	ancestorStr := ancestorID.String()
-
-	if nodeStr == ancestorStr {
+	if nodeID.Equal(ancestorID) {
 		return true
 	}
-
-	// Check if nodeID starts with ancestorID followed by a dot
-	return strings.HasPrefix(nodeStr, ancestorStr+".")
+	return ancestorID.IsAncestorOf(nodeID)
 }
 
 // formatNode formats a single node for tree display.
@@ -260,8 +256,9 @@ func formatBlockedDeps(n *node.Node, s *state.State) string {
 }
 
 // sortNodesByID sorts nodes by their hierarchical ID in numeric order.
+// Uses NodeID.Less() directly to avoid string allocations.
 func sortNodesByID(nodes []*node.Node) {
 	sort.Slice(nodes, func(i, j int) bool {
-		return compareNodeIDs(nodes[i].ID.String(), nodes[j].ID.String())
+		return nodes[i].ID.Less(nodes[j].ID)
 	})
 }

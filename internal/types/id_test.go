@@ -465,6 +465,47 @@ func TestNodeID_Equality(t *testing.T) {
 	}
 }
 
+// TestNodeID_Equal verifies the Equal method works correctly
+func TestNodeID_Equal(t *testing.T) {
+	tests := []struct {
+		name  string
+		a, b  string
+		equal bool
+	}{
+		{"same_root", "1", "1", true},
+		{"same_child", "1.2", "1.2", true},
+		{"same_deep", "1.2.3.4.5", "1.2.3.4.5", true},
+		{"different_children", "1.1", "1.2", false},
+		{"different_depths", "1.1", "1.1.1", false},
+		{"parent_vs_child", "1", "1.1", false},
+		{"sibling_subtrees", "1.2.3", "1.3.3", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			idA, err := Parse(tt.a)
+			if err != nil {
+				t.Fatalf("Parse(%q) error: %v", tt.a, err)
+			}
+			idB, err := Parse(tt.b)
+			if err != nil {
+				t.Fatalf("Parse(%q) error: %v", tt.b, err)
+			}
+
+			got := idA.Equal(idB)
+			if got != tt.equal {
+				t.Errorf("NodeID(%q).Equal(%q) = %v, want %v", tt.a, tt.b, got, tt.equal)
+			}
+
+			// Equal should be symmetric
+			gotReverse := idB.Equal(idA)
+			if gotReverse != tt.equal {
+				t.Errorf("NodeID(%q).Equal(%q) = %v, want %v (symmetric)", tt.b, tt.a, gotReverse, tt.equal)
+			}
+		})
+	}
+}
+
 // TestParent_Chain verifies walking up the parent chain
 func TestParent_Chain(t *testing.T) {
 	input := "1.2.3.4"

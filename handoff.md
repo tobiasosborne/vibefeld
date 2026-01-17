@@ -1,58 +1,54 @@
-# Handoff - 2026-01-17 (Session 68)
+# Handoff - 2026-01-17 (Session 69)
 
 ## What Was Accomplished This Session
 
-### Session 68 Summary: Lock Holder TOCTOU Race Condition Fix
+### Session 69 Summary: Tree Rendering Performance Optimization
 
-Closed issue `vibefeld-kubp` - "MEDIUM: Lock holder check missing in acquisition"
+Closed issue `vibefeld-ryeb` - "Performance: Expensive string conversions in tree rendering hot path"
 
-Fixed a TOCTOU (time-of-check to time-of-use) race condition in lock acquisition where multiple processes could acquire the same lock simultaneously.
+Eliminated unnecessary string allocations in tree rendering by using NodeID methods directly instead of converting to strings for comparison.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-kubp** | internal/lock/persistent.go | Bug fix | Lock holder verification after ledger write |
-| | internal/lock/persistent_test.go | Test | Race condition detection tests |
+| **vibefeld-ryeb** | internal/types/id.go | Enhancement | Added `NodeID.Equal()` method |
+| | internal/render/tree.go | Performance fix | Use `NodeID.Less()` and `NodeID.Equal()` directly |
+| | internal/types/id_test.go | Test | Tests for `Equal()` method |
 
 #### Changes Made
 
-**internal/lock/persistent.go:**
-- Added `verifyLockHolder()` method that scans the ledger after writing a lock_acquired event
-- This method verifies that our lock acquisition event is the one that established the current lock
-- Detects when another process acquired the same lock between our in-memory check and ledger write
-- Modified `Acquire()` to call `verifyLockHolder()` after successful ledger append
+**internal/types/id.go:**
+- Added `Equal(other NodeID) bool` method that compares parts slices directly
+- Avoids string allocations and parsing overhead
 
-**internal/lock/persistent_test.go:**
-- Added `TestPersistentManager_Acquire_DetectsConflictFromOtherProcess` - verifies detection when another process wrote first
-- Added `TestPersistentManager_Acquire_VerifyLockHolder` - verifies sequential acquisition conflict detection
-- Added `TestPersistentManager_Acquire_SeparateNodes` - verifies concurrent acquisition on different nodes succeeds
+**internal/render/tree.go:**
+- `sortNodesByID()`: Now uses `NodeID.Less()` directly instead of `compareNodeIDs(a.String(), b.String())`
+- `findChildren()`: Now uses `parent.Equal(parentID)` instead of string comparison
+- `isDescendantOrEqual()`: Now uses `Equal()` and `IsAncestorOf()` instead of string prefix matching
 
-#### Why This Matters
+**internal/types/id_test.go:**
+- Added `TestNodeID_Equal` with 7 test cases covering equality and inequality
 
-The bug allowed this race condition:
-1. Process A checks in-memory state, sees no lock
-2. Process B checks in-memory state, sees no lock
-3. Process A writes lock_acquired to ledger
-4. Process B writes lock_acquired to ledger (for same node)
-5. Both processes think they hold the lock
+#### Performance Impact
 
-The fix ensures that after writing to the ledger, we verify our event is the current lock holder by scanning the full lock event history for that node.
+- Tree rendering with N nodes: Reduced from O(N log N) string allocations to zero allocations in sorting
+- `findChildren()`: Eliminated O(N) string allocations per call
+- `isDescendantOrEqual()`: Eliminated 2 string allocations per call
 
 #### Files Changed
 
 ```
-internal/lock/persistent.go      (+78 lines) - verifyLockHolder() method
-internal/lock/persistent_test.go (+134 lines) - 3 race condition tests
+internal/types/id.go          (+14 lines) - Equal() method
+internal/types/id_test.go     (+40 lines) - Equal tests
+internal/render/tree.go       (~15 lines modified) - Direct NodeID method usage
 ```
-
-**Total: 212 lines added**
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 118 (was 119)
-- **Closed:** 431 (was 430)
+- **Open:** 117 (was 118)
+- **Closed:** 432 (was 431)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -64,18 +60,21 @@ No P0 issues remain open.
 ## Recommended Next Steps
 
 ### High Priority (P1) - Ready for work
-1. Performance: String conversion caching in tree rendering (`vibefeld-ryeb`)
-2. CLI UX: Verifier severity level explanations in claim (`vibefeld-z05c`)
-3. Module structure: Reduce cmd/af imports (`vibefeld-jfbc`)
+1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`)
+2. CLI UX: Verifier context incomplete when claiming (`vibefeld-z05c`)
 
 ### P2 Bug Fixes
-4. No synchronization on PersistentManager construction (`vibefeld-0yre`)
-5. Error messages leak file paths (`vibefeld-e0eh`)
+3. No synchronization on PersistentManager construction (`vibefeld-0yre`)
+4. Error messages leak file paths (`vibefeld-e0eh`)
 
 ### P2 Test Coverage
-6. ledger package test coverage (`vibefeld-4pba`)
-7. state package test coverage (`vibefeld-hpof`)
-8. scope package test coverage (`vibefeld-h179`)
+5. ledger package test coverage - 58.6% (`vibefeld-4pba`)
+6. state package test coverage - 57% (`vibefeld-hpof`)
+7. scope package test coverage - 59.5% (`vibefeld-h179`)
+
+### P2 Edge Case Tests
+8. Directory deleted during append (`vibefeld-iupw`)
+9. Permission changes mid-operation (`vibefeld-hzrs`)
 
 ## Quick Commands
 
@@ -86,12 +85,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run lock tests specifically
-go test ./internal/lock/... -v
+# Run types tests specifically
+go test ./internal/types/... -v
 ```
 
 ## Session History
 
+**Session 69:** Closed 1 issue (tree rendering performance - string conversion optimization)
 **Session 68:** Closed 1 issue (lock holder TOCTOU race condition fix)
 **Session 67:** Closed 1 issue (HasGaps sparse sequence edge case test)
 **Session 66:** Closed 1 issue (challenge cache invalidation bug fix)
