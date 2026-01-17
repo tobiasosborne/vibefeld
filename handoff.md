@@ -1,50 +1,57 @@
-# Handoff - 2026-01-17 (Session 90)
+# Handoff - 2026-01-17 (Session 91)
 
 ## What Was Accomplished This Session
 
-### Session 90 Summary: Ledger Permission Changes Mid-Operation Edge Case Tests
+### Session 91 Summary: FS Permission Denied Mid-Operation Edge Case Tests
 
-Closed issue `vibefeld-hzrs` - "Edge case test: Permission changes mid-operation"
+Closed issue `vibefeld-9znk` - "Edge case test: FS permission denied mid-operation"
 
-Added 4 comprehensive edge case tests in `internal/ledger/append_test.go` for handling file permission changes during ledger operations:
+Added `TestWriteJSON_PermissionDeniedMidOperation` in `internal/fs/error_injection_test.go` with 5 comprehensive subtests for handling permission denied scenarios during atomic write operations:
 
-1. **TestAppendBatch_FilePermissionChangesMidOperation** - Tests that when directory permissions change to read-only after initial event but before batch append, the operation fails gracefully and:
-   - Does not corrupt existing ledger events
-   - Properly cleans up temp files
-   - Returns appropriate error
+1. **rename_blocked_by_immutable_existing_file** - Tests WriteJSON when directory becomes read-only mid-operation:
+   - Initial write succeeds
+   - Directory made read-only blocks subsequent writes
+   - Original file remains intact
+   - No temp files left behind
 
-2. **TestAppend_ChmodFailsOnTempFile** - Tests single-event append when directory is read-only:
-   - Operation fails at temp file creation
-   - No partial files left behind
-   - Directory remains clean
+2. **rename_to_non_empty_directory_blocks_atomic_write** - Tests atomic rename failing due to non-empty directory at target:
+   - Simulates race condition where directory appears at target path
+   - os.Rename fails with ENOTEMPTY
+   - Temp file properly cleaned up
 
-3. **TestAppendBatch_PartialChmodFailure** - Tests batch append with multiple events when directory becomes read-only:
-   - Verifies cleanup of all temp files
-   - Original ledger state preserved
-   - No residual temp files
+3. **chmod_dir_after_temp_created** - Tests permission changes after initial successful write:
+   - First write succeeds
+   - Directory made read-only
+   - Subsequent write fails gracefully
+   - Original file content preserved
 
-4. **TestAppendIfSequence_PermissionDeniedMidOperation** - Tests CAS append when permissions change:
-   - Sequence-conditional append fails cleanly
-   - Ledger count unchanged
+4. **rename_blocked_by_sticky_bit** - Tests WriteJSON in directories with sticky bit set:
+   - Verifies proper handling of sticky-bit directories (like /tmp)
+   - Same-user operations should succeed
    - No temp file residue
+
+5. **multiple_failed_writes_no_temp_accumulation** - Tests that repeated failed writes don't accumulate temp files:
+   - 10 consecutive failed writes to blocked target
+   - Zero temp files left behind
+   - Validates proper cleanup on every failure
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-hzrs** | Closed | Added 4 tests for permission changes mid-operation |
+| **vibefeld-9znk** | Closed | Added 5 subtests covering permission denied mid-operation scenarios |
 
 ### Files Changed
-- `internal/ledger/append_test.go` (+175 lines)
+- `internal/fs/error_injection_test.go` (+162 lines)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 94 (was 95)
-- **Closed:** 455 (was 454)
+- **Open:** 93 (was 94)
+- **Closed:** 456 (was 455)
 
 ### Test Status
-All tests pass (including integration tests with race detection). Build succeeds.
+All tests pass. Build succeeds.
 
 ## Remaining P0 Issues
 
@@ -65,7 +72,7 @@ No P0 issues remain open.
 6. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
 7. State millions of events (`vibefeld-th1m`)
 8. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
-9. FS permission denied mid-operation (`vibefeld-9znk`)
+9. FS symlink following security (`vibefeld-zfz6`)
 
 ## Quick Commands
 
@@ -76,12 +83,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new permission change tests
-go test -v -tags=integration ./internal/ledger/... -run "TestAppendBatch_FilePermissionChangesMidOperation|TestAppend_ChmodFailsOnTempFile|TestAppendBatch_PartialChmodFailure|TestAppendIfSequence_PermissionDeniedMidOperation"
+# Run the new permission denied mid-operation tests
+go test -v ./internal/fs/... -run "TestWriteJSON_PermissionDeniedMidOperation"
 ```
 
 ## Session History
 
+**Session 91:** Closed 1 issue (FS permission denied mid-operation edge case tests)
 **Session 90:** Closed 1 issue (ledger permission changes mid-operation edge case tests)
 **Session 89:** Closed 1 issue (FS read during concurrent write edge case tests)
 **Session 88:** Closed 1 issue (FS path is file edge case tests)

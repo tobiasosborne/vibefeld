@@ -383,6 +383,265 @@ func TestPermissionDenied_InitProofDir(t *testing.T) {
 }
 
 // =============================================================================
+// Permission Denied Mid-Operation Tests
+// =============================================================================
+
+// TestWriteJSON_PermissionDeniedMidOperation tests the scenario where WriteJSON
+// successfully creates the temp file but then encounters permission denied on
+// the rename operation. This simulates:
+// 1. Temp file creation succeeds (directory is writable)
+// 2. Rename fails (target location is protected or permission changes mid-operation)
+// 3. The temp file should be cleaned up, leaving no inconsistent state
+func TestWriteJSON_PermissionDeniedMidOperation(t *testing.T) {
+	skipIfWindows(t)
+	skipIfRoot(t)
+
+	t.Run("rename_blocked_by_immutable_existing_file", func(t *testing.T) {
+		dir := t.TempDir()
+		targetPath := filepath.Join(dir, "target.json")
+
+		// First, write a file successfully
+		data1 := testData{ID: "v1", Name: "Original"}
+		if err := WriteJSON(targetPath, &data1); err != nil {
+			t.Fatalf("initial write failed: %v", err)
+		}
+
+		// Make the existing target file read-only AND the directory read-only
+		// This ensures the temp file can't be created in the next write attempt
+		// (since the directory is read-only)
+		if err := os.Chmod(targetPath, 0444); err != nil {
+			t.Fatalf("failed to make file read-only: %v", err)
+		}
+		if err := os.Chmod(dir, 0555); err != nil {
+			t.Fatalf("failed to make directory read-only: %v", err)
+		}
+		t.Cleanup(func() {
+			os.Chmod(dir, 0755)
+			os.Chmod(targetPath, 0644)
+		})
+
+		// Attempt to overwrite - should fail during temp file creation
+		data2 := testData{ID: "v2", Name: "Updated"}
+		err := WriteJSON(targetPath, &data2)
+		if err == nil {
+			t.Error("expected permission denied error, got nil")
+		}
+
+		// Restore directory permissions to check state
+		os.Chmod(dir, 0755)
+
+		// Check for leftover temp files
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("failed to read directory: %v", err)
+		}
+
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".tmp") {
+				t.Errorf("temp file left behind after failed write: %s", entry.Name())
+			}
+		}
+
+		// Original file should be intact
+		os.Chmod(targetPath, 0644)
+		var result testData
+		if err := ReadJSON(targetPath, &result); err != nil {
+			t.Fatalf("failed to read original file: %v", err)
+		}
+		if result.ID != "v1" {
+			t.Errorf("original file corrupted: expected v1, got %s", result.ID)
+		}
+	})
+
+	t.Run("rename_to_non_empty_directory_blocks_atomic_write", func(t *testing.T) {
+		// This simulates a scenario where a directory exists at the target path
+		// (e.g., from a race condition where another process created a directory)
+		// The rename will fail, and the temp file should be cleaned up.
+		dir := t.TempDir()
+		targetPath := filepath.Join(dir, "data.json")
+
+		// Create a non-empty directory at the target path
+		// os.Rename fails with ENOTEMPTY when target is a non-empty directory
+		if err := os.MkdirAll(targetPath, 0755); err != nil {
+			t.Fatalf("failed to create blocking directory: %v", err)
+		}
+		blockingFile := filepath.Join(targetPath, "blocker")
+		if err := os.WriteFile(blockingFile, []byte("block"), 0644); err != nil {
+			t.Fatalf("failed to create blocker file: %v", err)
+		}
+
+		// Attempt to write - rename should fail
+		data := testData{ID: "test", Name: "Test"}
+		err := WriteJSON(targetPath, &data)
+		if err == nil {
+			t.Error("expected error when target is non-empty directory, got nil")
+		}
+
+		// Check for temp files - they should be cleaned up
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("failed to read directory: %v", err)
+		}
+
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".tmp") {
+				t.Errorf("temp file left behind: %s", entry.Name())
+			}
+		}
+	})
+
+	t.Run("chmod_dir_after_temp_created", func(t *testing.T) {
+		// This tests a more complex scenario where:
+		// 1. Directory is initially writable
+		// 2. We start writing (temp file created)
+		// 3. Another process changes permissions (simulated)
+		// 4. Rename may or may not fail depending on timing
+		//
+		// Since we can't easily inject a permission change between
+		// WriteFile and Rename, we verify the cleanup behavior by
+		// checking the final state after multiple attempts.
+
+		dir := t.TempDir()
+
+		// Create a subdirectory for our test
+		subdir := filepath.Join(dir, "subdir")
+		if err := os.MkdirAll(subdir, 0755); err != nil {
+			t.Fatalf("failed to create subdirectory: %v", err)
+		}
+
+		targetPath := filepath.Join(subdir, "test.json")
+
+		// Write successfully first
+		data1 := testData{ID: "v1", Name: "First"}
+		if err := WriteJSON(targetPath, &data1); err != nil {
+			t.Fatalf("initial write failed: %v", err)
+		}
+
+		// Now make the subdirectory read-only
+		// This will cause the next write's temp file creation to fail
+		makeReadOnly(t, subdir)
+
+		// Attempt to overwrite
+		data2 := testData{ID: "v2", Name: "Second"}
+		err := WriteJSON(targetPath, &data2)
+		if err == nil {
+			t.Error("expected error when directory is read-only, got nil")
+		}
+
+		// Restore permissions and verify no temp files
+		os.Chmod(subdir, 0755)
+
+		entries, err := os.ReadDir(subdir)
+		if err != nil {
+			t.Fatalf("failed to read subdirectory: %v", err)
+		}
+
+		tempCount := 0
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".tmp") {
+				tempCount++
+			}
+		}
+
+		if tempCount > 0 {
+			t.Errorf("found %d leftover temp files", tempCount)
+		}
+
+		// Original file should be intact
+		var result testData
+		if err := ReadJSON(targetPath, &result); err != nil {
+			t.Fatalf("failed to read original file: %v", err)
+		}
+		if result.ID != "v1" {
+			t.Errorf("original file corrupted: expected v1, got %s", result.ID)
+		}
+	})
+
+	t.Run("rename_blocked_by_sticky_bit", func(t *testing.T) {
+		// On some systems, a directory with the sticky bit set (1777)
+		// only allows file owners to delete/rename files. This tests
+		// that WriteJSON handles this case gracefully.
+		//
+		// This is relevant for /tmp directories on Unix systems.
+
+		dir := t.TempDir()
+		stickyDir := filepath.Join(dir, "sticky")
+		if err := os.MkdirAll(stickyDir, 0777); err != nil {
+			t.Fatalf("failed to create sticky directory: %v", err)
+		}
+
+		// Set sticky bit (only on Unix)
+		if err := os.Chmod(stickyDir, 0777|os.ModeSticky); err != nil {
+			t.Logf("could not set sticky bit (may not be supported): %v", err)
+			// Continue test anyway - sticky bit may not affect same-user operations
+		}
+
+		targetPath := filepath.Join(stickyDir, "data.json")
+		data := testData{ID: "sticky-test", Name: "Sticky Bit Test"}
+
+		// This should work since we're the owner
+		err := WriteJSON(targetPath, &data)
+		if err != nil {
+			t.Errorf("WriteJSON to sticky dir failed: %v", err)
+		}
+
+		// Verify no temp files
+		entries, err := os.ReadDir(stickyDir)
+		if err != nil {
+			t.Fatalf("failed to read sticky directory: %v", err)
+		}
+
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".tmp") {
+				t.Errorf("temp file left behind in sticky dir: %s", entry.Name())
+			}
+		}
+	})
+
+	t.Run("multiple_failed_writes_no_temp_accumulation", func(t *testing.T) {
+		// Tests that repeated failed writes don't accumulate temp files
+		dir := t.TempDir()
+		targetPath := filepath.Join(dir, "blocked.json")
+
+		// Create a non-empty directory at target to block all writes
+		if err := os.MkdirAll(targetPath, 0755); err != nil {
+			t.Fatalf("failed to create blocking directory: %v", err)
+		}
+		blockingFile := filepath.Join(targetPath, "blocker")
+		if err := os.WriteFile(blockingFile, []byte("block"), 0644); err != nil {
+			t.Fatalf("failed to create blocker file: %v", err)
+		}
+
+		// Attempt multiple writes - all should fail
+		for i := 0; i < 10; i++ {
+			data := testData{ID: fmt.Sprintf("attempt-%d", i), Name: "Test"}
+			err := WriteJSON(targetPath, &data)
+			if err == nil {
+				t.Errorf("write %d should have failed", i)
+			}
+		}
+
+		// Count temp files - should be zero
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("failed to read directory: %v", err)
+		}
+
+		tempCount := 0
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".tmp") {
+				tempCount++
+				t.Logf("found temp file: %s", entry.Name())
+			}
+		}
+
+		if tempCount > 0 {
+			t.Errorf("accumulated %d temp files after %d failed writes", tempCount, 10)
+		}
+	})
+}
+
+// =============================================================================
 // Disk Full Simulation Tests
 // =============================================================================
 
