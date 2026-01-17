@@ -544,3 +544,47 @@ func TestIsStale_ExpiryBoundary(t *testing.T) {
 		t.Error("Lock should be stale after expiry")
 	}
 }
+
+// TestIsStale_NilPointerSafety verifies nil pointer handling behavior.
+// The standalone IsStale function handles nil gracefully (returns true).
+// The method version (*ClaimLock).IsStale() is not nil-safe and will panic
+// if called on a nil receiver - this is expected Go behavior.
+func TestIsStale_NilPointerSafety(t *testing.T) {
+	// Test 1: Standalone function handles nil gracefully
+	t.Run("standalone function handles nil", func(t *testing.T) {
+		result := lock.IsStale(nil)
+		if !result {
+			t.Error("IsStale(nil) = false, want true (nil lock is stale)")
+		}
+	})
+
+	// Test 2: Method on nil receiver panics (expected behavior)
+	t.Run("method on nil panics", func(t *testing.T) {
+		var nilLock *lock.ClaimLock
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic when calling IsStale() on nil receiver, but no panic occurred")
+			}
+		}()
+
+		// This should panic - nil receiver cannot access mutex
+		_ = nilLock.IsStale()
+	})
+
+	// Test 3: IsExpired on nil receiver panics (expected behavior)
+	t.Run("IsExpired on nil panics", func(t *testing.T) {
+		var nilLock *lock.ClaimLock
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic when calling IsExpired() on nil receiver, but no panic occurred")
+			}
+		}()
+
+		// This should panic - nil receiver cannot access mutex
+		_ = nilLock.IsExpired()
+	})
+}
