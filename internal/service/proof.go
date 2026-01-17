@@ -122,25 +122,29 @@ func (s *ProofService) LoadConfig() (*config.Config, error) {
 }
 
 // Config returns the current config, loading it if necessary.
-// This is a convenience method for internal use.
-func (s *ProofService) Config() *config.Config {
-	cfg, err := s.LoadConfig()
-	if err != nil {
-		// Return default config on error
-		return config.Default()
-	}
-	return cfg
+// Returns an error if the config cannot be loaded (e.g., permission denied,
+// corrupt JSON). Note that a missing meta.json returns a default config,
+// not an error - this is expected for uninitialized proofs.
+func (s *ProofService) Config() (*config.Config, error) {
+	return s.LoadConfig()
 }
 
 // LockTimeout returns the configured lock timeout.
-// Falls back to the default if config is not available.
-func (s *ProofService) LockTimeout() time.Duration {
-	return s.Config().LockTimeout
+// Returns an error if the config cannot be loaded.
+func (s *ProofService) LockTimeout() (time.Duration, error) {
+	cfg, err := s.Config()
+	if err != nil {
+		return 0, err
+	}
+	return cfg.LockTimeout, nil
 }
 
 // validateDepth checks if a node at the given depth would exceed MaxDepth.
 func (s *ProofService) validateDepth(depth int) error {
-	cfg := s.Config()
+	cfg, err := s.Config()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
 	if depth > cfg.MaxDepth {
 		return fmt.Errorf("%w: depth %d exceeds max %d", ErrMaxDepthExceeded, depth, cfg.MaxDepth)
 	}
@@ -149,7 +153,10 @@ func (s *ProofService) validateDepth(depth int) error {
 
 // validateChildCount checks if adding a child would exceed MaxChildren for the parent.
 func (s *ProofService) validateChildCount(st *state.State, parentID types.NodeID) error {
-	cfg := s.Config()
+	cfg, err := s.Config()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
 
 	// Count existing children
 	childCount := 0
@@ -1397,7 +1404,10 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 	}
 
 	// Count existing children and validate that we can add all new children
-	cfg := s.Config()
+	cfg, err := s.Config()
+	if err != nil {
+		return nil, fmt.Errorf("loading config: %w", err)
+	}
 	existingChildCount := 0
 	for _, n := range st.AllNodes() {
 		p, hasParent := n.ID.Parent()

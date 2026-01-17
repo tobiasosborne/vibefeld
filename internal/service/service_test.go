@@ -284,8 +284,14 @@ func TestLoadConfig_DefaultsForNewProof(t *testing.T) {
 func TestConfig_CachesResult(t *testing.T) {
 	svc, _ := setupTestProof(t)
 
-	cfg1 := svc.Config()
-	cfg2 := svc.Config()
+	cfg1, err := svc.Config()
+	if err != nil {
+		t.Fatalf("Config() unexpected error: %v", err)
+	}
+	cfg2, err := svc.Config()
+	if err != nil {
+		t.Fatalf("Config() unexpected error: %v", err)
+	}
 
 	// Same pointer should be returned (cached)
 	if cfg1 != cfg2 {
@@ -296,7 +302,10 @@ func TestConfig_CachesResult(t *testing.T) {
 func TestLockTimeout_ReturnsConfiguredValue(t *testing.T) {
 	svc, _ := setupTestProof(t)
 
-	timeout := svc.LockTimeout()
+	timeout, err := svc.LockTimeout()
+	if err != nil {
+		t.Fatalf("LockTimeout() unexpected error: %v", err)
+	}
 	if timeout <= 0 {
 		t.Error("LockTimeout() should return positive duration")
 	}

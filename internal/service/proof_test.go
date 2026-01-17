@@ -2251,7 +2251,10 @@ func TestProofService_LockTimeout(t *testing.T) {
 		t.Fatalf("NewProofService() unexpected error: %v", err)
 	}
 
-	timeout := svc.LockTimeout()
+	timeout, err := svc.LockTimeout()
+	if err != nil {
+		t.Fatalf("LockTimeout() unexpected error: %v", err)
+	}
 	if timeout != 5*time.Minute {
 		t.Errorf("LockTimeout() = %v, want 5m", timeout)
 	}

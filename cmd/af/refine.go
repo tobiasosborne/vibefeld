@@ -109,7 +109,10 @@ func findNextChildID(parentID types.NodeID, st *state.State, svc *service.ProofS
 		return findNextChildIDResult{}, fmt.Errorf("failed to generate child ID: %v", err)
 	}
 
-	cfg := svc.Config()
+	cfg, err := svc.Config()
+	if err != nil {
+		return findNextChildIDResult{}, fmt.Errorf("loading config: %v", err)
+	}
 	childDepth := childID.Depth()
 	if childDepth > cfg.MaxDepth {
 		return findNextChildIDResult{}, fmt.Errorf("depth %d exceeds MaxDepth %d; add breadth instead", childDepth, cfg.MaxDepth)
