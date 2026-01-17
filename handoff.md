@@ -1,54 +1,56 @@
-# Handoff - 2026-01-17 (Session 69)
+# Handoff - 2026-01-17 (Session 70)
 
 ## What Was Accomplished This Session
 
-### Session 69 Summary: Tree Rendering Performance Optimization
+### Session 70 Summary: PersistentManager Synchronization Fix
 
-Closed issue `vibefeld-ryeb` - "Performance: Expensive string conversions in tree rendering hot path"
+Closed issue `vibefeld-0yre` - "MEDIUM: No synchronization on PersistentManager construction"
 
-Eliminated unnecessary string allocations in tree rendering by using NodeID methods directly instead of converting to strings for comparison.
+Fixed the potential race condition where multiple goroutines could create separate PersistentManager instances for the same ledger, resulting in inconsistent in-memory state.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-ryeb** | internal/types/id.go | Enhancement | Added `NodeID.Equal()` method |
-| | internal/render/tree.go | Performance fix | Use `NodeID.Less()` and `NodeID.Equal()` directly |
-| | internal/types/id_test.go | Test | Tests for `Equal()` method |
+| **vibefeld-0yre** | internal/lock/persistent.go | Bug fix | Added singleton registry for PersistentManager instances |
+| | internal/lock/persistent_test.go | Test | 5 new tests for GetOrCreateManager and registry functions |
 
 #### Changes Made
 
-**internal/types/id.go:**
-- Added `Equal(other NodeID) bool` method that compares parts slices directly
-- Avoids string allocations and parsing overhead
+**internal/lock/persistent.go:**
+- Added package-level `managerRegistry` map and `managerRegistryLock` mutex
+- Added `GetOrCreateManager(l *ledger.Ledger)` - singleton factory that returns the same manager for the same ledger path
+- Added `UnregisterManager(path string)` - removes a manager from the registry (for testing)
+- Added `ClearManagerRegistry()` - clears all managers (for testing)
+- Updated documentation on `PersistentManager` struct and `NewPersistentManager` with warnings about concurrent usage
 
-**internal/render/tree.go:**
-- `sortNodesByID()`: Now uses `NodeID.Less()` directly instead of `compareNodeIDs(a.String(), b.String())`
-- `findChildren()`: Now uses `parent.Equal(parentID)` instead of string comparison
-- `isDescendantOrEqual()`: Now uses `Equal()` and `IsAncestorOf()` instead of string prefix matching
+**internal/lock/persistent_test.go:**
+- `TestGetOrCreateManager_Singleton` - verifies same instance returned for same path
+- `TestGetOrCreateManager_DifferentPaths` - verifies different instances for different paths
+- `TestGetOrCreateManager_NilLedger` - verifies nil ledger rejection
+- `TestGetOrCreateManager_SharedState` - verifies state is shared through singleton
+- `TestUnregisterManager` - verifies registry cleanup and re-creation
 
-**internal/types/id_test.go:**
-- Added `TestNodeID_Equal` with 7 test cases covering equality and inequality
+#### Solution Design
 
-#### Performance Impact
+The fix provides two approaches:
+1. **Documentation**: Warns users that only one PersistentManager should exist per ledger path
+2. **Singleton Factory**: `GetOrCreateManager()` provides safe singleton semantics with proper synchronization
 
-- Tree rendering with N nodes: Reduced from O(N log N) string allocations to zero allocations in sorting
-- `findChildren()`: Eliminated O(N) string allocations per call
-- `isDescendantOrEqual()`: Eliminated 2 string allocations per call
+The registry is keyed by ledger directory path, ensuring that even if multiple `Ledger` instances point to the same directory, they share the same `PersistentManager`.
 
 #### Files Changed
 
 ```
-internal/types/id.go          (+14 lines) - Equal() method
-internal/types/id_test.go     (+40 lines) - Equal tests
-internal/render/tree.go       (~15 lines modified) - Direct NodeID method usage
+internal/lock/persistent.go      (+65 lines) - Registry and GetOrCreateManager
+internal/lock/persistent_test.go (+134 lines) - 5 new tests
 ```
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 117 (was 118)
-- **Closed:** 432 (was 431)
+- **Open:** 116 (was 117)
+- **Closed:** 433 (was 432)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -64,17 +66,17 @@ No P0 issues remain open.
 2. CLI UX: Verifier context incomplete when claiming (`vibefeld-z05c`)
 
 ### P2 Bug Fixes
-3. No synchronization on PersistentManager construction (`vibefeld-0yre`)
-4. Error messages leak file paths (`vibefeld-e0eh`)
+3. Error messages leak file paths (`vibefeld-e0eh`)
 
 ### P2 Test Coverage
-5. ledger package test coverage - 58.6% (`vibefeld-4pba`)
-6. state package test coverage - 57% (`vibefeld-hpof`)
-7. scope package test coverage - 59.5% (`vibefeld-h179`)
+4. ledger package test coverage - 58.6% (`vibefeld-4pba`)
+5. state package test coverage - 57% (`vibefeld-hpof`)
+6. scope package test coverage - 59.5% (`vibefeld-h179`)
 
 ### P2 Edge Case Tests
-8. Directory deleted during append (`vibefeld-iupw`)
-9. Permission changes mid-operation (`vibefeld-hzrs`)
+7. Directory deleted during append (`vibefeld-iupw`)
+8. Permission changes mid-operation (`vibefeld-hzrs`)
+9. Concurrent metadata corruption (`vibefeld-be56`)
 
 ## Quick Commands
 
@@ -85,12 +87,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run types tests specifically
-go test ./internal/types/... -v
+# Run lock package tests specifically
+go test ./internal/lock/... -v
 ```
 
 ## Session History
 
+**Session 70:** Closed 1 issue (PersistentManager singleton factory for synchronization)
 **Session 69:** Closed 1 issue (tree rendering performance - string conversion optimization)
 **Session 68:** Closed 1 issue (lock holder TOCTOU race condition fix)
 **Session 67:** Closed 1 issue (HasGaps sparse sequence edge case test)

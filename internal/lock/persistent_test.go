@@ -913,3 +913,138 @@ func TestPersistentManager_Acquire_SeparateNodes(t *testing.T) {
 		t.Errorf("Ledger should have 2 events, got %d", count)
 	}
 }
+
+// TestGetOrCreateManager_Singleton verifies that GetOrCreateManager returns the same instance
+// for the same ledger path.
+func TestGetOrCreateManager_Singleton(t *testing.T) {
+	// Clear registry to ensure clean state
+	lock.ClearManagerRegistry()
+	defer lock.ClearManagerRegistry()
+
+	l, _ := createTestLedger(t)
+
+	// First call should create a new manager
+	pm1, err := lock.GetOrCreateManager(l)
+	if err != nil {
+		t.Fatalf("GetOrCreateManager() first call unexpected error: %v", err)
+	}
+	if pm1 == nil {
+		t.Fatal("GetOrCreateManager() returned nil")
+	}
+
+	// Second call with the same ledger should return the same instance
+	pm2, err := lock.GetOrCreateManager(l)
+	if err != nil {
+		t.Fatalf("GetOrCreateManager() second call unexpected error: %v", err)
+	}
+
+	if pm1 != pm2 {
+		t.Error("GetOrCreateManager() returned different instances for the same ledger path")
+	}
+}
+
+// TestGetOrCreateManager_DifferentPaths verifies that GetOrCreateManager returns different instances
+// for different ledger paths.
+func TestGetOrCreateManager_DifferentPaths(t *testing.T) {
+	// Clear registry to ensure clean state
+	lock.ClearManagerRegistry()
+	defer lock.ClearManagerRegistry()
+
+	l1, _ := createTestLedger(t)
+	l2, _ := createTestLedger(t)
+
+	pm1, err := lock.GetOrCreateManager(l1)
+	if err != nil {
+		t.Fatalf("GetOrCreateManager(l1) unexpected error: %v", err)
+	}
+
+	pm2, err := lock.GetOrCreateManager(l2)
+	if err != nil {
+		t.Fatalf("GetOrCreateManager(l2) unexpected error: %v", err)
+	}
+
+	if pm1 == pm2 {
+		t.Error("GetOrCreateManager() returned same instance for different ledger paths")
+	}
+}
+
+// TestGetOrCreateManager_NilLedger verifies that GetOrCreateManager rejects nil ledger.
+func TestGetOrCreateManager_NilLedger(t *testing.T) {
+	_, err := lock.GetOrCreateManager(nil)
+	if err == nil {
+		t.Error("GetOrCreateManager(nil) expected error, got nil")
+	}
+}
+
+// TestGetOrCreateManager_SharedState verifies that managers from GetOrCreateManager
+// share state correctly.
+func TestGetOrCreateManager_SharedState(t *testing.T) {
+	// Clear registry to ensure clean state
+	lock.ClearManagerRegistry()
+	defer lock.ClearManagerRegistry()
+
+	l, _ := createTestLedger(t)
+
+	pm1, err := lock.GetOrCreateManager(l)
+	if err != nil {
+		t.Fatalf("GetOrCreateManager() unexpected error: %v", err)
+	}
+
+	// Acquire a lock via pm1
+	nodeID, _ := types.Parse("1.1")
+	_, err = pm1.Acquire(nodeID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("Acquire() unexpected error: %v", err)
+	}
+
+	// Get the same manager again
+	pm2, err := lock.GetOrCreateManager(l)
+	if err != nil {
+		t.Fatalf("GetOrCreateManager() second call unexpected error: %v", err)
+	}
+
+	// pm2 should see the lock (because it's the same instance)
+	if !pm2.IsLocked(nodeID) {
+		t.Error("Singleton manager should see lock acquired via same instance")
+	}
+}
+
+// TestUnregisterManager verifies that UnregisterManager removes the manager from registry.
+func TestUnregisterManager(t *testing.T) {
+	// Clear registry to ensure clean state
+	lock.ClearManagerRegistry()
+	defer lock.ClearManagerRegistry()
+
+	l, dir := createTestLedger(t)
+
+	pm1, err := lock.GetOrCreateManager(l)
+	if err != nil {
+		t.Fatalf("GetOrCreateManager() unexpected error: %v", err)
+	}
+
+	// Acquire a lock
+	nodeID, _ := types.Parse("1.1")
+	_, err = pm1.Acquire(nodeID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("Acquire() unexpected error: %v", err)
+	}
+
+	// Unregister the manager
+	lock.UnregisterManager(dir)
+
+	// Getting a new manager should create a fresh instance that replays from ledger
+	pm2, err := lock.GetOrCreateManager(l)
+	if err != nil {
+		t.Fatalf("GetOrCreateManager() after unregister unexpected error: %v", err)
+	}
+
+	// Should be a different instance
+	if pm1 == pm2 {
+		t.Error("After UnregisterManager, GetOrCreateManager should return new instance")
+	}
+
+	// New instance should still see the lock (replayed from ledger)
+	if !pm2.IsLocked(nodeID) {
+		t.Error("New manager should see lock from ledger replay")
+	}
+}

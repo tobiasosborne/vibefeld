@@ -61,15 +61,39 @@ func NewLockReleased(nodeID types.NodeID, owner string) LockReleased {
 
 // PersistentManager provides persistent lock management backed by a ledger.
 // Locks survive process restarts by being recorded as events in the ledger.
-// It is safe for concurrent use.
+// It is safe for concurrent use from multiple goroutines.
+//
+// IMPORTANT: Only one PersistentManager should exist per ledger path within a process.
+// Creating multiple managers for the same ledger path will result in inconsistent
+// in-memory state, as each manager independently replays and caches lock state.
+// Use GetOrCreateManager() to safely obtain a singleton manager per ledger path.
+//
+// For cross-process coordination, each process should have its own PersistentManager
+// instance. The ledger's append-only semantics and the verifyLockHolder() check
+// ensure correctness even with multiple processes.
 type PersistentManager struct {
 	mu     sync.RWMutex
 	locks  map[string]*ClaimLock // keyed by NodeID.String()
 	ledger *ledger.Ledger
 }
 
+// managerRegistry provides singleton access to PersistentManager instances.
+// This prevents accidental creation of multiple managers for the same ledger,
+// which would result in inconsistent in-memory state.
+var (
+	managerRegistry     = make(map[string]*PersistentManager)
+	managerRegistryLock sync.Mutex
+)
+
 // NewPersistentManager creates a new PersistentManager backed by the given ledger.
 // It replays the ledger to reconstruct the current lock state.
+//
+// WARNING: Creating multiple PersistentManager instances for the same ledger path
+// will result in inconsistent in-memory state. Prefer using GetOrCreateManager()
+// for singleton semantics within a process.
+//
+// This function is safe for concurrent calls with different ledgers, but concurrent
+// calls with the same ledger will create duplicate managers with independent state.
 func NewPersistentManager(l *ledger.Ledger) (*PersistentManager, error) {
 	if l == nil {
 		return nil, errors.New("ledger is required")
@@ -86,6 +110,64 @@ func NewPersistentManager(l *ledger.Ledger) (*PersistentManager, error) {
 	}
 
 	return pm, nil
+}
+
+// GetOrCreateManager returns a singleton PersistentManager for the given ledger.
+// If a manager already exists for the ledger's path, it returns the existing one.
+// Otherwise, it creates a new manager and registers it.
+//
+// This function is safe for concurrent calls and ensures only one manager exists
+// per ledger path within a process, preventing inconsistent in-memory state.
+//
+// Note: The manager is keyed by the ledger's directory path. If you create multiple
+// Ledger instances pointing to the same directory, they will share the same manager.
+func GetOrCreateManager(l *ledger.Ledger) (*PersistentManager, error) {
+	if l == nil {
+		return nil, errors.New("ledger is required")
+	}
+
+	path := l.Dir()
+
+	managerRegistryLock.Lock()
+	defer managerRegistryLock.Unlock()
+
+	// Check if manager already exists for this path
+	if existing, ok := managerRegistry[path]; ok {
+		return existing, nil
+	}
+
+	// Create new manager (without holding the registry lock during replay)
+	// Note: We hold the lock here intentionally to prevent races during creation.
+	// The replay is typically fast for reasonable ledger sizes.
+	pm := &PersistentManager{
+		locks:  make(map[string]*ClaimLock),
+		ledger: l,
+	}
+
+	if err := pm.replayLedger(); err != nil {
+		return nil, fmt.Errorf("failed to replay ledger: %w", err)
+	}
+
+	// Register and return
+	managerRegistry[path] = pm
+	return pm, nil
+}
+
+// UnregisterManager removes a manager from the registry.
+// This is primarily useful for testing to ensure clean state between tests.
+// In production, managers typically live for the lifetime of the process.
+func UnregisterManager(path string) {
+	managerRegistryLock.Lock()
+	defer managerRegistryLock.Unlock()
+	delete(managerRegistry, path)
+}
+
+// ClearManagerRegistry removes all managers from the registry.
+// This is primarily useful for testing to ensure clean state between tests.
+func ClearManagerRegistry() {
+	managerRegistryLock.Lock()
+	defer managerRegistryLock.Unlock()
+	managerRegistry = make(map[string]*PersistentManager)
 }
 
 // CorruptedEvent records details about a malformed event during replay.
