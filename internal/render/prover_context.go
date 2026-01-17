@@ -418,6 +418,28 @@ func collectExternalIDs(_ *state.State, targetNode *node.Node) []string {
 	return collectContextEntries("ext:", targetNode)
 }
 
+// isBlockingSeverity returns true if the severity blocks node acceptance.
+// Critical and major severities are blocking; minor and note are non-blocking.
+func isBlockingSeverity(severity string) bool {
+	return severity == "critical" || severity == "major"
+}
+
+// severityOrder returns a numeric order for sorting: critical=0, major=1, minor=2, note=3, unknown=4.
+func severityOrder(severity string) int {
+	switch severity {
+	case "critical":
+		return 0
+	case "major":
+		return 1
+	case "minor":
+		return 2
+	case "note":
+		return 3
+	default:
+		return 4
+	}
+}
+
 // renderChallenges writes the challenges section for a node.
 // This is critical for provers to understand what issues need to be addressed.
 func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) {
@@ -437,19 +459,26 @@ func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) 
 		return
 	}
 
-	// Count open challenges
+	// Count open and blocking challenges
 	openCount := 0
+	blockingCount := 0
 	for _, c := range nodeChallenges {
 		if c.Status == "open" {
 			openCount++
+			if isBlockingSeverity(c.Severity) {
+				blockingCount++
+			}
 		}
 	}
 
 	sb.WriteString("\nChallenges (")
 	sb.WriteString(fmt.Sprintf("%d total, %d open", len(nodeChallenges), openCount))
+	if blockingCount > 0 {
+		sb.WriteString(fmt.Sprintf(", %d blocking", blockingCount))
+	}
 	sb.WriteString("):\n")
 
-	// Sort by status (open first), then by ID
+	// Sort by: status (open first), then severity (critical > major > minor > note), then ID
 	sort.Slice(nodeChallenges, func(i, j int) bool {
 		// Open challenges come first
 		if nodeChallenges[i].Status == "open" && nodeChallenges[j].Status != "open" {
@@ -458,14 +487,31 @@ func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) 
 		if nodeChallenges[i].Status != "open" && nodeChallenges[j].Status == "open" {
 			return false
 		}
+		// Within same status, sort by severity (more severe first)
+		sevI := severityOrder(nodeChallenges[i].Severity)
+		sevJ := severityOrder(nodeChallenges[j].Severity)
+		if sevI != sevJ {
+			return sevI < sevJ
+		}
 		return nodeChallenges[i].ID < nodeChallenges[j].ID
 	})
 
 	for _, c := range nodeChallenges {
-		// Format: [ID] "reason" (status)
+		// Format: [ID] severity (BLOCKING) "reason" (status)
 		sb.WriteString("  [")
 		sb.WriteString(c.ID)
 		sb.WriteString("] ")
+
+		// Show severity if set
+		if c.Severity != "" {
+			sb.WriteString(c.Severity)
+			// Mark blocking challenges clearly
+			if c.Status == "open" && isBlockingSeverity(c.Severity) {
+				sb.WriteString(" (BLOCKING)")
+			}
+			sb.WriteString(" - ")
+		}
+
 		sb.WriteString("\"")
 		sb.WriteString(c.Reason)
 		sb.WriteString("\" (")
@@ -491,7 +537,10 @@ func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) 
 
 	// Add summary guidance for open challenges
 	if openCount > 0 {
-		sb.WriteString("\n  Add child nodes with 'addresses_challenges' to respond to open challenges.\n")
+		if blockingCount > 0 {
+			sb.WriteString("\n  ⚠ Blocking challenges (critical/major) must be resolved before acceptance.\n")
+		}
+		sb.WriteString("  Add child nodes with 'addresses_challenges' to respond to open challenges.\n")
 		sb.WriteString("  Once addressed, the verifier can resolve them with 'af resolve-challenge'.\n")
 	}
 }

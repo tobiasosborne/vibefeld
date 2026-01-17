@@ -1,69 +1,59 @@
-# Handoff - 2026-01-17 (Session 128)
+# Handoff - 2026-01-17 (Session 129)
 
 ## What Was Accomplished This Session
 
-### Session 128 Summary: Added challenge target guidance to verifier UX
+### Session 129 Summary: Challenge severity/blocking display in prover context
 
 Closed 1 issue this session:
 
-1. **vibefeld-nvaf** - "CLI UX: Challenge targets not explained to verifier"
-   - Added comprehensive "CHALLENGE TARGETS - WHICH TO USE WHEN" section to challenge.go help
-   - All 9 targets now have descriptions and concrete examples
-   - Examples use realistic mathematical proof scenarios
+1. **vibefeld-6rsx** - "CLI UX: Prover doesn't see which challenges are blocking vs non-blocking"
+   - Added severity display (critical/major/minor/note) to each challenge
+   - Added `(BLOCKING)` indicator for critical/major challenges
+   - Added blocking count to header: `Challenges (2 total, 2 open, 1 blocking)`
+   - Added warning message when blocking challenges exist
+   - Sorted challenges by severity (most severe first)
 
 #### Changes Made
 
 | File | Change |
 |------|--------|
-| `cmd/af/challenge.go` | Added detailed target guidance section with examples for all 9 challenge targets |
+| `internal/render/prover_context.go` | Added `isBlockingSeverity()` and `severityOrder()` helpers; updated `renderChallenges()` to show severity, blocking indicators, and blocking counts |
+| `internal/render/prover_context_test.go` | Added `TestRenderProverContext_ChallengeSeverityAndBlocking` and `TestRenderProverContext_NonBlockingChallengesOnly` tests |
 
-### Example Output (af challenge --help)
+### Example Output (af claim with challenges)
 
-**New "CHALLENGE TARGETS - WHICH TO USE WHEN" section:**
+**Before:**
 ```
-  statement     - The claim text itself is wrong or unclear
-                  Example: "The claim says x > 0 but should be x >= 0"
+Challenges (2 total, 2 open):
+  [ch-001] "Missing case for n=0" (open)
+  [ch-002] "Not rigorous enough" (open)
+```
 
-  inference     - The reasoning/logic step is invalid or unjustified
-                  Example: "This modus ponens is invalid; P→Q and R given, not P"
+**After:**
+```
+Challenges (2 total, 2 open, 1 blocking):
+  [ch-002] critical (BLOCKING) - "Not rigorous enough" (open)
+  [ch-001] minor - "Missing case for n=0" (open)
 
-  context       - Referenced definitions are wrong, missing, or misapplied
-                  Example: "The definition of 'continuous' is used incorrectly here"
-
-  dependencies  - The node depends on wrong or missing parent nodes
-                  Example: "This step assumes 1.2 but should depend on 1.3"
-
-  scope         - Local assumption issues (used outside valid scope)
-                  Example: "Variable x was introduced in 1.1 and is out of scope here"
-
-  gap           - Logical gap in reasoning (missing intermediate steps)
-                  Example: "How do we get from A to C? Step B is missing"
-
-  type_error    - Mathematical object types don't match
-                  Example: "Applying a function to a set when it expects an element"
-
-  domain        - Domain restriction violated (division by zero, etc.)
-                  Example: "This uses sqrt(-1) but we're working in reals"
-
-  completeness  - Missing cases or incomplete argument
-                  Example: "Proof by cases only covers n=0 and n>0, missing n<0"
+  ⚠ Blocking challenges (critical/major) must be resolved before acceptance.
 ```
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-nvaf** | Closed | Added comprehensive challenge target guidance with all 9 targets, descriptions, and concrete examples |
+| **vibefeld-6rsx** | Closed | Implemented severity and blocking status display in prover context |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 55 (was 56)
-- **Closed:** 494 (was 493)
+- **Open:** 54 (was 55)
+- **Closed:** 495 (was 494)
 
 ### Test Status
 All tests pass. Build succeeds.
 - Unit tests: PASS
+- E2E blocking tests: PASS
 - Build: PASS
 
 ### Verification
@@ -73,7 +63,16 @@ go test ./...
 
 # Build
 go build ./cmd/af
+
+# Test the feature manually
+cd /tmp && mkdir test && cd test
+af init --conjecture "Test" --author "test"
+af challenge 1 --target statement --reason "Test" --severity critical
+af claim 1 --owner prover --role prover  # See new severity display
 ```
+
+### Known Issue
+Pre-existing duplicate test declarations in `internal/render/` (`json_unit_test.go` vs `json_test.go` with `integration` tag). Running with `-tags=integration` fails compilation due to duplicate test names. Tests pass without integration tag.
 
 ## Remaining P1 Issues
 
@@ -118,6 +117,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 129:** Closed 1 issue (CLI UX - challenge severity/blocking display in prover context)
 **Session 128:** Closed 1 issue (CLI UX - challenge target guidance for verifiers)
 **Session 127:** Closed 1 issue (CLI UX - verification checklist examples for all 6 categories)
 **Session 126:** Closed 1 issue (CLI UX - accept command blocking challenges guidance)

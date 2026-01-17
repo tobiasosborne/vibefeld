@@ -240,14 +240,15 @@ func TestRenderProverContext_WithActiveChallenges(t *testing.T) {
 	n := makeTestNodeForProver("1", schema.NodeTypeClaim, "A contested claim", schema.InferenceModusPonens)
 	s.AddNode(n)
 
-	// Add challenges to the state
+	// Add challenges to the state with severity
 	rootID, _ := types.Parse("1")
 	s.AddChallenge(&state.Challenge{
-		ID:     "ch-001",
-		NodeID: rootID,
-		Target: "gap",
-		Reason: "Missing case for n=0",
-		Status: "open",
+		ID:       "ch-001",
+		NodeID:   rootID,
+		Target:   "gap",
+		Reason:   "Missing case for n=0",
+		Status:   "open",
+		Severity: "major",
 	})
 	s.AddChallenge(&state.Challenge{
 		ID:         "ch-002",
@@ -255,6 +256,7 @@ func TestRenderProverContext_WithActiveChallenges(t *testing.T) {
 		Target:     "context",
 		Reason:     "Variable x undefined",
 		Status:     "resolved",
+		Severity:   "minor",
 		Resolution: "x is defined in the parent scope as x := 5",
 	})
 
@@ -270,14 +272,23 @@ func TestRenderProverContext_WithActiveChallenges(t *testing.T) {
 		t.Errorf("RenderProverContext missing node statement, got: %q", result)
 	}
 
-	// Should show challenge section with count
-	if !strings.Contains(result, "Challenges (2 total, 1 open)") {
+	// Should show challenge section with count including blocking count
+	if !strings.Contains(result, "2 total") || !strings.Contains(result, "1 open") {
 		t.Errorf("RenderProverContext missing challenge count, got: %q", result)
 	}
+	if !strings.Contains(result, "1 blocking") {
+		t.Errorf("RenderProverContext missing blocking count, got: %q", result)
+	}
 
-	// Should show the open challenge
+	// Should show the open challenge with severity
 	if !strings.Contains(result, "ch-001") || !strings.Contains(result, "Missing case for n=0") {
 		t.Errorf("RenderProverContext missing open challenge details, got: %q", result)
+	}
+	if !strings.Contains(result, "major") {
+		t.Errorf("RenderProverContext missing severity for open challenge, got: %q", result)
+	}
+	if !strings.Contains(result, "BLOCKING") {
+		t.Errorf("RenderProverContext missing BLOCKING indicator for major challenge, got: %q", result)
 	}
 
 	// Should show the resolved challenge with its status
@@ -382,6 +393,156 @@ func TestRenderProverContext_ChallengeResolutions(t *testing.T) {
 	}
 	if !foundResolutionLine {
 		t.Errorf("Resolution line not properly formatted, got: %q", result)
+	}
+}
+
+// TestRenderProverContext_ChallengeSeverityAndBlocking tests that severity and blocking status are shown.
+func TestRenderProverContext_ChallengeSeverityAndBlocking(t *testing.T) {
+	s := state.NewState()
+
+	n := makeTestNodeForProver("1", schema.NodeTypeClaim, "Node with various challenges", schema.InferenceModusPonens)
+	s.AddNode(n)
+
+	rootID, _ := types.Parse("1")
+
+	// Add challenges with different severities
+	s.AddChallenge(&state.Challenge{
+		ID:       "C1",
+		NodeID:   rootID,
+		Target:   "statement",
+		Reason:   "Critical flaw in logic",
+		Status:   "open",
+		Severity: "critical",
+	})
+	s.AddChallenge(&state.Challenge{
+		ID:       "C2",
+		NodeID:   rootID,
+		Target:   "gap",
+		Reason:   "Major gap in reasoning",
+		Status:   "open",
+		Severity: "major",
+	})
+	s.AddChallenge(&state.Challenge{
+		ID:       "C3",
+		NodeID:   rootID,
+		Target:   "inference",
+		Reason:   "Minor clarification needed",
+		Status:   "open",
+		Severity: "minor",
+	})
+	s.AddChallenge(&state.Challenge{
+		ID:       "C4",
+		NodeID:   rootID,
+		Target:   "context",
+		Reason:   "Stylistic note",
+		Status:   "open",
+		Severity: "note",
+	})
+
+	result := RenderProverContext(s, rootID)
+
+	// Should show 4 open, 2 blocking (critical + major are blocking)
+	if !strings.Contains(result, "4 open") {
+		t.Errorf("Expected 4 open challenges, got: %q", result)
+	}
+	if !strings.Contains(result, "2 blocking") {
+		t.Errorf("Expected 2 blocking challenges, got: %q", result)
+	}
+
+	// Critical challenge should show BLOCKING
+	if !strings.Contains(result, "critical (BLOCKING)") {
+		t.Errorf("Critical challenge should show BLOCKING indicator, got: %q", result)
+	}
+
+	// Major challenge should show BLOCKING
+	if !strings.Contains(result, "major (BLOCKING)") {
+		t.Errorf("Major challenge should show BLOCKING indicator, got: %q", result)
+	}
+
+	// Minor challenge should NOT show BLOCKING
+	if strings.Contains(result, "minor (BLOCKING)") {
+		t.Errorf("Minor challenge should NOT show BLOCKING indicator, got: %q", result)
+	}
+
+	// Note challenge should NOT show BLOCKING
+	if strings.Contains(result, "note (BLOCKING)") {
+		t.Errorf("Note challenge should NOT show BLOCKING indicator, got: %q", result)
+	}
+
+	// Should show blocking warning message
+	if !strings.Contains(result, "Blocking challenges") || !strings.Contains(result, "must be resolved") {
+		t.Errorf("Should show blocking challenges warning, got: %q", result)
+	}
+
+	// Verify sort order: critical should come before major, major before minor, minor before note
+	criticalIdx := strings.Index(result, "C1")
+	majorIdx := strings.Index(result, "C2")
+	minorIdx := strings.Index(result, "C3")
+	noteIdx := strings.Index(result, "C4")
+
+	if criticalIdx > majorIdx {
+		t.Errorf("Critical challenge should appear before major challenge")
+	}
+	if majorIdx > minorIdx {
+		t.Errorf("Major challenge should appear before minor challenge")
+	}
+	if minorIdx > noteIdx {
+		t.Errorf("Minor challenge should appear before note challenge")
+	}
+}
+
+// TestRenderProverContext_NonBlockingChallengesOnly tests output when only non-blocking challenges exist.
+func TestRenderProverContext_NonBlockingChallengesOnly(t *testing.T) {
+	s := state.NewState()
+
+	n := makeTestNodeForProver("1", schema.NodeTypeClaim, "Node with non-blocking challenges", schema.InferenceModusPonens)
+	s.AddNode(n)
+
+	rootID, _ := types.Parse("1")
+
+	// Add only minor and note challenges (non-blocking)
+	s.AddChallenge(&state.Challenge{
+		ID:       "C1",
+		NodeID:   rootID,
+		Target:   "inference",
+		Reason:   "Minor clarification",
+		Status:   "open",
+		Severity: "minor",
+	})
+	s.AddChallenge(&state.Challenge{
+		ID:       "C2",
+		NodeID:   rootID,
+		Target:   "context",
+		Reason:   "Note about style",
+		Status:   "open",
+		Severity: "note",
+	})
+
+	result := RenderProverContext(s, rootID)
+
+	// Should show 2 open, but no blocking count (since 0 blocking)
+	if !strings.Contains(result, "2 open") {
+		t.Errorf("Expected 2 open challenges, got: %q", result)
+	}
+	// Should NOT show blocking count when 0
+	if strings.Contains(result, "blocking") && !strings.Contains(result, "Blocking challenges") {
+		// Allow the warning message but not "0 blocking" in header
+		idx := strings.Index(result, "Challenges (")
+		headerEnd := strings.Index(result[idx:], "):")
+		header := result[idx : idx+headerEnd+2]
+		if strings.Contains(header, "blocking") {
+			t.Errorf("Should not show blocking count in header when 0, got header: %q", header)
+		}
+	}
+
+	// Should NOT show BLOCKING indicator for non-blocking severities
+	if strings.Contains(result, "BLOCKING") {
+		t.Errorf("Should not show BLOCKING for non-blocking challenges, got: %q", result)
+	}
+
+	// Should NOT show blocking warning message
+	if strings.Contains(result, "must be resolved before acceptance") {
+		t.Errorf("Should not show blocking warning for non-blocking challenges, got: %q", result)
 	}
 }
 
