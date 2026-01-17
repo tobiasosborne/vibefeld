@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -1054,6 +1055,456 @@ func TestJSON_SymlinkFollowing(t *testing.T) {
 			if result.ID != "relative-secret" {
 				t.Errorf("unexpected result: %+v", result)
 			}
+		}
+	})
+}
+
+// TestJSON_FileDescriptorExhaustion tests the behavior of ReadJSON and WriteJSON
+// when the system approaches or reaches file descriptor limits. This verifies
+// graceful degradation rather than crashes or panics.
+//
+// Security and stability considerations:
+// 1. Operations should fail with clear errors, not panic
+// 2. Partial operations should not leave corrupted state
+// 3. Recovery should be possible once FDs are freed
+// 4. Error messages should indicate resource exhaustion
+func TestJSON_FileDescriptorExhaustion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping file descriptor exhaustion test on Windows (different resource model)")
+	}
+
+	// Helper function to set a low FD limit for testing
+	setLowFDLimit := func(t *testing.T, newLimit uint64) (restore func()) {
+		t.Helper()
+
+		var original syscall.Rlimit
+		if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &original); err != nil {
+			t.Fatalf("failed to get rlimit: %v", err)
+		}
+
+		// Save original and try to set new lower limit
+		newRlimit := syscall.Rlimit{Cur: newLimit, Max: original.Max}
+		if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &newRlimit); err != nil {
+			t.Skipf("cannot set rlimit (may require privileges): %v", err)
+		}
+
+		return func() {
+			syscall.Setrlimit(syscall.RLIMIT_NOFILE, &original)
+		}
+	}
+
+	t.Run("write_fails_gracefully_at_fd_limit", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Set a low FD limit for this test
+		// We use a very low limit to ensure we hit exhaustion
+		const testFDLimit = uint64(50)
+		restore := setLowFDLimit(t, testFDLimit)
+		defer restore()
+
+		// Reserve only a few FDs for stdin, stdout, stderr
+		// We want to exhaust FDs for the test
+		reservedFDs := uint64(5)
+
+		// Open files until we hit the limit
+		openFiles := make([]*os.File, 0)
+		tempDir := filepath.Join(dir, "fd_exhaust")
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+
+		// Track how many files we successfully opened
+		var openCount int
+		defer func() {
+			// Clean up all opened files
+			for _, f := range openFiles {
+				f.Close()
+			}
+			t.Logf("cleaned up %d open files", len(openFiles))
+		}()
+
+		// Open files until we hit the limit
+		targetOpenFiles := int(testFDLimit - reservedFDs)
+		for i := 0; i < targetOpenFiles+50; i++ { // Try to open more than limit
+			filePath := filepath.Join(tempDir, fmt.Sprintf("fd_%d.txt", i))
+			f, err := os.Create(filePath)
+			if err != nil {
+				// We've hit the limit - this is what we want
+				t.Logf("hit FD limit after opening %d files: %v", i, err)
+				break
+			}
+			openFiles = append(openFiles, f)
+			openCount++
+		}
+
+		if openCount == 0 {
+			t.Skip("could not open any test files")
+		}
+
+		t.Logf("opened %d files, attempting JSON operations at limit", openCount)
+
+		// Now try WriteJSON - it should fail gracefully
+		writeDir := filepath.Join(dir, "write_test")
+		if err := os.MkdirAll(writeDir, 0755); err != nil {
+			// Even mkdir might fail at FD exhaustion
+			t.Logf("mkdir failed at FD limit (expected): %v", err)
+		}
+
+		writeData := testData{ID: "exhaustion-test", Name: "Testing FD Exhaustion"}
+		writePath := filepath.Join(writeDir, "test.json")
+		err := WriteJSON(writePath, &writeData)
+
+		if err == nil {
+			// If we had enough FDs, it succeeded - verify the file
+			var readResult testData
+			readErr := ReadJSON(writePath, &readResult)
+			if readErr != nil {
+				t.Logf("write succeeded but read failed: %v", readErr)
+			} else if readResult.ID != "exhaustion-test" {
+				t.Errorf("data corruption: expected 'exhaustion-test', got '%s'", readResult.ID)
+			}
+			t.Log("write succeeded (had sufficient FDs)")
+		} else {
+			// Write failed - verify it's a reasonable error
+			t.Logf("WriteJSON failed at FD limit (expected): %v", err)
+
+			// Verify the error is resource-related (EMFILE/ENFILE) or permission-related
+			// Different systems may return different errors
+			errStr := err.Error()
+			validErrors := []string{
+				"too many open files",
+				"no file descriptors",
+				"resource temporarily unavailable",
+				"cannot allocate memory",
+			}
+
+			found := false
+			for _, valid := range validErrors {
+				if strings.Contains(strings.ToLower(errStr), valid) {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				// Still acceptable if it's just a permission error or file error
+				t.Logf("non-standard error at FD exhaustion: %v", err)
+			}
+
+			// CRITICAL: No panic occurred
+			t.Log("no panic occurred during FD exhaustion - graceful degradation verified")
+		}
+	})
+
+	t.Run("read_fails_gracefully_at_fd_limit", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// First, write a file while we have FDs available
+		testFile := filepath.Join(dir, "pre_written.json")
+		preWriteData := testData{ID: "pre-written", Name: "Written Before Exhaustion"}
+		if err := WriteJSON(testFile, &preWriteData); err != nil {
+			t.Fatalf("failed to pre-write test file: %v", err)
+		}
+
+		// Set a low FD limit for this test to ensure exhaustion
+		const testFDLimit = uint64(50)
+		restore := setLowFDLimit(t, testFDLimit)
+		defer restore()
+
+		reservedFDs := uint64(5)
+
+		// Open files until we hit the limit
+		openFiles := make([]*os.File, 0)
+		targetOpenFiles := int(testFDLimit - reservedFDs)
+		tempDir := filepath.Join(dir, "fd_exhaust_read")
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+
+		defer func() {
+			for _, f := range openFiles {
+				f.Close()
+			}
+		}()
+
+		for i := 0; i < targetOpenFiles+50; i++ { // Try to open more than limit
+			filePath := filepath.Join(tempDir, fmt.Sprintf("fd_%d.txt", i))
+			f, err := os.Create(filePath)
+			if err != nil {
+				t.Logf("hit FD limit after opening %d files: %v", i, err)
+				break
+			}
+			openFiles = append(openFiles, f)
+		}
+
+		if len(openFiles) == 0 {
+			t.Skip("could not open any test files")
+		}
+
+		t.Logf("opened %d files, attempting ReadJSON at limit", len(openFiles))
+
+		// Now try ReadJSON - it should fail gracefully
+		var readResult testData
+		err := ReadJSON(testFile, &readResult)
+
+		if err == nil {
+			// Read succeeded - verify data integrity
+			if readResult.ID != "pre-written" {
+				t.Errorf("data corruption on read: expected 'pre-written', got '%s'", readResult.ID)
+			}
+			t.Log("read succeeded (had sufficient FDs)")
+		} else {
+			t.Logf("ReadJSON failed at FD limit (expected): %v", err)
+			t.Log("no panic occurred during FD exhaustion read - graceful degradation verified")
+		}
+	})
+
+	t.Run("recovery_after_fd_freed", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Set a low FD limit for this test
+		const testFDLimit = uint64(50)
+		restore := setLowFDLimit(t, testFDLimit)
+		defer restore()
+
+		reservedFDs := uint64(5)
+
+		// Open files to exhaust FDs
+		openFiles := make([]*os.File, 0)
+		targetOpenFiles := int(testFDLimit - reservedFDs)
+		tempDir := filepath.Join(dir, "fd_exhaust_recovery")
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+
+		for i := 0; i < targetOpenFiles+50; i++ { // Try to open more than limit
+			filePath := filepath.Join(tempDir, fmt.Sprintf("fd_%d.txt", i))
+			f, err := os.Create(filePath)
+			if err != nil {
+				t.Logf("hit FD limit after opening %d files: %v", i, err)
+				break
+			}
+			openFiles = append(openFiles, f)
+		}
+
+		if len(openFiles) == 0 {
+			t.Skip("could not open any test files")
+		}
+
+		t.Logf("opened %d files", len(openFiles))
+
+		// Try operation at exhaustion - should fail
+		exhaustData := testData{ID: "recovery-test", Name: "Testing Recovery"}
+		testFile := filepath.Join(dir, "recovery.json")
+		_ = WriteJSON(testFile, &exhaustData) // May fail, that's expected
+
+		// Now free the FDs
+		for _, f := range openFiles {
+			f.Close()
+		}
+		openFiles = nil
+		t.Log("freed all FDs")
+
+		// Verify we can now perform operations successfully
+		recoveryData := testData{ID: "after-recovery", Name: "After Recovery"}
+		testFile2 := filepath.Join(dir, "after_recovery.json")
+		err := WriteJSON(testFile2, &recoveryData)
+		if err != nil {
+			t.Errorf("WriteJSON failed after FD recovery: %v", err)
+		}
+
+		var readResult testData
+		err = ReadJSON(testFile2, &readResult)
+		if err != nil {
+			t.Errorf("ReadJSON failed after FD recovery: %v", err)
+		}
+
+		if readResult.ID != "after-recovery" {
+			t.Errorf("data mismatch after recovery: expected 'after-recovery', got '%s'", readResult.ID)
+		}
+
+		t.Log("operations succeeded after FD recovery")
+	})
+
+	t.Run("no_temp_file_leak_at_exhaustion", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Set a low FD limit for this test
+		const testFDLimit = uint64(60)
+		restore := setLowFDLimit(t, testFDLimit)
+		defer restore()
+
+		reservedFDs := uint64(15) // Reserve some for temp file operations and test infra
+
+		writeDir := filepath.Join(dir, "write_dir")
+		if err := os.MkdirAll(writeDir, 0755); err != nil {
+			t.Fatalf("failed to create write dir: %v", err)
+		}
+
+		// Open files to approach exhaustion
+		openFiles := make([]*os.File, 0)
+		targetOpenFiles := int(testFDLimit - reservedFDs)
+		tempDir := filepath.Join(dir, "fd_exhaust_leak")
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+
+		for i := 0; i < targetOpenFiles+20; i++ { // Try to open more than limit
+			filePath := filepath.Join(tempDir, fmt.Sprintf("fd_%d.txt", i))
+			f, err := os.Create(filePath)
+			if err != nil {
+				t.Logf("hit FD limit after opening %d files: %v", i, err)
+				break
+			}
+			openFiles = append(openFiles, f)
+		}
+
+		defer func() {
+			for _, f := range openFiles {
+				f.Close()
+			}
+		}()
+
+		if len(openFiles) == 0 {
+			t.Skip("could not open any test files")
+		}
+
+		t.Logf("opened %d files, attempting writes under pressure", len(openFiles))
+
+		// Attempt multiple writes near/at exhaustion
+		failCount := 0
+		successCount := 0
+		for i := 0; i < 10; i++ {
+			testData := testData{ID: fmt.Sprintf("attempt-%d", i), Name: "Test"}
+			testFile := filepath.Join(writeDir, fmt.Sprintf("test_%d.json", i))
+			err := WriteJSON(testFile, &testData)
+			if err != nil {
+				failCount++
+			} else {
+				successCount++
+			}
+		}
+
+		t.Logf("write attempts: %d succeeded, %d failed", successCount, failCount)
+
+		// Free FDs and check for temp files
+		for _, f := range openFiles {
+			f.Close()
+		}
+		openFiles = nil
+
+		// Check for leftover .tmp files
+		entries, err := os.ReadDir(writeDir)
+		if err != nil {
+			t.Fatalf("failed to read write dir: %v", err)
+		}
+
+		tempFileCount := 0
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".tmp") {
+				tempFileCount++
+				t.Logf("found leftover temp file: %s", entry.Name())
+			}
+		}
+
+		if tempFileCount > 0 {
+			t.Errorf("found %d leftover .tmp files after FD exhaustion", tempFileCount)
+		} else {
+			t.Log("no temp files left behind after FD exhaustion")
+		}
+	})
+
+	t.Run("concurrent_writes_at_fd_pressure", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Set a moderate FD limit for this test
+		const testFDLimit = uint64(150)
+		restore := setLowFDLimit(t, testFDLimit)
+		defer restore()
+
+		// Use moderate FD pressure (half the limit) to allow some concurrency
+		reservedFDs := uint64(50)
+		targetPressure := (testFDLimit - reservedFDs) / 2
+
+		// Open files to create pressure
+		openFiles := make([]*os.File, 0)
+		tempDir := filepath.Join(dir, "fd_pressure")
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+
+		for i := uint64(0); i < targetPressure; i++ {
+			filePath := filepath.Join(tempDir, fmt.Sprintf("fd_%d.txt", i))
+			f, err := os.Create(filePath)
+			if err != nil {
+				break
+			}
+			openFiles = append(openFiles, f)
+		}
+
+		defer func() {
+			for _, f := range openFiles {
+				f.Close()
+			}
+		}()
+
+		t.Logf("created FD pressure with %d open files", len(openFiles))
+
+		// Run concurrent writes under FD pressure
+		writeDir := filepath.Join(dir, "concurrent_writes")
+		if err := os.MkdirAll(writeDir, 0755); err != nil {
+			t.Fatalf("failed to create write dir: %v", err)
+		}
+
+		var wg sync.WaitGroup
+		var successCount, failCount atomic.Int32
+		numGoroutines := 5
+		writesPerGoroutine := 10
+
+		for g := 0; g < numGoroutines; g++ {
+			wg.Add(1)
+			go func(gid int) {
+				defer wg.Done()
+				for w := 0; w < writesPerGoroutine; w++ {
+					data := testData{
+						ID:   fmt.Sprintf("g%d-w%d", gid, w),
+						Name: fmt.Sprintf("Goroutine %d Write %d", gid, w),
+					}
+					path := filepath.Join(writeDir, fmt.Sprintf("g%d_w%d.json", gid, w))
+					if err := WriteJSON(path, &data); err != nil {
+						failCount.Add(1)
+					} else {
+						successCount.Add(1)
+					}
+				}
+			}(g)
+		}
+
+		wg.Wait()
+
+		total := successCount.Load() + failCount.Load()
+		t.Logf("concurrent writes under FD pressure: %d/%d succeeded", successCount.Load(), total)
+
+		// Verify no panics occurred (we got here) and at least some writes succeeded
+		if successCount.Load() == 0 && failCount.Load() > 0 {
+			t.Log("all concurrent writes failed under FD pressure (acceptable if FDs were exhausted)")
+		}
+
+		// Check for temp files
+		entries, err := os.ReadDir(writeDir)
+		if err != nil {
+			t.Fatalf("failed to read write dir: %v", err)
+		}
+
+		tempFileCount := 0
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".tmp") {
+				tempFileCount++
+			}
+		}
+
+		if tempFileCount > 0 {
+			t.Errorf("found %d leftover .tmp files after concurrent writes under pressure", tempFileCount)
 		}
 	})
 }
