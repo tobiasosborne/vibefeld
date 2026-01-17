@@ -357,29 +357,26 @@ func renderAssumptions(sb *strings.Builder, s *state.State, n *node.Node) {
 	}
 }
 
-// collectAssumptionIDs extracts assumption IDs from node context fields.
-func collectAssumptionIDs(s *state.State, targetNode *node.Node) []string {
+// collectContextEntries extracts IDs from node context and scope fields with a given prefix.
+// For example, prefix "assume:" extracts assumption IDs, prefix "ext:" extracts external IDs.
+func collectContextEntries(prefix string, targetNode *node.Node) []string {
 	idSet := make(map[string]bool)
 
 	// Check target node's context
 	for _, entry := range targetNode.Context {
-		if strings.HasPrefix(entry, "assume:") {
-			id := strings.TrimPrefix(entry, "assume:")
+		if strings.HasPrefix(entry, prefix) {
+			id := strings.TrimPrefix(entry, prefix)
 			idSet[id] = true
 		}
 	}
 
 	// Check target node's scope
 	for _, entry := range targetNode.Scope {
-		if strings.HasPrefix(entry, "assume:") {
-			id := strings.TrimPrefix(entry, "assume:")
+		if strings.HasPrefix(entry, prefix) {
+			id := strings.TrimPrefix(entry, prefix)
 			idSet[id] = true
 		}
 	}
-
-	// Also check all assumptions by scanning nodes - but we need the IDs
-	// Since assumptions are added directly to state and we can't iterate,
-	// we need to rely on context references or try common patterns
 
 	// Convert map to slice
 	ids := make([]string, 0, len(idSet))
@@ -388,6 +385,11 @@ func collectAssumptionIDs(s *state.State, targetNode *node.Node) []string {
 	}
 
 	return ids
+}
+
+// collectAssumptionIDs extracts assumption IDs from node context fields.
+func collectAssumptionIDs(_ *state.State, targetNode *node.Node) []string {
+	return collectContextEntries("assume:", targetNode)
 }
 
 // renderExternals writes the externals section.
@@ -423,32 +425,8 @@ func renderExternals(sb *strings.Builder, s *state.State, n *node.Node) {
 }
 
 // collectExternalIDs extracts external IDs from node context fields.
-func collectExternalIDs(s *state.State, targetNode *node.Node) []string {
-	idSet := make(map[string]bool)
-
-	// Check target node's context
-	for _, entry := range targetNode.Context {
-		if strings.HasPrefix(entry, "ext:") {
-			id := strings.TrimPrefix(entry, "ext:")
-			idSet[id] = true
-		}
-	}
-
-	// Check target node's scope
-	for _, entry := range targetNode.Scope {
-		if strings.HasPrefix(entry, "ext:") {
-			id := strings.TrimPrefix(entry, "ext:")
-			idSet[id] = true
-		}
-	}
-
-	// Convert map to slice
-	ids := make([]string, 0, len(idSet))
-	for id := range idSet {
-		ids = append(ids, id)
-	}
-
-	return ids
+func collectExternalIDs(_ *state.State, targetNode *node.Node) []string {
+	return collectContextEntries("ext:", targetNode)
 }
 
 // renderChallenges writes the challenges section for a node.
