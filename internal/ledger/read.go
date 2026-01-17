@@ -9,6 +9,14 @@ import (
 	"sort"
 )
 
+// MaxEventSize is the maximum size in bytes for a single event file.
+// This limit prevents DoS attacks via maliciously large ledger files.
+// 1MB is generous for any reasonable event (typical events are <1KB).
+const MaxEventSize = 1024 * 1024 // 1MB
+
+// ErrEventTooLarge is returned when an event exceeds MaxEventSize.
+var ErrEventTooLarge = fmt.Errorf("event exceeds maximum size of %d bytes", MaxEventSize)
+
 // ScanFunc is a callback function called for each event during scanning.
 // Return an error to stop scanning. The error will be returned by Scan.
 // Return nil to continue scanning.
@@ -20,6 +28,7 @@ var ErrStopScan = fmt.Errorf("stop scan")
 
 // ReadEvent reads a single event file from the ledger directory.
 // Returns the raw JSON bytes of the event.
+// Returns ErrEventTooLarge if the event exceeds MaxEventSize.
 func ReadEvent(dir string, seq int) ([]byte, error) {
 	if err := validateDirectory(dir); err != nil {
 		return nil, err
@@ -30,6 +39,19 @@ func ReadEvent(dir string, seq int) ([]byte, error) {
 	}
 
 	path := EventFilePath(dir, seq)
+
+	// Check file size before reading to prevent DoS via oversized events
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("event %d not found", seq)
+		}
+		return nil, fmt.Errorf("failed to stat event file: %w", err)
+	}
+	if info.Size() > MaxEventSize {
+		return nil, fmt.Errorf("event %d: %w (size: %d bytes)", seq, ErrEventTooLarge, info.Size())
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

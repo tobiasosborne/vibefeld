@@ -876,3 +876,152 @@ func TestScan_DataMatchesReadEvent(t *testing.T) {
 		}
 	}
 }
+
+// TestReadEvent_OversizedEvent verifies that events exceeding MaxEventSize are rejected.
+func TestReadEvent_OversizedEvent(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create an oversized event file directly (bypassing Append)
+	// that exceeds MaxEventSize (1MB)
+	oversizedData := make([]byte, MaxEventSize+1)
+	for i := range oversizedData {
+		oversizedData[i] = 'x'
+	}
+
+	// Write as a valid-looking JSON structure to ensure it's the size check that fails
+	oversizedPath := filepath.Join(dir, "000001.json")
+	os.WriteFile(oversizedPath, oversizedData, 0644)
+
+	_, err := ReadEvent(dir, 1)
+	if err == nil {
+		t.Error("ReadEvent should return error for oversized event")
+	}
+	if !errors.Is(err, ErrEventTooLarge) {
+		t.Errorf("ReadEvent error = %v, want ErrEventTooLarge", err)
+	}
+}
+
+// TestReadAll_OversizedEvent verifies ReadAll fails when encountering oversized event.
+func TestReadAll_OversizedEvent(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a valid event first
+	event := NewProofInitialized("Valid event", "agent-001")
+	_, err := Append(dir, event)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	// Create an oversized event file at sequence 2
+	oversizedData := make([]byte, MaxEventSize+1)
+	for i := range oversizedData {
+		oversizedData[i] = 'y'
+	}
+	oversizedPath := filepath.Join(dir, "000002.json")
+	os.WriteFile(oversizedPath, oversizedData, 0644)
+
+	_, err = ReadAll(dir)
+	if err == nil {
+		t.Error("ReadAll should return error when encountering oversized event")
+	}
+	if !errors.Is(err, ErrEventTooLarge) {
+		t.Errorf("ReadAll error = %v, want ErrEventTooLarge", err)
+	}
+}
+
+// TestScan_OversizedEvent verifies Scan fails when encountering oversized event.
+func TestScan_OversizedEvent(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a valid event first
+	event := NewProofInitialized("Valid event", "agent-001")
+	_, err := Append(dir, event)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	// Create an oversized event file at sequence 2
+	oversizedData := make([]byte, MaxEventSize+1)
+	for i := range oversizedData {
+		oversizedData[i] = 'z'
+	}
+	oversizedPath := filepath.Join(dir, "000002.json")
+	os.WriteFile(oversizedPath, oversizedData, 0644)
+
+	callCount := 0
+	err = Scan(dir, func(seq int, data []byte) error {
+		callCount++
+		return nil
+	})
+
+	if err == nil {
+		t.Error("Scan should return error when encountering oversized event")
+	}
+	if !errors.Is(err, ErrEventTooLarge) {
+		t.Errorf("Scan error = %v, want ErrEventTooLarge", err)
+	}
+	// First event should have been processed before the oversized one failed
+	if callCount != 1 {
+		t.Errorf("Callback called %d times, want 1 (should stop at oversized event)", callCount)
+	}
+}
+
+// TestReadEvent_EventAtMaxSize verifies that events exactly at MaxEventSize are accepted.
+func TestReadEvent_EventAtMaxSize(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create an event file exactly at MaxEventSize
+	// Build a valid JSON structure that's exactly MaxEventSize
+	// We'll create a JSON object with a large string field
+	prefix := `{"type":"proof_initialized","timestamp":"2025-01-01T00:00:00Z","conjecture":"`
+	suffix := `","author":"agent"}`
+	paddingSize := MaxEventSize - len(prefix) - len(suffix)
+
+	if paddingSize <= 0 {
+		t.Skip("MaxEventSize too small for this test structure")
+	}
+
+	padding := make([]byte, paddingSize)
+	for i := range padding {
+		padding[i] = 'a'
+	}
+
+	eventData := []byte(prefix + string(padding) + suffix)
+	if len(eventData) != MaxEventSize {
+		t.Fatalf("Event size = %d, want %d", len(eventData), MaxEventSize)
+	}
+
+	eventPath := filepath.Join(dir, "000001.json")
+	os.WriteFile(eventPath, eventData, 0644)
+
+	data, err := ReadEvent(dir, 1)
+	if err != nil {
+		t.Fatalf("ReadEvent should succeed for event at exactly MaxEventSize: %v", err)
+	}
+
+	if len(data) != MaxEventSize {
+		t.Errorf("Data size = %d, want %d", len(data), MaxEventSize)
+	}
+}
+
+// TestReadEventTyped_OversizedEvent verifies typed reading rejects oversized events.
+func TestReadEventTyped_OversizedEvent(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create an oversized event file
+	oversizedData := make([]byte, MaxEventSize+1)
+	for i := range oversizedData {
+		oversizedData[i] = 'w'
+	}
+	oversizedPath := filepath.Join(dir, "000001.json")
+	os.WriteFile(oversizedPath, oversizedData, 0644)
+
+	var decoded ProofInitialized
+	err := ReadEventTyped(dir, 1, &decoded)
+	if err == nil {
+		t.Error("ReadEventTyped should return error for oversized event")
+	}
+	if !errors.Is(err, ErrEventTooLarge) {
+		t.Errorf("ReadEventTyped error = %v, want ErrEventTooLarge", err)
+	}
+}

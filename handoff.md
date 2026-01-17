@@ -1,61 +1,62 @@
-# Handoff - 2026-01-17 (Session 134)
+# Handoff - 2026-01-17 (Session 135)
 
 ## What Was Accomplished This Session
 
-### Session 134 Summary: Fix unsafe JSON unmarshaling security issue
+### Session 135 Summary: Add size limits to ledger package
 
-Fixed P3 security bug in `internal/lock/persistent.go` where JSON unmarshaling had no size limits:
+Added DoS prevention for oversized events in the main ledger package (completing work started in session 134 for the lock package):
 
-1. **vibefeld-tn5n** - "LOW: Unsafe JSON unmarshaling without size limits"
-   - Added `MaxEventSize` constant (1MB) to prevent DoS via oversized events
-   - Created `unmarshalJSONSafe()` helper function using `json.Decoder`
-   - Updated `replayLedger()` to check event size before parsing
-   - Updated `verifyLockHolder()` to use safe unmarshaling
-   - Added 2 new tests:
-     - `TestPersistentManager_OversizedLockEventCausesError` - verifies oversized lock events cause corruption error
-     - `TestPersistentManager_OversizedNonLockEventIgnored` - verifies oversized non-lock events are safely skipped
+1. **vibefeld-qgvq** - "Edge case test: Very large event (>1GB)"
+   - Added `MaxEventSize` constant (1MB) to `internal/ledger/read.go`
+   - Added `ErrEventTooLarge` sentinel error for size limit violations
+   - Updated `ReadEvent()` to check file size before reading
+   - Added 5 new tests:
+     - `TestReadEvent_OversizedEvent` - verifies oversized events are rejected
+     - `TestReadAll_OversizedEvent` - verifies ReadAll fails on oversized event
+     - `TestScan_OversizedEvent` - verifies Scan fails on oversized event
+     - `TestReadEvent_EventAtMaxSize` - verifies events exactly at 1MB are accepted
+     - `TestReadEventTyped_OversizedEvent` - verifies typed reading rejects oversized
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `internal/lock/persistent.go` | Added MaxEventSize, unmarshalJSONSafe(), updated replayLedger() and verifyLockHolder() |
-| `internal/lock/persistent_test.go` | Added 2 new tests for oversized event handling |
+| `internal/ledger/read.go` | Added MaxEventSize (1MB), ErrEventTooLarge, size check in ReadEvent() |
+| `internal/ledger/read_test.go` | Added 5 new tests for oversized event handling |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-tn5n** | Closed | Fixed by adding MaxEventSize limit (1MB) and safe JSON unmarshaling helper function. Added two new tests for oversized event handling. |
+| **vibefeld-qgvq** | Closed | Added MaxEventSize (1MB) limit to ledger package read operations. Added 5 new tests for oversized event handling. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 49 (was 50)
-- **Closed:** 500 (was 499)
+- **Open:** 48 (was 49)
+- **Closed:** 501 (was 500)
 
 ### Test Status
-All tests pass. Build succeeds.
+All tests pass for modified packages. Build succeeds.
 - Unit tests: PASS
 - Build: PASS
+- Ledger tests: PASS (all 5 new tests + existing tests)
 
 ### Verification
 ```bash
-# Run tests
-go test ./...
+# Run tests for modified packages
+go test ./internal/ledger/...
+
+# Run specific new tests
+go test -tags=integration ./internal/ledger/... -v -run "Oversized|MaxSize"
 
 # Build
 go build ./cmd/af
-
-# Run specific new tests
-go test ./internal/lock/... -v -run "TestPersistentManager_Oversized"
 ```
 
-### Known Issue
-Pre-existing duplicate test declarations in `internal/render/` (`json_unit_test.go` vs `json_test.go` with `integration` tag). Running with `-tags=integration` fails compilation due to duplicate test names. Tests pass without integration tag.
-
-### Note: withdraw-challenge command unregistered
-Pre-existing issue: `withdraw_challenge.go` exists but the command was never registered with `rootCmd.AddCommand()`.
+### Known Issues (Pre-existing)
+1. Lock package test timeout: `TestRelease_Valid` times out after 10 minutes (unrelated to this session's changes)
+2. Duplicate test declarations in `internal/render/`, `internal/taint/`, `internal/service/` - tests pass without integration tag
 
 ## Remaining P1 Issues
 
@@ -95,7 +96,8 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
-**Session 134:** Closed 1 issue (Security - unsafe JSON unmarshaling with size limits)
+**Session 135:** Closed 1 issue (Security - ledger package size limits for DoS prevention)
+**Session 134:** Closed 1 issue (Security - unsafe JSON unmarshaling with size limits in lock package)
 **Session 133:** Closed 1 issue (CLI UX - role-specific context annotations in prover command help)
 **Session 132:** Closed 1 issue (CLI UX - role-specific help filtering with --role prover/verifier)
 **Session 131:** Closed 1 issue (CLI UX - verified getting started guide already fixed, closed duplicate)
