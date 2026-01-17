@@ -283,22 +283,11 @@ func renderDefinitions(sb *strings.Builder, s *state.State, n *node.Node) {
 
 // collectDefinitionNames extracts definition names from node context fields.
 func collectDefinitionNames(s *state.State, targetNode *node.Node) []string {
-	nameSet := make(map[string]bool)
-
-	// Check target node's context
-	for _, entry := range targetNode.Context {
-		if strings.HasPrefix(entry, "def:") {
-			name := strings.TrimPrefix(entry, "def:")
-			nameSet[name] = true
-		}
-	}
-
-	// Check target node's scope
-	for _, entry := range targetNode.Scope {
-		if strings.HasPrefix(entry, "def:") {
-			name := strings.TrimPrefix(entry, "def:")
-			nameSet[name] = true
-		}
+	// Get definitions from target node's context and scope
+	names := collectContextEntries("def:", targetNode)
+	nameSet := make(map[string]bool, len(names))
+	for _, name := range names {
+		nameSet[name] = true
 	}
 
 	// Also check all definitions added to state by looking at all nodes' contexts
@@ -315,12 +304,12 @@ func collectDefinitionNames(s *state.State, targetNode *node.Node) []string {
 	}
 
 	// Convert map to slice
-	names := make([]string, 0, len(nameSet))
+	result := make([]string, 0, len(nameSet))
 	for name := range nameSet {
-		names = append(names, name)
+		result = append(result, name)
 	}
 
-	return names
+	return result
 }
 
 // renderAssumptions writes the assumptions section.
