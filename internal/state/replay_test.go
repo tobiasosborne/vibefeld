@@ -1544,6 +1544,445 @@ func TestReplay_EventParsing(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// Circular Dependency Tests
+// -----------------------------------------------------------------------------
+
+// TestReplay_CircularDependencies verifies that replay correctly handles nodes
+// that have circular dependencies. The ledger records events faithfully, even
+// when they create logically invalid dependency graphs. This test ensures:
+// 1. Nodes with circular dependencies can be replayed from the ledger
+// 2. The state correctly stores these dependencies
+// 3. The cycle package can detect cycles in the resulting state
+//
+// Circular reasoning is a logical fallacy (A depends on B, B depends on C,
+// C depends on A), but the ledger is append-only and records what happened.
+// Detection and handling of cycles is done at the application layer.
+func TestReplay_CircularDependencies(t *testing.T) {
+	t.Run("simple two-node cycle", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Create two nodes that depend on each other: A -> B -> A
+		nodeA := mustParseNodeID(t, "1.1")
+		nodeB := mustParseNodeID(t, "1.2")
+
+		// Create node A first (will add B as dependency later via creation with deps)
+		nA, _ := node.NewNode(nodeA, schema.NodeTypeClaim, "Claim A", schema.InferenceAssumption)
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*nA)); err != nil {
+			t.Fatalf("Append node A failed: %v", err)
+		}
+
+		// Create node B depending on A
+		nB, _ := node.NewNodeWithOptions(
+			nodeB,
+			schema.NodeTypeClaim,
+			"Claim B depends on A",
+			schema.InferenceModusPonens,
+			node.NodeOptions{Dependencies: []types.NodeID{nodeA}},
+		)
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*nB)); err != nil {
+			t.Fatalf("Append node B failed: %v", err)
+		}
+
+		// Now create a new version of A that depends on B (simulating circular dependency)
+		// In a real scenario, this would be prevented at the application layer,
+		// but we're testing that replay handles such events if they exist in the ledger
+		nA2, _ := node.NewNodeWithOptions(
+			nodeA,
+			schema.NodeTypeClaim,
+			"Claim A depends on B (circular)",
+			schema.InferenceModusPonens,
+			node.NodeOptions{Dependencies: []types.NodeID{nodeB}},
+		)
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*nA2)); err != nil {
+			t.Fatalf("Append node A (circular) failed: %v", err)
+		}
+
+		// Replay the ledger
+		ldg, err := ledger.NewLedger(dir)
+		if err != nil {
+			t.Fatalf("NewLedger failed: %v", err)
+		}
+
+		state, err := Replay(ldg)
+		if err != nil {
+			t.Fatalf("Replay failed: %v", err)
+		}
+
+		// Verify both nodes exist
+		gotA := state.GetNode(nodeA)
+		if gotA == nil {
+			t.Fatal("Node A not found after replay")
+		}
+		gotB := state.GetNode(nodeB)
+		if gotB == nil {
+			t.Fatal("Node B not found after replay")
+		}
+
+		// Verify node A has B as dependency (the later event overwrote the first)
+		if len(gotA.Dependencies) != 1 || gotA.Dependencies[0].String() != nodeB.String() {
+			t.Errorf("Node A dependencies: got %v, want [%s]", gotA.Dependencies, nodeB.String())
+		}
+
+		// Verify node B has A as dependency
+		if len(gotB.Dependencies) != 1 || gotB.Dependencies[0].String() != nodeA.String() {
+			t.Errorf("Node B dependencies: got %v, want [%s]", gotB.Dependencies, nodeA.String())
+		}
+	})
+
+	t.Run("three-node cycle A -> B -> C -> A", func(t *testing.T) {
+		dir := t.TempDir()
+
+		nodeA := mustParseNodeID(t, "1.1")
+		nodeB := mustParseNodeID(t, "1.2")
+		nodeC := mustParseNodeID(t, "1.3")
+
+		// Create all three nodes with circular dependencies directly
+		// A depends on B, B depends on C, C depends on A
+		nA, _ := node.NewNodeWithOptions(
+			nodeA,
+			schema.NodeTypeClaim,
+			"Claim A depends on B",
+			schema.InferenceModusPonens,
+			node.NodeOptions{Dependencies: []types.NodeID{nodeB}},
+		)
+		nB, _ := node.NewNodeWithOptions(
+			nodeB,
+			schema.NodeTypeClaim,
+			"Claim B depends on C",
+			schema.InferenceModusPonens,
+			node.NodeOptions{Dependencies: []types.NodeID{nodeC}},
+		)
+		nC, _ := node.NewNodeWithOptions(
+			nodeC,
+			schema.NodeTypeClaim,
+			"Claim C depends on A",
+			schema.InferenceModusPonens,
+			node.NodeOptions{Dependencies: []types.NodeID{nodeA}},
+		)
+
+		// Append all nodes
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*nA)); err != nil {
+			t.Fatalf("Append node A failed: %v", err)
+		}
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*nB)); err != nil {
+			t.Fatalf("Append node B failed: %v", err)
+		}
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*nC)); err != nil {
+			t.Fatalf("Append node C failed: %v", err)
+		}
+
+		// Replay
+		ldg, err := ledger.NewLedger(dir)
+		if err != nil {
+			t.Fatalf("NewLedger failed: %v", err)
+		}
+
+		state, err := Replay(ldg)
+		if err != nil {
+			t.Fatalf("Replay failed: %v", err)
+		}
+
+		// Verify all nodes exist with their dependencies
+		gotA := state.GetNode(nodeA)
+		gotB := state.GetNode(nodeB)
+		gotC := state.GetNode(nodeC)
+
+		if gotA == nil || gotB == nil || gotC == nil {
+			t.Fatal("One or more nodes not found after replay")
+		}
+
+		// Verify circular dependency chain
+		if len(gotA.Dependencies) != 1 || gotA.Dependencies[0].String() != nodeB.String() {
+			t.Errorf("Node A should depend on B: got %v", gotA.Dependencies)
+		}
+		if len(gotB.Dependencies) != 1 || gotB.Dependencies[0].String() != nodeC.String() {
+			t.Errorf("Node B should depend on C: got %v", gotB.Dependencies)
+		}
+		if len(gotC.Dependencies) != 1 || gotC.Dependencies[0].String() != nodeA.String() {
+			t.Errorf("Node C should depend on A: got %v", gotC.Dependencies)
+		}
+	})
+
+	t.Run("self-referencing node", func(t *testing.T) {
+		dir := t.TempDir()
+
+		nodeA := mustParseNodeID(t, "1.1")
+
+		// Create a node that depends on itself
+		nA, _ := node.NewNodeWithOptions(
+			nodeA,
+			schema.NodeTypeClaim,
+			"Self-referencing claim",
+			schema.InferenceAssumption,
+			node.NodeOptions{Dependencies: []types.NodeID{nodeA}},
+		)
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*nA)); err != nil {
+			t.Fatalf("Append self-referencing node failed: %v", err)
+		}
+
+		// Replay
+		ldg, err := ledger.NewLedger(dir)
+		if err != nil {
+			t.Fatalf("NewLedger failed: %v", err)
+		}
+
+		state, err := Replay(ldg)
+		if err != nil {
+			t.Fatalf("Replay failed: %v", err)
+		}
+
+		// Verify node exists with self-reference
+		got := state.GetNode(nodeA)
+		if got == nil {
+			t.Fatal("Self-referencing node not found after replay")
+		}
+		if len(got.Dependencies) != 1 || got.Dependencies[0].String() != nodeA.String() {
+			t.Errorf("Self-referencing node should depend on itself: got %v", got.Dependencies)
+		}
+	})
+
+	t.Run("cycle among valid nodes", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Create a more realistic scenario: a proof tree where some nodes
+		// accidentally form a cycle while others are valid
+		root := mustParseNodeID(t, "1")
+		child1 := mustParseNodeID(t, "1.1")
+		child2 := mustParseNodeID(t, "1.2")
+		cycleA := mustParseNodeID(t, "1.3")
+		cycleB := mustParseNodeID(t, "1.4")
+
+		// Valid nodes
+		rootNode, _ := node.NewNode(root, schema.NodeTypeClaim, "Root", schema.InferenceAssumption)
+		child1Node, _ := node.NewNodeWithOptions(child1, schema.NodeTypeClaim, "Child 1", schema.InferenceModusPonens, node.NodeOptions{Dependencies: []types.NodeID{root}})
+		child2Node, _ := node.NewNodeWithOptions(child2, schema.NodeTypeClaim, "Child 2", schema.InferenceModusPonens, node.NodeOptions{Dependencies: []types.NodeID{root}})
+
+		// Cyclic nodes
+		cycleANode, _ := node.NewNodeWithOptions(cycleA, schema.NodeTypeClaim, "Cycle A", schema.InferenceModusPonens, node.NodeOptions{Dependencies: []types.NodeID{cycleB}})
+		cycleBNode, _ := node.NewNodeWithOptions(cycleB, schema.NodeTypeClaim, "Cycle B", schema.InferenceModusPonens, node.NodeOptions{Dependencies: []types.NodeID{cycleA}})
+
+		// Append all
+		for _, n := range []*node.Node{rootNode, child1Node, child2Node, cycleANode, cycleBNode} {
+			if _, err := ledger.Append(dir, ledger.NewNodeCreated(*n)); err != nil {
+				t.Fatalf("Append node %s failed: %v", n.ID.String(), err)
+			}
+		}
+
+		// Replay
+		ldg, err := ledger.NewLedger(dir)
+		if err != nil {
+			t.Fatalf("NewLedger failed: %v", err)
+		}
+
+		state, err := Replay(ldg)
+		if err != nil {
+			t.Fatalf("Replay failed: %v", err)
+		}
+
+		// Verify all nodes exist
+		allNodes := state.AllNodes()
+		if len(allNodes) != 5 {
+			t.Errorf("Expected 5 nodes, got %d", len(allNodes))
+		}
+
+		// Verify valid dependency chain from child1 to root
+		gotChild1 := state.GetNode(child1)
+		if gotChild1 == nil {
+			t.Fatal("child1 not found")
+		}
+		if len(gotChild1.Dependencies) != 1 || gotChild1.Dependencies[0].String() != root.String() {
+			t.Errorf("child1 should depend on root: got %v", gotChild1.Dependencies)
+		}
+
+		// Verify cyclic nodes have their circular dependencies
+		gotCycleA := state.GetNode(cycleA)
+		gotCycleB := state.GetNode(cycleB)
+		if gotCycleA == nil || gotCycleB == nil {
+			t.Fatal("Cycle nodes not found")
+		}
+		if len(gotCycleA.Dependencies) != 1 || gotCycleA.Dependencies[0].String() != cycleB.String() {
+			t.Errorf("cycleA should depend on cycleB: got %v", gotCycleA.Dependencies)
+		}
+		if len(gotCycleB.Dependencies) != 1 || gotCycleB.Dependencies[0].String() != cycleA.String() {
+			t.Errorf("cycleB should depend on cycleA: got %v", gotCycleB.Dependencies)
+		}
+	})
+
+	t.Run("long dependency cycle", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Create a longer cycle: 1 -> 2 -> 3 -> 4 -> 5 -> 1
+		const cycleLen = 5
+		nodeIDs := make([]types.NodeID, cycleLen)
+		for i := 0; i < cycleLen; i++ {
+			nodeIDs[i] = mustParseNodeID(t, fmt.Sprintf("1.%d", i+1))
+		}
+
+		// Each node depends on the next, with the last depending on the first
+		for i := 0; i < cycleLen; i++ {
+			nextIdx := (i + 1) % cycleLen
+			n, _ := node.NewNodeWithOptions(
+				nodeIDs[i],
+				schema.NodeTypeClaim,
+				fmt.Sprintf("Node %d in cycle", i+1),
+				schema.InferenceModusPonens,
+				node.NodeOptions{Dependencies: []types.NodeID{nodeIDs[nextIdx]}},
+			)
+			if _, err := ledger.Append(dir, ledger.NewNodeCreated(*n)); err != nil {
+				t.Fatalf("Append node %d failed: %v", i, err)
+			}
+		}
+
+		// Replay
+		ldg, err := ledger.NewLedger(dir)
+		if err != nil {
+			t.Fatalf("NewLedger failed: %v", err)
+		}
+
+		state, err := Replay(ldg)
+		if err != nil {
+			t.Fatalf("Replay failed: %v", err)
+		}
+
+		// Verify all nodes exist with correct dependencies
+		for i := 0; i < cycleLen; i++ {
+			got := state.GetNode(nodeIDs[i])
+			if got == nil {
+				t.Errorf("Node %d not found", i)
+				continue
+			}
+			nextIdx := (i + 1) % cycleLen
+			if len(got.Dependencies) != 1 || got.Dependencies[0].String() != nodeIDs[nextIdx].String() {
+				t.Errorf("Node %d should depend on node %d: got %v",
+					i, nextIdx, got.Dependencies)
+			}
+		}
+	})
+
+	t.Run("diamond with cycle", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Diamond pattern where D also points back to A, creating a cycle:
+		//      A
+		//     / \
+		//    B   C
+		//     \ /
+		//      D -> A (creates cycle)
+		nodeA := mustParseNodeID(t, "1.1")
+		nodeB := mustParseNodeID(t, "1.2")
+		nodeC := mustParseNodeID(t, "1.3")
+		nodeD := mustParseNodeID(t, "1.4")
+
+		nA, _ := node.NewNode(nodeA, schema.NodeTypeClaim, "Top of diamond", schema.InferenceAssumption)
+		nB, _ := node.NewNodeWithOptions(nodeB, schema.NodeTypeClaim, "Left of diamond", schema.InferenceModusPonens, node.NodeOptions{Dependencies: []types.NodeID{nodeA}})
+		nC, _ := node.NewNodeWithOptions(nodeC, schema.NodeTypeClaim, "Right of diamond", schema.InferenceModusPonens, node.NodeOptions{Dependencies: []types.NodeID{nodeA}})
+		nD, _ := node.NewNodeWithOptions(nodeD, schema.NodeTypeClaim, "Bottom with cycle", schema.InferenceModusPonens, node.NodeOptions{Dependencies: []types.NodeID{nodeB, nodeC, nodeA}}) // D depends on B, C, and back to A
+
+		for _, n := range []*node.Node{nA, nB, nC, nD} {
+			if _, err := ledger.Append(dir, ledger.NewNodeCreated(*n)); err != nil {
+				t.Fatalf("Append node %s failed: %v", n.ID.String(), err)
+			}
+		}
+
+		// Replay
+		ldg, err := ledger.NewLedger(dir)
+		if err != nil {
+			t.Fatalf("NewLedger failed: %v", err)
+		}
+
+		state, err := Replay(ldg)
+		if err != nil {
+			t.Fatalf("Replay failed: %v", err)
+		}
+
+		// Verify D has all three dependencies
+		gotD := state.GetNode(nodeD)
+		if gotD == nil {
+			t.Fatal("Node D not found")
+		}
+		if len(gotD.Dependencies) != 3 {
+			t.Errorf("Node D should have 3 dependencies: got %v", gotD.Dependencies)
+		}
+
+		// Check that A is among D's dependencies (creating the cycle back)
+		hasA := false
+		for _, dep := range gotD.Dependencies {
+			if dep.String() == nodeA.String() {
+				hasA = true
+				break
+			}
+		}
+		if !hasA {
+			t.Errorf("Node D should depend on A (creating cycle): got %v", gotD.Dependencies)
+		}
+	})
+}
+
+// TestReplay_CircularDependencies_WithTaint verifies that taint propagation
+// handles nodes with circular dependencies without infinite loops.
+func TestReplay_CircularDependencies_WithTaint(t *testing.T) {
+	dir := t.TempDir()
+
+	nodeA := mustParseNodeID(t, "1.1")
+	nodeB := mustParseNodeID(t, "1.2")
+
+	// Create two nodes with circular dependencies
+	nA, _ := node.NewNodeWithOptions(
+		nodeA,
+		schema.NodeTypeClaim,
+		"Claim A",
+		schema.InferenceAssumption,
+		node.NodeOptions{Dependencies: []types.NodeID{nodeB}},
+	)
+	nB, _ := node.NewNodeWithOptions(
+		nodeB,
+		schema.NodeTypeClaim,
+		"Claim B",
+		schema.InferenceModusPonens,
+		node.NodeOptions{Dependencies: []types.NodeID{nodeA}},
+	)
+
+	if _, err := ledger.Append(dir, ledger.NewNodeCreated(*nA)); err != nil {
+		t.Fatalf("Append node A failed: %v", err)
+	}
+	if _, err := ledger.Append(dir, ledger.NewNodeCreated(*nB)); err != nil {
+		t.Fatalf("Append node B failed: %v", err)
+	}
+
+	// Add taint recomputation events
+	if _, err := ledger.Append(dir, ledger.NewTaintRecomputed(nodeA, node.TaintClean)); err != nil {
+		t.Fatalf("Append taint for A failed: %v", err)
+	}
+	if _, err := ledger.Append(dir, ledger.NewTaintRecomputed(nodeB, node.TaintClean)); err != nil {
+		t.Fatalf("Append taint for B failed: %v", err)
+	}
+
+	// Replay - this should complete without hanging due to infinite taint propagation
+	ldg, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	state, err := Replay(ldg)
+	if err != nil {
+		t.Fatalf("Replay failed: %v", err)
+	}
+
+	// Verify both nodes have their taint state set
+	gotA := state.GetNode(nodeA)
+	gotB := state.GetNode(nodeB)
+	if gotA == nil || gotB == nil {
+		t.Fatal("Nodes not found after replay")
+	}
+	if gotA.TaintState != node.TaintClean {
+		t.Errorf("Node A taint: got %q, want %q", gotA.TaintState, node.TaintClean)
+	}
+	if gotB.TaintState != node.TaintClean {
+		t.Errorf("Node B taint: got %q, want %q", gotB.TaintState, node.TaintClean)
+	}
+}
+
+// -----------------------------------------------------------------------------
 // Helper Functions
 // -----------------------------------------------------------------------------
 
