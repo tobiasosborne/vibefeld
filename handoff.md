@@ -1,35 +1,39 @@
-# Handoff - 2026-01-17 (Session 74)
+# Handoff - 2026-01-17 (Session 75)
 
 ## What Was Accomplished This Session
 
-### Session 74 Summary: Lock Nil Pointer Safety Test
+### Session 75 Summary: Lock Clock Skew Handling Test
 
-Closed issue `vibefeld-11wr` - "Edge case test: Lock nil pointer safety"
+Closed issue `vibefeld-v9yj` - "Edge case test: Lock clock skew handling"
 
-Added `TestIsStale_NilPointerSafety` test to document nil pointer behavior in the lock package. The test verifies:
-- The standalone `IsStale(nil)` function handles nil gracefully (returns true)
-- The method `(*ClaimLock).IsStale()` panics on nil receiver (expected Go behavior)
-- The method `(*ClaimLock).IsExpired()` panics on nil receiver (expected Go behavior)
+Added `TestIsExpired_ClockSkewHandling` test to document and verify lock expiration behavior under clock skew scenarios (when system time jumps forward or backward, e.g., NTP synchronization).
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-11wr** | internal/lock/stale_test.go | Test | Added TestIsStale_NilPointerSafety test |
+| **vibefeld-v9yj** | internal/lock/lock_test.go | Test | Added TestIsExpired_ClockSkewHandling test |
 
 #### Changes Made
 
-**internal/lock/stale_test.go:**
-- Added `TestIsStale_NilPointerSafety` test with 3 subtests:
-  - "standalone function handles nil" - verifies `IsStale(nil)` returns true
-  - "method on nil panics" - verifies `(*ClaimLock).IsStale()` panics on nil
-  - "IsExpired on nil panics" - verifies `(*ClaimLock).IsExpired()` panics on nil
+**internal/lock/lock_test.go:**
+- Added `TestIsExpired_ClockSkewHandling` test with 5 subtests:
+  - "clock jumps forward - lock appears expired early" - verifies past expiration detected
+  - "clock jumps backward - lock appears valid longer" - verifies future expiration not expired
+  - "expiration at boundary - near-current time" - verifies no panic at boundary
+  - "extreme clock skew - year-old expiration" - verifies ancient locks detected as expired
+  - "extreme clock skew - far future expiration" - verifies far-future locks not expired
+
+The test documents current behavior:
+- `IsExpired()` compares against `time.Now()`, reflecting current system time
+- If system time jumps backward, previously expired locks may appear valid again
+- If system time jumps forward, locks expire earlier than expected
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 112 (was 113)
-- **Closed:** 437 (was 436)
+- **Open:** 111 (was 112)
+- **Closed:** 438 (was 437)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -52,8 +56,8 @@ No P0 issues remain open.
 5. Directory deleted during append (`vibefeld-iupw`)
 6. Permission changes mid-operation (`vibefeld-hzrs`)
 7. Concurrent metadata corruption (`vibefeld-be56`)
-8. Lock clock skew handling (`vibefeld-v9yj`)
-9. Lock high concurrency (100+ goroutines) (`vibefeld-hn3h`)
+8. Lock high concurrency (100+ goroutines) (`vibefeld-hn3h`)
+9. State circular dependencies in nodes (`vibefeld-vzfb`)
 
 ## Quick Commands
 
@@ -70,6 +74,7 @@ go test ./internal/lock/... -v
 
 ## Session History
 
+**Session 75:** Closed 1 issue (lock clock skew handling test)
 **Session 74:** Closed 1 issue (lock nil pointer safety test)
 **Session 73:** Closed 1 issue (verifier context severity explanation)
 **Session 72:** Closed 1 issue (lock refresh expired lock edge case test)

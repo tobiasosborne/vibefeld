@@ -602,6 +602,142 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 }
 
+// TestIsExpired_ClockSkewHandling verifies lock expiration behavior under clock skew scenarios.
+// Clock skew occurs when system time jumps forward or backward (e.g., NTP synchronization).
+//
+// Current behavior (documented, not necessarily ideal):
+// - IsExpired() compares against time.Now(), so it reflects the current system time
+// - If system time jumps backward, previously expired locks may appear valid again
+// - If system time jumps forward, locks expire earlier than expected
+//
+// This test verifies the comparison logic works correctly by creating locks with
+// expiration times in the past/future using JSON unmarshaling to simulate the
+// effect of clock skew on pre-existing locks.
+func TestIsExpired_ClockSkewHandling(t *testing.T) {
+	// Scenario 1: Lock created in the past (simulates clock jumping forward)
+	// If clock jumps forward significantly, a lock that should have been valid
+	// will appear expired because time.Now() is now past expiresAt
+	t.Run("clock jumps forward - lock appears expired early", func(t *testing.T) {
+		// Create a lock via JSON with expiration 1 hour in the past
+		// This simulates: lock was created, then clock jumped forward
+		pastExpiry := time.Now().Add(-1 * time.Hour).Format(time.RFC3339Nano)
+		pastAcquired := time.Now().Add(-2 * time.Hour).Format(time.RFC3339Nano)
+		jsonData := []byte(`{
+			"node_id": "1",
+			"owner": "agent-001",
+			"acquired_at": "` + pastAcquired + `",
+			"expires_at": "` + pastExpiry + `"
+		}`)
+
+		var lk lock.ClaimLock
+		if err := json.Unmarshal(jsonData, &lk); err != nil {
+			t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+		}
+
+		// Lock should be expired since expiresAt is in the past
+		if !lk.IsExpired() {
+			t.Error("IsExpired() = false for lock with past expiration, want true")
+		}
+	})
+
+	// Scenario 2: Lock created in the future (simulates clock jumping backward)
+	// If clock jumps backward, a lock that was about to expire will appear valid
+	// for longer than expected
+	t.Run("clock jumps backward - lock appears valid longer", func(t *testing.T) {
+		// Create a lock via JSON with expiration 1 hour in the future
+		// This simulates: lock was created, then clock jumped backward
+		futureExpiry := time.Now().Add(1 * time.Hour).Format(time.RFC3339Nano)
+		recentAcquired := time.Now().Add(-1 * time.Minute).Format(time.RFC3339Nano)
+		jsonData := []byte(`{
+			"node_id": "1",
+			"owner": "agent-002",
+			"acquired_at": "` + recentAcquired + `",
+			"expires_at": "` + futureExpiry + `"
+		}`)
+
+		var lk lock.ClaimLock
+		if err := json.Unmarshal(jsonData, &lk); err != nil {
+			t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+		}
+
+		// Lock should NOT be expired since expiresAt is in the future
+		if lk.IsExpired() {
+			t.Error("IsExpired() = true for lock with future expiration, want false")
+		}
+	})
+
+	// Scenario 3: Boundary case - expiration exactly at current time
+	// Tests behavior when expiresAt equals time.Now() (race condition territory)
+	t.Run("expiration at boundary - near-current time", func(t *testing.T) {
+		// Create lock expiring very close to now (within milliseconds)
+		// Due to timing, this might be expired or not - we just verify no panic
+		nearNow := time.Now().Add(1 * time.Millisecond).Format(time.RFC3339Nano)
+		acquired := time.Now().Add(-5 * time.Minute).Format(time.RFC3339Nano)
+		jsonData := []byte(`{
+			"node_id": "1",
+			"owner": "agent-003",
+			"acquired_at": "` + acquired + `",
+			"expires_at": "` + nearNow + `"
+		}`)
+
+		var lk lock.ClaimLock
+		if err := json.Unmarshal(jsonData, &lk); err != nil {
+			t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+		}
+
+		// Just verify the call doesn't panic - result depends on timing
+		_ = lk.IsExpired()
+	})
+
+	// Scenario 4: Extreme clock skew - expiration far in the past
+	// Simulates a severe clock jump (e.g., year-level discrepancy)
+	t.Run("extreme clock skew - year-old expiration", func(t *testing.T) {
+		// Lock that "expired" a year ago
+		oldExpiry := time.Now().AddDate(-1, 0, 0).Format(time.RFC3339Nano)
+		oldAcquired := time.Now().AddDate(-1, 0, -1).Format(time.RFC3339Nano)
+		jsonData := []byte(`{
+			"node_id": "1.2.3",
+			"owner": "agent-004",
+			"acquired_at": "` + oldAcquired + `",
+			"expires_at": "` + oldExpiry + `"
+		}`)
+
+		var lk lock.ClaimLock
+		if err := json.Unmarshal(jsonData, &lk); err != nil {
+			t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+		}
+
+		// Lock should definitely be expired
+		if !lk.IsExpired() {
+			t.Error("IsExpired() = false for year-old lock, want true")
+		}
+	})
+
+	// Scenario 5: Extreme clock skew - expiration far in the future
+	// Simulates a lock that won't expire for years (e.g., clock went backward by years)
+	t.Run("extreme clock skew - far future expiration", func(t *testing.T) {
+		// Lock that "expires" in 10 years
+		farFutureExpiry := time.Now().AddDate(10, 0, 0).Format(time.RFC3339Nano)
+		recentAcquired := time.Now().Add(-1 * time.Minute).Format(time.RFC3339Nano)
+		jsonData := []byte(`{
+			"node_id": "1.2.3.4",
+			"owner": "agent-005",
+			"acquired_at": "` + recentAcquired + `",
+			"expires_at": "` + farFutureExpiry + `"
+		}`)
+
+		var lk lock.ClaimLock
+		if err := json.Unmarshal(jsonData, &lk); err != nil {
+			t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+		}
+
+		// Lock should NOT be expired
+		if lk.IsExpired() {
+			t.Error("IsExpired() = true for far-future lock, want false")
+		}
+	})
+}
+
 // TestMultipleLocks verifies multiple locks can coexist independently
 func TestMultipleLocks(t *testing.T) {
 	nodeID1, err := types.Parse("1.1")
