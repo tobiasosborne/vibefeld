@@ -6,6 +6,9 @@ package fuzzy
 // (insertions, deletions, or substitutions) required to transform one string
 // into the other.
 //
+// This implementation uses a space-optimized algorithm with O(min(N,M)) memory
+// instead of the naive O(N*M) matrix approach.
+//
 // Properties:
 //   - Distance(a, a) = 0 (identical strings have distance 0)
 //   - Distance(a, b) = Distance(b, a) (symmetric)
@@ -13,7 +16,7 @@ package fuzzy
 //   - Distance(a, b) <= max(len(a), len(b)) (upper bound)
 //   - Triangle inequality: Distance(a, c) <= Distance(a, b) + Distance(b, c)
 func Distance(a, b string) int {
-	// Handle edge cases
+	// Handle edge cases - early termination for exact matches
 	if a == b {
 		return 0
 	}
@@ -30,25 +33,28 @@ func Distance(a, b string) int {
 	lenA := len(runesA)
 	lenB := len(runesB)
 
-	// Create the DP matrix
-	// dp[i][j] represents the edit distance between a[0:i] and b[0:j]
-	dp := make([][]int, lenA+1)
-	for i := range dp {
-		dp[i] = make([]int, lenB+1)
+	// Ensure we iterate over the shorter string to minimize memory usage
+	// We only need O(min(lenA, lenB)) space
+	if lenA > lenB {
+		runesA, runesB = runesB, runesA
+		lenA, lenB = lenB, lenA
 	}
+
+	// Space-optimized DP: we only need two rows instead of full matrix
+	// prev represents dp[i-1][*], curr represents dp[i][*]
+	prev := make([]int, lenB+1)
+	curr := make([]int, lenB+1)
 
 	// Initialize first row: transforming empty string to b[0:j] requires j insertions
 	for j := 0; j <= lenB; j++ {
-		dp[0][j] = j
+		prev[j] = j
 	}
 
-	// Initialize first column: transforming a[0:i] to empty string requires i deletions
-	for i := 0; i <= lenA; i++ {
-		dp[i][0] = i
-	}
-
-	// Fill in the rest of the matrix
+	// Fill in the DP table row by row
 	for i := 1; i <= lenA; i++ {
+		// First column: transforming a[0:i] to empty string requires i deletions
+		curr[0] = i
+
 		for j := 1; j <= lenB; j++ {
 			// Cost of substitution: 0 if characters match, 1 otherwise
 			cost := 1
@@ -57,18 +63,22 @@ func Distance(a, b string) int {
 			}
 
 			// Take the minimum of three operations:
-			// 1. Delete from a: dp[i-1][j] + 1
-			// 2. Insert into a (delete from b): dp[i][j-1] + 1
-			// 3. Substitute (or match): dp[i-1][j-1] + cost
-			dp[i][j] = min3(
-				dp[i-1][j]+1,      // deletion
-				dp[i][j-1]+1,      // insertion
-				dp[i-1][j-1]+cost, // substitution
+			// 1. Delete from a: prev[j] + 1
+			// 2. Insert into a (delete from b): curr[j-1] + 1
+			// 3. Substitute (or match): prev[j-1] + cost
+			curr[j] = min3(
+				prev[j]+1,      // deletion
+				curr[j-1]+1,    // insertion
+				prev[j-1]+cost, // substitution
 			)
 		}
+
+		// Swap rows: current becomes previous for next iteration
+		prev, curr = curr, prev
 	}
 
-	return dp[lenA][lenB]
+	// Result is in prev because we swapped at the end
+	return prev[lenB]
 }
 
 // min3 returns the minimum of three integers.

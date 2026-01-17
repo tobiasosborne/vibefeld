@@ -1,53 +1,50 @@
-# Handoff - 2026-01-17 (Session 96)
+# Handoff - 2026-01-17 (Session 97)
 
 ## What Was Accomplished This Session
 
-### Session 96 Summary: Deep Node Hierarchy Edge Case Tests
+### Session 97 Summary: Levenshtein Distance Space Optimization
 
-Closed issue `vibefeld-76q0` - "Edge case test: State very deep node hierarchy (100+ levels)"
+Closed issue `vibefeld-ha5d` - "Performance: Levenshtein distance full matrix allocation"
 
-Added 4 comprehensive test functions to `internal/state/replay_test.go`:
+Optimized `internal/fuzzy/levenshtein.go` to use space-efficient 2-row DP algorithm:
 
-#### Deep Hierarchy Tests
-1. **TestReplay_DeepHierarchy** - Table-driven test with 100, 200, and 500 level depths
-   - Verifies replay handles very deep node hierarchies without stack overflow
-   - Validates dependency chain integrity at each level
-   - Confirms deepest node is accessible with correct statement
-   - Verifies latest sequence tracking
+#### Changes Made
+1. **Space Optimization**: Replaced O(N*M) full matrix with O(min(N,M)) two-row approach
+   - Uses `prev` and `curr` slices instead of full 2D matrix
+   - Swaps rows after each iteration
 
-2. **TestReplay_DeepHierarchy_WithStateTransitions** - 100-level deep hierarchy with state transitions
-   - Creates hierarchy then applies claims/releases/validations
-   - Claims every 10th node, releases all claimed nodes
-   - Validates every 20th node
-   - Verifies workflow and epistemic states correctly applied
+2. **Shorter-First Iteration**: Added swap to always iterate over shorter string
+   - Minimizes memory allocation (slices sized to shorter dimension)
+   - Maintains correctness via Levenshtein symmetry property
 
-3. **TestReplay_DeepHierarchy_WideBranching** - 50-level deep with branching factor 3
-   - Tests wide branching at each level (3 children per node)
-   - Verifies total node count (148 nodes)
-   - Confirms deepest path node is accessible
+3. **Early Termination**: Already had early return for exact matches (0 allocations)
 
-4. **TestReplay_DeepHierarchy_MemoryEfficiency** - 300-level depth with multiple replays
-   - Creates very deep hierarchy
-   - Replays 3 times to check for memory leaks
-   - Verifies consistent node count across replays
+#### Benchmark Results
+| Case | Ops/sec | Memory | Allocations |
+|------|---------|--------|-------------|
+| short_same (exact match) | 435M | 0 B | 0 |
+| short_diff (5 chars) | 9.4M | 96 B | 2 |
+| medium (6-7 chars) | 7.6M | 128 B | 2 |
+| long (20 chars) | 1.8M | 320 B | 2 |
+| very_long (25 chars) | 913K | 448 B | 2 |
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-76q0** | Closed | Added 4 deep hierarchy tests (100-500 levels) |
+| **vibefeld-ha5d** | Closed | Space-optimized Levenshtein (O(min(N,M)) memory) |
 
 ### Files Changed
-- `internal/state/replay_test.go` (+374 lines)
+- `internal/fuzzy/levenshtein.go` (modified Distance function)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 88 (was 89)
-- **Closed:** 461 (was 460)
+- **Open:** 87 (was 88)
+- **Closed:** 462 (was 461)
 
 ### Test Status
-All tests pass. Build succeeds.
+All 433 tests pass. Build succeeds.
 
 ## Remaining P0 Issues
 
@@ -69,6 +66,9 @@ No P0 issues remain open.
 7. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
 8. E2E test: Large proof stress test (`vibefeld-hfgi`)
 
+### P2 Performance
+9. Reflection in event parsing hot path (`vibefeld-s406`)
+
 ## Quick Commands
 
 ```bash
@@ -78,12 +78,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new deep hierarchy tests
-go test -v -tags=integration ./internal/state/... -run TestReplay_DeepHierarchy
+# Run fuzzy package benchmarks
+go test -bench=. -benchmem ./internal/fuzzy/...
 ```
 
 ## Session History
 
+**Session 97:** Closed 1 issue (Levenshtein space optimization - O(min(N,M)) memory)
 **Session 96:** Closed 1 issue (deep node hierarchy edge case tests - 100-500 levels)
 **Session 95:** Closed 1 issue (E2E error recovery tests - 13 test cases)
 **Session 94:** Closed 1 issue (E2E circular dependency detection tests)
