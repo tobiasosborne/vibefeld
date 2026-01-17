@@ -33,6 +33,230 @@ func validateNodeTypeAndInference(cmdName, nodeTypeStr, inferenceStr string, exa
 	return schema.NodeType(nodeTypeStr), schema.InferenceType(inferenceStr), nil
 }
 
+// parseDependencies parses a comma-separated list of node IDs and validates they exist.
+func parseDependencies(depends string, st *state.State) ([]types.NodeID, error) {
+	if strings.TrimSpace(depends) == "" {
+		return nil, nil
+	}
+	var dependencies []types.NodeID
+	depStrings := strings.Split(depends, ",")
+	for _, depStr := range depStrings {
+		depStr = strings.TrimSpace(depStr)
+		if depStr == "" {
+			continue
+		}
+		depID, err := types.Parse(depStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid dependency ID %q: %v", depStr, err)
+		}
+		if st.GetNode(depID) == nil {
+			return nil, fmt.Errorf("invalid dependency: node %s does not exist", depStr)
+		}
+		dependencies = append(dependencies, depID)
+	}
+	return dependencies, nil
+}
+
+// parseValidationDependencies parses a comma-separated list of validation dependency node IDs.
+func parseValidationDependencies(requiresValidated string, st *state.State) ([]types.NodeID, error) {
+	if strings.TrimSpace(requiresValidated) == "" {
+		return nil, nil
+	}
+	var validationDeps []types.NodeID
+	valDepStrings := strings.Split(requiresValidated, ",")
+	for _, valDepStr := range valDepStrings {
+		valDepStr = strings.TrimSpace(valDepStr)
+		if valDepStr == "" {
+			continue
+		}
+		valDepID, err := types.Parse(valDepStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid validation dependency ID %q: %v", valDepStr, err)
+		}
+		if st.GetNode(valDepID) == nil {
+			return nil, fmt.Errorf("invalid validation dependency: node %s does not exist", valDepStr)
+		}
+		validationDeps = append(validationDeps, valDepID)
+	}
+	return validationDeps, nil
+}
+
+// findNextChildIDResult holds the result of finding the next available child ID.
+type findNextChildIDResult struct {
+	ChildID   types.NodeID
+	ChildNum  int
+	WarnDepth bool // true if child depth exceeds WarnDepth
+}
+
+// findNextChildID finds the next available child ID for a parent and validates depth constraints.
+func findNextChildID(parentID types.NodeID, st *state.State, svc *service.ProofService) (findNextChildIDResult, error) {
+	childNum := 1
+	for {
+		candidateID, err := parentID.Child(childNum)
+		if err != nil {
+			return findNextChildIDResult{}, fmt.Errorf("failed to generate child ID: %v", err)
+		}
+		if st.GetNode(candidateID) == nil {
+			break
+		}
+		childNum++
+	}
+
+	childID, err := parentID.Child(childNum)
+	if err != nil {
+		return findNextChildIDResult{}, fmt.Errorf("failed to generate child ID: %v", err)
+	}
+
+	cfg := svc.Config()
+	childDepth := childID.Depth()
+	if childDepth > cfg.MaxDepth {
+		return findNextChildIDResult{}, fmt.Errorf("depth %d exceeds MaxDepth %d; add breadth instead", childDepth, cfg.MaxDepth)
+	}
+
+	return findNextChildIDResult{
+		ChildID:   childID,
+		ChildNum:  childNum,
+		WarnDepth: childDepth > cfg.WarnDepth,
+	}, nil
+}
+
+// handleRefineError converts service-layer errors into user-friendly error messages.
+func handleRefineError(err error, parentIDStr, owner string) error {
+	if strings.Contains(err.Error(), "not claimed") {
+		return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s -o %s -s ...' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
+	}
+	if strings.Contains(err.Error(), "owner does not match") {
+		return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
+	}
+	return err
+}
+
+// formatMultiChildOutput formats the output for multi-child refine operations.
+func formatMultiChildOutput(cmd *cobra.Command, format, parentIDStr string, specs []service.ChildSpec, childIDs []types.NodeID) error {
+	type createdChild struct {
+		ID        string `json:"id"`
+		Type      string `json:"type"`
+		Statement string `json:"statement"`
+		Inference string `json:"inference"`
+	}
+	createdChildren := make([]createdChild, len(childIDs))
+	for i, childID := range childIDs {
+		createdChildren[i] = createdChild{
+			ID:        childID.String(),
+			Type:      string(specs[i].NodeType),
+			Statement: specs[i].Statement,
+			Inference: string(specs[i].Inference),
+		}
+	}
+
+	if format == "json" {
+		result := map[string]interface{}{
+			"success":   true,
+			"parent_id": parentIDStr,
+			"children":  createdChildren,
+		}
+		jsonBytes, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %v", err)
+		}
+		cmd.Println(string(jsonBytes))
+		return nil
+	}
+
+	// Text format
+	cmd.Printf("Created %d child nodes under %s:\n", len(createdChildren), parentIDStr)
+	for _, child := range createdChildren {
+		cmd.Printf("  %s [%s]: %s\n", child.ID, child.Type, child.Statement)
+	}
+	cmd.Println("\nNext steps:")
+	if len(createdChildren) > 0 {
+		firstChildIDStr := createdChildren[0].ID
+		firstChildID, _ := types.Parse(firstChildIDStr)
+		if _, hasSiblingParent := firstChildID.Parent(); hasSiblingParent {
+			cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", firstChildIDStr)
+			cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", firstChildIDStr)
+		} else {
+			cmd.Printf("  af refine %s -s ...           - Add child\n", firstChildIDStr)
+		}
+	}
+	cmd.Printf("  af status                     - View proof status\n")
+	return nil
+}
+
+// refineOutputParams holds parameters for formatting refine command output.
+type refineOutputParams struct {
+	ParentIDStr    string
+	ChildID        types.NodeID
+	NodeTypeStr    string
+	Statement      string
+	Dependencies   []types.NodeID
+	ValidationDeps []types.NodeID
+}
+
+// formatRefineOutput formats the output for a single-child refine operation.
+func formatRefineOutput(cmd *cobra.Command, format string, params refineOutputParams) error {
+	if format == "json" {
+		result := map[string]interface{}{
+			"success":   true,
+			"parent_id": params.ParentIDStr,
+			"child_id":  params.ChildID.String(),
+			"type":      params.NodeTypeStr,
+			"statement": params.Statement,
+		}
+		if len(params.Dependencies) > 0 {
+			depStrs := make([]string, len(params.Dependencies))
+			for i, dep := range params.Dependencies {
+				depStrs[i] = dep.String()
+			}
+			result["depends_on"] = depStrs
+		}
+		if len(params.ValidationDeps) > 0 {
+			valDepStrs := make([]string, len(params.ValidationDeps))
+			for i, dep := range params.ValidationDeps {
+				valDepStrs[i] = dep.String()
+			}
+			result["requires_validated"] = valDepStrs
+		}
+		jsonBytes, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %v", err)
+		}
+		cmd.Println(string(jsonBytes))
+		return nil
+	}
+
+	// Text format
+	cmd.Printf("Node refined successfully.\n")
+	cmd.Printf("  Parent: %s\n", params.ParentIDStr)
+	cmd.Printf("  Child:  %s\n", params.ChildID.String())
+	cmd.Printf("  Type:   %s\n", params.NodeTypeStr)
+	cmd.Printf("  Statement: %s\n", params.Statement)
+	if len(params.Dependencies) > 0 {
+		depStrs := make([]string, len(params.Dependencies))
+		for i, dep := range params.Dependencies {
+			depStrs[i] = dep.String()
+		}
+		cmd.Printf("  Depends on: %s\n", strings.Join(depStrs, ", "))
+	}
+	if len(params.ValidationDeps) > 0 {
+		valDepStrs := make([]string, len(params.ValidationDeps))
+		for i, dep := range params.ValidationDeps {
+			valDepStrs[i] = dep.String()
+		}
+		cmd.Printf("  Requires validated: %s\n", strings.Join(valDepStrs, ", "))
+	}
+	cmd.Println("\nNext steps:")
+	if siblingParentID, hasSiblingParent := params.ChildID.Parent(); hasSiblingParent {
+		cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", params.ChildID.String())
+		cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", params.ChildID.String())
+		_ = siblingParentID // parent where siblings would be added
+	} else {
+		cmd.Printf("  af refine %s -s ...           - Add child\n", params.ChildID.String())
+	}
+	cmd.Printf("  af status                     - View proof status\n")
+	return nil
+}
+
 // newRefineCmd creates the refine command for adding child nodes to a proof.
 func newRefineCmd() *cobra.Command {
 	var owner string
@@ -209,160 +433,45 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 		return fmt.Errorf("invalid definition citation: %v", err)
 	}
 
-	// Parse and validate reference dependencies
-	var dependencies []types.NodeID
-	if strings.TrimSpace(depends) != "" {
-		depStrings := strings.Split(depends, ",")
-		for _, depStr := range depStrings {
-			depStr = strings.TrimSpace(depStr)
-			if depStr == "" {
-				continue
-			}
-			depID, err := types.Parse(depStr)
-			if err != nil {
-				return fmt.Errorf("invalid dependency ID %q: %v", depStr, err)
-			}
-			// Validate that the dependency node exists
-			if st.GetNode(depID) == nil {
-				return fmt.Errorf("invalid dependency: node %s does not exist", depStr)
-			}
-			dependencies = append(dependencies, depID)
-		}
-	}
-
-	// Parse and validate validation dependencies
-	var validationDeps []types.NodeID
-	if strings.TrimSpace(requiresValidated) != "" {
-		valDepStrings := strings.Split(requiresValidated, ",")
-		for _, valDepStr := range valDepStrings {
-			valDepStr = strings.TrimSpace(valDepStr)
-			if valDepStr == "" {
-				continue
-			}
-			valDepID, err := types.Parse(valDepStr)
-			if err != nil {
-				return fmt.Errorf("invalid validation dependency ID %q: %v", valDepStr, err)
-			}
-			// Validate that the validation dependency node exists
-			if st.GetNode(valDepID) == nil {
-				return fmt.Errorf("invalid validation dependency: node %s does not exist", valDepStr)
-			}
-			validationDeps = append(validationDeps, valDepID)
-		}
-	}
-
-	// Find next available child ID
-	childNum := 1
-	for {
-		candidateID, err := parentID.Child(childNum)
-		if err != nil {
-			return fmt.Errorf("failed to generate child ID: %v", err)
-		}
-		if st.GetNode(candidateID) == nil {
-			break
-		}
-		childNum++
-	}
-
-	childID, err := parentID.Child(childNum)
+	// Parse and validate dependencies
+	dependencies, err := parseDependencies(depends, st)
 	if err != nil {
-		return fmt.Errorf("failed to generate child ID: %v", err)
+		return err
 	}
 
-	// Check MaxDepth config before creating node (Issue 3: vibefeld-1r6h)
-	cfg := svc.Config()
-	childDepth := childID.Depth()
-	if childDepth > cfg.MaxDepth {
-		return fmt.Errorf("depth %d exceeds MaxDepth %d; add breadth instead", childDepth, cfg.MaxDepth)
+	validationDeps, err := parseValidationDependencies(requiresValidated, st)
+	if err != nil {
+		return err
 	}
 
-	// Warn about deep nodes (Issue 2: vibefeld-80uy)
-	// Warn when creating a node at depth > WarnDepth (configurable, default 3)
-	if childDepth > cfg.WarnDepth {
-		cmd.Printf("Warning: Creating node at depth %d. Consider adding siblings to parent instead.\n\n", childDepth)
+	// Find next available child ID and check depth constraints
+	childResult, err := findNextChildID(parentID, st, svc)
+	if err != nil {
+		return err
+	}
+
+	if childResult.WarnDepth {
+		cmd.Printf("Warning: Creating node at depth %d. Consider adding siblings to parent instead.\n\n", childResult.ChildID.Depth())
 	}
 
 	// Call the appropriate refine method based on dependencies
 	if len(dependencies) > 0 || len(validationDeps) > 0 {
-		err = svc.RefineNodeWithAllDeps(parentID, owner, childID, nodeType, statement, inferenceType, dependencies, validationDeps)
+		err = svc.RefineNodeWithAllDeps(parentID, owner, childResult.ChildID, nodeType, statement, inferenceType, dependencies, validationDeps)
 	} else {
-		err = svc.RefineNode(parentID, owner, childID, nodeType, statement, inferenceType)
+		err = svc.RefineNode(parentID, owner, childResult.ChildID, nodeType, statement, inferenceType)
 	}
 	if err != nil {
-		// Provide helpful error messages
-		if strings.Contains(err.Error(), "not claimed") {
-			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s -o %s -s ...' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
-		}
-		if strings.Contains(err.Error(), "owner does not match") {
-			return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
-		}
-		return err
+		return handleRefineError(err, parentIDStr, owner)
 	}
 
-	// Output result
-	if format == "json" {
-		result := map[string]interface{}{
-			"success":   true,
-			"parent_id": parentIDStr,
-			"child_id":  childID.String(),
-			"type":      nodeTypeStr,
-			"statement": statement,
-		}
-		if len(dependencies) > 0 {
-			depStrs := make([]string, len(dependencies))
-			for i, dep := range dependencies {
-				depStrs[i] = dep.String()
-			}
-			result["depends_on"] = depStrs
-		}
-		if len(validationDeps) > 0 {
-			valDepStrs := make([]string, len(validationDeps))
-			for i, dep := range validationDeps {
-				valDepStrs[i] = dep.String()
-			}
-			result["requires_validated"] = valDepStrs
-		}
-		jsonBytes, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
-		}
-		cmd.Println(string(jsonBytes))
-	} else {
-		cmd.Printf("Node refined successfully.\n")
-		cmd.Printf("  Parent: %s\n", parentIDStr)
-		cmd.Printf("  Child:  %s\n", childID.String())
-		cmd.Printf("  Type:   %s\n", nodeTypeStr)
-		cmd.Printf("  Statement: %s\n", statement)
-		if len(dependencies) > 0 {
-			depStrs := make([]string, len(dependencies))
-			for i, dep := range dependencies {
-				depStrs[i] = dep.String()
-			}
-			cmd.Printf("  Depends on: %s\n", strings.Join(depStrs, ", "))
-		}
-		if len(validationDeps) > 0 {
-			valDepStrs := make([]string, len(validationDeps))
-			for i, dep := range validationDeps {
-				valDepStrs[i] = dep.String()
-			}
-			cmd.Printf("  Requires validated: %s\n", strings.Join(valDepStrs, ", "))
-		}
-		cmd.Println("\nNext steps:")
-		// Issue 1 (vibefeld-yu7j): Show breadth-first option prominently
-		// Suggest adding sibling first, then child (depth-first)
-		if siblingParentID, hasSiblingParent := childID.Parent(); hasSiblingParent {
-			cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", childID.String())
-			cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", childID.String())
-			// Show the parent ID explicitly in help text
-			_ = siblingParentID // parent where siblings would be added
-		} else {
-			// Root node case - can only go deeper
-			cmd.Printf("  af refine %s -s ...           - Add child\n", childID.String())
-		}
-		cmd.Printf("  af status                     - View proof status\n")
-	}
-
-	return nil
+	return formatRefineOutput(cmd, format, refineOutputParams{
+		ParentIDStr:    parentIDStr,
+		ChildID:        childResult.ChildID,
+		NodeTypeStr:    nodeTypeStr,
+		Statement:      statement,
+		Dependencies:   dependencies,
+		ValidationDeps: validationDeps,
+	})
 }
 
 // runRefineMulti handles the --children flag for creating multiple child nodes at once.
@@ -426,66 +535,10 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 	// Use RefineNodeBulk for atomic multi-child creation
 	childIDs, err := svc.RefineNodeBulk(parentID, owner, specs)
 	if err != nil {
-		// Provide helpful error messages
-		if strings.Contains(err.Error(), "not claimed") {
-			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s -o %s --children ...' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
-		}
-		if strings.Contains(err.Error(), "owner does not match") {
-			return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
-		}
-		return err
+		return handleRefineError(err, parentIDStr, owner)
 	}
 
-	// Build output structure
-	type createdChild struct {
-		ID        string `json:"id"`
-		Type      string `json:"type"`
-		Statement string `json:"statement"`
-		Inference string `json:"inference"`
-	}
-	createdChildren := make([]createdChild, len(childIDs))
-	for i, childID := range childIDs {
-		createdChildren[i] = createdChild{
-			ID:        childID.String(),
-			Type:      string(specs[i].NodeType),
-			Statement: specs[i].Statement,
-			Inference: string(specs[i].Inference),
-		}
-	}
-
-	// Output result
-	if format == "json" {
-		result := map[string]interface{}{
-			"success":   true,
-			"parent_id": parentIDStr,
-			"children":  createdChildren,
-		}
-		jsonBytes, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
-		}
-		cmd.Println(string(jsonBytes))
-	} else {
-		cmd.Printf("Created %d child nodes under %s:\n", len(createdChildren), parentIDStr)
-		for _, child := range createdChildren {
-			cmd.Printf("  %s [%s]: %s\n", child.ID, child.Type, child.Statement)
-		}
-		cmd.Println("\nNext steps:")
-		if len(createdChildren) > 0 {
-			firstChildIDStr := createdChildren[0].ID
-			firstChildID, _ := types.Parse(firstChildIDStr)
-			// Issue 1 (vibefeld-yu7j): Show breadth-first option prominently
-			if _, hasSiblingParent := firstChildID.Parent(); hasSiblingParent {
-				cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", firstChildIDStr)
-				cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", firstChildIDStr)
-			} else {
-				cmd.Printf("  af refine %s -s ...           - Add child\n", firstChildIDStr)
-			}
-		}
-		cmd.Printf("  af status                     - View proof status\n")
-	}
-
-	return nil
+	return formatMultiChildOutput(cmd, format, parentIDStr, specs, childIDs)
 }
 
 // runRefinePositional handles positional arguments for creating multiple child nodes at once.
@@ -524,66 +577,10 @@ func runRefinePositional(cmd *cobra.Command, parentID types.NodeID, parentIDStr,
 	// Use RefineNodeBulk for atomic multi-child creation
 	childIDs, err := svc.RefineNodeBulk(parentID, owner, specs)
 	if err != nil {
-		// Provide helpful error messages
-		if strings.Contains(err.Error(), "not claimed") {
-			return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s \"statement1\" \"statement2\" -o %s' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
-		}
-		if strings.Contains(err.Error(), "owner does not match") {
-			return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
-		}
-		return err
+		return handleRefineError(err, parentIDStr, owner)
 	}
 
-	// Build output structure
-	type createdChild struct {
-		ID        string `json:"id"`
-		Type      string `json:"type"`
-		Statement string `json:"statement"`
-		Inference string `json:"inference"`
-	}
-	createdChildren := make([]createdChild, len(childIDs))
-	for i, childID := range childIDs {
-		createdChildren[i] = createdChild{
-			ID:        childID.String(),
-			Type:      string(specs[i].NodeType),
-			Statement: specs[i].Statement,
-			Inference: string(specs[i].Inference),
-		}
-	}
-
-	// Output result
-	if format == "json" {
-		result := map[string]interface{}{
-			"success":   true,
-			"parent_id": parentIDStr,
-			"children":  createdChildren,
-		}
-		jsonBytes, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
-		}
-		cmd.Println(string(jsonBytes))
-	} else {
-		cmd.Printf("Created %d child nodes under %s:\n", len(createdChildren), parentIDStr)
-		for _, child := range createdChildren {
-			cmd.Printf("  %s [%s]: %s\n", child.ID, child.Type, child.Statement)
-		}
-		cmd.Println("\nNext steps:")
-		if len(createdChildren) > 0 {
-			firstChildIDStr := createdChildren[0].ID
-			firstChildID, _ := types.Parse(firstChildIDStr)
-			// Issue 1 (vibefeld-yu7j): Show breadth-first option prominently
-			if _, hasSiblingParent := firstChildID.Parent(); hasSiblingParent {
-				cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", firstChildIDStr)
-				cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", firstChildIDStr)
-			} else {
-				cmd.Printf("  af refine %s -s ...           - Add child\n", firstChildIDStr)
-			}
-		}
-		cmd.Printf("  af status                     - View proof status\n")
-	}
-
-	return nil
+	return formatMultiChildOutput(cmd, format, parentIDStr, specs, childIDs)
 }
 
 func init() {
