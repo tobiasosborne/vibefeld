@@ -1,42 +1,44 @@
-# Handoff - 2026-01-17 (Session 100)
+# Handoff - 2026-01-17 (Session 101)
 
 ## What Was Accomplished This Session
 
-### Session 100 Summary: Duplicate Definition Name Collection Logic Refactoring
+### Session 101 Summary: Similar Collection Function Code Smell
 
-Closed issue `vibefeld-szjf` - "Code smell: Duplicate definition name collection logic"
+Closed issue `vibefeld-k40c` - "Code smell: Similar patterns in collectAssumptionIDs and collectExternalIDs"
 
-Removed redundant code in `internal/render/prover_context.go` - the `collectDefinitionNames` function had two nearly identical loops that both:
-1. Iterated over `s.AllNodes()`
-2. Checked context entries for `def:` prefix
-3. Looked up definitions with `s.GetDefinition(name)`
-4. Added to the same `nameSet`
+Created a generic `collectContextEntries(prefix string, targetNode *node.Node) []string` helper function that extracts IDs from node context and scope fields with a given prefix.
 
-The second loop (lines 323-337) was completely redundant because it did exactly the same work as lines 305-315.
+Both `collectAssumptionIDs` and `collectExternalIDs` now delegate to this helper:
+- `collectAssumptionIDs` calls `collectContextEntries("assume:", targetNode)`
+- `collectExternalIDs` calls `collectContextEntries("ext:", targetNode)`
 
 #### Changes Made
 
-- Removed 16 lines of redundant code from `collectDefinitionNames`
+- Created `collectContextEntries` generic helper function
+- Simplified `collectAssumptionIDs` to 1-line delegation
+- Simplified `collectExternalIDs` to 1-line delegation
+- Net reduction: 22 lines of code
 
 #### Impact
 
-- Cleaner, more maintainable code
-- Slightly faster execution (no redundant iteration)
+- DRY: Eliminated nearly identical code patterns
+- Easier maintenance: Changes to collection logic only need to happen in one place
+- Cleaner function signatures: Helper takes only the parameters it needs
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-szjf** | Closed | Removed redundant second loop in collectDefinitionNames |
+| **vibefeld-k40c** | Closed | Created collectContextEntries generic helper. Both functions now delegate to it. |
 
 ### Files Changed
-- `internal/render/prover_context.go` (-16 lines)
+- `internal/render/prover_context.go` (-22 lines net)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 84 (was 85)
-- **Closed:** 465 (was 464)
+- **Open:** 83 (was 84)
+- **Closed:** 466 (was 465)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -79,6 +81,7 @@ go test ./internal/render/...
 
 ## Session History
 
+**Session 101:** Closed 1 issue (similar collection function code smell - created collectContextEntries helper)
 **Session 100:** Closed 1 issue (duplicate definition name collection code - removed redundant loop)
 **Session 99:** Closed 1 issue (duplicate state counting code refactoring)
 **Session 98:** Closed 1 issue (concurrent NextSequence() stress tests - 3 test scenarios)
