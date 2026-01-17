@@ -70,10 +70,225 @@ Examples:
 	return cmd
 }
 
-func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent string) error {
+// acceptParams holds the parameters for the accept command.
+type acceptParams struct {
+	dir       string
+	format    string
+	acceptAll bool
+	withNote  string
+	confirm   bool
+	agent     string
+	args      []string
+}
+
+// validateAcceptInput validates the accept command input and returns any usage error.
+func validateAcceptInput(params acceptParams) error {
+	hasNodeIDs := len(params.args) > 0
+
+	if params.acceptAll && hasNodeIDs {
+		return render.NewUsageError("af accept",
+			"--all and node IDs are mutually exclusive; use one or the other",
+			[]string{"af accept --all", "af accept 1.1 1.2 1.3"})
+	}
+
+	if !params.acceptAll && !hasNodeIDs {
+		return render.NewUsageError("af accept",
+			"either specify node IDs or use --all to accept all pending nodes",
+			[]string{"af accept 1.1", "af accept 1.1 1.2 1.3", "af accept --all"})
+	}
+
+	if params.withNote != "" && (params.acceptAll || len(params.args) > 1) {
+		return render.NewUsageError("af accept",
+			"--with-note can only be used when accepting a single node",
+			[]string{"af accept 1 --with-note \"Minor issue but acceptable\""})
+	}
+
+	return nil
+}
+
+// getNodeIDsToAccept collects the node IDs to accept, either from args or pending nodes.
+// Returns nil if --all was used but there are no pending nodes (after outputting appropriate message).
+func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params acceptParams) ([]types.NodeID, error) {
 	examples := render.GetExamples("af accept")
 
-	// Get flags
+	if params.acceptAll {
+		pendingNodes, err := svc.GetPendingNodes()
+		if err != nil {
+			return nil, fmt.Errorf("error getting pending nodes: %w", err)
+		}
+
+		if len(pendingNodes) == 0 {
+			outputNoPendingNodes(cmd, params.format)
+			return nil, nil
+		}
+
+		nodeIDs := make([]types.NodeID, len(pendingNodes))
+		for i, n := range pendingNodes {
+			nodeIDs[i] = n.ID
+		}
+		return nodeIDs, nil
+	}
+
+	nodeIDs := make([]types.NodeID, 0, len(params.args))
+	for _, nodeIDStr := range params.args {
+		nodeID, err := types.Parse(nodeIDStr)
+		if err != nil {
+			return nil, render.InvalidNodeIDError("af accept", nodeIDStr, examples)
+		}
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+	return nodeIDs, nil
+}
+
+// outputNoPendingNodes outputs the "no pending nodes" message in the appropriate format.
+func outputNoPendingNodes(cmd *cobra.Command, format string) {
+	switch strings.ToLower(format) {
+	case "json":
+		result := map[string]interface{}{
+			"accepted": []string{},
+			"message":  "no pending nodes to accept",
+		}
+		output, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Fprintln(cmd.OutOrStdout(), string(output))
+	default:
+		fmt.Fprintln(cmd.OutOrStdout(), "No pending nodes to accept.")
+	}
+}
+
+// verifyAgentChallenges checks that the agent has raised challenges for all nodes.
+func verifyAgentChallenges(svc *service.ProofService, nodeIDs []types.NodeID, agent string, confirm bool) error {
+	if agent == "" || confirm {
+		return nil
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		return fmt.Errorf("error loading state: %w", err)
+	}
+
+	for _, nodeID := range nodeIDs {
+		if !st.VerifierRaisedChallengeForNode(nodeID, agent) {
+			return fmt.Errorf("you haven't raised any challenges for node %s; use --confirm to accept anyway", nodeID.String())
+		}
+	}
+	return nil
+}
+
+// performSingleAcceptance handles acceptance of a single node.
+func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID types.NodeID, withNote, format string) error {
+	var acceptErr error
+	if withNote != "" {
+		acceptErr = svc.AcceptNodeWithNote(nodeID, withNote)
+	} else {
+		acceptErr = svc.AcceptNode(nodeID)
+	}
+	if acceptErr != nil {
+		if errors.Is(acceptErr, service.ErrBlockingChallenges) {
+			return handleBlockingChallengesError(cmd, svc, nodeID, format, acceptErr)
+		}
+		return fmt.Errorf("error accepting node: %w", acceptErr)
+	}
+
+	st, stateErr := svc.LoadState()
+	var summary verificationSummary
+	if stateErr == nil {
+		summary = getVerificationSummary(st, nodeID, withNote)
+	}
+
+	return outputSingleAcceptance(cmd, nodeID, withNote, format, summary, stateErr == nil)
+}
+
+// outputSingleAcceptance outputs the result of a single node acceptance.
+func outputSingleAcceptance(cmd *cobra.Command, nodeID types.NodeID, withNote, format string, summary verificationSummary, hasSummary bool) error {
+	switch strings.ToLower(format) {
+	case "json":
+		result := map[string]interface{}{
+			"node_id":  nodeID.String(),
+			"status":   "validated",
+			"accepted": true,
+		}
+		if withNote != "" {
+			result["note"] = withNote
+		}
+
+		if hasSummary {
+			verificationSummaryJSON := map[string]interface{}{
+				"challenges_raised":   summary.ChallengesRaised,
+				"challenges_resolved": summary.ChallengesResolved,
+			}
+
+			if len(summary.Dependencies) > 0 {
+				deps := make([]map[string]string, len(summary.Dependencies))
+				for i, dep := range summary.Dependencies {
+					deps[i] = map[string]string{
+						"id":     dep.ID,
+						"status": dep.Status,
+					}
+				}
+				verificationSummaryJSON["dependencies"] = deps
+			}
+
+			result["verification_summary"] = verificationSummaryJSON
+		}
+
+		output, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("error marshaling JSON: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(output))
+	default:
+		fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated.\n", nodeID.String())
+		if hasSummary {
+			outputVerificationSummaryText(cmd, nodeID, summary)
+		}
+	}
+	return nil
+}
+
+// performBulkAcceptance handles acceptance of multiple nodes.
+func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []types.NodeID, format string) error {
+	if err := svc.AcceptNodeBulk(nodeIDs); err != nil {
+		if errors.Is(err, service.ErrBlockingChallenges) {
+			nodeID := extractNodeIDFromBlockingError(err)
+			if nodeID != nil {
+				return handleBlockingChallengesError(cmd, svc, *nodeID, format, err)
+			}
+		}
+		return fmt.Errorf("error accepting nodes: %w", err)
+	}
+
+	acceptedStrs := make([]string, len(nodeIDs))
+	for i, id := range nodeIDs {
+		acceptedStrs[i] = id.String()
+	}
+
+	return outputBulkAcceptance(cmd, acceptedStrs, format)
+}
+
+// outputBulkAcceptance outputs the result of a bulk node acceptance.
+func outputBulkAcceptance(cmd *cobra.Command, acceptedStrs []string, format string) error {
+	switch strings.ToLower(format) {
+	case "json":
+		result := map[string]interface{}{
+			"accepted": acceptedStrs,
+			"count":    len(acceptedStrs),
+			"status":   "validated",
+		}
+		output, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("error marshaling JSON: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(output))
+	default:
+		fmt.Fprintf(cmd.OutOrStdout(), "Accepted %d nodes:\n", len(acceptedStrs))
+		for _, idStr := range acceptedStrs {
+			fmt.Fprintf(cmd.OutOrStdout(), "  %s - validated\n", idStr)
+		}
+	}
+	return nil
+}
+
+func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent string) error {
 	dir, err := cmd.Flags().GetString("dir")
 	if err != nil {
 		return err
@@ -83,204 +298,41 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 		return err
 	}
 
-	// Validate input: either --all or node IDs, but not both (or neither)
-	hasNodeIDs := len(args) > 0
-
-	if acceptAll && hasNodeIDs {
-		return render.NewUsageError("af accept",
-			"--all and node IDs are mutually exclusive; use one or the other",
-			[]string{"af accept --all", "af accept 1.1 1.2 1.3"})
+	params := acceptParams{
+		dir:       dir,
+		format:    format,
+		acceptAll: acceptAll,
+		withNote:  withNote,
+		confirm:   confirm,
+		agent:     agent,
+		args:      args,
 	}
 
-	if !acceptAll && !hasNodeIDs {
-		return render.NewUsageError("af accept",
-			"either specify node IDs or use --all to accept all pending nodes",
-			[]string{"af accept 1.1", "af accept 1.1 1.2 1.3", "af accept --all"})
+	if err := validateAcceptInput(params); err != nil {
+		return err
 	}
 
-	// --with-note is only valid for single node acceptance
-	if withNote != "" && (acceptAll || len(args) > 1) {
-		return render.NewUsageError("af accept",
-			"--with-note can only be used when accepting a single node",
-			[]string{"af accept 1 --with-note \"Minor issue but acceptable\""})
-	}
-
-	// Create proof service
 	svc, err := service.NewProofService(dir)
 	if err != nil {
 		return fmt.Errorf("error accessing proof directory: %w", err)
 	}
 
-	var nodeIDs []types.NodeID
-
-	if acceptAll {
-		// Get all pending nodes
-		pendingNodes, err := svc.GetPendingNodes()
-		if err != nil {
-			return fmt.Errorf("error getting pending nodes: %w", err)
-		}
-
-		if len(pendingNodes) == 0 {
-			// No pending nodes to accept
-			switch strings.ToLower(format) {
-			case "json":
-				result := map[string]interface{}{
-					"accepted": []string{},
-					"message":  "no pending nodes to accept",
-				}
-				output, err := json.MarshalIndent(result, "", "  ")
-				if err != nil {
-					return fmt.Errorf("error marshaling JSON: %w", err)
-				}
-				fmt.Fprintln(cmd.OutOrStdout(), string(output))
-			default:
-				fmt.Fprintln(cmd.OutOrStdout(), "No pending nodes to accept.")
-			}
-			return nil
-		}
-
-		// Extract node IDs from pending nodes
-		for _, n := range pendingNodes {
-			nodeIDs = append(nodeIDs, n.ID)
-		}
-	} else {
-		// Parse all provided node IDs
-		for _, nodeIDStr := range args {
-			nodeID, err := types.Parse(nodeIDStr)
-			if err != nil {
-				return render.InvalidNodeIDError("af accept", nodeIDStr, examples)
-			}
-			nodeIDs = append(nodeIDs, nodeID)
-		}
+	nodeIDs, err := getNodeIDsToAccept(cmd, svc, params)
+	if err != nil {
+		return err
+	}
+	if nodeIDs == nil {
+		return nil // No pending nodes, already output message
 	}
 
-	// If agent is provided, check if they raised any challenges for each node
-	// Accepting without having raised challenges requires --confirm
-	if agent != "" && !confirm {
-		st, err := svc.LoadState()
-		if err != nil {
-			return fmt.Errorf("error loading state: %w", err)
-		}
-
-		for _, nodeID := range nodeIDs {
-			if !st.VerifierRaisedChallengeForNode(nodeID, agent) {
-				return fmt.Errorf("you haven't raised any challenges for node %s; use --confirm to accept anyway", nodeID.String())
-			}
-		}
+	if err := verifyAgentChallenges(svc, nodeIDs, agent, confirm); err != nil {
+		return err
 	}
 
-	// Single node: use AcceptNodeWithNote (or AcceptNode if no note)
 	if len(nodeIDs) == 1 {
-		var acceptErr error
-		if withNote != "" {
-			acceptErr = svc.AcceptNodeWithNote(nodeIDs[0], withNote)
-		} else {
-			acceptErr = svc.AcceptNode(nodeIDs[0])
-		}
-		if acceptErr != nil {
-			// Check if error is due to blocking challenges
-			if errors.Is(acceptErr, service.ErrBlockingChallenges) {
-				return handleBlockingChallengesError(cmd, svc, nodeIDs[0], format, acceptErr)
-			}
-			return fmt.Errorf("error accepting node: %w", acceptErr)
-		}
-
-		// Load state to get verification summary
-		st, stateErr := svc.LoadState()
-		var summary verificationSummary
-		if stateErr == nil {
-			summary = getVerificationSummary(st, nodeIDs[0], withNote)
-		}
-
-		// Output result based on format
-		switch strings.ToLower(format) {
-		case "json":
-			result := map[string]interface{}{
-				"node_id":  nodeIDs[0].String(),
-				"status":   "validated",
-				"accepted": true,
-			}
-			if withNote != "" {
-				result["note"] = withNote
-			}
-
-			// Add verification summary to JSON output
-			if stateErr == nil {
-				verificationSummaryJSON := map[string]interface{}{
-					"challenges_raised":    summary.ChallengesRaised,
-					"challenges_resolved":  summary.ChallengesResolved,
-				}
-
-				if len(summary.Dependencies) > 0 {
-					deps := make([]map[string]string, len(summary.Dependencies))
-					for i, dep := range summary.Dependencies {
-						deps[i] = map[string]string{
-							"id":     dep.ID,
-							"status": dep.Status,
-						}
-					}
-					verificationSummaryJSON["dependencies"] = deps
-				}
-
-				result["verification_summary"] = verificationSummaryJSON
-			}
-
-			output, err := json.MarshalIndent(result, "", "  ")
-			if err != nil {
-				return fmt.Errorf("error marshaling JSON: %w", err)
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), string(output))
-		default:
-			fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated.\n", nodeIDs[0].String())
-
-			// Output verification summary
-			if stateErr == nil {
-				outputVerificationSummaryText(cmd, nodeIDs[0], summary)
-			}
-		}
-		return nil
+		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format)
 	}
-
-	// Multiple nodes: use AcceptNodeBulk
-	if err := svc.AcceptNodeBulk(nodeIDs); err != nil {
-		// Check if error is due to blocking challenges
-		if errors.Is(err, service.ErrBlockingChallenges) {
-			// Try to find which node has blocking challenges
-			nodeID := extractNodeIDFromBlockingError(err)
-			if nodeID != nil {
-				return handleBlockingChallengesError(cmd, svc, *nodeID, format, err)
-			}
-		}
-		return fmt.Errorf("error accepting nodes: %w", err)
-	}
-
-	// Build list of accepted node ID strings
-	acceptedStrs := make([]string, len(nodeIDs))
-	for i, id := range nodeIDs {
-		acceptedStrs[i] = id.String()
-	}
-
-	// Output result based on format
-	switch strings.ToLower(format) {
-	case "json":
-		result := map[string]interface{}{
-			"accepted": acceptedStrs,
-			"count":    len(nodeIDs),
-			"status":   "validated",
-		}
-		output, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("error marshaling JSON: %w", err)
-		}
-		fmt.Fprintln(cmd.OutOrStdout(), string(output))
-	default:
-		fmt.Fprintf(cmd.OutOrStdout(), "Accepted %d nodes:\n", len(nodeIDs))
-		for _, idStr := range acceptedStrs {
-			fmt.Fprintf(cmd.OutOrStdout(), "  %s - validated\n", idStr)
-		}
-	}
-
-	return nil
+	return performBulkAcceptance(cmd, svc, nodeIDs, format)
 }
 
 // handleBlockingChallengesError displays blocking challenges that prevent acceptance.
