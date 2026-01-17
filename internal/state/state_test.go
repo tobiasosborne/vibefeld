@@ -1698,3 +1698,294 @@ func TestState_NonExistentDependencyResolution_SelfReference(t *testing.T) {
 		t.Errorf("Self-reference dependency mismatch: got %q", got.Dependencies[0].String())
 	}
 }
+
+// TestState_MutationSafety documents the current behavior where returned objects
+// are mutable and can affect internal state. This is intentional - the state
+// package returns pointers to the actual stored objects for performance and to
+// allow event replay to modify nodes in place.
+//
+// IMPORTANT: Callers should treat returned objects as read-only unless they are
+// part of the event replay mechanism. Mutations made to returned objects will
+// affect the internal state.
+//
+// This test documents this behavior to make it explicit and ensure any future
+// changes to this behavior are intentional.
+func TestState_MutationSafety(t *testing.T) {
+	t.Run("node mutation affects internal state", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add a node
+		nodeID := mustParseNodeID(t, "1")
+		n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Original statement", schema.InferenceAssumption)
+		if err != nil {
+			t.Fatalf("Failed to create node: %v", err)
+		}
+		s.AddNode(n)
+
+		// Get the node and mutate it
+		retrieved := s.GetNode(nodeID)
+		retrieved.Statement = "Modified statement"
+
+		// Verify the mutation affected the internal state
+		// This documents the current behavior - returned nodes are NOT copies
+		secondRetrieval := s.GetNode(nodeID)
+		if secondRetrieval.Statement != "Modified statement" {
+			t.Errorf("Expected mutation to affect internal state; got statement %q, want %q",
+				secondRetrieval.Statement, "Modified statement")
+		}
+	})
+
+	t.Run("node epistemic state mutation affects internal state", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add a node with default epistemic state (pending)
+		nodeID := mustParseNodeID(t, "1")
+		n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+		if err != nil {
+			t.Fatalf("Failed to create node: %v", err)
+		}
+		s.AddNode(n)
+
+		// Get the node and mutate the epistemic state
+		retrieved := s.GetNode(nodeID)
+		originalState := retrieved.EpistemicState
+		retrieved.EpistemicState = schema.EpistemicValidated
+
+		// Verify the mutation affected the internal state
+		secondRetrieval := s.GetNode(nodeID)
+		if secondRetrieval.EpistemicState != schema.EpistemicValidated {
+			t.Errorf("Expected epistemic state mutation to affect internal state; got %q, want %q",
+				secondRetrieval.EpistemicState, schema.EpistemicValidated)
+		}
+		if originalState == schema.EpistemicValidated {
+			t.Error("Test setup error: original state should not be validated")
+		}
+	})
+
+	t.Run("definition mutation affects internal state", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add a definition
+		def, err := node.NewDefinition("TestDef", "Original content")
+		if err != nil {
+			t.Fatalf("Failed to create definition: %v", err)
+		}
+		s.AddDefinition(def)
+
+		// Get the definition and mutate it
+		retrieved := s.GetDefinition(def.ID)
+		retrieved.Content = "Modified content"
+
+		// Verify the mutation affected the internal state
+		secondRetrieval := s.GetDefinition(def.ID)
+		if secondRetrieval.Content != "Modified content" {
+			t.Errorf("Expected mutation to affect internal state; got content %q, want %q",
+				secondRetrieval.Content, "Modified content")
+		}
+	})
+
+	t.Run("assumption mutation affects internal state", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add an assumption
+		asm, _ := node.NewAssumption("Original assumption statement")
+		s.AddAssumption(asm)
+
+		// Get the assumption and mutate it
+		retrieved := s.GetAssumption(asm.ID)
+		retrieved.Statement = "Modified assumption statement"
+
+		// Verify the mutation affected the internal state
+		secondRetrieval := s.GetAssumption(asm.ID)
+		if secondRetrieval.Statement != "Modified assumption statement" {
+			t.Errorf("Expected mutation to affect internal state; got statement %q, want %q",
+				secondRetrieval.Statement, "Modified assumption statement")
+		}
+	})
+
+	t.Run("external mutation affects internal state", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add an external
+		ext, _ := node.NewExternal("TestExt", "Original source")
+		s.AddExternal(&ext)
+
+		// Get the external and mutate it
+		retrieved := s.GetExternal(ext.ID)
+		retrieved.Source = "Modified source"
+
+		// Verify the mutation affected the internal state
+		secondRetrieval := s.GetExternal(ext.ID)
+		if secondRetrieval.Source != "Modified source" {
+			t.Errorf("Expected mutation to affect internal state; got source %q, want %q",
+				secondRetrieval.Source, "Modified source")
+		}
+	})
+
+	t.Run("lemma mutation affects internal state", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add a lemma
+		sourceNodeID := mustParseNodeID(t, "1")
+		lem, err := node.NewLemma("Original lemma statement", sourceNodeID)
+		if err != nil {
+			t.Fatalf("Failed to create lemma: %v", err)
+		}
+		s.AddLemma(lem)
+
+		// Get the lemma and mutate it
+		retrieved := s.GetLemma(lem.ID)
+		retrieved.Statement = "Modified lemma statement"
+
+		// Verify the mutation affected the internal state
+		secondRetrieval := s.GetLemma(lem.ID)
+		if secondRetrieval.Statement != "Modified lemma statement" {
+			t.Errorf("Expected mutation to affect internal state; got statement %q, want %q",
+				secondRetrieval.Statement, "Modified lemma statement")
+		}
+	})
+
+	t.Run("challenge mutation affects internal state", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add a challenge
+		nodeID := mustParseNodeID(t, "1")
+		s.AddChallenge(&Challenge{
+			ID:       "ch-1",
+			NodeID:   nodeID,
+			Target:   "statement",
+			Reason:   "Original reason",
+			Status:   "open",
+			Severity: "major",
+		})
+
+		// Get the challenge and mutate it
+		retrieved := s.GetChallenge("ch-1")
+		retrieved.Reason = "Modified reason"
+
+		// Verify the mutation affected the internal state
+		secondRetrieval := s.GetChallenge("ch-1")
+		if secondRetrieval.Reason != "Modified reason" {
+			t.Errorf("Expected mutation to affect internal state; got reason %q, want %q",
+				secondRetrieval.Reason, "Modified reason")
+		}
+	})
+
+	t.Run("AllNodes returns mutable references", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add nodes
+		node1ID := mustParseNodeID(t, "1")
+		n1, _ := node.NewNode(node1ID, schema.NodeTypeClaim, "Node 1", schema.InferenceAssumption)
+		s.AddNode(n1)
+
+		node2ID := mustParseNodeID(t, "1.1")
+		n2, _ := node.NewNode(node2ID, schema.NodeTypeClaim, "Node 2", schema.InferenceAssumption)
+		s.AddNode(n2)
+
+		// Get all nodes and mutate one
+		allNodes := s.AllNodes()
+		for _, n := range allNodes {
+			if n.ID.String() == "1" {
+				n.Statement = "Modified Node 1"
+			}
+		}
+
+		// Verify the mutation affected the internal state
+		retrieved := s.GetNode(node1ID)
+		if retrieved.Statement != "Modified Node 1" {
+			t.Errorf("Expected AllNodes mutation to affect internal state; got statement %q, want %q",
+				retrieved.Statement, "Modified Node 1")
+		}
+	})
+
+	t.Run("AllChallenges returns mutable references", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add challenges
+		nodeID := mustParseNodeID(t, "1")
+		s.AddChallenge(&Challenge{
+			ID:       "ch-1",
+			NodeID:   nodeID,
+			Reason:   "Challenge 1",
+			Status:   "open",
+			Severity: "major",
+		})
+		s.AddChallenge(&Challenge{
+			ID:       "ch-2",
+			NodeID:   nodeID,
+			Reason:   "Challenge 2",
+			Status:   "open",
+			Severity: "minor",
+		})
+
+		// Get all challenges and mutate one
+		allChallenges := s.AllChallenges()
+		for _, c := range allChallenges {
+			if c.ID == "ch-1" {
+				c.Reason = "Modified Challenge 1"
+			}
+		}
+
+		// Verify the mutation affected the internal state
+		retrieved := s.GetChallenge("ch-1")
+		if retrieved.Reason != "Modified Challenge 1" {
+			t.Errorf("Expected AllChallenges mutation to affect internal state; got reason %q, want %q",
+				retrieved.Reason, "Modified Challenge 1")
+		}
+	})
+
+	t.Run("AllLemmas returns mutable references", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add lemmas
+		sourceNodeID := mustParseNodeID(t, "1")
+		lem1, _ := node.NewLemma("Lemma 1", sourceNodeID)
+		s.AddLemma(lem1)
+
+		lem2, _ := node.NewLemma("Lemma 2", sourceNodeID)
+		s.AddLemma(lem2)
+
+		// Get all lemmas and mutate one
+		allLemmas := s.AllLemmas()
+		for _, l := range allLemmas {
+			if l.Statement == "Lemma 1" {
+				l.Statement = "Modified Lemma 1"
+			}
+		}
+
+		// Verify the mutation affected the internal state
+		retrieved := s.GetLemma(lem1.ID)
+		if retrieved.Statement != "Modified Lemma 1" {
+			t.Errorf("Expected AllLemmas mutation to affect internal state; got statement %q, want %q",
+				retrieved.Statement, "Modified Lemma 1")
+		}
+	})
+
+	t.Run("GetChallengesForNode returns mutable references", func(t *testing.T) {
+		s := NewState()
+
+		// Create and add a challenge
+		nodeID := mustParseNodeID(t, "1")
+		s.AddChallenge(&Challenge{
+			ID:       "ch-1",
+			NodeID:   nodeID,
+			Reason:   "Original reason",
+			Status:   "open",
+			Severity: "major",
+		})
+
+		// Get challenges for node and mutate
+		challenges := s.GetChallengesForNode(nodeID)
+		if len(challenges) > 0 {
+			challenges[0].Reason = "Modified via GetChallengesForNode"
+		}
+
+		// Verify the mutation affected the internal state
+		retrieved := s.GetChallenge("ch-1")
+		if retrieved.Reason != "Modified via GetChallengesForNode" {
+			t.Errorf("Expected GetChallengesForNode mutation to affect internal state; got reason %q",
+				retrieved.Reason)
+		}
+	})
+}

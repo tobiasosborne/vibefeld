@@ -1,35 +1,43 @@
-# Handoff - 2026-01-17 (Session 78)
+# Handoff - 2026-01-17 (Session 79)
 
 ## What Was Accomplished This Session
 
-### Session 78 Summary: State Non-Existent Dependency Resolution Tests
+### Session 79 Summary: State Mutation Safety Tests
 
-Closed issue `vibefeld-6oay` - "Edge case test: State node with non-existent dependency"
+Closed issue `vibefeld-bvvz` - "Edge case test: State mutation after GetNode()"
 
-Added 5 comprehensive tests to verify how the state package handles nodes with dependencies that reference non-existent nodes (forward references).
+Added comprehensive tests documenting that returned objects from state getters are mutable references to internal state. The test covers all entity types and collection methods.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-6oay** | internal/state/state_test.go | Test | Added 5 non-existent dependency resolution tests |
+| **vibefeld-bvvz** | internal/state/state_test.go | Test | Added TestState_MutationSafety with 11 subtests |
 
 #### Changes Made
 
 **internal/state/state_test.go:**
-- Added `TestState_NonExistentDependencyResolution` - Basic test verifying state stores nodes even with non-existent dependencies, and that ValidateDepExistence correctly detects the issue
-- Added `TestState_NonExistentDependencyResolution_MultipleNonExistent` - Tests mixed dependencies (some existing, some not) and verifies validation fails appropriately
-- Added `TestState_NonExistentDependencyResolution_CircularToNonExistent` - Tests dependency chains where one node has a dangling reference to a non-existent node
-- Added `TestState_NonExistentDependencyResolution_LaterResolution` - Tests forward reference resolution: initially failing validation passes after dependency is added
-- Added `TestState_NonExistentDependencyResolution_SelfReference` - Tests edge case of self-referential dependencies
+- Added `TestState_MutationSafety` - Documents that returned objects are mutable and affect internal state
+- Subtests cover:
+  - `node mutation affects internal state` - Basic node.Statement mutation
+  - `node epistemic state mutation affects internal state` - Epistemic state changes
+  - `definition mutation affects internal state` - Definition.Content mutation
+  - `assumption mutation affects internal state` - Assumption.Statement mutation
+  - `external mutation affects internal state` - External.Source mutation
+  - `lemma mutation affects internal state` - Lemma.Statement mutation
+  - `challenge mutation affects internal state` - Challenge.Reason mutation
+  - `AllNodes returns mutable references` - Collection method returns mutable refs
+  - `AllChallenges returns mutable references` - Collection method returns mutable refs
+  - `AllLemmas returns mutable references` - Collection method returns mutable refs
+  - `GetChallengesForNode returns mutable references` - Cached lookup returns mutable refs
 
 All tests pass.
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 108 (was 109)
-- **Closed:** 441 (was 440)
+- **Open:** 107 (was 108)
+- **Closed:** 442 (was 441)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -64,12 +72,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run new non-existent dependency tests
-go test -v ./internal/state/... -run "TestState_NonExistentDependencyResolution"
+# Run new mutation safety tests
+go test -v ./internal/state/... -run "TestState_MutationSafety"
 ```
 
 ## Session History
 
+**Session 79:** Closed 1 issue (state mutation safety tests)
 **Session 78:** Closed 1 issue (state non-existent dependency resolution tests)
 **Session 77:** Closed 1 issue (lock high concurrency tests - 150+ goroutines)
 **Session 76:** Closed 1 issue (directory deletion edge case tests)
