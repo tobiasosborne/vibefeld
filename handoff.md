@@ -1,43 +1,56 @@
-# Handoff - 2026-01-17 (Session 94)
+# Handoff - 2026-01-17 (Session 95)
 
 ## What Was Accomplished This Session
 
-### Session 94 Summary: E2E Circular Dependency Detection Tests
+### Session 95 Summary: E2E Error Recovery Tests
 
-Closed issue `vibefeld-k99h` - "E2E test: Circular dependency detection"
+Closed issue `vibefeld-8a2g` - "E2E test: Error recovery scenarios"
 
-Added `e2e/cycle_detection_test.go` with 9 comprehensive test cases verifying the cycle detection system works correctly at the E2E level:
+Added `e2e/error_recovery_test.go` with 13 comprehensive test cases verifying error recovery scenarios:
 
-1. **TestCycleDetection_SelfReference** - Node depending on itself is detected
-2. **TestCycleDetection_SimpleTwoNodeCycle** - A -> B -> A cycle detected
-3. **TestCycleDetection_TransitiveThreeNodeCycle** - A -> B -> C -> A detected
-4. **TestCycleDetection_CheckAllCycles** - CheckAllCycles finds no false positives
-5. **TestCycleDetection_DiamondPatternNoCycle** - Diamond pattern not falsely flagged
-6. **TestCycleDetection_LinearChainNoCycle** - Linear chains not falsely flagged
-7. **TestCycleDetection_NodeDependsOnDescendant** - Parent -> descendant case tested
-8. **TestCycleDetection_CheckCyclesFromSpecificNode** - CheckCycles from specific nodes
-9. **TestCycleDetection_WouldCreateCycleValidation** - Validation workflow test
+#### Agent Crash Mid-Operation Tests
+1. **TestErrorRecovery_AgentCrashDuringClaim** - Agent crashes after claiming, system handles abandoned claims
+2. **TestErrorRecovery_AgentCrashDuringRefine** - Agent crashes mid-refine, state remains consistent
+
+#### Lock Acquired But Agent Dies Tests
+3. **TestErrorRecovery_LockAcquiredAgentDies** - Dead agent's lock can be reaped, new agent can acquire
+4. **TestErrorRecovery_MultipleDeadAgents** - Multiple dead agent locks can be reaped simultaneously
+
+#### Out-of-Order Operations Tests
+5. **TestErrorRecovery_OutOfOrderChallenge** - Challenge handling via ledger verified
+6. **TestErrorRecovery_OutOfOrderAccept** - Acceptance blocked by unresolved blocking challenges
+7. **TestErrorRecovery_OutOfOrderRelease** - Release rejected for wrong owner
+
+#### Invalid State Transitions Tests
+8. **TestErrorRecovery_InvalidTransition_ClaimWhileClaimed** - Second claim rejected on claimed node
+9. **TestErrorRecovery_InvalidTransition_RefineAfterAccept** - Refinement of validated nodes behavior tested
+10. **TestErrorRecovery_InvalidTransition_AcceptNonLeaf** - Parent/child acceptance order handling
+
+#### Recovery Tests
+11. **TestErrorRecovery_CASConflictRecovery** - CAS conflicts detected as ErrSequenceMismatch
+12. **TestErrorRecovery_ConcurrentCrashAndRecovery** - Concurrent recovery correctly resolved to single winner
+13. **TestErrorRecovery_LedgerReplayAfterPartialWrite** - Ledger replay successfully recovers state
 
 #### Key Implementation Details
-- Tests the `WouldCreateCycle`, `CheckCycles`, and `CheckAllCycles` service methods
-- Helper function `claimAndRefineWithDeps` streamlines creating nodes with dependencies
-- All tests use proper setup/cleanup with temp directories
-- Tests cover both positive (cycle detected) and negative (no false positives) cases
+- Tests use proper cleanup with temp directories
+- Tests cover both error detection and recovery paths
+- CAS conflict detection verified with ErrSequenceMismatch
+- Concurrent operations tested with sync.WaitGroup
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-k99h** | Closed | Added 9 E2E tests for circular dependency detection |
+| **vibefeld-8a2g** | Closed | Added 13 E2E error recovery tests |
 
 ### Files Changed
-- `e2e/cycle_detection_test.go` (+444 lines, new file)
+- `e2e/error_recovery_test.go` (+858 lines, new file)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 90 (was 91)
-- **Closed:** 459 (was 458)
+- **Open:** 89 (was 90)
+- **Closed:** 460 (was 459)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -61,7 +74,7 @@ No P0 issues remain open.
 6. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
 7. State millions of events (`vibefeld-th1m`)
 8. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
-9. E2E test: Error recovery scenarios (`vibefeld-8a2g`)
+9. E2E test: Large proof stress test (`vibefeld-hfgi`)
 
 ## Quick Commands
 
@@ -72,12 +85,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new cycle detection E2E tests
-go test -v -tags=integration ./e2e/cycle_detection_test.go
+# Run the new error recovery E2E tests
+go test -v -tags=integration ./e2e/... -run TestErrorRecovery
 ```
 
 ## Session History
 
+**Session 95:** Closed 1 issue (E2E error recovery tests - 13 test cases)
 **Session 94:** Closed 1 issue (E2E circular dependency detection tests)
 **Session 93:** Closed 1 issue (FS file descriptor exhaustion edge case tests)
 **Session 92:** Closed 1 issue (FS symlink following security edge case tests)
