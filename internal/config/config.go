@@ -13,6 +13,10 @@ import (
 // This prevents excessively deep proof trees that could cause performance issues.
 const MaxDepthLimit = 100
 
+// DefaultClaimTimeout is the default duration for claim timeouts in CLI commands.
+// Used by claim and extend-claim commands when no explicit timeout is specified.
+const DefaultClaimTimeout = "1h"
+
 // Config holds the configuration for an AF proof.
 // It is stored in meta.json in the proof directory.
 type Config struct {

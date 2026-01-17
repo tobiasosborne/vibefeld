@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/cli"
+	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
@@ -36,7 +37,7 @@ Examples:
 
 	// Add flags
 	cmd.Flags().StringP("owner", "o", "", "Owner identity for the claim (required)")
-	cmd.Flags().String("duration", "1h", "New claim duration from now (e.g., 30m, 1h, 2h30m)")
+	cmd.Flags().String("duration", config.DefaultClaimTimeout, "New claim duration from now (e.g., 30m, 1h, 2h30m)")
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory")
 	cmd.Flags().StringP("format", "f", "text", "Output format: text or json")
 

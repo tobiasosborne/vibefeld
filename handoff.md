@@ -1,50 +1,37 @@
-# Handoff - 2026-01-17 (Session 151)
+# Handoff - 2026-01-17 (Session 152)
 
 ## What Was Accomplished This Session
 
-### Session 151 Summary: Closed 1 issue (Code smell fix)
+### Session 152 Summary: Closed 1 issue (Code smell fix)
 
-1. **vibefeld-mnh1** - "Code smell: Challenge status strings not constants"
-   - Added challenge status constants to `internal/state/state.go`:
-     - `ChallengeStatusOpen`, `ChallengeStatusResolved`, `ChallengeStatusWithdrawn`, `ChallengeStatusSuperseded`
-   - Added view model constants to `internal/render/viewmodels.go`:
-     - `ChallengeStatusOpen`, `ChallengeStatusResolved`, `ChallengeStatusWithdrawn`
-   - Updated all hardcoded string comparisons across 11 files
+1. **vibefeld-u7xd** - "Code smell: Default timeout hard-coded in flag definitions"
+   - Added `DefaultClaimTimeout` constant to `internal/config/config.go`
+   - Updated `cmd/af/claim.go` to use `config.DefaultClaimTimeout` instead of hard-coded `"1h"`
+   - Updated `cmd/af/extend_claim.go` to use `config.DefaultClaimTimeout` instead of hard-coded `"1h"`
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `internal/state/state.go` | Added 4 challenge status constants, updated 2 usages |
-| `internal/state/apply.go` | Updated 6 usages to use constants |
-| `internal/render/viewmodels.go` | Added 3 challenge status constants |
-| `internal/render/render_views.go` | Updated 6 usages to use constants |
-| `internal/render/prover_context.go` | Updated 7 usages to use state constants |
-| `internal/render/json.go` | Updated 3 usages to use state constants |
-| `internal/metrics/metrics.go` | Updated 4 usages to use state constants |
-| `internal/patterns/patterns.go` | Updated 1 usage to use state constants |
-| `cmd/af/patterns.go` | Added state import, updated 1 usage |
-| `cmd/af/accept.go` | Updated 1 usage |
-| `cmd/af/jobs.go` | Updated 1 usage |
-| `cmd/af/challenges.go` | Updated 1 usage |
-| `cmd/af/replay.go` | Updated 2 usages |
-| `cmd/af/wizard.go` | Added state import, updated 1 usage |
+| `internal/config/config.go` | Added `DefaultClaimTimeout = "1h"` constant |
+| `cmd/af/claim.go` | Added config import, updated timeout flag default |
+| `cmd/af/extend_claim.go` | Added config import, updated duration flag default |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-mnh1** | Closed | Added challenge status constants in state and render packages, updated all hardcoded string comparisons |
+| **vibefeld-u7xd** | Closed | Added DefaultClaimTimeout constant in config package, updated claim and extend_claim commands |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 28 (was 29)
-- **Closed:** 521 (was 520)
+- **Open:** 27 (was 28)
+- **Closed:** 522 (was 521)
 
 ### Test Status
 - Build: PASS
-- Unit tests: PASS for all modified packages (state, render, metrics, patterns, cmd/af)
+- Unit tests: PASS for all modified packages (config, cmd/af)
 - Pre-existing failures in lock package (unrelated to this session)
 
 ### Known Issues (Pre-existing)
@@ -56,7 +43,7 @@
 go build ./cmd/af
 
 # Run tests for modified packages
-go test ./internal/state/... ./internal/render/... ./internal/patterns/... ./internal/metrics/... ./cmd/af/...
+go test ./internal/config/... ./cmd/af/...
 
 # Run all tests
 go test ./...
@@ -102,6 +89,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 152:** Closed 1 issue (Code smell - default timeout hard-coded, added DefaultClaimTimeout constant in config package)
 **Session 151:** Closed 1 issue (Code smell - challenge status strings not constants, added constants in state and render packages)
 **Session 150:** Closed 1 issue (Code smell - magic numbers for truncation in prover_context.go, added constants)
 **Session 149:** Closed 1 issue (Code smell - deep nesting in prover_context.go, extracted addDefinitionNamesFromNode helper)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/cli"
+	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
@@ -43,7 +44,7 @@ Workflow:
 
 	// Add flags
 	cmd.Flags().StringP("owner", "o", "", "Owner identity for the claim (required)")
-	cmd.Flags().StringP("timeout", "t", "1h", "Claim timeout duration (e.g., 30m, 1h, 2h30m)")
+	cmd.Flags().StringP("timeout", "t", config.DefaultClaimTimeout, "Claim timeout duration (e.g., 30m, 1h, 2h30m)")
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory")
 	cmd.Flags().StringP("format", "f", "text", "Output format: text or json")
 	cmd.Flags().StringP("role", "r", "prover", "Agent role: prover or verifier")
