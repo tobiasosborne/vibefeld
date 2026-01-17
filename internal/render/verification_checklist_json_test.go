@@ -297,6 +297,67 @@ func TestRenderVerificationChecklistJSON_ConsistentOutput(t *testing.T) {
 	}
 }
 
+// TestRenderVerificationChecklistJSON_SeveritiesIncluded verifies that severity levels are included.
+func TestRenderVerificationChecklistJSON_SeveritiesIncluded(t *testing.T) {
+	s := state.NewState()
+
+	n := makeTestNodeJSON("1", schema.NodeTypeClaim, "A claim", schema.InferenceModusPonens)
+	s.AddNode(n)
+
+	result := RenderVerificationChecklistJSON(n, s)
+
+	var checklist JSONVerificationChecklist
+	err := json.Unmarshal([]byte(result), &checklist)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	// Should have exactly 4 severity levels
+	if len(checklist.Severities) != 4 {
+		t.Errorf("severities count = %d, want 4", len(checklist.Severities))
+	}
+
+	// Build map for easier checking
+	severityMap := make(map[string]JSONChallengeSeverity)
+	for _, sev := range checklist.Severities {
+		severityMap[sev.Level] = sev
+	}
+
+	// Verify critical and major block acceptance
+	if sev, ok := severityMap["critical"]; ok {
+		if !sev.BlocksAcceptance {
+			t.Error("critical severity should block acceptance")
+		}
+	} else {
+		t.Error("Missing critical severity")
+	}
+
+	if sev, ok := severityMap["major"]; ok {
+		if !sev.BlocksAcceptance {
+			t.Error("major severity should block acceptance")
+		}
+	} else {
+		t.Error("Missing major severity")
+	}
+
+	// Verify minor and note do NOT block acceptance
+	if sev, ok := severityMap["minor"]; ok {
+		if sev.BlocksAcceptance {
+			t.Error("minor severity should NOT block acceptance")
+		}
+	} else {
+		t.Error("Missing minor severity")
+	}
+
+	if sev, ok := severityMap["note"]; ok {
+		if sev.BlocksAcceptance {
+			t.Error("note severity should NOT block acceptance")
+		}
+	} else {
+		t.Error("Missing note severity")
+	}
+}
+
 // TestRenderVerificationChecklistJSON_DependencySorted verifies dependencies are sorted.
 func TestRenderVerificationChecklistJSON_DependencySorted(t *testing.T) {
 	s := state.NewState()

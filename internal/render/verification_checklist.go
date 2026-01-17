@@ -187,7 +187,7 @@ func renderChallengeCommandSuggestion(sb *strings.Builder, n *node.Node) {
 	sb.WriteString("To raise a challenge, use:\n")
 	sb.WriteString("  af challenge ")
 	sb.WriteString(n.ID.String())
-	sb.WriteString(" --target <statement|inference|dependencies|gap|domain|scope|context|type_error|completeness> --reason \"<reason>\"\n")
+	sb.WriteString(" --target <target> --severity <severity> --reason \"<reason>\"\n")
 	sb.WriteString("\n")
 	sb.WriteString("Challenge targets:\n")
 	sb.WriteString("  statement    - The claim text itself is disputed\n")
@@ -199,6 +199,17 @@ func renderChallengeCommandSuggestion(sb *strings.Builder, n *node.Node) {
 	sb.WriteString("  context      - Referenced definitions or externals are wrong\n")
 	sb.WriteString("  type_error   - Type mismatch in mathematical objects\n")
 	sb.WriteString("  completeness - Missing cases in argument\n")
+	sb.WriteString("\n")
+	renderSeverityExplanation(sb)
+}
+
+// renderSeverityExplanation writes the severity level explanation.
+func renderSeverityExplanation(sb *strings.Builder) {
+	sb.WriteString("Challenge severities (determines if acceptance is blocked):\n")
+	sb.WriteString("  critical - Fundamental error that must be fixed       [BLOCKS ACCEPTANCE]\n")
+	sb.WriteString("  major    - Significant issue that should be addressed [BLOCKS ACCEPTANCE]\n")
+	sb.WriteString("  minor    - Minor issue that could be improved         [does not block]\n")
+	sb.WriteString("  note     - Clarification request or suggestion        [does not block]\n")
 }
 
 // JSONVerificationChecklist represents a verification checklist in JSON format.
@@ -207,6 +218,7 @@ type JSONVerificationChecklist struct {
 	Items            []JSONChecklistItem          `json:"items"`
 	Dependencies     []JSONChecklistDependency    `json:"dependencies"`
 	ChallengeCommand string                       `json:"challenge_command"`
+	Severities       []JSONChallengeSeverity      `json:"severities"`
 }
 
 // JSONChecklistItem represents a single checklist item for verification.
@@ -224,6 +236,13 @@ type JSONChecklistDependency struct {
 	EpistemicState string `json:"epistemic_state"`
 }
 
+// JSONChallengeSeverity represents a challenge severity level with its description.
+type JSONChallengeSeverity struct {
+	Level            string `json:"level"`
+	Description      string `json:"description"`
+	BlocksAcceptance bool   `json:"blocks_acceptance"`
+}
+
 // RenderVerificationChecklistJSON generates a JSON-serializable checklist for verifiers.
 // Returns a JSON string representing the verification checklist.
 // Returns empty JSON object for nil node or nil state.
@@ -238,6 +257,7 @@ func RenderVerificationChecklistJSON(n *node.Node, s *state.State) string {
 		Items:            buildChecklistItems(n),
 		Dependencies:     buildDependenciesList(n, s),
 		ChallengeCommand: buildChallengeCommand(n),
+		Severities:       buildSeveritiesList(),
 	}
 
 	data, err := marshalJSON(checklist)
@@ -362,5 +382,31 @@ func buildDependenciesList(n *node.Node, s *state.State) []JSONChecklistDependen
 
 // buildChallengeCommand constructs the suggested challenge command string.
 func buildChallengeCommand(n *node.Node) string {
-	return fmt.Sprintf("af challenge %s --target <target> --reason \"<reason>\"", n.ID.String())
+	return fmt.Sprintf("af challenge %s --target <target> --severity <severity> --reason \"<reason>\"", n.ID.String())
+}
+
+// buildSeveritiesList creates the list of challenge severity levels with descriptions.
+func buildSeveritiesList() []JSONChallengeSeverity {
+	return []JSONChallengeSeverity{
+		{
+			Level:            "critical",
+			Description:      "Fundamental error that must be fixed",
+			BlocksAcceptance: true,
+		},
+		{
+			Level:            "major",
+			Description:      "Significant issue that should be addressed",
+			BlocksAcceptance: true,
+		},
+		{
+			Level:            "minor",
+			Description:      "Minor issue that could be improved",
+			BlocksAcceptance: false,
+		},
+		{
+			Level:            "note",
+			Description:      "Clarification request or suggestion",
+			BlocksAcceptance: false,
+		},
+	}
 }

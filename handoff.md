@@ -1,36 +1,45 @@
-# Handoff - 2026-01-17 (Session 72)
+# Handoff - 2026-01-17 (Session 73)
 
 ## What Was Accomplished This Session
 
-### Session 72 Summary: Lock Refresh Edge Case Test
+### Session 73 Summary: Verifier Context Severity Explanation
 
-Closed issue `vibefeld-vmzq` - "Edge case test: Lock refresh on expired lock"
+Closed issue `vibefeld-z05c` - "CLI UX: Verifier context incomplete when claiming for verification"
 
-Added test `TestRefresh_ExpiredLockBehavior` documenting that refreshing an expired lock intentionally succeeds. This is a design decision to allow recovery from brief expirations caused by clock skew or timing issues.
+Added severity level explanation to the verification checklist output. Verifiers now clearly see which challenge severities block node acceptance (critical, major) and which do not (minor, note).
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-vmzq** | internal/lock/lock_test.go | Test | Added TestRefresh_ExpiredLockBehavior edge case test |
+| **vibefeld-z05c** | internal/render/verification_checklist.go | Enhancement | Added severity explanation to verification checklist |
+| | internal/render/verification_checklist_json_test.go | Test | Added test for severity inclusion in JSON output |
 
 #### Changes Made
 
-**internal/lock/lock_test.go:**
-- Added `TestRefresh_ExpiredLockBehavior` test documenting that:
-  - Refreshing an expired lock succeeds (intentional design)
-  - Lock becomes non-expired after refresh
-  - Owner and NodeID are preserved through refresh
-- Comprehensive comment explaining the design rationale:
-  - Allows recovery from brief expirations caused by clock skew
-  - Alternative (rejecting refresh) would require full re-claim process
-  - Safe because lock owner is preserved - no other agent could claim in meantime
+**internal/render/verification_checklist.go:**
+- Updated `renderChallengeCommandSuggestion()` to include `--severity` in the example command
+- Added `renderSeverityExplanation()` function that explains:
+  - `critical` - Fundamental error [BLOCKS ACCEPTANCE]
+  - `major` - Significant issue [BLOCKS ACCEPTANCE]
+  - `minor` - Minor issue [does not block]
+  - `note` - Clarification request [does not block]
+- Added `JSONChallengeSeverity` struct for JSON output
+- Added `Severities` field to `JSONVerificationChecklist`
+- Added `buildSeveritiesList()` function for JSON output
+- Updated `buildChallengeCommand()` to include `--severity` in template
+
+**internal/render/verification_checklist_json_test.go:**
+- Added `TestRenderVerificationChecklistJSON_SeveritiesIncluded` test verifying:
+  - All 4 severity levels are present
+  - critical and major block acceptance
+  - minor and note do NOT block acceptance
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 114 (was 115)
-- **Closed:** 435 (was 434)
+- **Open:** 113 (was 114)
+- **Closed:** 436 (was 435)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -43,18 +52,18 @@ No P0 issues remain open.
 
 ### High Priority (P1) - Ready for work
 1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`)
-2. CLI UX: Verifier context incomplete when claiming (`vibefeld-z05c`)
 
 ### P2 Test Coverage
-3. ledger package test coverage - 58.6% (`vibefeld-4pba`)
-4. state package test coverage - 57% (`vibefeld-hpof`)
-5. scope package test coverage - 59.5% (`vibefeld-h179`)
+2. ledger package test coverage - 58.6% (`vibefeld-4pba`)
+3. state package test coverage - 57% (`vibefeld-hpof`)
+4. scope package test coverage - 59.5% (`vibefeld-h179`)
 
 ### P2 Edge Case Tests
-6. Directory deleted during append (`vibefeld-iupw`)
-7. Permission changes mid-operation (`vibefeld-hzrs`)
-8. Concurrent metadata corruption (`vibefeld-be56`)
-9. Lock clock skew handling (`vibefeld-v9yj`)
+5. Directory deleted during append (`vibefeld-iupw`)
+6. Permission changes mid-operation (`vibefeld-hzrs`)
+7. Concurrent metadata corruption (`vibefeld-be56`)
+8. Lock clock skew handling (`vibefeld-v9yj`)
+9. Lock nil pointer safety (`vibefeld-11wr`)
 
 ## Quick Commands
 
@@ -65,12 +74,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run lock package tests specifically
-go test ./internal/lock/... -v
+# Run render package tests specifically
+go test ./internal/render/... -v
 ```
 
 ## Session History
 
+**Session 73:** Closed 1 issue (verifier context severity explanation)
 **Session 72:** Closed 1 issue (lock refresh expired lock edge case test)
 **Session 71:** Closed 1 issue (error message path sanitization security fix)
 **Session 70:** Closed 1 issue (PersistentManager singleton factory for synchronization)
