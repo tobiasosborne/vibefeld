@@ -1,53 +1,55 @@
-# Handoff - 2026-01-17 (Session 98)
+# Handoff - 2026-01-17 (Session 99)
 
 ## What Was Accomplished This Session
 
-### Session 98 Summary: Concurrent NextSequence() Stress Tests
+### Session 99 Summary: Duplicate State Counting Code Refactoring
 
-Closed issue `vibefeld-be56` - "Edge case test: Concurrent metadata corruption"
+Closed issue `vibefeld-0c4f` - "Code smell: Duplicate epistemic/taint state counting logic"
 
-Added three stress tests for concurrent `NextSequence()` operations in `internal/ledger/concurrent_test.go`:
+Refactored `internal/render/status.go` to eliminate duplicate code between `renderStatisticsWithPagination` and `renderStatistics`.
 
-#### Tests Added
+#### Changes Made
 
-1. **TestConcurrentNextSequenceRace**: Stress tests 20 workers × 100 iterations calling `NextSequence()` concurrently on a static directory. Verifies all reads return consistent results when no writes are happening.
+1. **Added `stateCounts` struct**: Holds maps for both epistemic and taint state counts.
 
-2. **TestConcurrentNextSequenceWithFileChurn**: Simulates race conditions by having 5 writers add files directly (bypassing locks) while 10 readers call `NextSequence()` concurrently. Demonstrates why locking is necessary and verifies reads don't error even during file churn.
+2. **Added `countStates()` helper**: Counts both epistemic and taint states in a single pass through nodes (instead of two separate loops).
 
-3. **TestConcurrentSequenceNumberIntegrity**: Heavy stress test with 10 workers × 50 events using proper `Append()` with locking. Verifies:
-   - All 500 sequence numbers are unique
-   - No gaps in sequence (1-500 all present)
-   - `HasGaps()` confirms integrity
+3. **Added `writeStateCounts()` helper**: Renders formatted state counts with color coding. Eliminates duplicated formatting logic.
 
-#### Test Results
-All tests pass, including with race detector (`-race` flag).
+4. **Refactored both rendering functions**: `renderStatisticsWithPagination` and `renderStatistics` now use the shared helpers.
+
+#### Impact
+
+- Reduced status.go from 235 lines to 204 lines (-31 lines, 13% reduction)
+- Single pass counting is more efficient (1 loop vs 2 loops per function)
+- DRY principle: formatting logic exists in one place only
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-be56** | Closed | Added 3 concurrent stress tests for NextSequence() |
+| **vibefeld-0c4f** | Closed | Extracted countStates and writeStateCounts helpers |
 
 ### Files Changed
-- `internal/ledger/concurrent_test.go` (+180 lines)
+- `internal/render/status.go` (-30 lines net)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 86 (was 87)
-- **Closed:** 463 (was 462)
+- **Open:** 85 (was 86)
+- **Closed:** 464 (was 463)
 
 ### Test Status
 All tests pass. Build succeeds.
 
-## Remaining P0 Issues
+## Remaining P1 Issues
 
-No P0 issues remain open.
+1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`)
 
 ## Recommended Next Steps
 
 ### High Priority (P1) - Ready for work
-1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`)
+1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`) - Large refactoring task
 
 ### P2 Test Coverage
 2. ledger package test coverage - 58.6% (`vibefeld-4pba`)
@@ -72,12 +74,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run concurrent ledger tests
-go test -race ./internal/ledger/... -run "TestConcurrent"
+# Run render package tests
+go test ./internal/render/...
 ```
 
 ## Session History
 
+**Session 99:** Closed 1 issue (duplicate state counting code refactoring)
 **Session 98:** Closed 1 issue (concurrent NextSequence() stress tests - 3 test scenarios)
 **Session 97:** Closed 1 issue (Levenshtein space optimization - O(min(N,M)) memory)
 **Session 96:** Closed 1 issue (deep node hierarchy edge case tests - 100-500 levels)
