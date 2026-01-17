@@ -11,6 +11,14 @@ import (
 	"github.com/tobias/vibefeld/internal/types"
 )
 
+// Display truncation constants for consistent output formatting.
+const (
+	// maxStatementDisplay is the maximum length for statement text in summary views.
+	maxStatementDisplay = 50
+	// maxContentDisplay is the maximum length for definition/assumption content.
+	maxContentDisplay = 60
+)
+
 // RenderProverContext renders the context for a prover working on a node.
 // Shows: node info, parent context, dependencies, definitions, assumptions, externals.
 // Returns empty string for nil state or node not found.
@@ -158,8 +166,8 @@ func renderSiblings(sb *strings.Builder, s *state.State, nodeID types.NodeID) {
 		sb.WriteString(": ")
 		// Truncate statement for readability
 		stmt := sanitizeStatement(sib.Statement)
-		if len(stmt) > 50 {
-			stmt = stmt[:47] + "..."
+		if len(stmt) > maxStatementDisplay {
+			stmt = stmt[:maxStatementDisplay-3] + "..."
 		}
 		sb.WriteString(stmt)
 		sb.WriteString("\n")
@@ -193,8 +201,8 @@ func renderDependencies(sb *strings.Builder, s *state.State, n *node.Node) {
 		if depNode != nil {
 			sb.WriteString(": ")
 			stmt := sanitizeStatement(depNode.Statement)
-			if len(stmt) > 50 {
-				stmt = stmt[:47] + "..."
+			if len(stmt) > maxStatementDisplay {
+				stmt = stmt[:maxStatementDisplay-3] + "..."
 			}
 			sb.WriteString(stmt)
 		}
@@ -267,8 +275,8 @@ func renderDefinitions(sb *strings.Builder, s *state.State, n *node.Node) {
 			sb.WriteString(def.Name)
 			sb.WriteString(": ")
 			content := def.Content
-			if len(content) > 60 {
-				content = content[:57] + "..."
+			if len(content) > maxContentDisplay {
+				content = content[:maxContentDisplay-3] + "..."
 			}
 			sb.WriteString(content)
 			sb.WriteString("\n")
@@ -339,8 +347,8 @@ func renderAssumptions(sb *strings.Builder, s *state.State, n *node.Node) {
 		if assume != nil {
 			sb.WriteString("  - ")
 			stmt := assume.Statement
-			if len(stmt) > 60 {
-				stmt = stmt[:57] + "..."
+			if len(stmt) > maxContentDisplay {
+				stmt = stmt[:maxContentDisplay-3] + "..."
 			}
 			sb.WriteString(stmt)
 			if assume.Justification != "" {
