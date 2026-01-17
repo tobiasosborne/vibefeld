@@ -23,6 +23,7 @@ func newAmendCmd() *cobra.Command {
 		Short: "Amend a node's statement (prover correction)",
 		Long: `Amend a node's statement to correct mistakes.
 
+This is a prover action that corrects a node's statement text.
 The amend command allows provers to correct the statement of a node they own.
 This is useful for fixing typos, clarifying wording, or correcting errors
 discovered before the node has been validated.

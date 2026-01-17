@@ -1,33 +1,30 @@
-# Handoff - 2026-01-17 (Session 132)
+# Handoff - 2026-01-17 (Session 133)
 
 ## What Was Accomplished This Session
 
-### Session 132 Summary: Role-specific help filtering
+### Session 133 Summary: Role-specific context in command help
 
-Implemented role-specific command filtering for the help command:
+Added role annotations to all prover commands' help text:
 
-1. **vibefeld-fsqm** - "CLI UX: No role-specific command filtering"
-   - Added `--role` flag to the help command
-   - `af help --role prover` shows only prover-relevant commands
-   - `af help --role verifier` shows only verifier-relevant commands
-   - Commands are now categorized into sections:
-     - Prover Actions (refine, amend, request-def, resolve-challenge)
-     - Verifier Actions (accept, challenge)
-     - Job Management (claim, release, extend-claim, jobs, shell, wizard, tutorial)
-     - Reference (status, get, deps, challenges, defs, etc.)
-     - Administration (init, def-add, replay, etc.)
+1. **vibefeld-n7bl** - "CLI UX: Add role-specific context section to each command's help"
+   - Added "This is a prover action..." annotation to:
+     - `refine` - "This is a prover action that develops the proof by adding child steps."
+     - `amend` - "This is a prover action that corrects a node's statement text."
+     - `request-def` - "This is a prover action that requests a formal definition for a term."
+     - `resolve-challenge` - "This is a prover action that addresses a verifier's objection."
+   - Verifier commands (`accept`, `challenge`) already had annotations from prior work
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-fsqm** | Closed | Implemented role-specific help filtering with --role prover/verifier flags |
+| **vibefeld-n7bl** | Closed | Added role annotations to all prover commands. Each command help now shows 'This is a prover/verifier action' to prevent role confusion. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 51 (was 52)
-- **Closed:** 498 (was 497)
+- **Open:** 50 (was 51)
+- **Closed:** 499 (was 498)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -43,17 +40,19 @@ go test ./...
 go build ./cmd/af
 
 # Test the feature manually
-./af help                 # See all commands, categorized
-./af help --role prover   # See prover-relevant commands only
-./af help --role verifier # See verifier-relevant commands only
-./af help refine          # Still works for specific command help
+./af refine --help | head -6           # Shows prover action annotation
+./af amend --help | head -6            # Shows prover action annotation
+./af request-def --help | head -7      # Shows prover action annotation
+./af resolve-challenge --help | head -7 # Shows prover action annotation
+./af accept --help | head -6           # Shows verifier action annotation
+./af challenge --help | head -6        # Shows verifier action annotation
 ```
 
 ### Known Issue
 Pre-existing duplicate test declarations in `internal/render/` (`json_unit_test.go` vs `json_test.go` with `integration` tag). Running with `-tags=integration` fails compilation due to duplicate test names. Tests pass without integration tag.
 
 ### Note: withdraw-challenge command unregistered
-During this work, discovered that `withdraw_challenge.go` exists but the command was never registered with `rootCmd.AddCommand()`. This is a pre-existing issue (not introduced in this session).
+Pre-existing issue: `withdraw_challenge.go` exists but the command was never registered with `rootCmd.AddCommand()`.
 
 ## Remaining P1 Issues
 
@@ -75,9 +74,6 @@ During this work, discovered that `withdraw_challenge.go` exists but the command
 4. Multiple error types inconsistency (`vibefeld-npeg`)
 5. Bulk operations not truly atomic (`vibefeld-gvep`)
 
-### P2 CLI UX
-6. Add role-specific context section to each command's help (`vibefeld-n7bl`)
-
 ## Quick Commands
 
 ```bash
@@ -96,6 +92,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 133:** Closed 1 issue (CLI UX - role-specific context annotations in prover command help)
 **Session 132:** Closed 1 issue (CLI UX - role-specific help filtering with --role prover/verifier)
 **Session 131:** Closed 1 issue (CLI UX - verified getting started guide already fixed, closed duplicate)
 **Session 130:** Closed 1 issue (CLI UX - status --urgent flag for filtering urgent items)

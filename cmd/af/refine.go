@@ -280,6 +280,7 @@ func newRefineCmd() *cobra.Command {
 		Short: "Add a child node to a claimed parent",
 		Long: `Add a child node to a claimed parent node.
 
+This is a prover action that develops the proof by adding child steps.
 The parent node must be claimed by the owner specified with --owner.
 Child IDs are auto-generated (e.g., 1.1, 1.2 for children of node 1).
 

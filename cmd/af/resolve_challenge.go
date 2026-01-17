@@ -20,6 +20,7 @@ func newResolveChallengeCmd() *cobra.Command {
 		Short: "Resolve a challenge with a response",
 		Long: `Resolve a previously raised challenge by providing a response.
 
+This is a prover action that addresses a verifier's objection.
 The challenge must be in an open state (not already resolved or withdrawn).
 Resolving a challenge is typically done by the prover to address an
 objection raised by a verifier.

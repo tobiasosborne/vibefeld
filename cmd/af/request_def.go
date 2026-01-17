@@ -20,6 +20,7 @@ func newRequestDefCmd() *cobra.Command {
 		Short: "Request a definition for a term",
 		Long: `Request a definition for a term that is needed during proof work.
 
+This is a prover action that requests a formal definition for a term.
 When an agent encounters a term that requires a formal definition,
 they can request that definition using this command. The request
 creates a pending definition that can be fulfilled by another agent.
