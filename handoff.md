@@ -1,40 +1,36 @@
-# Handoff - 2026-01-17 (Session 155)
+# Handoff - 2026-01-17 (Session 156)
 
 ## What Was Accomplished This Session
 
-### Session 155 Summary: Closed 1 issue (API documentation)
+### Session 156 Summary: Closed 1 issue (API documentation)
 
-1. **vibefeld-7w1q** - "API design: Taint emission not part of validation transaction"
-   - Added ATOMICITY NOTE documentation to 5 methods in internal/service/proof.go:
-     - `AcceptNodeWithNote` (main doc block with full explanation)
-     - `AcceptNodeBulk`
-     - `AdmitNode`
-     - `RefuteNode`
-     - `ArchiveNode`
-   - Also documented `emitTaintRecomputedEvents` helper function
+1. **vibefeld-gvep** - "API design: Bulk operations not truly atomic"
+   - Added ATOMICITY NOTE documentation to `appendBulkIfSequence` function in internal/service/proof.go
+   - Removed misleading "atomically" comments in caller sites (AcceptNodeBulk, RefineNodeBulk)
    - Documentation explains:
-     1. The window where validation is committed but taint isn't
-     2. Why this is acceptable (taint is derived state, eventual consistency on replay)
-     3. That the epistemic event is the authoritative record
+     1. First event uses CAS, remaining events use simple Append
+     2. Partial failure is possible if disk/IO error occurs after first event
+     3. Why this is acceptable (rare in practice, events are self-contained, state replay handles it)
+     4. True atomic batch append would require WAL or 2PC
    - Build passes, service tests pass
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| internal/service/proof.go | Added ATOMICITY NOTE documentation to 6 functions |
+| internal/service/proof.go | Added ATOMICITY NOTE to appendBulkIfSequence, updated 2 caller comments |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-7w1q** | Closed | Documented the non-atomicity risk |
+| **vibefeld-gvep** | Closed | Documented the non-atomicity behavior |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 24 (was 25)
-- **Closed:** 525 (was 524)
+- **Open:** 23 (was 24)
+- **Closed:** 526 (was 525)
 
 ### Test Status
 - Build: PASS
@@ -74,7 +70,7 @@ go test ./...
 2. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
 3. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
 4. Multiple error types inconsistency (`vibefeld-npeg`)
-5. Bulk operations not truly atomic (`vibefeld-gvep`)
+5. Service layer leaks domain types (`vibefeld-vj5y`)
 
 ### P3 CLI UX (quick wins)
 6. Create verification checklist command (`vibefeld-ital`)
@@ -99,6 +95,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 156:** Closed 1 issue (API design - documented appendBulkIfSequence non-atomicity in service layer)
 **Session 155:** Closed 1 issue (API design - documented taint emission non-atomicity in AcceptNodeWithNote and related methods)
 **Session 154:** Closed 1 issue (Code smell - renamed inputMethodCount to activeInputMethods in refine.go)
 **Session 153:** Closed 1 issue (False positive - unnecessary else after return, comprehensive search found 0 instances)

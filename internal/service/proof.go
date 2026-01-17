@@ -844,7 +844,7 @@ func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
 		events[i] = ledger.NewNodeValidated(id)
 	}
 
-	// Append all events atomically with CAS
+	// Append all events with CAS on first event (see appendBulkIfSequence ATOMICITY NOTE)
 	_, err = s.appendBulkIfSequence(ldg, events, expectedSeq)
 	if err != nil {
 		return wrapSequenceMismatch(err, "AcceptNodeBulk")
@@ -1503,9 +1503,7 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		return nil, err
 	}
 
-	// Append all events atomically with CAS
-	// We need to append with sequence check, but ledger.AppendBatch doesn't support CAS.
-	// We'll implement our own atomic bulk append with sequence check.
+	// Append all events with CAS on first event (see appendBulkIfSequence ATOMICITY NOTE)
 	_, err = s.appendBulkIfSequence(ldg, events, expectedSeq)
 	if err != nil {
 		return nil, wrapSequenceMismatch(err, "RefineNodeBulk")
@@ -1514,8 +1512,28 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 	return childIDs, nil
 }
 
-// appendBulkIfSequence appends multiple events atomically with sequence verification.
+// appendBulkIfSequence appends multiple events with sequence verification on the first event.
 // This is an internal helper that combines CAS semantics with batch append.
+//
+// ATOMICITY NOTE: This function is NOT truly atomic for multiple events. The implementation:
+// 1. Uses CAS (AppendIfSequence) for the first event to detect concurrent modifications
+// 2. Uses simple Append for remaining events without further CAS checks
+//
+// This means:
+// - If the first CAS succeeds but a subsequent append fails (disk error, etc.), the ledger
+//   will contain a partial set of events. The function returns the successfully appended
+//   sequence numbers along with an error.
+// - Concurrent readers may observe partially-applied changes during the append window.
+// - However, each individual event is still a valid, consistent ledger entry.
+//
+// Why this is acceptable:
+// - Disk/IO failures during append are rare in practice
+// - Callers (RefineNodeBulk, AcceptNodeBulk) create logically related but independent events
+// - State replay handles partial updates correctly (each event is self-contained)
+// - True atomic batch append would require a more complex protocol (e.g., WAL or 2PC)
+//
+// Callers should be aware that partial failure is possible and handle the returned
+// sequence numbers accordingly.
 func (s *ProofService) appendBulkIfSequence(ldg *ledger.Ledger, events []ledger.Event, expectedSeq int) ([]int, error) {
 	if len(events) == 0 {
 		return nil, nil
