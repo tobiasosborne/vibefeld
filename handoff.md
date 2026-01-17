@@ -1,74 +1,72 @@
-# Handoff - 2026-01-17 (Session 115)
+# Handoff - 2026-01-17 (Session 116)
 
 ## What Was Accomplished This Session
 
-### Session 115 Summary: Added Large Tree Taint Tests (10k+ nodes)
+### Session 116 Summary: Added E2E Large Proof Stress Tests (100+ nodes)
 
-Closed issue `vibefeld-yxfo` - "Edge case test: Taint very large node tree (10k+ nodes)"
+Closed issue `vibefeld-hfgi` - "E2E test: Large proof stress test"
 
 #### Problem
 
-The taint propagation performance and memory behavior on large node trees (10k+) was untested. Existing benchmarks only tested up to 200 nodes.
+The system lacked E2E tests for large proof trees with 100+ nodes and concurrent operations. The issue description called for testing 100+ nodes with concurrent operations.
 
 #### Solution
 
-Added 5 comprehensive large tree tests to `internal/taint/propagate_unit_test.go`:
+Created `e2e/stress_test.go` with 5 comprehensive stress tests:
 
-1. **TestPropagateTaint_LargeBalancedTree** - 11,111 nodes (branching factor 10, 4 levels)
-   - Verifies taint propagates correctly to all ~11k descendants
-   - Tests balanced tree structure
+1. **TestStress_LargeProofTree** - Creates and validates 111 nodes
+   - 1 root + 10 children + 100 grandchildren (10 under each child)
+   - Tests sequential node creation, status computation, and bottom-up validation
+   - Exercises the full proof workflow at scale
 
-2. **TestPropagateTaint_LargeDeepTree** - 8,191 nodes (binary tree, depth 13)
-   - Specifically exercises the ancestor caching optimization
-   - Tests deep hierarchy performance
+2. **TestStress_ConcurrentOperations** - Concurrent agent operations
+   - Creates 21 nodes (root + 10 children + 10 grandchildren)
+   - Tests concurrent claims on different nodes (8 agents)
+   - Tests concurrent acceptances on leaf nodes
+   - Tests mixed operations under heavy load
+   - Validates state consistency after concurrent modifications
 
-3. **TestPropagateTaint_LargeTreeMixedTaint** - 5,000 nodes with multiple taint sources
-   - Tests self_admitted preservation when multiple admitted nodes exist
-   - Verifies correct taint state propagation with mixed sources
+3. **TestStress_DeepHierarchy** - 19-level deep chain
+   - Creates maximum allowed depth (system limit is 20)
+   - Tests deep hierarchical ID parsing (1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1)
+   - Tests bottom-up acceptance from deepest to root
 
-4. **TestPropagateTaint_LargeTreeNoChanges** - 5,000 nodes, efficiency check
-   - Verifies no unnecessary work when tree is already correctly tainted
-   - Tests idempotency at scale
+4. **TestStress_WideTree** - 111 nodes across 2 levels
+   - Maximum children per parent (10) at both levels
+   - Tests sibling enumeration and status aggregation
 
-5. **TestPropagateTaint_LargeTreePartialSubtree** - Subtree propagation
-   - Tests propagating from a subtree root (not main root)
-   - Verifies non-descendants remain unaffected
+5. **TestStress_RapidStateReloads** - 100 rapid state loads
+   - Tests state caching and event replay performance
+   - Average reload time: ~300µs
 
-Also added helper functions: `buildLargeBalancedTree()`, `buildLargeDeepTree()`, `itoa()`.
-
-### Also Updated
-
-Updated issue `vibefeld-jfbc` (Module structure: cmd/af imports 17 packages) with proper scope assessment:
-- 22 packages imported, not 17
-- 59 files use `types`, 44 use `schema`, 40 use `fs`
-- This is a multi-session epic requiring sub-tasks
+All tests respect system constraints (max 10 children per node, max depth 20).
 
 ### Files Changed
 
-- `internal/taint/propagate_unit_test.go` - Added 5 large tree tests and helper functions (+300 lines)
+- `e2e/stress_test.go` - NEW (+730 lines)
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-yxfo** | Closed | Added comprehensive large tree tests (10k+ nodes): LargeBalancedTree (11k), LargeDeepTree (8k), LargeTreeMixedTaint, LargeTreeNoChanges, LargeTreePartialSubtree. All tests pass. |
+| **vibefeld-hfgi** | Closed | Created e2e/stress_test.go with 5 comprehensive tests: TestStress_LargeProofTree (111 nodes), TestStress_ConcurrentOperations, TestStress_DeepHierarchy (19 levels), TestStress_WideTree (111 nodes), and TestStress_RapidStateReloads (100 reloads). All tests pass. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 69 (was 70)
-- **Closed:** 480 (was 479)
+- **Open:** 68 (was 69)
+- **Closed:** 481 (was 480)
 
 ### Test Status
 All tests pass. Build succeeds.
 
 ### Verification
 ```bash
-# Run large tree tests
-go test ./internal/taint/... -run "Large" -v
+# Run stress tests (requires integration tag)
+go test -tags=integration ./e2e/stress_test.go -v -timeout 5m
 
-# Run all taint tests
-go test ./internal/taint/... -v
+# Run all tests
+go test ./...
 
 # Build
 go build ./cmd/af
@@ -90,12 +88,11 @@ go build ./cmd/af
 
 ### P2 Edge Case Tests
 2. State millions of events (`vibefeld-th1m`)
-3. E2E test: Large proof stress test (`vibefeld-hfgi`)
 
 ### P2 Code Quality
-4. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
-5. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-6. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
+3. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
+4. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+5. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
 
 ## Quick Commands
 
@@ -106,12 +103,16 @@ bd ready
 # Run tests
 go test ./...
 
+# Run stress tests
+go test -tags=integration ./e2e/... -v -timeout 5m
+
 # Run benchmarks
 go test -run=^$ -bench=. ./... -benchtime=100ms
 ```
 
 ## Session History
 
+**Session 116:** Closed 1 issue (E2E large proof stress tests - 5 new tests with 100+ nodes, concurrent operations, deep hierarchy, wide tree, and rapid reloads)
 **Session 115:** Closed 1 issue (large tree taint tests 10k+ nodes - 5 new tests covering balanced/deep/mixed/idempotent/subtree scenarios)
 **Session 114:** Closed 1 issue (removed reflection from event parsing hot path - replaced with type switch, added missing event types)
 **Session 113:** Closed 1 issue (added benchmarks for critical paths - 3 packages, 18 benchmarks total)
