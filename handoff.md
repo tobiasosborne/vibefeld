@@ -1,66 +1,65 @@
-# Handoff - 2026-01-17 (Session 119)
+# Handoff - 2026-01-17 (Session 120)
 
 ## What Was Accomplished This Session
 
-### Session 119 Summary: Consolidated RefineNodeWithAllDeps Parameters into RefineSpec Struct
+### Session 120 Summary: Complete RefineNode Method Consolidation
 
-Closed issue `vibefeld-agzw` - "API design: Too many parameters in RefineNodeWithAllDeps"
+Closed issue `vibefeld-ns9q` - "API design: Overloaded RefineNode methods should consolidate"
 
 #### Problem
 
-The `RefineNodeWithAllDeps` method had 8 parameters (including receiver), making it difficult to call and maintain:
+Three separate methods existed for essentially the same operation:
+- `RefineNode(parentID, owner, childID, nodeType, statement, inference)` - basic refine
+- `RefineNodeWithDeps(... + dependencies)` - with dependencies
+- `RefineNodeWithAllDeps(... + dependencies, validationDeps)` - with all deps (already delegated to Refine)
 
-```go
-func (s *ProofService) RefineNodeWithAllDeps(
-    parentID types.NodeID,
-    owner string,
-    childID types.NodeID,
-    nodeType schema.NodeType,
-    statement string,
-    inference schema.InferenceType,
-    dependencies []types.NodeID,
-    validationDeps []types.NodeID,
-) error
-```
+The first two had duplicate implementations (~60-70 lines each) instead of delegating to the consolidated `Refine(RefineSpec)` method.
 
 #### Solution
 
-Added a `RefineSpec` struct that consolidates all parameters with clear documentation:
+Updated `RefineNode` and `RefineNodeWithDeps` to delegate to `Refine(RefineSpec)`:
 
 ```go
-type RefineSpec struct {
-    ParentID       types.NodeID        // required
-    Owner          string              // required
-    ChildID        types.NodeID        // required
-    NodeType       schema.NodeType     // required
-    Statement      string              // required
-    Inference      schema.InferenceType // required
-    Dependencies   []types.NodeID      // optional - logical references
-    ValidationDeps []types.NodeID      // optional - must-validate-first
+// Before: ~60 lines of duplicate validation/ledger code
+func (s *ProofService) RefineNode(...) error { /* full implementation */ }
+
+// After: Clean delegation
+func (s *ProofService) RefineNode(parentID types.NodeID, owner string,
+    childID types.NodeID, nodeType schema.NodeType,
+    statement string, inference schema.InferenceType) error {
+    return s.Refine(RefineSpec{
+        ParentID:  parentID,
+        Owner:     owner,
+        ChildID:   childID,
+        NodeType:  nodeType,
+        Statement: statement,
+        Inference: inference,
+    })
 }
 ```
 
-Added a new `Refine(spec RefineSpec) error` method that is now the preferred API. The existing `RefineNodeWithAllDeps` is now a thin wrapper marked as deprecated, maintaining backwards compatibility.
+Both methods now have deprecation notices directing users to the preferred `Refine(RefineSpec{...})` API.
 
 ### Files Changed
 
-- `internal/service/proof.go` - Added `RefineSpec` struct, new `Refine()` method, updated `RefineNodeWithAllDeps` to delegate to `Refine()`
-- `internal/service/service_test.go` - Added 4 new tests: `TestRefine_Success`, `TestRefine_WithDependencies`, `TestRefine_ParentNotClaimed`, `TestRefine_InvalidDependency`
+- `internal/service/proof.go` - Updated `RefineNode` and `RefineNodeWithDeps` to delegate to `Refine`, added deprecation notices
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-agzw** | Closed | Added RefineSpec struct and new Refine(spec) method with cleaner API. RefineNodeWithAllDeps is now a thin wrapper delegating to Refine. Added 4 unit tests for the new method. |
+| **vibefeld-ns9q** | Closed | Consolidated all RefineNode methods to delegate to Refine(RefineSpec). Added deprecation notices. Reduced code duplication significantly. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 65 (was 66)
-- **Closed:** 484 (was 483)
+- **Open:** 64 (was 65)
+- **Closed:** 485 (was 484)
 
 ### Test Status
 All tests pass. Build succeeds.
+- Unit tests: PASS
+- Integration tests: PASS (7.991s)
 
 ### Verification
 ```bash
@@ -69,6 +68,9 @@ go test ./internal/service/... -v -run "Refine"
 
 # Run all tests
 go test ./...
+
+# Run integration tests
+go test -tags=integration github.com/tobias/vibefeld/e2e
 
 # Build
 go build ./cmd/af
@@ -90,9 +92,9 @@ go build ./cmd/af
 
 ### P2 Code Quality
 2. Config() silently swallows errors (`vibefeld-tigb`) - Another error handling bug
-3. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
-4. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-5. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
+3. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+4. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
+5. Multiple error types inconsistency (`vibefeld-npeg`)
 
 ## Quick Commands
 
@@ -112,6 +114,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 120:** Closed 1 issue (RefineNode method consolidation - updated RefineNode and RefineNodeWithDeps to delegate to Refine)
 **Session 119:** Closed 1 issue (RefineNodeWithAllDeps parameter consolidation - added RefineSpec struct and Refine() method)
 **Session 118:** Closed 1 issue (deferred lock.Release() error handling - added deferRelease() test helper)
 **Session 117:** Closed 1 issue (large event count test - 10K events, discovered O(n) ledger append overhead, fixed duplicate test names)

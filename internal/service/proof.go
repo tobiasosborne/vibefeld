@@ -522,69 +522,22 @@ func (s *ProofService) ReleaseNode(id types.NodeID, owner string) error {
 // RefineNode adds a child node to a claimed parent node.
 // Returns an error if the parent is not claimed by the owner or validation fails.
 //
+// Deprecated: Use Refine(RefineSpec{...}) instead, which provides a cleaner API
+// by consolidating all parameters into a single struct.
+//
 // Returns ErrMaxDepthExceeded if the child node's depth would exceed config.MaxDepth.
 // Returns ErrMaxChildrenExceeded if the parent node already has config.MaxChildren children.
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType) error {
-	// Validate depth against config
-	if err := s.validateDepth(childID.Depth()); err != nil {
-		return err
-	}
-
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
-
-	// Check if parent node exists
-	parent := st.GetNode(parentID)
-	if parent == nil {
-		return errors.New("parent node not found")
-	}
-
-	// Check if parent is claimed
-	if parent.WorkflowState != schema.WorkflowClaimed {
-		return fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
-	}
-
-	// Check if owner matches
-	if parent.ClaimedBy != owner {
-		return ErrOwnerMismatch
-	}
-
-	// Check if child already exists
-	if st.GetNode(childID) != nil {
-		return errors.New("child node already exists")
-	}
-
-	// Validate child count for parent
-	if err := s.validateChildCount(st, parentID); err != nil {
-		return err
-	}
-
-	// Validate external citations in the statement
-	if err := lemma.ValidateExtCitations(statement, st); err != nil {
-		return err
-	}
-
-	// Create the child node
-	child, err := node.NewNode(childID, nodeType, statement, inference)
-	if err != nil {
-		return err
-	}
-
-	// Get ledger and append event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeCreated(*child)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	return wrapSequenceMismatch(err, "RefineNode")
+	return s.Refine(RefineSpec{
+		ParentID:  parentID,
+		Owner:     owner,
+		ChildID:   childID,
+		NodeType:  nodeType,
+		Statement: statement,
+		Inference: inference,
+	})
 }
 
 // RefineNodeWithDeps adds a child node with explicit dependencies to a claimed parent node.
@@ -592,79 +545,23 @@ func (s *ProofService) RefineNode(parentID types.NodeID, owner string, childID t
 // Returns an error if the parent is not claimed by the owner, any dependency doesn't exist,
 // or validation fails.
 //
+// Deprecated: Use Refine(RefineSpec{...}) instead, which provides a cleaner API
+// by consolidating all parameters into a single struct.
+//
 // Returns ErrMaxDepthExceeded if the child node's depth would exceed config.MaxDepth.
 // Returns ErrMaxChildrenExceeded if the parent node already has config.MaxChildren children.
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefineNodeWithDeps(parentID types.NodeID, owner string, childID types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType, dependencies []types.NodeID) error {
-	// Validate depth against config
-	if err := s.validateDepth(childID.Depth()); err != nil {
-		return err
-	}
-
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
-
-	// Check if parent node exists
-	parent := st.GetNode(parentID)
-	if parent == nil {
-		return errors.New("parent node not found")
-	}
-
-	// Check if parent is claimed
-	if parent.WorkflowState != schema.WorkflowClaimed {
-		return fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
-	}
-
-	// Check if owner matches
-	if parent.ClaimedBy != owner {
-		return ErrOwnerMismatch
-	}
-
-	// Check if child already exists
-	if st.GetNode(childID) != nil {
-		return errors.New("child node already exists")
-	}
-
-	// Validate child count for parent
-	if err := s.validateChildCount(st, parentID); err != nil {
-		return err
-	}
-
-	// Validate external citations in the statement
-	if err := lemma.ValidateExtCitations(statement, st); err != nil {
-		return err
-	}
-
-	// Validate that all dependencies exist
-	for _, depID := range dependencies {
-		if st.GetNode(depID) == nil {
-			return fmt.Errorf("invalid dependency: node %s not found", depID.String())
-		}
-	}
-
-	// Create the child node with dependencies
-	opts := node.NodeOptions{
+	return s.Refine(RefineSpec{
+		ParentID:     parentID,
+		Owner:        owner,
+		ChildID:      childID,
+		NodeType:     nodeType,
+		Statement:    statement,
+		Inference:    inference,
 		Dependencies: dependencies,
-	}
-	child, err := node.NewNodeWithOptions(childID, nodeType, statement, inference, opts)
-	if err != nil {
-		return err
-	}
-
-	// Get ledger and append event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeCreated(*child)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	return wrapSequenceMismatch(err, "RefineNodeWithDeps")
+	})
 }
 
 // RefineNodeWithAllDeps adds a child node with both reference dependencies and validation dependencies
