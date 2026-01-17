@@ -3,7 +3,9 @@
 package ledger
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -898,5 +900,108 @@ func TestAppendIfSequence_ChainedOperations(t *testing.T) {
 	}
 	if count != 3 {
 		t.Errorf("Ledger should have 3 events, got %d", count)
+	}
+}
+
+// =============================================================================
+// releaseLock Error Handling Tests
+// =============================================================================
+
+// TestReleaseLock_LogsErrorOnFailure verifies that releaseLock logs an error
+// when the lock release fails.
+func TestReleaseLock_LogsErrorOnFailure(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a lock and acquire it
+	lock := NewLedgerLock(dir)
+	if err := lock.Acquire("test-agent", 5*time.Second); err != nil {
+		t.Fatalf("Failed to acquire lock: %v", err)
+	}
+
+	// Manually remove the lock file to simulate a failure condition
+	lockPath := filepath.Join(dir, "ledger.lock")
+	if err := os.Remove(lockPath); err != nil {
+		t.Fatalf("Failed to remove lock file: %v", err)
+	}
+
+	// Capture log output
+	var buf bytes.Buffer
+	originalOutput := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(originalOutput)
+
+	// Call releaseLock - should log an error because lock file is already gone
+	releaseLock(lock, "test-operation")
+
+	// Verify log output contains error message
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "ERROR") {
+		t.Errorf("Expected log to contain 'ERROR', got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "test-operation") {
+		t.Errorf("Expected log to contain operation name 'test-operation', got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "stale lock file may remain") {
+		t.Errorf("Expected log to contain 'stale lock file may remain', got: %s", logOutput)
+	}
+}
+
+// TestReleaseLock_NoLogOnSuccess verifies that releaseLock does not log
+// when the lock release succeeds.
+func TestReleaseLock_NoLogOnSuccess(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a lock and acquire it
+	lock := NewLedgerLock(dir)
+	if err := lock.Acquire("test-agent", 5*time.Second); err != nil {
+		t.Fatalf("Failed to acquire lock: %v", err)
+	}
+
+	// Capture log output
+	var buf bytes.Buffer
+	originalOutput := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(originalOutput)
+
+	// Call releaseLock - should succeed without logging
+	releaseLock(lock, "test-operation")
+
+	// Verify no log output
+	logOutput := buf.String()
+	if logOutput != "" {
+		t.Errorf("Expected no log output on success, got: %s", logOutput)
+	}
+}
+
+// TestReleaseLock_LogsErrorOnDoubleRelease verifies that releaseLock logs an error
+// when attempting to release an already-released lock.
+func TestReleaseLock_LogsErrorOnDoubleRelease(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a lock, acquire it, and release it normally
+	lock := NewLedgerLock(dir)
+	if err := lock.Acquire("test-agent", 5*time.Second); err != nil {
+		t.Fatalf("Failed to acquire lock: %v", err)
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatalf("Failed to release lock: %v", err)
+	}
+
+	// Capture log output
+	var buf bytes.Buffer
+	originalOutput := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(originalOutput)
+
+	// Call releaseLock on already-released lock - should log an error
+	releaseLock(lock, "double-release-test")
+
+	// Verify log output contains error message
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "ERROR") {
+		t.Errorf("Expected log to contain 'ERROR', got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "double-release-test") {
+		t.Errorf("Expected log to contain operation name 'double-release-test', got: %s", logOutput)
 	}
 }

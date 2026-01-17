@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -18,6 +19,16 @@ const defaultLockTimeout = 5 * time.Second
 // This indicates a concurrent modification and the operation should be retried
 // after reloading the current state.
 var ErrSequenceMismatch = errors.New("ledger sequence mismatch: concurrent modification detected")
+
+// releaseLock releases the given lock and logs any errors that occur.
+// This is used in defer statements where we cannot return the error.
+// Lock release failures are serious infrastructure issues that indicate
+// stale lock files may remain on disk.
+func releaseLock(lock *LedgerLock, operation string) {
+	if err := lock.Release(); err != nil {
+		log.Printf("ERROR: failed to release lock during %s: %v (stale lock file may remain)", operation, err)
+	}
+}
 
 // cleanupTempFiles removes temporary files from the given slice within the range [start, end).
 // This is a best-effort operation; errors are intentionally ignored since cleanup failures
@@ -71,7 +82,7 @@ func AppendWithTimeout(dir string, event Event, timeout time.Duration) (int, err
 	if err := lock.Acquire("append-operation", timeout); err != nil {
 		return 0, fmt.Errorf("failed to acquire lock: %w", err)
 	}
-	defer lock.Release()
+	defer releaseLock(lock, "append")
 
 	// Get next sequence number (inside lock to ensure atomicity)
 	seq, err := NextSequence(dir)
@@ -154,7 +165,7 @@ func AppendIfSequenceWithTimeout(dir string, event Event, expectedSeq int, timeo
 	if err := lock.Acquire("append-if-sequence-operation", timeout); err != nil {
 		return 0, fmt.Errorf("failed to acquire lock: %w", err)
 	}
-	defer lock.Release()
+	defer releaseLock(lock, "append-if-sequence")
 
 	// Get current sequence number (inside lock to ensure atomicity)
 	currentSeq, err := NextSequence(dir)
@@ -242,7 +253,7 @@ func AppendBatch(dir string, events []Event) ([]int, error) {
 	if err := lock.Acquire("append-batch-operation", defaultLockTimeout); err != nil {
 		return nil, fmt.Errorf("failed to acquire lock: %w", err)
 	}
-	defer lock.Release()
+	defer releaseLock(lock, "append-batch")
 
 	// Get starting sequence number (inside lock to ensure atomicity)
 	startSeq, err := NextSequence(dir)
