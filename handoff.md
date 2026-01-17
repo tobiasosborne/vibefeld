@@ -1,42 +1,72 @@
-# Handoff - 2026-01-17 (Session 105)
+# Handoff - 2026-01-17 (Session 106)
 
 ## What Was Accomplished This Session
 
-### Session 105 Summary: Consolidated Redundant Loops in collectDefinitionNames
+### Session 106 Summary: Fixed Ignored Flag Parsing Errors in CLI
 
-Closed issue `vibefeld-s6vd` - "Code smell: RenderProverContext has redundant loops"
+Closed issue `vibefeld-po4w` - "Code smell: Ignored flag parsing errors in CLI"
 
-Refactored the `collectDefinitionNames` function in `internal/render/prover_context.go` to use the existing `collectContextEntries` helper, eliminating redundant loops over `targetNode.Context` and `targetNode.Scope`.
+Added helper functions in `internal/cli/flags.go` that provide safe flag retrieval with explicit panic behavior for programming errors (unregistered flags). Updated 10 CLI command files to use these new helpers.
 
 #### Changes
 
-The function previously had three separate loops:
-1. Loop over `targetNode.Context` for "def:" prefix
-2. Loop over `targetNode.Scope` for "def:" prefix
-3. Loop over `s.AllNodes()` for all definitions
+**New File: `internal/cli/flags.go`**
+- `MustString(cmd, name)` - Retrieves string flag, panics if not registered
+- `MustBool(cmd, name)` - Retrieves bool flag, panics if not registered
+- `MustInt(cmd, name)` - Retrieves int flag, panics if not registered
+- `MustStringSlice(cmd, name)` - Retrieves string slice flag, panics if not registered
 
-Now it reuses `collectContextEntries("def:", targetNode)` (introduced in Session 101) for the first two loops, eliminating code duplication and aligning with how `collectAssumptionIDs` and `collectExternalIDs` already work.
+**New File: `internal/cli/flags_test.go`**
+- Tests for all helper functions including panic behavior
+
+**Updated CLI Files (10 files):**
+- `cmd/af/claim.go` - Main file mentioned in issue
+- `cmd/af/status.go`
+- `cmd/af/jobs.go`
+- `cmd/af/release.go`
+- `cmd/af/replay.go`
+- `cmd/af/extend_claim.go`
+- `cmd/af/progress.go`
+- `cmd/af/health.go`
+- `cmd/af/export.go`
+
+#### Rationale
+
+Cobra's `GetString`, `GetBool`, etc. only return errors when the flag wasn't registered - a programming error caught during development. The old pattern of ignoring these errors was poor practice. The new `Must*` helpers:
+1. Make the intent explicit (panic on programming error)
+2. Eliminate silently ignored errors
+3. Provide consistent flag retrieval across the codebase
 
 #### Impact
 
-- Eliminated ~11 lines of redundant loop code
-- Consistent pattern now used across all collect* functions
-- No behavior change - all tests pass
+- Code smell eliminated for 10 command files
+- ~30+ more files still use the old pattern but can be migrated incrementally
+- All tests pass, build succeeds
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-s6vd** | Closed | Refactored collectDefinitionNames to use collectContextEntries helper, eliminating redundant loops |
+| **vibefeld-po4w** | Closed | Added cli.MustString/MustBool/MustInt helpers that panic on unregistered flags. Updated 10 CLI files. |
 
 ### Files Changed
-- `internal/render/prover_context.go` (refactored collectDefinitionNames function)
+- `internal/cli/flags.go` (new file)
+- `internal/cli/flags_test.go` (new file)
+- `cmd/af/claim.go`
+- `cmd/af/status.go`
+- `cmd/af/jobs.go`
+- `cmd/af/release.go`
+- `cmd/af/replay.go`
+- `cmd/af/extend_claim.go`
+- `cmd/af/progress.go`
+- `cmd/af/health.go`
+- `cmd/af/export.go`
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 79 (was 80)
-- **Closed:** 470 (was 469)
+- **Open:** 78 (was 79)
+- **Closed:** 471 (was 470)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -64,6 +94,9 @@ All tests pass. Build succeeds.
 8. Reflection in event parsing hot path (`vibefeld-s406`)
 9. Add benchmarks for critical paths (`vibefeld-qrzs`)
 
+### Follow-up Work (Not Tracked as Issues)
+- Migrate remaining ~30 CLI files to use `cli.Must*` helpers (incremental, low priority)
+
 ## Quick Commands
 
 ```bash
@@ -73,12 +106,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run render tests
-go test ./internal/render/...
+# Run cli tests
+go test ./internal/cli/...
 ```
 
 ## Session History
 
+**Session 106:** Closed 1 issue (ignored flag parsing errors - added cli.Must* helpers, updated 10 CLI files)
 **Session 105:** Closed 1 issue (collectDefinitionNames redundant loops - now uses collectContextEntries helper)
 **Session 104:** Closed 1 issue (runRefine code smell - extracted 6 helper functions, 43% line reduction)
 **Session 103:** Closed 1 issue (runAccept code smell - extracted 8 helper functions, 78% line reduction)

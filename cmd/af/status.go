@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -48,10 +49,10 @@ Examples:
 // runStatus executes the status command.
 func runStatus(cmd *cobra.Command, args []string) error {
 	// Get flags
-	dir, _ := cmd.Flags().GetString("dir")
-	format, _ := cmd.Flags().GetString("format")
-	limit, _ := cmd.Flags().GetInt("limit")
-	offset, _ := cmd.Flags().GetInt("offset")
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
+	limit := cli.MustInt(cmd, "limit")
+	offset := cli.MustInt(cmd, "offset")
 
 	// Validate pagination flags
 	if limit < 0 {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
@@ -60,12 +61,12 @@ func runClaim(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get flags
-	owner, _ := cmd.Flags().GetString("owner")
-	timeoutStr, _ := cmd.Flags().GetString("timeout")
-	dir, _ := cmd.Flags().GetString("dir")
-	format, _ := cmd.Flags().GetString("format")
-	role, _ := cmd.Flags().GetString("role")
-	refresh, _ := cmd.Flags().GetBool("refresh")
+	owner := cli.MustString(cmd, "owner")
+	timeoutStr := cli.MustString(cmd, "timeout")
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
+	role := cli.MustString(cmd, "role")
+	refresh := cli.MustBool(cmd, "refresh")
 
 	// Validate owner is not empty or whitespace
 	if strings.TrimSpace(owner) == "" {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/state"
 )
@@ -62,10 +63,10 @@ Examples:
 // runReplay executes the replay command.
 func runReplay(cmd *cobra.Command, args []string) error {
 	// Get flags
-	dir, _ := cmd.Flags().GetString("dir")
-	format, _ := cmd.Flags().GetString("format")
-	verify, _ := cmd.Flags().GetBool("verify")
-	verbose, _ := cmd.Flags().GetBool("verbose")
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
+	verify := cli.MustBool(cmd, "verify")
+	verbose := cli.MustBool(cmd, "verbose")
 
 	// Validate format
 	format = strings.ToLower(format)
