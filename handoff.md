@@ -1,46 +1,43 @@
-# Handoff - 2026-01-17 (Session 108)
+# Handoff - 2026-01-17 (Session 109)
 
 ## What Was Accomplished This Session
 
-### Session 108 Summary: Fixed Silent JSON Unmarshal Error in claim.go
+### Session 109 Summary: Improved scope Package Test Coverage to 100%
 
-Closed issue `vibefeld-o8l0` - "Code smell: Silent JSON unmarshal error in claim.go"
+Closed issue `vibefeld-h179` - "MEDIUM: scope package has only 59.5% test coverage"
 
 #### Problem
 
-In `cmd/af/claim.go` lines 165-166, a JSON unmarshal error was silently ignored:
+The `internal/scope` package had only 59.5% test coverage. Key functions like `InheritScope`, `ValidateScope`, `ValidateScopeClosure`, and `ValidateScopeBalance` were showing 0% coverage.
 
-```go
-if err := json.Unmarshal([]byte(checklistJSON), &checklist); err == nil {
-    result["verification_checklist"] = checklist
-}
-```
+#### Root Cause
 
-If unmarshaling failed, the `verification_checklist` field was simply omitted from the JSON output without any indication of the problem.
+The test files `inherit_test.go` and `validate_test.go` had `//go:build integration` build tags, meaning they only ran with `-tags=integration`. This meant comprehensive tests existed but weren't running in the default test suite.
 
 #### Solution
 
-Changed the error handling to be explicit:
-- On success: outputs `verification_checklist` with the parsed data
-- On failure: outputs `verification_checklist_error` with the error message
+1. **Removed integration build tags** from `inherit_test.go` and `validate_test.go` so tests run by default
+2. **Added test for sorting edge case** in `GetContainingScopes` - the bubble sort swap logic wasn't being exercised because existing tests happened to add scopes in already-sorted order. Added `TestTracker_GetContainingScopes_SortsOutermostFirst` which adds scopes in reverse order to trigger the swap.
 
-Added a comment explaining that while `RenderVerificationChecklistJSON` always returns valid JSON (even on internal errors), we handle parse errors defensively in case the contract changes.
+Coverage improved: **59.5% → 100%**
 
 ### Files Changed
 
-- `cmd/af/claim.go` (+5 lines) - Explicit error handling for checklist JSON parsing
+- `internal/scope/inherit_test.go` - Removed `//go:build integration` tag
+- `internal/scope/validate_test.go` - Removed `//go:build integration` tag
+- `internal/scope/tracker_test.go` - Added `TestTracker_GetContainingScopes_SortsOutermostFirst` test
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-o8l0** | Closed | Now outputs verification_checklist_error field instead of silently ignoring parse failures |
+| **vibefeld-h179** | Closed | Test coverage improved from 59.5% to 100% |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 76 (was 77)
-- **Closed:** 473 (was 472)
+- **Open:** 75 (was 76)
+- **Closed:** 474 (was 473)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -56,19 +53,18 @@ All tests pass. Build succeeds.
 
 ### P2 Test Coverage
 2. state package test coverage - 57% (`vibefeld-hpof`)
-3. scope package test coverage - 59.5% (`vibefeld-h179`)
 
 ### P2 Edge Case Tests
-4. State millions of events (`vibefeld-th1m`)
-5. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
-6. E2E test: Large proof stress test (`vibefeld-hfgi`)
+3. State millions of events (`vibefeld-th1m`)
+4. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
+5. E2E test: Large proof stress test (`vibefeld-hfgi`)
 
 ### P2 Performance
-7. Reflection in event parsing hot path (`vibefeld-s406`)
-8. Add benchmarks for critical paths (`vibefeld-qrzs`)
+6. Reflection in event parsing hot path (`vibefeld-s406`)
+7. Add benchmarks for critical paths (`vibefeld-qrzs`)
 
 ### P2 Code Quality
-9. Inconsistent error wrapping patterns (`vibefeld-mvpa`)
+8. Inconsistent error wrapping patterns (`vibefeld-mvpa`)
 
 ### Follow-up Work (Not Tracked as Issues)
 - Migrate remaining ~30 CLI files to use `cli.Must*` helpers (incremental, low priority)
@@ -84,10 +80,14 @@ go test ./...
 
 # Run integration tests
 go test -tags=integration ./...
+
+# Check scope package coverage
+go test -cover ./internal/scope/...
 ```
 
 ## Session History
 
+**Session 109:** Closed 1 issue (scope package coverage 59.5% → 100% - removed integration build tags, added sorting test)
 **Session 108:** Closed 1 issue (silent JSON unmarshal error - explicit error handling in claim.go)
 **Session 107:** Closed 1 issue (ledger test coverage - added tests for NewScopeOpened, NewScopeClosed, NewClaimRefreshed, Ledger.AppendIfSequence)
 **Session 106:** Closed 1 issue (ignored flag parsing errors - added cli.Must* helpers, updated 10 CLI files)

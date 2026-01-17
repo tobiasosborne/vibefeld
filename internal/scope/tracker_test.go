@@ -328,6 +328,39 @@ func TestTracker_GetScopeInfo_NoScopes(t *testing.T) {
 	}
 }
 
+func TestTracker_GetContainingScopes_SortsOutermostFirst(t *testing.T) {
+	// Test that scopes are sorted by depth (outermost first),
+	// even if they're added in reverse order.
+	// This ensures the swap logic in sorting is exercised.
+	tracker := NewTracker()
+	outerID := mustParseNodeID(t, "1")
+	middleID := mustParseNodeID(t, "1.1")
+	innerID := mustParseNodeID(t, "1.1.1")
+	nodeID := mustParseNodeID(t, "1.1.1.2")
+
+	// Add scopes in reverse order (innermost first) to trigger sorting
+	_ = tracker.OpenScope(innerID, "Inner assume")
+	_ = tracker.OpenScope(middleID, "Middle assume")
+	_ = tracker.OpenScope(outerID, "Outer assume")
+
+	scopes := tracker.GetContainingScopes(nodeID)
+
+	if len(scopes) != 3 {
+		t.Fatalf("expected 3 containing scopes, got %d", len(scopes))
+	}
+
+	// Should be sorted outermost to innermost
+	if scopes[0].NodeID.String() != "1" {
+		t.Errorf("expected first scope to be 1 (outermost), got %s", scopes[0].NodeID.String())
+	}
+	if scopes[1].NodeID.String() != "1.1" {
+		t.Errorf("expected second scope to be 1.1, got %s", scopes[1].NodeID.String())
+	}
+	if scopes[2].NodeID.String() != "1.1.1" {
+		t.Errorf("expected third scope to be 1.1.1 (innermost), got %s", scopes[2].NodeID.String())
+	}
+}
+
 // =============================================================================
 // ScopeInfo Tests
 // =============================================================================
