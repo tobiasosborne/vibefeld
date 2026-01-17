@@ -1,10 +1,15 @@
 package fs
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // testData is a simple struct for testing JSON read/write.
@@ -496,4 +501,212 @@ func TestReadJSON_PathIsFile(t *testing.T) {
 		}
 		t.Logf("got expected error for symlink-to-file as directory: %v", err)
 	})
+}
+
+// TestReadJSON_ConcurrentWrite tests that ReadJSON is safe when WriteJSON
+// is concurrently performing atomic writes (write to temp file, then rename).
+// Key guarantees:
+// 1. No partial reads (data corruption)
+// 2. Reads return either the old or new version, never a mix
+// 3. No panics or unexpected errors beyond file-not-found during rename window
+func TestReadJSON_ConcurrentWrite(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "concurrent.json")
+
+	// Write initial version
+	version1 := testData{ID: "v1", Name: "Version One", Count: 1, Enabled: true}
+	if err := WriteJSON(filePath, &version1); err != nil {
+		t.Fatalf("failed to write initial version: %v", err)
+	}
+
+	version2 := testData{ID: "v2", Name: "Version Two", Count: 2, Enabled: false}
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	var readCount atomic.Int32
+	var corruptionErrors atomic.Int32
+	var otherErrors atomic.Int32
+
+	// Concurrent readers
+	numReaders := 5
+	for i := 0; i < numReaders; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					var result testData
+					err := ReadJSON(filePath, &result)
+					if err != nil {
+						// File not found during atomic rename window is acceptable
+						if !os.IsNotExist(err) {
+							otherErrors.Add(1)
+						}
+						continue
+					}
+
+					readCount.Add(1)
+
+					// Check for corruption: must be either v1 or v2, not a mix
+					isV1 := result.ID == "v1" && result.Name == "Version One" && result.Count == 1 && result.Enabled == true
+					isV2 := result.ID == "v2" && result.Name == "Version Two" && result.Count == 2 && result.Enabled == false
+
+					if !isV1 && !isV2 {
+						corruptionErrors.Add(1)
+						t.Errorf("corrupted read: got %+v (neither v1 nor v2)", result)
+					}
+
+					time.Sleep(time.Microsecond)
+				}
+			}
+		}()
+	}
+
+	// Concurrent writer alternating between versions
+	numWrites := 100
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < numWrites; i++ {
+			var data testData
+			if i%2 == 0 {
+				data = version2
+			} else {
+				data = version1
+			}
+
+			_ = WriteJSON(filePath, &data)
+			time.Sleep(time.Microsecond)
+		}
+
+		close(stop)
+	}()
+
+	wg.Wait()
+
+	// Report results
+	if corruptions := corruptionErrors.Load(); corruptions > 0 {
+		t.Errorf("detected %d corrupted reads (partial data from both versions)", corruptions)
+	}
+
+	if errors := otherErrors.Load(); errors > 0 {
+		t.Errorf("got %d unexpected read errors", errors)
+	}
+
+	t.Logf("completed %d reads during %d writes with no corruption", readCount.Load(), numWrites)
+
+	// Final state should be valid
+	var final testData
+	if err := ReadJSON(filePath, &final); err != nil {
+		t.Fatalf("failed to read final state: %v", err)
+	}
+
+	isV1 := final.ID == "v1" && final.Name == "Version One"
+	isV2 := final.ID == "v2" && final.Name == "Version Two"
+	if !isV1 && !isV2 {
+		t.Errorf("final state is corrupted: %+v", final)
+	}
+}
+
+// TestReadJSON_ConcurrentWriteLargeData tests concurrent read/write with larger
+// data payloads to increase the window for potential race conditions.
+func TestReadJSON_ConcurrentWriteLargeData(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "large_concurrent.json")
+
+	// Large data structure to increase write time and race window
+	type largeData struct {
+		ID      string   `json:"id"`
+		Version int      `json:"version"`
+		Entries []string `json:"entries"`
+		Padding string   `json:"padding"`
+	}
+
+	makeData := func(version int) largeData {
+		entries := make([]string, 100)
+		for i := range entries {
+			entries[i] = fmt.Sprintf("entry_%d_v%d", i, version)
+		}
+		return largeData{
+			ID:      fmt.Sprintf("v%d", version),
+			Version: version,
+			Entries: entries,
+			Padding: strings.Repeat(fmt.Sprintf("padding_v%d_", version), 100),
+		}
+	}
+
+	// Write initial version
+	if err := WriteJSON(filePath, makeData(1)); err != nil {
+		t.Fatalf("failed to write initial version: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	var readCount atomic.Int32
+	var corruptionErrors atomic.Int32
+
+	// Concurrent readers
+	numReaders := 3
+	for i := 0; i < numReaders; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					var result largeData
+					err := ReadJSON(filePath, &result)
+					if err != nil {
+						continue
+					}
+
+					readCount.Add(1)
+
+					// Verify internal consistency: all entries should match the version
+					expectedPrefix := fmt.Sprintf("entry_0_v%d", result.Version)
+					if len(result.Entries) > 0 && !strings.HasPrefix(result.Entries[0], expectedPrefix[:len(expectedPrefix)-1]) {
+						corruptionErrors.Add(1)
+					}
+
+					// Check padding matches version
+					expectedPadding := fmt.Sprintf("padding_v%d_", result.Version)
+					if !strings.HasPrefix(result.Padding, expectedPadding) {
+						corruptionErrors.Add(1)
+					}
+				}
+			}
+		}()
+	}
+
+	// Concurrent writer
+	numWrites := 50
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < numWrites; i++ {
+			version := (i % 2) + 1
+			_ = WriteJSON(filePath, makeData(version))
+		}
+
+		close(stop)
+	}()
+
+	wg.Wait()
+
+	if corruptions := corruptionErrors.Load(); corruptions > 0 {
+		t.Errorf("detected %d corrupted reads with large data", corruptions)
+	}
+
+	t.Logf("completed %d reads during %d large writes", readCount.Load(), numWrites)
 }

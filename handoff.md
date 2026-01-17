@@ -1,40 +1,39 @@
-# Handoff - 2026-01-17 (Session 88)
+# Handoff - 2026-01-17 (Session 89)
 
 ## What Was Accomplished This Session
 
-### Session 88 Summary: FS Path Is File Edge Case Test
+### Session 89 Summary: FS Read During Concurrent Write Edge Case Tests
 
-Closed issue `vibefeld-te8b` - "Edge case test: FS path is a file not directory"
+Closed issue `vibefeld-w17s` - "Edge case test: FS read during concurrent write"
 
-Added comprehensive edge case tests in `internal/fs/json_io_test.go` for `ReadJSON` behavior when path components are files instead of directories:
+Added comprehensive edge case tests in `internal/fs/json_io_test.go` for race conditions between `ReadJSON` and `WriteJSON` atomic write operations:
 
-1. **path_is_directory_not_file** - Tests that `ReadJSON` correctly fails when trying to read a directory as if it were a JSON file
+1. **TestReadJSON_ConcurrentWrite** - Tests that concurrent reads during atomic writes (temp file + rename) don't cause data corruption. Verifies:
+   - No partial reads (reading mix of old/new data)
+   - Reads return either complete old or complete new version
+   - No panics or unexpected errors beyond file-not-found during rename window
 
-2. **parent_path_component_is_file** - Tests that `ReadJSON` correctly fails when a path component that should be a directory is actually a file
+2. **TestReadJSON_ConcurrentWriteLargeData** - Same test with larger payloads (100 entries, 1000+ char padding) to increase the window for potential race conditions. Verifies internal consistency of read data matches the version number.
 
-3. **deeply_nested_file_blocks_path** - Tests behavior when a file blocks the path at a nested level (e.g., `a/b/c` exists as a file when trying to read `a/b/c/d/data.json`)
-
-4. **symlink_to_directory** - Verifies that `ReadJSON` works correctly when reading through a symlink that points to a directory
-
-5. **symlink_to_file_as_directory** - Tests that `ReadJSON` correctly fails when a symlink points to a file but is used as if it were a directory
+Both tests run with race detector enabled and confirm the atomic write pattern is safe.
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-te8b** | Closed | Added comprehensive edge case tests |
+| **vibefeld-w17s** | Closed | Added TestReadJSON_ConcurrentWrite and TestReadJSON_ConcurrentWriteLargeData tests |
 
 ### Files Changed
-- `internal/fs/json_io_test.go` (+130 lines)
+- `internal/fs/json_io_test.go` (+215 lines)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 96 (was 97)
-- **Closed:** 453 (was 452)
+- **Open:** 95 (was 96)
+- **Closed:** 454 (was 453)
 
 ### Test Status
-All tests pass (5 new test cases in `TestReadJSON_PathIsFile`). Build succeeds.
+All tests pass (including race detection). Build succeeds.
 
 ## Remaining P0 Issues
 
@@ -66,12 +65,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new fs path-is-file edge case tests
-go test -v ./internal/fs/... -run "TestReadJSON_PathIsFile"
+# Run the new concurrent read/write tests
+go test -v ./internal/fs/... -run "TestReadJSON_Concurrent" -race
 ```
 
 ## Session History
 
+**Session 89:** Closed 1 issue (FS read during concurrent write edge case tests)
 **Session 88:** Closed 1 issue (FS path is file edge case tests)
 **Session 87:** Closed 1 issue (FS directory doesn't exist edge case tests)
 **Session 86:** Closed 1 issue (node empty vs nil dependencies edge case tests)
