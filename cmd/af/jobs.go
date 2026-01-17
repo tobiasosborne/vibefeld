@@ -98,25 +98,11 @@ func runJobs(cmd *cobra.Command, args []string) error {
 		nodeMap[n.ID.String()] = n
 	}
 
-	// Get all challenges from state
-	allChallenges := st.AllChallenges()
-
-	// Build challenge map from state challenges
-	// Maps node ID string -> slice of challenges on that node
-	challengeMap := make(map[string][]*node.Challenge)
-	for _, c := range allChallenges {
-		nodeIDStr := c.NodeID.String()
-		// Convert state.Challenge to node.Challenge (only Status field is needed by jobs package)
-		nc := &node.Challenge{
-			ID:       c.ID,
-			TargetID: c.NodeID,
-			Status:   node.ChallengeStatus(c.Status),
-		}
-		challengeMap[nodeIDStr] = append(challengeMap[nodeIDStr], nc)
-	}
+	// Get challenge map using cached lookup (O(1) per node instead of O(n))
+	challengeMap := st.ChallengeMapForJobs()
 
 	// Build severity map for challenge severity counts
-	severityMap := buildSeverityMap(allChallenges)
+	severityMap := buildSeverityMap(st.AllChallenges())
 
 	// Find jobs
 	jobResult := jobs.FindJobs(nodes, nodeMap, challengeMap)

@@ -51,6 +51,10 @@ type State struct {
 	// challenges maps challenge ID to Challenge instances.
 	challenges map[string]*Challenge
 
+	// challengesByNode caches challenges grouped by node ID.
+	// This is lazily built and invalidated when challenges change.
+	challengesByNode map[string][]*Challenge
+
 	// amendments maps NodeID string to a slice of Amendment records.
 	// This tracks the history of all amendments made to each node.
 	amendments map[string][]Amendment
@@ -167,8 +171,10 @@ func (s *State) AllLemmas() []*node.Lemma {
 
 // AddChallenge adds a challenge to the state.
 // If a challenge with the same ID already exists, it is overwritten.
+// This invalidates the challengesByNode cache.
 func (s *State) AddChallenge(c *Challenge) {
 	s.challenges[c.ID] = c
+	s.challengesByNode = nil // invalidate cache
 }
 
 // GetChallenge returns the challenge with the given ID, or nil if not found.
@@ -184,6 +190,56 @@ func (s *State) AllChallenges() []*Challenge {
 		challenges = append(challenges, c)
 	}
 	return challenges
+}
+
+// InvalidateChallengeCache invalidates the challengesByNode cache.
+// This should be called after any operation that modifies challenge status.
+func (s *State) InvalidateChallengeCache() {
+	s.challengesByNode = nil
+}
+
+// ChallengesByNodeID returns a map of node ID strings to challenges on that node.
+// The map is cached and only rebuilt when challenges change.
+// This provides O(1) lookup for challenges by node, avoiding repeated O(n) iteration.
+func (s *State) ChallengesByNodeID() map[string][]*Challenge {
+	if s.challengesByNode != nil {
+		return s.challengesByNode
+	}
+
+	// Build the cache
+	s.challengesByNode = make(map[string][]*Challenge)
+	for _, c := range s.challenges {
+		nodeIDStr := c.NodeID.String()
+		s.challengesByNode[nodeIDStr] = append(s.challengesByNode[nodeIDStr], c)
+	}
+	return s.challengesByNode
+}
+
+// GetChallengesForNode returns all challenges for a specific node.
+// This uses the cached challengesByNode map for O(1) lookup.
+func (s *State) GetChallengesForNode(nodeID types.NodeID) []*Challenge {
+	return s.ChallengesByNodeID()[nodeID.String()]
+}
+
+// ChallengeMapForJobs returns challenges grouped by node ID in the format
+// expected by the jobs package. This converts state.Challenge to node.Challenge.
+// The conversion is done once and uses the cached challengesByNode map.
+func (s *State) ChallengeMapForJobs() map[string][]*node.Challenge {
+	byNode := s.ChallengesByNodeID()
+	result := make(map[string][]*node.Challenge, len(byNode))
+	for nodeIDStr, challenges := range byNode {
+		nodeChals := make([]*node.Challenge, 0, len(challenges))
+		for _, c := range challenges {
+			nc := &node.Challenge{
+				ID:       c.ID,
+				TargetID: c.NodeID,
+				Status:   node.ChallengeStatus(c.Status),
+			}
+			nodeChals = append(nodeChals, nc)
+		}
+		result[nodeIDStr] = nodeChals
+	}
+	return result
 }
 
 // OpenChallenges returns a slice of all open challenges in the state.
@@ -202,14 +258,12 @@ func (s *State) OpenChallenges() []*Challenge {
 // (critical or major) for the specified node.
 // This is used to determine if a node can be accepted - nodes with blocking
 // challenges cannot be accepted until those challenges are resolved.
+// This uses the cached challengesByNode map for O(1) node lookup.
 func (s *State) GetBlockingChallengesForNode(nodeID types.NodeID) []*Challenge {
 	var blocking []*Challenge
-	nodeIDStr := nodeID.String()
-	for _, c := range s.challenges {
-		// Must be on the specified node
-		if c.NodeID.String() != nodeIDStr {
-			continue
-		}
+	// Use the cached lookup
+	challenges := s.GetChallengesForNode(nodeID)
+	for _, c := range challenges {
 		// Must be open (not resolved or withdrawn)
 		if c.Status != "open" {
 			continue
@@ -232,14 +286,11 @@ func (s *State) HasBlockingChallenges(nodeID types.NodeID) bool {
 // any challenge for the given node, even if that challenge was later resolved
 // or withdrawn. This is used to ensure verifiers engage with nodes before
 // accepting them.
+// This uses the cached challengesByNode map for O(1) node lookup.
 func (s *State) VerifierRaisedChallengeForNode(nodeID types.NodeID, agentID string) bool {
-	nodeIDStr := nodeID.String()
-	for _, c := range s.challenges {
-		// Check if this challenge is for the specified node
-		if c.NodeID.String() != nodeIDStr {
-			continue
-		}
-		// Check if this challenge was raised by the specified agent
+	// Use the cached lookup
+	challenges := s.GetChallengesForNode(nodeID)
+	for _, c := range challenges {
 		if c.RaisedBy == agentID {
 			return true
 		}

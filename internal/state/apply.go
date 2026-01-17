@@ -326,9 +326,10 @@ func applyChallengeSuperseded(s *State, e ledger.ChallengeSuperseded) error {
 // as superseded. This is called when a node is archived or refuted, making
 // any challenges on it moot.
 func supersedeOpenChallengesForNode(s *State, nodeID types.NodeID) {
-	for _, c := range s.AllChallenges() {
-		// Only supersede open challenges that belong to this specific node
-		if c.Status == "open" && c.NodeID.String() == nodeID.String() {
+	// Use the cached challengesByNode map for O(1) lookup
+	challenges := s.GetChallengesForNode(nodeID)
+	for _, c := range challenges {
+		if c.Status == "open" {
 			c.Status = "superseded"
 		}
 	}

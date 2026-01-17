@@ -168,24 +168,11 @@ func analyzeHealth(st *state.State) *HealthReport {
 		}
 	}
 
-	// Build challenge map from state challenges
-	// Maps node ID string -> slice of challenges on that node
-	challengeMap := make(map[string][]*node.Challenge)
-	openChallengeCount := 0
+	// Get challenge map using cached lookup (O(1) per node instead of O(n))
+	challengeMap := st.ChallengeMapForJobs()
 
-	for _, c := range st.AllChallenges() {
-		nodeIDStr := c.NodeID.String()
-		// Convert state.Challenge to node.Challenge (only Status field is needed by jobs package)
-		nc := &node.Challenge{
-			ID:       c.ID,
-			TargetID: c.NodeID,
-			Status:   node.ChallengeStatus(c.Status),
-		}
-		challengeMap[nodeIDStr] = append(challengeMap[nodeIDStr], nc)
-		if c.Status == "open" {
-			openChallengeCount++
-		}
-	}
+	// Count open challenges
+	openChallengeCount := len(st.OpenChallenges())
 
 	// Find jobs
 	jobResult := jobs.FindJobs(nodes, nodeMap, challengeMap)

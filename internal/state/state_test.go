@@ -1281,3 +1281,136 @@ func TestVerifierRaisedChallengeForNode_MultipleChallenges(t *testing.T) {
 		t.Errorf("VerifierRaisedChallengeForNode(%s, %q) = true, want false", nodeID, "verifier-3")
 	}
 }
+
+// TestChallengesByNodeID verifies the cached challenge lookup by node ID.
+func TestChallengesByNodeID(t *testing.T) {
+	s := NewState()
+
+	// Create test nodes using hierarchical IDs
+	node1ID := mustParseNodeID(t, "1")
+	node2ID := mustParseNodeID(t, "1.1")
+
+	// Add challenges to different nodes
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   node1ID,
+		Reason:   "Issue 1 on node 1",
+		Status:   "open",
+		Severity: "major",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-2",
+		NodeID:   node1ID,
+		Reason:   "Issue 2 on node 1",
+		Status:   "resolved",
+		Severity: "minor",
+	})
+	s.AddChallenge(&Challenge{
+		ID:       "ch-3",
+		NodeID:   node2ID,
+		Reason:   "Issue 1 on node 1.1",
+		Status:   "open",
+		Severity: "critical",
+	})
+
+	// Test ChallengesByNodeID
+	byNode := s.ChallengesByNodeID()
+	if byNode == nil {
+		t.Fatal("ChallengesByNodeID returned nil")
+	}
+
+	// Node 1 should have 2 challenges
+	if len(byNode[node1ID.String()]) != 2 {
+		t.Errorf("Expected 2 challenges for node 1, got %d", len(byNode[node1ID.String()]))
+	}
+
+	// Node 1.1 should have 1 challenge
+	if len(byNode[node2ID.String()]) != 1 {
+		t.Errorf("Expected 1 challenge for node 1.1, got %d", len(byNode[node2ID.String()]))
+	}
+
+	// Test GetChallengesForNode
+	node1Challenges := s.GetChallengesForNode(node1ID)
+	if len(node1Challenges) != 2 {
+		t.Errorf("Expected 2 challenges for node 1, got %d", len(node1Challenges))
+	}
+
+	// Non-existent node should return nil (not panic)
+	node3ID := mustParseNodeID(t, "1.2")
+	node3Challenges := s.GetChallengesForNode(node3ID)
+	if node3Challenges != nil {
+		t.Errorf("Expected nil for non-existent node, got %v", node3Challenges)
+	}
+}
+
+// TestChallengesByNodeIDCacheInvalidation verifies that adding a challenge invalidates the cache.
+func TestChallengesByNodeIDCacheInvalidation(t *testing.T) {
+	s := NewState()
+
+	node1ID := mustParseNodeID(t, "1")
+
+	// Add first challenge
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   node1ID,
+		Reason:   "Issue 1",
+		Status:   "open",
+		Severity: "major",
+	})
+
+	// Get the cache
+	byNode1 := s.ChallengesByNodeID()
+	if len(byNode1[node1ID.String()]) != 1 {
+		t.Errorf("Expected 1 challenge, got %d", len(byNode1[node1ID.String()]))
+	}
+
+	// Add second challenge (should invalidate cache)
+	s.AddChallenge(&Challenge{
+		ID:       "ch-2",
+		NodeID:   node1ID,
+		Reason:   "Issue 2",
+		Status:   "open",
+		Severity: "minor",
+	})
+
+	// Get the cache again (should be rebuilt)
+	byNode2 := s.ChallengesByNodeID()
+	if len(byNode2[node1ID.String()]) != 2 {
+		t.Errorf("Expected 2 challenges after cache invalidation, got %d", len(byNode2[node1ID.String()]))
+	}
+}
+
+// TestChallengeMapForJobs verifies the conversion to node.Challenge format.
+func TestChallengeMapForJobs(t *testing.T) {
+	s := NewState()
+
+	node1ID := mustParseNodeID(t, "1")
+
+	s.AddChallenge(&Challenge{
+		ID:       "ch-1",
+		NodeID:   node1ID,
+		Reason:   "Issue 1",
+		Status:   "open",
+		Severity: "major",
+	})
+
+	// Get the jobs-format map
+	jobsMap := s.ChallengeMapForJobs()
+
+	// Check that the conversion was correct
+	challenges := jobsMap[node1ID.String()]
+	if len(challenges) != 1 {
+		t.Fatalf("Expected 1 challenge, got %d", len(challenges))
+	}
+
+	c := challenges[0]
+	if c.ID != "ch-1" {
+		t.Errorf("Expected ID 'ch-1', got %q", c.ID)
+	}
+	if c.TargetID.String() != node1ID.String() {
+		t.Errorf("Expected TargetID %q, got %q", node1ID.String(), c.TargetID.String())
+	}
+	if c.Status != node.ChallengeStatusOpen {
+		t.Errorf("Expected Status %q, got %q", node.ChallengeStatusOpen, c.Status)
+	}
+}
