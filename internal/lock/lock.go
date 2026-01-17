@@ -136,8 +136,8 @@ func (l *ClaimLock) UnmarshalJSON(data []byte) error {
 	if lj.NodeID == "" {
 		return errors.New("missing required field: node_id")
 	}
-	if lj.Owner == "" {
-		return errors.New("missing required field: owner")
+	if lj.Owner == "" || strings.TrimSpace(lj.Owner) == "" {
+		return errors.New("invalid owner: empty or whitespace")
 	}
 	if lj.AcquiredAt == "" {
 		return errors.New("missing required field: acquired_at")

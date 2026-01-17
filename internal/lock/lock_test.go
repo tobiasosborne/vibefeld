@@ -2,6 +2,7 @@ package lock_test
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1036,6 +1037,95 @@ func TestUnmarshalJSON_FutureTimestamps(t *testing.T) {
 			if !restored.ExpiresAt().Equal(lk.ExpiresAt()) {
 				t.Errorf("ExpiresAt after roundtrip: got %v, want %v",
 					restored.ExpiresAt(), lk.ExpiresAt())
+			}
+		})
+	}
+}
+
+// TestUnmarshalJSON_EmptyOwner verifies UnmarshalJSON rejects empty owner string.
+// This test documents that while NewClaimLock() validates empty/whitespace owners,
+// UnmarshalJSON must also enforce this validation for JSON-deserialized locks.
+func TestUnmarshalJSON_EmptyOwner(t *testing.T) {
+	tests := []struct {
+		name    string
+		owner   string
+		wantErr bool
+	}{
+		{
+			name:    "empty string",
+			owner:   "",
+			wantErr: true,
+		},
+		{
+			name:    "valid owner",
+			owner:   "agent-001",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonData := []byte(`{
+				"node_id": "1",
+				"owner": "` + tt.owner + `",
+				"acquired_at": "2025-01-01T00:00:00.000000000Z",
+				"expires_at": "2025-01-01T01:00:00.000000000Z"
+			}`)
+
+			var lk lock.ClaimLock
+			err := json.Unmarshal(jsonData, &lk)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("json.Unmarshal() with owner=%q expected error, got nil", tt.owner)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("json.Unmarshal() with owner=%q unexpected error: %v", tt.owner, err)
+			}
+
+			if lk.Owner() != tt.owner {
+				t.Errorf("Owner() = %q, want %q", lk.Owner(), tt.owner)
+			}
+		})
+	}
+}
+
+// TestUnmarshalJSON_WhitespaceOwner verifies UnmarshalJSON rejects whitespace-only owner strings.
+// This ensures consistency with NewClaimLock() which also rejects whitespace owners.
+// Note: This test documents the DESIRED behavior. If it fails, UnmarshalJSON needs to be
+// updated to add whitespace validation consistent with the constructor.
+func TestUnmarshalJSON_WhitespaceOwner(t *testing.T) {
+	tests := []struct {
+		name  string
+		owner string
+	}{
+		{"spaces only", "   "},
+		{"tabs only", "\t\t"},
+		{"newlines only", "\n\n"},
+		{"mixed whitespace", " \t\n "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Need to escape special characters for JSON
+			escapedOwner := tt.owner
+			escapedOwner = strings.ReplaceAll(escapedOwner, "\t", "\\t")
+			escapedOwner = strings.ReplaceAll(escapedOwner, "\n", "\\n")
+
+			jsonData := []byte(`{
+				"node_id": "1",
+				"owner": "` + escapedOwner + `",
+				"acquired_at": "2025-01-01T00:00:00.000000000Z",
+				"expires_at": "2025-01-01T01:00:00.000000000Z"
+			}`)
+
+			var lk lock.ClaimLock
+			err := json.Unmarshal(jsonData, &lk)
+			if err == nil {
+				t.Errorf("json.Unmarshal() with whitespace owner %q expected error, got nil", tt.owner)
 			}
 		})
 	}
