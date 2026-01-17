@@ -244,3 +244,207 @@ func ExitCode(err error) int {
 
 	return code.ExitCode()
 }
+
+// afPathMarker is the directory marker used to identify AF-related paths.
+const afPathMarker = ".af"
+
+// SanitizePaths removes sensitive directory prefixes from file paths in error messages.
+// It looks for paths containing ".af" and strips everything before it, keeping only
+// the relative path from .af onwards. This prevents leaking filesystem structure
+// in user-facing error messages.
+//
+// Examples:
+//   - "/home/user/project/.af/ledger/0001.json" -> ".af/ledger/0001.json"
+//   - "C:\Users\dev\.af\config.json" -> ".af/config.json"
+//   - "failed to read .af/file.json" -> "failed to read .af/file.json" (unchanged)
+func SanitizePaths(s string) string {
+	if s == "" {
+		return s
+	}
+
+	result := s
+
+	// Find and replace Unix-style paths (starts with /)
+	// Pattern: /.../.af/... -> .af/...
+	result = sanitizeUnixPaths(result)
+
+	// Find and replace Windows-style paths (starts with drive letter like C:\)
+	// Pattern: C:\...\\.af\... -> .af/...
+	result = sanitizeWindowsPaths(result)
+
+	return result
+}
+
+// sanitizeUnixPaths finds Unix-style absolute paths containing .af and strips the prefix.
+func sanitizeUnixPaths(s string) string {
+	result := []byte(s)
+	i := 0
+
+	for i < len(result) {
+		// Look for start of absolute path
+		if result[i] != '/' {
+			i++
+			continue
+		}
+
+		// Found a '/', look for .af in this path
+		pathStart := i
+		pathEnd := pathStart
+
+		// Find the end of this path (next space or end of string)
+		for pathEnd < len(result) && result[pathEnd] != ' ' && result[pathEnd] != ':' {
+			pathEnd++
+		}
+		// Include colon if it's part of error message like "path: error"
+		// but we want to stop before the space after colon
+		if pathEnd < len(result) && result[pathEnd] == ':' {
+			// Keep the colon as part of path end detection but don't include it
+		}
+
+		pathStr := string(result[pathStart:pathEnd])
+
+		// Find .af in this path
+		afIdx := findAFMarker(pathStr)
+		if afIdx != -1 {
+			// Replace the absolute path with relative .af path
+			relativePath := pathStr[afIdx:]
+			newResult := make([]byte, 0, len(result)-(pathEnd-pathStart)+len(relativePath))
+			newResult = append(newResult, result[:pathStart]...)
+			newResult = append(newResult, relativePath...)
+			newResult = append(newResult, result[pathEnd:]...)
+			result = newResult
+			i = pathStart + len(relativePath)
+		} else {
+			i = pathEnd
+		}
+	}
+
+	return string(result)
+}
+
+// sanitizeWindowsPaths finds Windows-style paths containing .af and strips the prefix.
+func sanitizeWindowsPaths(s string) string {
+	result := []byte(s)
+	i := 0
+
+	for i < len(result)-1 {
+		// Look for drive letter pattern (e.g., "C:\")
+		if !isLetter(result[i]) || result[i+1] != ':' {
+			i++
+			continue
+		}
+		// Check for backslash after drive letter
+		if i+2 >= len(result) || result[i+2] != '\\' {
+			i++
+			continue
+		}
+
+		pathStart := i
+		pathEnd := pathStart
+
+		// Find the end of this path (next space or end of string)
+		for pathEnd < len(result) && result[pathEnd] != ' ' {
+			pathEnd++
+		}
+
+		pathStr := string(result[pathStart:pathEnd])
+
+		// Find .af in this path (handle both \ and /)
+		afIdx := findAFMarkerWindows(pathStr)
+		if afIdx != -1 {
+			// Replace with Unix-style relative path
+			relativePath := normalizeToUnix(pathStr[afIdx:])
+			newResult := make([]byte, 0, len(result)-(pathEnd-pathStart)+len(relativePath))
+			newResult = append(newResult, result[:pathStart]...)
+			newResult = append(newResult, relativePath...)
+			newResult = append(newResult, result[pathEnd:]...)
+			result = newResult
+			i = pathStart + len(relativePath)
+		} else {
+			i = pathEnd
+		}
+	}
+
+	return string(result)
+}
+
+// findAFMarker finds the index of ".af/" or ".af" at end of path in a Unix-style path.
+func findAFMarker(path string) int {
+	// Look for /.af/ or /.af at end
+	marker := "/" + afPathMarker + "/"
+	idx := 0
+	for {
+		pos := indexAt(path, marker, idx)
+		if pos == -1 {
+			break
+		}
+		return pos + 1 // Skip the leading /
+	}
+
+	// Check for .af at end of path
+	marker = "/" + afPathMarker
+	if len(path) >= len(marker) && path[len(path)-len(marker):] == marker {
+		return len(path) - len(afPathMarker)
+	}
+
+	return -1
+}
+
+// findAFMarkerWindows finds .af in a Windows path with either \ or / separators.
+func findAFMarkerWindows(path string) int {
+	// Look for \.af\ or /.af/
+	for i := 0; i < len(path)-len(afPathMarker); i++ {
+		if (path[i] == '\\' || path[i] == '/') &&
+			path[i+1:i+1+len(afPathMarker)] == afPathMarker &&
+			(i+1+len(afPathMarker) >= len(path) ||
+				path[i+1+len(afPathMarker)] == '\\' ||
+				path[i+1+len(afPathMarker)] == '/') {
+			return i + 1
+		}
+	}
+	return -1
+}
+
+// indexAt returns the index of substr in s starting from offset, or -1 if not found.
+func indexAt(s, substr string, offset int) int {
+	if offset >= len(s) {
+		return -1
+	}
+	for i := offset; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+// isLetter returns true if b is an ASCII letter.
+func isLetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// normalizeToUnix converts Windows backslashes to Unix forward slashes.
+func normalizeToUnix(s string) string {
+	result := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' {
+			result[i] = '/'
+		} else {
+			result[i] = s[i]
+		}
+	}
+	return string(result)
+}
+
+// SanitizeError wraps an error with sanitized file paths in its message.
+// Returns nil if err is nil.
+func SanitizeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	sanitized := SanitizePaths(err.Error())
+	if sanitized == err.Error() {
+		return err // No change needed
+	}
+	return fmt.Errorf("%s", sanitized)
+}

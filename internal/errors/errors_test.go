@@ -423,3 +423,116 @@ func TestExitCodeFunc(t *testing.T) {
 	}
 }
 
+// TestSanitizePaths tests the SanitizePaths function that removes sensitive file paths from errors
+func TestSanitizePaths(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "strips home directory path",
+			input: "failed to read /home/user/project/.af/ledger/0001.json: permission denied",
+			want:  "failed to read .af/ledger/0001.json: permission denied",
+		},
+		{
+			name:  "strips absolute Unix path",
+			input: "open /var/lib/myapp/.af/nodes/1.json: no such file or directory",
+			want:  "open .af/nodes/1.json: no such file or directory",
+		},
+		{
+			name:  "strips Windows-style path",
+			input: "failed to write C:\\Users\\dev\\project\\.af\\ledger\\0002.json: access denied",
+			want:  "failed to write .af/ledger/0002.json: access denied",
+		},
+		{
+			name:  "handles multiple paths in same message",
+			input: "rename /tmp/foo/.af/old to /tmp/foo/.af/new failed",
+			want:  "rename .af/old to .af/new failed",
+		},
+		{
+			name:  "preserves relative .af paths",
+			input: "failed to read .af/ledger/0001.json: file not found",
+			want:  "failed to read .af/ledger/0001.json: file not found",
+		},
+		{
+			name:  "preserves messages without paths",
+			input: "invalid node type: expected step",
+			want:  "invalid node type: expected step",
+		},
+		{
+			name:  "strips path ending at colon",
+			input: "open /home/user/project/.af/config.json: permission denied",
+			want:  "open .af/config.json: permission denied",
+		},
+		{
+			name:  "strips deeply nested path",
+			input: "read /very/long/path/to/some/deeply/nested/.af/subdir/file.json: error",
+			want:  "read .af/subdir/file.json: error",
+		},
+		{
+			name:  "handles path without .af marker - falls back to basename",
+			input: "open /etc/passwd: permission denied",
+			want:  "open /etc/passwd: permission denied",
+		},
+		{
+			name:  "handles empty string",
+			input: "",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SanitizePaths(tt.input)
+			if got != tt.want {
+				t.Errorf("SanitizePaths(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSanitizeError tests the SanitizeError function that wraps error sanitization
+func TestSanitizeError(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		wantNil bool
+		wantMsg string
+	}{
+		{
+			name:    "nil error returns nil",
+			err:     nil,
+			wantNil: true,
+		},
+		{
+			name:    "sanitizes error with path",
+			err:     fmt.Errorf("failed to read /home/user/.af/ledger/0001.json: permission denied"),
+			wantMsg: "failed to read .af/ledger/0001.json: permission denied",
+		},
+		{
+			name:    "preserves error without path",
+			err:     fmt.Errorf("invalid node ID"),
+			wantMsg: "invalid node ID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SanitizeError(tt.err)
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("SanitizeError() = %v, want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("SanitizeError() = nil, want error")
+			}
+			if got.Error() != tt.wantMsg {
+				t.Errorf("SanitizeError().Error() = %q, want %q", got.Error(), tt.wantMsg)
+			}
+		})
+	}
+}
+

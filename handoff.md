@@ -1,56 +1,59 @@
-# Handoff - 2026-01-17 (Session 70)
+# Handoff - 2026-01-17 (Session 71)
 
 ## What Was Accomplished This Session
 
-### Session 70 Summary: PersistentManager Synchronization Fix
+### Session 71 Summary: Error Message Path Sanitization
 
-Closed issue `vibefeld-0yre` - "MEDIUM: No synchronization on PersistentManager construction"
+Closed issue `vibefeld-e0eh` - "MEDIUM: Error messages leak file paths"
 
-Fixed the potential race condition where multiple goroutines could create separate PersistentManager instances for the same ledger, resulting in inconsistent in-memory state.
+Fixed security issue where error messages could reveal sensitive filesystem paths to users, providing reconnaissance information about system structure.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-0yre** | internal/lock/persistent.go | Bug fix | Added singleton registry for PersistentManager instances |
-| | internal/lock/persistent_test.go | Test | 5 new tests for GetOrCreateManager and registry functions |
+| **vibefeld-e0eh** | internal/errors/errors.go | Security fix | Added SanitizePaths and SanitizeError functions |
+| | internal/errors/errors_test.go | Test | 12 new test cases for path sanitization |
+| | cmd/af/main.go | Integration | Applied sanitization at CLI error output |
 
 #### Changes Made
 
-**internal/lock/persistent.go:**
-- Added package-level `managerRegistry` map and `managerRegistryLock` mutex
-- Added `GetOrCreateManager(l *ledger.Ledger)` - singleton factory that returns the same manager for the same ledger path
-- Added `UnregisterManager(path string)` - removes a manager from the registry (for testing)
-- Added `ClearManagerRegistry()` - clears all managers (for testing)
-- Updated documentation on `PersistentManager` struct and `NewPersistentManager` with warnings about concurrent usage
+**internal/errors/errors.go:**
+- Added `SanitizePaths(s string) string` - sanitizes file paths in error messages
+- Added `SanitizeError(err error) error` - wraps error with sanitized paths
+- Added helper functions for Unix and Windows path detection
+- Strips absolute paths containing `.af/` down to relative `.af/...` paths
 
-**internal/lock/persistent_test.go:**
-- `TestGetOrCreateManager_Singleton` - verifies same instance returned for same path
-- `TestGetOrCreateManager_DifferentPaths` - verifies different instances for different paths
-- `TestGetOrCreateManager_NilLedger` - verifies nil ledger rejection
-- `TestGetOrCreateManager_SharedState` - verifies state is shared through singleton
-- `TestUnregisterManager` - verifies registry cleanup and re-creation
+**internal/errors/errors_test.go:**
+- `TestSanitizePaths` - 10 test cases covering:
+  - Unix absolute paths with `.af`
+  - Windows paths with backslashes
+  - Multiple paths in same message
+  - Paths without `.af` marker (preserved)
+  - Edge cases (empty strings, relative paths)
+- `TestSanitizeError` - 3 test cases for error wrapper
+
+**cmd/af/main.go:**
+- Applied `errors.SanitizeError()` at the single CLI error output point
+- All errors are now sanitized before display to users
 
 #### Solution Design
 
-The fix provides two approaches:
-1. **Documentation**: Warns users that only one PersistentManager should exist per ledger path
-2. **Singleton Factory**: `GetOrCreateManager()` provides safe singleton semantics with proper synchronization
+The fix applies sanitization at the final output layer rather than at each error source:
+1. **Central sanitization**: Applied once in main.go where errors are printed
+2. **Pattern matching**: Finds absolute paths containing `.af/` and strips prefix
+3. **Cross-platform**: Handles both Unix (`/path/.af/`) and Windows (`C:\path\.af\`)
+4. **Safe fallback**: Non-AF paths are preserved unchanged
 
-The registry is keyed by ledger directory path, ensuring that even if multiple `Ledger` instances point to the same directory, they share the same `PersistentManager`.
-
-#### Files Changed
-
-```
-internal/lock/persistent.go      (+65 lines) - Registry and GetOrCreateManager
-internal/lock/persistent_test.go (+134 lines) - 5 new tests
-```
+Example transformations:
+- `/home/user/project/.af/ledger/0001.json` → `.af/ledger/0001.json`
+- `C:\Users\dev\.af\config.json` → `.af/config.json`
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 116 (was 117)
-- **Closed:** 433 (was 432)
+- **Open:** 115 (was 116)
+- **Closed:** 434 (was 433)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -65,18 +68,16 @@ No P0 issues remain open.
 1. Module structure: Reduce cmd/af imports from 17 to 2 (`vibefeld-jfbc`)
 2. CLI UX: Verifier context incomplete when claiming (`vibefeld-z05c`)
 
-### P2 Bug Fixes
-3. Error messages leak file paths (`vibefeld-e0eh`)
-
 ### P2 Test Coverage
-4. ledger package test coverage - 58.6% (`vibefeld-4pba`)
-5. state package test coverage - 57% (`vibefeld-hpof`)
-6. scope package test coverage - 59.5% (`vibefeld-h179`)
+3. ledger package test coverage - 58.6% (`vibefeld-4pba`)
+4. state package test coverage - 57% (`vibefeld-hpof`)
+5. scope package test coverage - 59.5% (`vibefeld-h179`)
 
 ### P2 Edge Case Tests
-7. Directory deleted during append (`vibefeld-iupw`)
-8. Permission changes mid-operation (`vibefeld-hzrs`)
-9. Concurrent metadata corruption (`vibefeld-be56`)
+6. Directory deleted during append (`vibefeld-iupw`)
+7. Permission changes mid-operation (`vibefeld-hzrs`)
+8. Concurrent metadata corruption (`vibefeld-be56`)
+9. Lock refresh on expired lock (`vibefeld-vmzq`)
 
 ## Quick Commands
 
@@ -87,12 +88,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run lock package tests specifically
-go test ./internal/lock/... -v
+# Run error package tests specifically
+go test ./internal/errors/... -v
 ```
 
 ## Session History
 
+**Session 71:** Closed 1 issue (error message path sanitization security fix)
 **Session 70:** Closed 1 issue (PersistentManager singleton factory for synchronization)
 **Session 69:** Closed 1 issue (tree rendering performance - string conversion optimization)
 **Session 68:** Closed 1 issue (lock holder TOCTOU race condition fix)

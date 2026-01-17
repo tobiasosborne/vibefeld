@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/errors"
 )
 
 // Version is the current version of the af CLI tool.
@@ -18,7 +19,9 @@ const Version = "0.1.0"
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		// Sanitize error messages to prevent leaking filesystem paths
+		sanitized := errors.SanitizeError(err)
+		fmt.Fprintln(os.Stderr, sanitized)
 		os.Exit(1)
 	}
 }
