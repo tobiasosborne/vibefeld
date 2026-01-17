@@ -1,76 +1,80 @@
-# Handoff - 2026-01-17 (Session 120)
+# Handoff - 2026-01-17 (Session 121)
 
 ## What Was Accomplished This Session
 
-### Session 120 Summary: Complete RefineNode Method Consolidation
+### Session 121 Summary: Fixed Config() Silent Error Swallowing
 
-Closed issue `vibefeld-ns9q` - "API design: Overloaded RefineNode methods should consolidate"
+Closed issue `vibefeld-tigb` - "Error handling: Config() silently swallows errors"
 
 #### Problem
 
-Three separate methods existed for essentially the same operation:
-- `RefineNode(parentID, owner, childID, nodeType, statement, inference)` - basic refine
-- `RefineNodeWithDeps(... + dependencies)` - with dependencies
-- `RefineNodeWithAllDeps(... + dependencies, validationDeps)` - with all deps (already delegated to Refine)
-
-The first two had duplicate implementations (~60-70 lines each) instead of delegating to the consolidated `Refine(RefineSpec)` method.
-
-#### Solution
-
-Updated `RefineNode` and `RefineNodeWithDeps` to delegate to `Refine(RefineSpec)`:
+`Config()` method silently returned a default config when `LoadConfig()` failed:
 
 ```go
-// Before: ~60 lines of duplicate validation/ledger code
-func (s *ProofService) RefineNode(...) error { /* full implementation */ }
-
-// After: Clean delegation
-func (s *ProofService) RefineNode(parentID types.NodeID, owner string,
-    childID types.NodeID, nodeType schema.NodeType,
-    statement string, inference schema.InferenceType) error {
-    return s.Refine(RefineSpec{
-        ParentID:  parentID,
-        Owner:     owner,
-        ChildID:   childID,
-        NodeType:  nodeType,
-        Statement: statement,
-        Inference: inference,
-    })
+func (s *ProofService) Config() *config.Config {
+    cfg, err := s.LoadConfig()
+    if err != nil {
+        return config.Default()  // ERROR SILENTLY SWALLOWED!
+    }
+    return cfg
 }
 ```
 
-Both methods now have deprecation notices directing users to the preferred `Refine(RefineSpec{...})` API.
+Callers couldn't distinguish between:
+- Valid default config (when meta.json doesn't exist - normal for uninitialized proofs)
+- Actual errors (permission denied, corrupt JSON, etc.)
+
+This could lead to silently applying wrong depth/children limits when config fails to load.
+
+#### Solution
+
+Changed `Config()` to return `(*config.Config, error)` and updated all callers:
+
+```go
+func (s *ProofService) Config() (*config.Config, error) {
+    return s.LoadConfig()
+}
+```
+
+Updated callers:
+- `LockTimeout()` now returns `(time.Duration, error)`
+- `validateDepth()` wraps config errors
+- `validateChildCount()` wraps config errors
+- `RefineNodeBulk()` handles config loading errors
+- `cmd/af/refine.go findNextChildID()` handles error
+- Test files updated to check errors
 
 ### Files Changed
 
-- `internal/service/proof.go` - Updated `RefineNode` and `RefineNodeWithDeps` to delegate to `Refine`, added deprecation notices
+- `internal/service/proof.go` - Changed Config() and LockTimeout() signatures, updated internal callers
+- `internal/service/proof_test.go` - Updated LockTimeout test
+- `internal/service/service_test.go` - Updated Config() and LockTimeout() tests
+- `cmd/af/refine.go` - Updated findNextChildID() to handle Config() error
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-ns9q** | Closed | Consolidated all RefineNode methods to delegate to Refine(RefineSpec). Added deprecation notices. Reduced code duplication significantly. |
+| **vibefeld-tigb** | Closed | Config() now returns (*Config, error) instead of silently swallowing errors. All 6 callers updated to handle errors properly. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 64 (was 65)
-- **Closed:** 485 (was 484)
+- **Open:** 63 (was 64)
+- **Closed:** 486 (was 485)
 
 ### Test Status
 All tests pass. Build succeeds.
 - Unit tests: PASS
-- Integration tests: PASS (7.991s)
+- Build: PASS
 
 ### Verification
 ```bash
 # Run service tests
-go test ./internal/service/... -v -run "Refine"
+go test ./internal/service/... -v
 
 # Run all tests
 go test ./...
-
-# Run integration tests
-go test -tags=integration github.com/tobias/vibefeld/e2e
 
 # Build
 go build ./cmd/af
@@ -91,10 +95,10 @@ go build ./cmd/af
    - Update 60+ command files
 
 ### P2 Code Quality
-2. Config() silently swallows errors (`vibefeld-tigb`) - Another error handling bug
-3. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-4. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
-5. Multiple error types inconsistency (`vibefeld-npeg`)
+2. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+3. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
+4. Multiple error types inconsistency (`vibefeld-npeg`)
+5. Bulk operations not truly atomic (`vibefeld-gvep`)
 
 ## Quick Commands
 
@@ -114,6 +118,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 121:** Closed 1 issue (Config() silent error swallowing - now returns error, updated all callers)
 **Session 120:** Closed 1 issue (RefineNode method consolidation - updated RefineNode and RefineNodeWithDeps to delegate to Refine)
 **Session 119:** Closed 1 issue (RefineNodeWithAllDeps parameter consolidation - added RefineSpec struct and Refine() method)
 **Session 118:** Closed 1 issue (deferred lock.Release() error handling - added deferRelease() test helper)
