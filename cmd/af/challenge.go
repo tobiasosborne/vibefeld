@@ -83,7 +83,13 @@ Examples:
 Workflow:
   After raising a challenge, the prover must address it. Use 'af challenges'
   to monitor status. Use 'af resolve-challenge' to mark it resolved or
-  'af withdraw-challenge' if no longer relevant.`,
+  'af withdraw-challenge' if no longer relevant.
+
+Common mistakes:
+  - Using --target statement for logic errors (use --target inference)
+  - Using --target inference when the claim text is wrong (use --target statement)
+  - Using --severity critical for minor clarifications (use --severity note)
+  - Missing --target for domain errors like division by zero (use --target domain)`,
 		Args: cobra.ExactArgs(1),
 		RunE: runChallenge,
 	}

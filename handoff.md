@@ -1,36 +1,45 @@
-# Handoff - 2026-01-17 (Session 147)
+# Handoff - 2026-01-17 (Session 148)
 
 ## What Was Accomplished This Session
 
-### Session 147 Summary: Closed already-fixed code smell issue
+### Session 148 Summary: Closed 3 issues (2 already-fixed, 1 CLI improvement)
 
-Reviewed issue `vibefeld-hdfo` about deep nesting in `refine.go` dependency parsing (lines 208-225).
+1. **vibefeld-0yyy** - "Code smell: Deep nesting in accept.go validation"
+   - Investigation found this was already fixed in commit `3bcd076` (Session 103)
+   - The `runAccept` function was refactored with helper functions and guard clauses
+   - Original lines 157-170 are now in `outputNoPendingNodes` and are clean
 
-1. **vibefeld-hdfo** - "Code smell: Deep nesting in refine.go dependency parsing"
-   - Investigation found this was already fixed in commit `ff54f25` (Session 104)
-   - The dependency parsing code was extracted into `parseDependencies()` and `parseValidationDependencies()` helper functions
-   - Original code had 4+ levels of nesting; refactored code has max 2 levels (for-loop + if)
-   - Functions use early returns pattern, eliminating deep nesting
+2. **vibefeld-8d5o** - "Error handling: JSON unmarshal errors not checked in claim.go"
+   - Investigation found this was already fixed in commit `ac83c39`
+   - The error is now handled explicitly - adds `verification_checklist_error` field on failure
+
+3. **vibefeld-jnhb** - "CLI UX: Add common mistakes examples to challenge help"
+   - Added "Common mistakes" section to `af challenge --help` output
+   - 4 examples: statement vs inference confusion, severity misuse, domain target guidance
 
 ### Files Changed
 
-None - issue was already resolved in a previous session.
+| File | Change |
+|------|--------|
+| `cmd/af/challenge.go` | Added Common mistakes section to help text |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-hdfo** | Closed | Already fixed in commit ff54f25 - dependency parsing extracted into helper functions with early returns |
+| **vibefeld-0yyy** | Closed | Already fixed in commit 3bcd076 - runAccept uses guard clauses and helpers |
+| **vibefeld-8d5o** | Closed | Already fixed in commit ac83c39 - JSON errors now reported explicitly |
+| **vibefeld-jnhb** | Closed | Added Common mistakes section to challenge help text |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 36 (was 37)
-- **Closed:** 513 (was 512)
+- **Open:** 31 (was 36)
+- **Closed:** 518 (was 513)
 
 ### Test Status
 - Build: PASS
-- Unit tests: PASS (for refine-related code)
+- Unit tests: PASS (for challenge-related code)
 - Pre-existing failures in lock package (unrelated to this session)
 
 ### Known Issues (Pre-existing)
@@ -46,6 +55,9 @@ go test ./cmd/af/...
 
 # Run all tests
 go test ./...
+
+# Verify challenge help
+./af challenge --help | grep -A5 "Common mistakes"
 ```
 
 ## Remaining P1 Issues
@@ -68,6 +80,11 @@ go test ./...
 4. Multiple error types inconsistency (`vibefeld-npeg`)
 5. Bulk operations not truly atomic (`vibefeld-gvep`)
 
+### P3 CLI UX (quick wins)
+6. Create verification checklist command (`vibefeld-ital`)
+7. Commands not grouped by category in help (`vibefeld-juts`)
+8. Challenge rendering inconsistent across commands (`vibefeld-87z6`)
+
 ## Quick Commands
 
 ```bash
@@ -83,6 +100,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 148:** Closed 3 issues (2 already-fixed: accept.go nesting, claim.go JSON error; 1 new: challenge help common mistakes)
 **Session 147:** Closed 1 issue (Code smell - deep nesting in refine.go, already fixed in ff54f25)
 **Session 146:** Closed 1 issue (Code smell - duplicate verification summary building, added lookupContextStatus helper)
 **Session 145:** Closed 1 issue (Code smell - duplicate list initialization pattern, added ToStringSlice helper)
@@ -131,48 +149,3 @@ go test -tags=integration ./... -v -timeout 10m
 **Session 102:** Closed 1 issue (duplicate node type/inference validation code - extracted validateNodeTypeAndInference helper)
 **Session 101:** Closed 1 issue (similar collection function code smell - created collectContextEntries helper)
 **Session 100:** Closed 1 issue (duplicate definition name collection code - removed redundant loop)
-**Session 99:** Closed 1 issue (duplicate state counting code refactoring)
-**Session 98:** Closed 1 issue (concurrent NextSequence() stress tests - 3 test scenarios)
-**Session 97:** Closed 1 issue (Levenshtein space optimization - O(min(N,M)) memory)
-**Session 96:** Closed 1 issue (deep node hierarchy edge case tests - 100-500 levels)
-**Session 95:** Closed 1 issue (E2E error recovery tests - 13 test cases)
-**Session 94:** Closed 1 issue (E2E circular dependency detection tests)
-**Session 93:** Closed 1 issue (FS file descriptor exhaustion edge case tests)
-**Session 92:** Closed 1 issue (FS symlink following security edge case tests)
-**Session 91:** Closed 1 issue (FS permission denied mid-operation edge case tests)
-**Session 90:** Closed 1 issue (ledger permission changes mid-operation edge case tests)
-**Session 89:** Closed 1 issue (FS read during concurrent write edge case tests)
-**Session 88:** Closed 1 issue (FS path is file edge case tests)
-**Session 87:** Closed 1 issue (FS directory doesn't exist edge case tests)
-**Session 86:** Closed 1 issue (node empty vs nil dependencies edge case tests)
-**Session 85:** Closed 1 issue (node very long statement edge case tests)
-**Session 84:** Closed 1 issue (node empty statement test already existed)
-**Session 83:** Closed 1 issue (taint unsorted allNodes edge case test)
-**Session 82:** Closed 1 issue (taint duplicate nodes edge case test)
-**Session 81:** Closed 1 issue (taint sparse node set missing parents edge case test)
-**Session 80:** Closed 1 issue (taint nil ancestors list edge case test)
-**Session 79:** Closed 1 issue (state mutation safety tests)
-**Session 78:** Closed 1 issue (state non-existent dependency resolution tests)
-**Session 77:** Closed 1 issue (lock high concurrency tests - 150+ goroutines)
-**Session 76:** Closed 1 issue (directory deletion edge case tests)
-**Session 75:** Closed 1 issue (lock clock skew handling test)
-**Session 74:** Closed 1 issue (lock nil pointer safety test)
-**Session 73:** Closed 1 issue (verifier context severity explanation)
-**Session 72:** Closed 1 issue (lock refresh expired lock edge case test)
-**Session 71:** Closed 1 issue (error message path sanitization security fix)
-**Session 70:** Closed 1 issue (PersistentManager singleton factory for synchronization)
-**Session 69:** Closed 1 issue (tree rendering performance - string conversion optimization)
-**Session 68:** Closed 1 issue (lock holder TOCTOU race condition fix)
-**Session 67:** Closed 1 issue (HasGaps sparse sequence edge case test)
-**Session 66:** Closed 1 issue (challenge cache invalidation bug fix)
-**Session 65:** Closed 1 issue (challenge map caching performance fix)
-**Session 64:** Closed 1 issue (lock release ownership verification bug fix)
-**Session 63:** Closed 2 issues with 5 parallel agents (workflow docs + symlink security) - 3 lost to race conditions
-**Session 62:** Closed 5 issues with 5 parallel agents (4 E2E tests + 1 CLI UX fix)
-**Session 61:** Closed 4 issues with 4 parallel agents (lock corruption fix + 3 edge case tests)
-**Session 60:** Closed 6 P0 issues with 5 parallel agents (+3083 lines tests)
-**Session 59:** Closed 5 P0 issues with 5 parallel agents (+3970 lines tests/fixes)
-**Session 58:** Comprehensive code review with 10 parallel agents, created 158 issues
-**Session 57:** Created two example proofs (sqrt2, Dobinski) with adversarial verification
-**Session 56:** Closed final 2 issues (pagination + RaisedBy) - PROJECT COMPLETE
-**Session 55:** COMPLETED 22-step adversarial workflow fix (18 issues, 4 batches)
