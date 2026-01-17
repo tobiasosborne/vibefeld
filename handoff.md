@@ -1,38 +1,39 @@
-# Handoff - 2026-01-17 (Session 80)
+# Handoff - 2026-01-17 (Session 81)
 
 ## What Was Accomplished This Session
 
-### Session 80 Summary: Taint Nil Ancestors List Edge Case Test
+### Session 81 Summary: Taint Sparse Node Set (Missing Parents) Edge Case Tests
 
-Closed issue `vibefeld-pxjl` - "Edge case test: Taint nil ancestors list"
+Closed issue `vibefeld-52xk` - "Edge case test: Taint sparse node set (missing parents)"
 
-Added comprehensive table-driven test documenting that a `nil` ancestors list is treated identically to an empty slice, covering all epistemic states.
+Added comprehensive `TestPropagateTaint_SparseMissingParents` test suite with 7 subtests verifying that ancestor cache lookup handles sparse node sets correctly without failing silently.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-pxjl** | internal/taint/compute_test.go | Test | Added TestComputeTaint_NilAncestorsList with 5 subtests |
+| **vibefeld-52xk** | internal/taint/propagate_unit_test.go | Test | Added TestPropagateTaint_SparseMissingParents with 7 subtests |
 
 #### Changes Made
 
-**internal/taint/compute_test.go:**
-- Added `TestComputeTaint_NilAncestorsList` - Documents that nil ancestors behaves identically to empty slice
-- Subtests cover all epistemic states:
-  - `pending node with nil ancestors is unresolved`
-  - `validated node with nil ancestors is clean`
-  - `admitted node with nil ancestors is self_admitted`
-  - `refuted node with nil ancestors is clean`
-  - `archived node with nil ancestors is clean`
-- Each subtest also verifies nil behaves identically to empty slice
+**internal/taint/propagate_unit_test.go:**
+- Added `TestPropagateTaint_SparseMissingParents` - Tests ancestor cache lookup with missing parent nodes
+- Subtests cover critical sparse tree scenarios:
+  - `multiple consecutive parents missing` - Deep node with 4 missing intermediate ancestors
+  - `sparse nodes at multiple depth levels` - Every other level missing
+  - `unresolved taint with missing ancestors` - Unresolved propagates through sparse ancestry
+  - `multiple branches with sparse nodes` - Mixed sparsity across branches
+  - `cache fallback with nil ancestors list` - Nil ancestors in cache correctly handled
+  - `deep sparse tree with admitted node in middle` - Self-admitted node in sparse tree
+  - `sparse tree with pending node blocking unresolved` - Pending node makes sparse descendants unresolved
 
 All tests pass.
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 106 (was 107)
-- **Closed:** 443 (was 442)
+- **Open:** 105 (was 106)
+- **Closed:** 444 (was 443)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -67,12 +68,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run new nil ancestors test
-go test -v ./internal/taint/... -run "TestComputeTaint_NilAncestorsList"
+# Run new sparse missing parents test
+go test -v ./internal/taint/... -run "TestPropagateTaint_SparseMissingParents"
 ```
 
 ## Session History
 
+**Session 81:** Closed 1 issue (taint sparse node set missing parents edge case test)
 **Session 80:** Closed 1 issue (taint nil ancestors list edge case test)
 **Session 79:** Closed 1 issue (state mutation safety tests)
 **Session 78:** Closed 1 issue (state non-existent dependency resolution tests)

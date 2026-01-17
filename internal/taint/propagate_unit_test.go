@@ -943,6 +943,207 @@ func TestGetAncestorsCached_AlreadyCached(t *testing.T) {
 	}
 }
 
+// ==================== Sparse Node Set (Missing Parents) Tests ====================
+
+// TestPropagateTaint_SparseMissingParents tests ancestor cache lookup behavior when
+// multiple parent nodes are missing from allNodes. This is a critical edge case where
+// the cache must correctly handle sparse node sets without failing silently.
+func TestPropagateTaint_SparseMissingParents(t *testing.T) {
+	t.Run("multiple consecutive parents missing", func(t *testing.T) {
+		// Root is present, but 1.1, 1.1.1, 1.1.1.1 are all missing
+		// Only the deep descendant 1.1.1.1.1 is present
+		// The ancestor cache should still find root and propagate taint correctly
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		deepNode := makeNode("1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, deepNode}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// deepNode should become tainted (inherited from root through sparse ancestry)
+		if deepNode.TaintState != node.TaintTainted {
+			t.Errorf("deepNode.TaintState = %v, want %v", deepNode.TaintState, node.TaintTainted)
+		}
+
+		if len(changed) != 1 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+		}
+	})
+
+	t.Run("sparse nodes at multiple depth levels", func(t *testing.T) {
+		// Create a tree where only every other level is present
+		// Root (1) -> missing (1.1) -> present (1.1.1) -> missing (1.1.1.1) -> present (1.1.1.1.1)
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		grandchild := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		greatGreatGrandchild := makeNode("1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, grandchild, greatGreatGrandchild}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// Both present descendants should be tainted
+		if grandchild.TaintState != node.TaintTainted {
+			t.Errorf("grandchild.TaintState = %v, want %v", grandchild.TaintState, node.TaintTainted)
+		}
+		if greatGreatGrandchild.TaintState != node.TaintTainted {
+			t.Errorf("greatGreatGrandchild.TaintState = %v, want %v", greatGreatGrandchild.TaintState, node.TaintTainted)
+		}
+
+		if len(changed) != 2 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
+		}
+	})
+
+	t.Run("unresolved taint with missing ancestors", func(t *testing.T) {
+		// Test that unresolved taint propagates correctly even with missing ancestors
+		// Root (1) is pending/unresolved, intermediate nodes missing, deep node present
+		root := makeNode("1", schema.EpistemicPending, node.TaintUnresolved)
+		deepNode := makeNode("1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, deepNode}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// deepNode should become unresolved (inherited from root)
+		if deepNode.TaintState != node.TaintUnresolved {
+			t.Errorf("deepNode.TaintState = %v, want %v", deepNode.TaintState, node.TaintUnresolved)
+		}
+
+		if len(changed) != 1 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+		}
+	})
+
+	t.Run("multiple branches with sparse nodes", func(t *testing.T) {
+		// Multiple branches where each branch has different missing nodes
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+
+		// Branch 1: only deepest node present (1.1, 1.1.1 missing)
+		deepBranch1 := makeNode("1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Branch 2: middle node present (1.2 missing, 1.2.1 present)
+		midBranch2 := makeNode("1.2.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Branch 3: all nodes present
+		child3 := makeNode("1.3", schema.EpistemicValidated, node.TaintClean)
+		grandchild3 := makeNode("1.3.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, deepBranch1, midBranch2, child3, grandchild3}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// All descendants should be tainted regardless of sparse structure
+		if deepBranch1.TaintState != node.TaintTainted {
+			t.Errorf("deepBranch1.TaintState = %v, want %v", deepBranch1.TaintState, node.TaintTainted)
+		}
+		if midBranch2.TaintState != node.TaintTainted {
+			t.Errorf("midBranch2.TaintState = %v, want %v", midBranch2.TaintState, node.TaintTainted)
+		}
+		if child3.TaintState != node.TaintTainted {
+			t.Errorf("child3.TaintState = %v, want %v", child3.TaintState, node.TaintTainted)
+		}
+		if grandchild3.TaintState != node.TaintTainted {
+			t.Errorf("grandchild3.TaintState = %v, want %v", grandchild3.TaintState, node.TaintTainted)
+		}
+
+		if len(changed) != 4 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 4", len(changed))
+		}
+	})
+
+	t.Run("cache fallback with nil ancestors list", func(t *testing.T) {
+		// Test behavior when the cache contains a nil ancestors list
+		// This can happen for root nodes or in edge cases
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		nodeMap := map[string]*node.Node{"1": root, "1.1": child}
+
+		cache := make(map[string][]*node.Node)
+		// Explicitly cache nil for root (simulating root's ancestors = nil)
+		cache["1"] = nil
+
+		// When we request ancestors for child, it should use parent's nil ancestors
+		// and correctly build child's ancestors as [root]
+		ancestors := getAncestorsCached(child, nodeMap, cache)
+
+		if len(ancestors) != 1 {
+			t.Errorf("getAncestorsCached with nil parent ancestors returned %d ancestors, want 1", len(ancestors))
+		}
+		if ancestors[0].ID.String() != "1" {
+			t.Errorf("ancestor = %v, want 1", ancestors[0].ID.String())
+		}
+
+		// Verify child's result is cached
+		if cachedAncestors, ok := cache["1.1"]; !ok {
+			t.Error("getAncestorsCached did not cache child's ancestors")
+		} else if len(cachedAncestors) != 1 {
+			t.Errorf("cached ancestors length = %d, want 1", len(cachedAncestors))
+		}
+	})
+
+	t.Run("deep sparse tree with admitted node in middle", func(t *testing.T) {
+		// Test complex scenario: sparse tree with admitted (self_admitted) node in middle
+		// Root is clean, but a deep (sparse) node is admitted
+		// Propagating from root should correctly compute the admitted node's taint
+		root := makeNode("1", schema.EpistemicValidated, node.TaintClean)
+		// Missing: 1.1, 1.1.1
+		admittedNode := makeNode("1.1.1.1", schema.EpistemicAdmitted, node.TaintClean) // incorrectly clean
+		// Missing: 1.1.1.1.1
+		deepChild := makeNode("1.1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, admittedNode, deepChild}
+
+		// Propagate from root to test self_admitted and tainted propagation through sparse tree
+		changed := PropagateTaint(root, allNodes)
+
+		// admittedNode should become self_admitted (due to its own EpistemicAdmitted state)
+		if admittedNode.TaintState != node.TaintSelfAdmitted {
+			t.Errorf("admittedNode.TaintState = %v, want %v", admittedNode.TaintState, node.TaintSelfAdmitted)
+		}
+
+		// deepChild should become tainted (inherits from admitted ancestor)
+		if deepChild.TaintState != node.TaintTainted {
+			t.Errorf("deepChild.TaintState = %v, want %v", deepChild.TaintState, node.TaintTainted)
+		}
+
+		// Should have 2 changes (admittedNode corrected + deepChild tainted)
+		if len(changed) != 2 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
+		}
+	})
+
+	t.Run("sparse tree with pending node blocking unresolved", func(t *testing.T) {
+		// Sparse tree where a pending node should make descendants unresolved
+		// Root is clean, sparse intermediate, pending node present, sparse, deep descendant
+		// Propagating from root should correctly compute taint for all descendants
+		root := makeNode("1", schema.EpistemicValidated, node.TaintClean)
+		// Missing: 1.1
+		pendingNode := makeNode("1.1.1", schema.EpistemicPending, node.TaintClean) // incorrectly clean
+		// Missing: 1.1.1.1
+		deepChild := makeNode("1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, pendingNode, deepChild}
+
+		// Propagate from root to process all descendants
+		changed := PropagateTaint(root, allNodes)
+
+		// pendingNode should become unresolved (due to its own EpistemicPending state)
+		if pendingNode.TaintState != node.TaintUnresolved {
+			t.Errorf("pendingNode.TaintState = %v, want %v", pendingNode.TaintState, node.TaintUnresolved)
+		}
+
+		// deepChild should also become unresolved (inherits from unresolved ancestor)
+		if deepChild.TaintState != node.TaintUnresolved {
+			t.Errorf("deepChild.TaintState = %v, want %v", deepChild.TaintState, node.TaintUnresolved)
+		}
+
+		// Both should change
+		if len(changed) != 2 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
+		}
+	})
+}
+
 // ==================== Circular Dependencies Tests ====================
 
 // TestPropagateTaint_WithCircularDependencies verifies that taint propagation
