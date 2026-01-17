@@ -445,6 +445,24 @@ type dependencyInfo struct {
 	Status string
 }
 
+// lookupContextStatus determines the status of a context item by checking
+// if it's a definition, assumption, external, or lemma.
+func lookupContextStatus(st *state.State, ctx string) string {
+	if st.GetDefinition(ctx) != nil || st.GetDefinitionByName(ctx) != nil {
+		return "definition"
+	}
+	if st.GetAssumption(ctx) != nil {
+		return "assumed"
+	}
+	if st.GetExternal(ctx) != nil || st.GetExternalByName(ctx) != nil {
+		return "external"
+	}
+	if st.GetLemma(ctx) != nil {
+		return "lemma"
+	}
+	return "unknown"
+}
+
 // getVerificationSummary retrieves challenge and dependency information for a node.
 func getVerificationSummary(st *state.State, nodeID types.NodeID, note string) verificationSummary {
 	summary := verificationSummary{
@@ -480,36 +498,9 @@ func getVerificationSummary(st *state.State, nodeID types.NodeID, note string) v
 
 		// Add context items (definitions, assumptions, externals)
 		for _, ctx := range n.Context {
-			// Try to find context item and its status
-			status := "unknown"
-
-			// Check if it's a definition
-			if def := st.GetDefinition(ctx); def != nil {
-				status = "definition"
-			} else if def := st.GetDefinitionByName(ctx); def != nil {
-				status = "definition"
-			}
-
-			// Check if it's an assumption
-			if a := st.GetAssumption(ctx); a != nil {
-				status = "assumed"
-			}
-
-			// Check if it's an external
-			if e := st.GetExternal(ctx); e != nil {
-				status = "external"
-			} else if e := st.GetExternalByName(ctx); e != nil {
-				status = "external"
-			}
-
-			// Check if it's a lemma
-			if l := st.GetLemma(ctx); l != nil {
-				status = "lemma"
-			}
-
 			summary.Dependencies = append(summary.Dependencies, dependencyInfo{
 				ID:     ctx,
-				Status: status,
+				Status: lookupContextStatus(st, ctx),
 			})
 		}
 	}
