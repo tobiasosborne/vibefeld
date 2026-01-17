@@ -1,56 +1,56 @@
-# Handoff - 2026-01-17 (Session 117)
+# Handoff - 2026-01-17 (Session 118)
 
 ## What Was Accomplished This Session
 
-### Session 117 Summary: Added Large Event Count Test for State Package
+### Session 118 Summary: Fixed Deferred Lock Release Error Handling
 
-Closed issue `vibefeld-th1m` - "Edge case test: State millions of events"
+Closed issue `vibefeld-kspa` - "Error handling: Deferred lock.Release() error not checked"
 
 #### Problem
 
-The state package lacked a test for replaying a ledger with a large number of events. The concern was memory usage being unbounded and potentially causing OOM.
+In `internal/ledger/lock_test.go`, there were 10 instances of `defer lock.Release()` that silently ignored the error return value. While this is common in test code, it's better practice to log these errors to avoid masking potential issues.
 
 #### Solution
 
-Added `TestReplay_LargeEventCount` test to `internal/state/replay_test.go`:
+Added a `deferRelease()` test helper function that:
+1. Properly checks the error from `Release()`
+2. Logs any errors using `t.Logf()` for visibility
+3. Calls `t.Helper()` for accurate stack traces
 
-1. **Test Design:**
-   - Creates 10K events (claim/release cycles on 100 child nodes)
-   - Validates replay completes without OOM
-   - Measures replay time (~246ms for 10K events)
-
-2. **Key Finding:**
-   - Originally targeted 1M events but discovered `ledger.Append` has O(n) directory scanning overhead (`NextSequence` calls `ReadDir` for every append)
-   - This makes creating millions of events impractical in tests (100K events timed out after 15 minutes)
-   - Reduced to 10K events which completes in ~61 seconds and still validates memory behavior
-
-3. **Bug Fix:**
-   - Fixed duplicate test function names (`TestReplay_NilLedger`, `TestReplayWithVerify_NilLedger`) that existed in both `replay_test.go` (integration) and `replay_unit_test.go` (unit)
-   - Renamed integration versions to `*_Integration` suffix
+Updated all 10 deferred lock release calls to use this helper:
+- `TestAcquireLock_Success`
+- `TestAcquireLock_ContainsMetadata`
+- `TestAcquireLock_Exclusive`
+- `TestReleaseLock_AllowsReacquisition`
+- `TestAcquireLock_Timeout`
+- `TestAcquireLock_ZeroTimeout`
+- `TestAcquireLock_TableDriven` (preLock setup)
+- `TestLockFilePermissions`
+- `TestMultipleLocksInDifferentDirs` (lock1 and lock2)
 
 ### Files Changed
 
-- `internal/state/replay_test.go` - Added TestReplay_LargeEventCount test (+150 lines), renamed duplicate test functions
+- `internal/ledger/lock_test.go` - Added `deferRelease()` helper, updated 10 deferred release calls
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-th1m** | Closed | Added TestReplay_LargeEventCount test. Creates 10K events and validates replay completes without OOM. Also fixed duplicate test function names that caused build failures. |
+| **vibefeld-kspa** | Closed | Added deferRelease() test helper that logs errors instead of silently ignoring them. All 10 deferred lock.Release() calls in lock_test.go now use this helper. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 67 (was 68)
-- **Closed:** 482 (was 481)
+- **Open:** 66 (was 67)
+- **Closed:** 483 (was 482)
 
 ### Test Status
 All tests pass. Build succeeds.
 
 ### Verification
 ```bash
-# Run the new large event count test
-go test -tags=integration -v -run TestReplay_LargeEventCount -timeout=5m ./internal/state/
+# Run ledger tests
+go test ./internal/ledger/... -v
 
 # Run all tests
 go test ./...
@@ -74,10 +74,10 @@ go build ./cmd/af
    - Update 60+ command files
 
 ### P2 Code Quality
-2. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
-3. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-4. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
-5. Multiple error types inconsistency (`vibefeld-npeg`)
+2. Config() silently swallows errors (`vibefeld-tigb`) - Another error handling bug
+3. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
+4. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+5. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
 
 ## Quick Commands
 
@@ -97,6 +97,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 118:** Closed 1 issue (deferred lock.Release() error handling - added deferRelease() test helper)
 **Session 117:** Closed 1 issue (large event count test - 10K events, discovered O(n) ledger append overhead, fixed duplicate test names)
 **Session 116:** Closed 1 issue (E2E large proof stress tests - 5 new tests with 100+ nodes, concurrent operations, deep hierarchy, wide tree, and rapid reloads)
 **Session 115:** Closed 1 issue (large tree taint tests 10k+ nodes - 5 new tests covering balanced/deep/mixed/idempotent/subtree scenarios)

@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+// deferRelease is a test helper that releases a lock and logs any errors.
+// This ensures deferred release errors are not silently ignored.
+func deferRelease(t *testing.T, lock *LedgerLock) {
+	t.Helper()
+	if err := lock.Release(); err != nil {
+		t.Logf("warning: lock release failed: %v", err)
+	}
+}
+
 // TestNewLedgerLock verifies that NewLedgerLock creates a valid LedgerLock instance.
 func TestNewLedgerLock(t *testing.T) {
 	dir := t.TempDir()
@@ -28,7 +37,7 @@ func TestAcquireLock_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire failed: %v", err)
 	}
-	defer lock.Release()
+	defer deferRelease(t, lock)
 
 	// Verify lock file exists
 	lockPath := filepath.Join(dir, "ledger.lock")
@@ -47,7 +56,7 @@ func TestAcquireLock_ContainsMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire failed: %v", err)
 	}
-	defer lock.Release()
+	defer deferRelease(t, lock)
 	afterAcquire := time.Now()
 
 	// Read metadata via Holder method
@@ -76,7 +85,7 @@ func TestAcquireLock_Exclusive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("First acquire failed: %v", err)
 	}
-	defer lock1.Release()
+	defer deferRelease(t, lock1)
 
 	// Second acquisition should fail (with short timeout)
 	err = lock2.Acquire("agent-second", 100*time.Millisecond)
@@ -106,7 +115,7 @@ func TestReleaseLock_AllowsReacquisition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Second acquire after release failed: %v", err)
 	}
-	defer lock.Release()
+	defer deferRelease(t, lock)
 }
 
 // TestReleaseLock_RemovesLockFile verifies that release removes the lock file.
@@ -184,7 +193,7 @@ func TestAcquireLock_Timeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("First acquire failed: %v", err)
 	}
-	defer lock1.Release()
+	defer deferRelease(t, lock1)
 
 	// Second acquire should timeout
 	timeout := 200 * time.Millisecond
@@ -217,7 +226,7 @@ func TestAcquireLock_ZeroTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("First acquire failed: %v", err)
 	}
-	defer lock1.Release()
+	defer deferRelease(t, lock1)
 
 	// Zero timeout should fail immediately
 	start := time.Now()
@@ -395,7 +404,7 @@ func TestAcquireLock_TableDriven(t *testing.T) {
 				if err := preLock.Acquire("pre-holder", 1*time.Second); err != nil {
 					t.Fatalf("Failed to set up pre-lock: %v", err)
 				}
-				defer preLock.Release()
+				defer deferRelease(t, preLock)
 			}
 
 			lock := NewLedgerLock(dir)
@@ -421,7 +430,7 @@ func TestLockFilePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire failed: %v", err)
 	}
-	defer lock.Release()
+	defer deferRelease(t, lock)
 
 	lockPath := filepath.Join(dir, "ledger.lock")
 	info, err := os.Stat(lockPath)
@@ -449,13 +458,13 @@ func TestMultipleLocksInDifferentDirs(t *testing.T) {
 	if err1 != nil {
 		t.Fatalf("Acquire lock1 failed: %v", err1)
 	}
-	defer lock1.Release()
+	defer deferRelease(t, lock1)
 
 	err2 := lock2.Acquire("agent-002", 1*time.Second)
 	if err2 != nil {
 		t.Fatalf("Acquire lock2 failed: %v", err2)
 	}
-	defer lock2.Release()
+	defer deferRelease(t, lock2)
 
 	// Both should report as held
 	if !lock1.IsHeld() {
