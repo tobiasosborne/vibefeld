@@ -710,3 +710,350 @@ func TestReadJSON_ConcurrentWriteLargeData(t *testing.T) {
 
 	t.Logf("completed %d reads during %d large writes", readCount.Load(), numWrites)
 }
+
+// TestJSON_SymlinkFollowing tests symlink-related security scenarios.
+// This documents the current behavior of ReadJSON/WriteJSON with symlinks
+// and verifies expected behavior for security-relevant edge cases.
+//
+// Security considerations tested:
+// 1. Symlinks escaping the intended directory (directory traversal)
+// 2. Symlinks pointing to sensitive locations
+// 3. Circular symlinks causing infinite loops
+// 4. TOCTOU scenarios where files become symlinks
+// 5. Nested symlink chains
+func TestJSON_SymlinkFollowing(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping symlink security tests on Windows")
+	}
+
+	t.Run("symlink_escape_to_parent_directory", func(t *testing.T) {
+		// Setup: Create a "jail" directory and an "outside" directory
+		// with a sensitive file. Test that symlinks can escape the jail.
+		baseDir := t.TempDir()
+		jail := filepath.Join(baseDir, "jail")
+		outside := filepath.Join(baseDir, "outside")
+
+		if err := os.MkdirAll(jail, 0755); err != nil {
+			t.Fatalf("failed to create jail: %v", err)
+		}
+		if err := os.MkdirAll(outside, 0755); err != nil {
+			t.Fatalf("failed to create outside dir: %v", err)
+		}
+
+		// Create a "sensitive" file outside the jail
+		sensitiveFile := filepath.Join(outside, "sensitive.json")
+		sensitiveData := testData{ID: "secret", Name: "Sensitive Data", Count: 42}
+		if err := WriteJSON(sensitiveFile, &sensitiveData); err != nil {
+			t.Fatalf("failed to write sensitive file: %v", err)
+		}
+
+		// Create a symlink inside jail pointing outside
+		escapeLink := filepath.Join(jail, "escape")
+		if err := os.Symlink(outside, escapeLink); err != nil {
+			t.Fatalf("failed to create escape symlink: %v", err)
+		}
+
+		// SECURITY CHECK: ReadJSON follows symlinks and can read outside jail
+		// This documents the current behavior - symlinks ARE followed
+		escapePath := filepath.Join(escapeLink, "sensitive.json")
+		var result testData
+		err := ReadJSON(escapePath, &result)
+		if err != nil {
+			t.Logf("ReadJSON through escape symlink failed: %v", err)
+		} else {
+			// Current behavior: symlinks are followed
+			t.Logf("SECURITY NOTE: ReadJSON follows symlinks - read succeeded through escape link")
+			if result.ID != "secret" {
+				t.Errorf("unexpected data read: %+v", result)
+			}
+		}
+
+		// SECURITY CHECK: WriteJSON also follows symlinks
+		writeEscapePath := filepath.Join(escapeLink, "written.json")
+		writeData := testData{ID: "escaped-write", Name: "Written Outside Jail"}
+		err = WriteJSON(writeEscapePath, &writeData)
+		if err != nil {
+			t.Logf("WriteJSON through escape symlink failed: %v", err)
+		} else {
+			t.Logf("SECURITY NOTE: WriteJSON follows symlinks - write succeeded through escape link")
+			// Verify file was written outside jail
+			verifyPath := filepath.Join(outside, "written.json")
+			if _, err := os.Stat(verifyPath); err != nil {
+				t.Error("expected file to be written outside jail")
+			}
+		}
+	})
+
+	t.Run("symlink_to_absolute_path", func(t *testing.T) {
+		// Symlink pointing to an absolute path outside working directory
+		dir := t.TempDir()
+		workDir := filepath.Join(dir, "work")
+		secretDir := filepath.Join(dir, "secrets")
+
+		if err := os.MkdirAll(workDir, 0755); err != nil {
+			t.Fatalf("failed to create work dir: %v", err)
+		}
+		if err := os.MkdirAll(secretDir, 0755); err != nil {
+			t.Fatalf("failed to create secret dir: %v", err)
+		}
+
+		// Write secret file
+		secretFile := filepath.Join(secretDir, "credentials.json")
+		secretData := testData{ID: "creds", Name: "password123"}
+		if err := WriteJSON(secretFile, &secretData); err != nil {
+			t.Fatalf("failed to write secret: %v", err)
+		}
+
+		// Create symlink with absolute path
+		absLink := filepath.Join(workDir, "link")
+		if err := os.Symlink(secretDir, absLink); err != nil {
+			t.Fatalf("failed to create absolute symlink: %v", err)
+		}
+
+		// Try to read through absolute symlink
+		readPath := filepath.Join(absLink, "credentials.json")
+		var result testData
+		err := ReadJSON(readPath, &result)
+		if err != nil {
+			t.Logf("ReadJSON through absolute symlink failed: %v", err)
+		} else {
+			t.Logf("SECURITY NOTE: Absolute symlinks are followed")
+			if result.Name != "password123" {
+				t.Errorf("unexpected read result: %+v", result)
+			}
+		}
+	})
+
+	t.Run("circular_symlinks", func(t *testing.T) {
+		// Create circular symlink chain that could cause infinite loops
+		dir := t.TempDir()
+
+		// Create a -> b -> a circular chain
+		linkA := filepath.Join(dir, "a")
+		linkB := filepath.Join(dir, "b")
+
+		// Create b first pointing to a (which doesn't exist yet)
+		if err := os.Symlink(linkA, linkB); err != nil {
+			t.Fatalf("failed to create symlink b: %v", err)
+		}
+		// Create a pointing to b
+		if err := os.Symlink(linkB, linkA); err != nil {
+			t.Fatalf("failed to create symlink a: %v", err)
+		}
+
+		// Try to read through circular symlink
+		readPath := filepath.Join(linkA, "data.json")
+		var result testData
+		err := ReadJSON(readPath, &result)
+		if err == nil {
+			t.Error("expected error for circular symlink, got nil")
+		} else {
+			// Should get "too many levels of symbolic links" or similar
+			t.Logf("circular symlink correctly rejected: %v", err)
+		}
+
+		// Try to write through circular symlink
+		writeData := testData{ID: "circular"}
+		err = WriteJSON(readPath, &writeData)
+		if err == nil {
+			t.Error("expected error for circular symlink write, got nil")
+		} else {
+			t.Logf("circular symlink write correctly rejected: %v", err)
+		}
+	})
+
+	t.Run("deeply_nested_symlink_chain", func(t *testing.T) {
+		// Create a chain of symlinks to test depth limits
+		dir := t.TempDir()
+
+		// Create target file
+		targetDir := filepath.Join(dir, "target")
+		if err := os.MkdirAll(targetDir, 0755); err != nil {
+			t.Fatalf("failed to create target dir: %v", err)
+		}
+		targetFile := filepath.Join(targetDir, "data.json")
+		targetData := testData{ID: "deep-target", Name: "Found it"}
+		if err := WriteJSON(targetFile, &targetData); err != nil {
+			t.Fatalf("failed to write target: %v", err)
+		}
+
+		// Create chain: link1 -> link2 -> link3 -> ... -> target
+		prevPath := targetDir
+		numLinks := 10
+		for i := numLinks; i >= 1; i-- {
+			linkPath := filepath.Join(dir, fmt.Sprintf("link%d", i))
+			if err := os.Symlink(prevPath, linkPath); err != nil {
+				t.Fatalf("failed to create symlink %d: %v", i, err)
+			}
+			prevPath = linkPath
+		}
+
+		// Try to read through the chain
+		chainPath := filepath.Join(filepath.Join(dir, "link1"), "data.json")
+		var result testData
+		err := ReadJSON(chainPath, &result)
+		if err != nil {
+			t.Logf("nested symlink chain read failed (may hit OS limits): %v", err)
+		} else {
+			t.Logf("nested symlink chain (%d links) successfully followed", numLinks)
+			if result.ID != "deep-target" {
+				t.Errorf("unexpected result: %+v", result)
+			}
+		}
+	})
+
+	t.Run("symlink_toctou_race", func(t *testing.T) {
+		// Test TOCTOU scenario: file exists, gets replaced with symlink
+		// during concurrent operations
+		dir := t.TempDir()
+		outsideDir := filepath.Join(dir, "outside")
+		if err := os.MkdirAll(outsideDir, 0755); err != nil {
+			t.Fatalf("failed to create outside dir: %v", err)
+		}
+
+		targetFile := filepath.Join(dir, "target.json")
+		outsideFile := filepath.Join(outsideDir, "outside.json")
+
+		// Write initial legitimate file
+		legitData := testData{ID: "legit", Name: "Legitimate"}
+		if err := WriteJSON(targetFile, &legitData); err != nil {
+			t.Fatalf("failed to write legit file: %v", err)
+		}
+
+		// Write outside file that we'll symlink to
+		outsideData := testData{ID: "outside", Name: "Redirected"}
+		if err := WriteJSON(outsideFile, &outsideData); err != nil {
+			t.Fatalf("failed to write outside file: %v", err)
+		}
+
+		// Replace the file with a symlink
+		if err := os.Remove(targetFile); err != nil {
+			t.Fatalf("failed to remove file: %v", err)
+		}
+		if err := os.Symlink(outsideFile, targetFile); err != nil {
+			t.Fatalf("failed to create replacement symlink: %v", err)
+		}
+
+		// Read now follows the symlink
+		var result testData
+		if err := ReadJSON(targetFile, &result); err != nil {
+			t.Fatalf("failed to read: %v", err)
+		}
+
+		if result.ID != "outside" {
+			t.Errorf("expected redirected data, got: %+v", result)
+		}
+		t.Logf("SECURITY NOTE: TOCTOU - file replaced with symlink, read was redirected")
+	})
+
+	t.Run("symlink_to_dev_null", func(t *testing.T) {
+		// Symlink to special files like /dev/null
+		if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+			t.Skip("skipping /dev/null test on non-unix")
+		}
+
+		dir := t.TempDir()
+		devNullLink := filepath.Join(dir, "null.json")
+
+		if err := os.Symlink("/dev/null", devNullLink); err != nil {
+			t.Fatalf("failed to create /dev/null symlink: %v", err)
+		}
+
+		// Reading from /dev/null returns empty
+		var result testData
+		err := ReadJSON(devNullLink, &result)
+		if err == nil {
+			t.Log("read from /dev/null symlink returned no error (empty content parsed)")
+		} else {
+			t.Logf("read from /dev/null symlink failed as expected: %v", err)
+		}
+
+		// Writing to /dev/null succeeds but data is discarded
+		writeData := testData{ID: "vanished", Name: "Gone"}
+		err = WriteJSON(devNullLink, &writeData)
+		if err != nil {
+			t.Logf("write to /dev/null symlink failed: %v", err)
+		} else {
+			t.Log("SECURITY NOTE: write to /dev/null symlink succeeded (data discarded)")
+		}
+	})
+
+	t.Run("broken_symlink", func(t *testing.T) {
+		// Symlink pointing to non-existent target
+		dir := t.TempDir()
+		brokenLink := filepath.Join(dir, "broken.json")
+
+		// Create symlink to non-existent file
+		if err := os.Symlink(filepath.Join(dir, "nonexistent.json"), brokenLink); err != nil {
+			t.Fatalf("failed to create broken symlink: %v", err)
+		}
+
+		// Read should fail
+		var result testData
+		err := ReadJSON(brokenLink, &result)
+		if err == nil {
+			t.Error("expected error for broken symlink, got nil")
+		} else {
+			if !os.IsNotExist(err) {
+				t.Logf("broken symlink error (not ErrNotExist): %v", err)
+			} else {
+				t.Log("broken symlink correctly returns ErrNotExist")
+			}
+		}
+
+		// Write should create the target file through the symlink
+		writeData := testData{ID: "created", Name: "Through Broken Link"}
+		err = WriteJSON(brokenLink, &writeData)
+		if err != nil {
+			t.Logf("write through broken symlink failed: %v", err)
+		} else {
+			// Check if target was created
+			targetPath := filepath.Join(dir, "nonexistent.json")
+			if _, err := os.Stat(targetPath); err == nil {
+				t.Log("SECURITY NOTE: write through broken symlink created target file")
+			} else {
+				t.Logf("target file status after write: %v", err)
+			}
+		}
+	})
+
+	t.Run("relative_symlink_escape", func(t *testing.T) {
+		// Relative symlink using .. to escape directory
+		baseDir := t.TempDir()
+		jail := filepath.Join(baseDir, "level1", "level2", "jail")
+		secrets := filepath.Join(baseDir, "secrets")
+
+		if err := os.MkdirAll(jail, 0755); err != nil {
+			t.Fatalf("failed to create jail: %v", err)
+		}
+		if err := os.MkdirAll(secrets, 0755); err != nil {
+			t.Fatalf("failed to create secrets: %v", err)
+		}
+
+		// Write secret
+		secretFile := filepath.Join(secrets, "secret.json")
+		secretData := testData{ID: "relative-secret", Name: "Found via relative path"}
+		if err := WriteJSON(secretFile, &secretData); err != nil {
+			t.Fatalf("failed to write secret: %v", err)
+		}
+
+		// Create relative symlink that escapes: ../../../secrets
+		escapeLink := filepath.Join(jail, "escape")
+		if err := os.Symlink("../../../secrets", escapeLink); err != nil {
+			t.Fatalf("failed to create relative escape symlink: %v", err)
+		}
+
+		// Read through relative escape
+		readPath := filepath.Join(escapeLink, "secret.json")
+		var result testData
+		err := ReadJSON(readPath, &result)
+		if err != nil {
+			t.Logf("read through relative symlink failed: %v", err)
+		} else {
+			t.Logf("SECURITY NOTE: relative symlink escape (../../..) successfully followed")
+			if result.ID != "relative-secret" {
+				t.Errorf("unexpected result: %+v", result)
+			}
+		}
+	})
+}

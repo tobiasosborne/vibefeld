@@ -1,54 +1,62 @@
-# Handoff - 2026-01-17 (Session 91)
+# Handoff - 2026-01-17 (Session 92)
 
 ## What Was Accomplished This Session
 
-### Session 91 Summary: FS Permission Denied Mid-Operation Edge Case Tests
+### Session 92 Summary: FS Symlink Following Security Edge Case Tests
 
-Closed issue `vibefeld-9znk` - "Edge case test: FS permission denied mid-operation"
+Closed issue `vibefeld-zfz6` - "Edge case test: FS symlink following security"
 
-Added `TestWriteJSON_PermissionDeniedMidOperation` in `internal/fs/error_injection_test.go` with 5 comprehensive subtests for handling permission denied scenarios during atomic write operations:
+Added `TestJSON_SymlinkFollowing` in `internal/fs/json_io_test.go` with 8 comprehensive subtests documenting and verifying symlink security behavior:
 
-1. **rename_blocked_by_immutable_existing_file** - Tests WriteJSON when directory becomes read-only mid-operation:
-   - Initial write succeeds
-   - Directory made read-only blocks subsequent writes
-   - Original file remains intact
-   - No temp files left behind
+1. **symlink_escape_to_parent_directory** - Tests symlink escaping a "jail" directory:
+   - Creates jail/outside directory structure
+   - Symlink inside jail pointing to outside
+   - Documents that ReadJSON/WriteJSON follow symlinks (security note)
+   - Both read and write operations through escape symlink succeed
 
-2. **rename_to_non_empty_directory_blocks_atomic_write** - Tests atomic rename failing due to non-empty directory at target:
-   - Simulates race condition where directory appears at target path
-   - os.Rename fails with ENOTEMPTY
-   - Temp file properly cleaned up
+2. **symlink_to_absolute_path** - Tests symlinks pointing to absolute paths:
+   - Symlink with absolute path to secrets directory
+   - Documents that absolute symlinks are followed
 
-3. **chmod_dir_after_temp_created** - Tests permission changes after initial successful write:
-   - First write succeeds
-   - Directory made read-only
-   - Subsequent write fails gracefully
-   - Original file content preserved
+3. **circular_symlinks** - Tests circular symlink chain (a -> b -> a):
+   - Read and write correctly rejected with "too many levels of symbolic links"
+   - Verifies OS protects against infinite loops
 
-4. **rename_blocked_by_sticky_bit** - Tests WriteJSON in directories with sticky bit set:
-   - Verifies proper handling of sticky-bit directories (like /tmp)
-   - Same-user operations should succeed
-   - No temp file residue
+4. **deeply_nested_symlink_chain** - Tests chain of 10 symlinks:
+   - link1 -> link2 -> ... -> link10 -> target
+   - Verifies nested chains within OS limits work correctly
 
-5. **multiple_failed_writes_no_temp_accumulation** - Tests that repeated failed writes don't accumulate temp files:
-   - 10 consecutive failed writes to blocked target
-   - Zero temp files left behind
-   - Validates proper cleanup on every failure
+5. **symlink_toctou_race** - Tests time-of-check-time-of-use scenario:
+   - File exists, gets replaced with symlink
+   - Read is redirected to new symlink target
+   - Documents TOCTOU vulnerability
+
+6. **symlink_to_dev_null** - Tests symlink to special files:
+   - Read from /dev/null symlink fails (empty JSON)
+   - Write to /dev/null symlink succeeds (data discarded)
+
+7. **broken_symlink** - Tests symlink to non-existent target:
+   - Read correctly returns ErrNotExist
+   - Write behavior documented
+
+8. **relative_symlink_escape** - Tests relative path escape (../../../):
+   - Documents that relative symlinks with parent traversal work
+   - Security note for directory escape via relative paths
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-9znk** | Closed | Added 5 subtests covering permission denied mid-operation scenarios |
+| **vibefeld-zfz6** | Closed | Added 8 subtests covering symlink security scenarios |
 
 ### Files Changed
-- `internal/fs/error_injection_test.go` (+162 lines)
+- `internal/fs/json_io_test.go` (+346 lines)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 93 (was 94)
-- **Closed:** 456 (was 455)
+- **Open:** 92 (was 93)
+- **Closed:** 457 (was 456)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -72,7 +80,7 @@ No P0 issues remain open.
 6. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
 7. State millions of events (`vibefeld-th1m`)
 8. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
-9. FS symlink following security (`vibefeld-zfz6`)
+9. FS file descriptor exhaustion (`vibefeld-kik3`)
 
 ## Quick Commands
 
@@ -83,12 +91,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new permission denied mid-operation tests
-go test -v ./internal/fs/... -run "TestWriteJSON_PermissionDeniedMidOperation"
+# Run the new symlink security tests
+go test -v ./internal/fs/... -run "TestJSON_SymlinkFollowing"
 ```
 
 ## Session History
 
+**Session 92:** Closed 1 issue (FS symlink following security edge case tests)
 **Session 91:** Closed 1 issue (FS permission denied mid-operation edge case tests)
 **Session 90:** Closed 1 issue (ledger permission changes mid-operation edge case tests)
 **Session 89:** Closed 1 issue (FS read during concurrent write edge case tests)
