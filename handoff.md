@@ -1,62 +1,62 @@
-# Handoff - 2026-01-17 (Session 92)
+# Handoff - 2026-01-17 (Session 93)
 
 ## What Was Accomplished This Session
 
-### Session 92 Summary: FS Symlink Following Security Edge Case Tests
+### Session 93 Summary: FS File Descriptor Exhaustion Edge Case Tests
 
-Closed issue `vibefeld-zfz6` - "Edge case test: FS symlink following security"
+Closed issue `vibefeld-kik3` - "Edge case test: FS file descriptor exhaustion"
 
-Added `TestJSON_SymlinkFollowing` in `internal/fs/json_io_test.go` with 8 comprehensive subtests documenting and verifying symlink security behavior:
+Added `TestJSON_FileDescriptorExhaustion` in `internal/fs/json_io_test.go` with 5 comprehensive subtests verifying graceful degradation under FD exhaustion:
 
-1. **symlink_escape_to_parent_directory** - Tests symlink escaping a "jail" directory:
-   - Creates jail/outside directory structure
-   - Symlink inside jail pointing to outside
-   - Documents that ReadJSON/WriteJSON follow symlinks (security note)
-   - Both read and write operations through escape symlink succeed
+1. **write_fails_gracefully_at_fd_limit** - Tests WriteJSON at FD limit:
+   - Uses setrlimit to lower FD limit to 50
+   - Opens files until limit is hit
+   - Verifies WriteJSON returns proper error (not panic)
+   - Error message: "too many open files"
 
-2. **symlink_to_absolute_path** - Tests symlinks pointing to absolute paths:
-   - Symlink with absolute path to secrets directory
-   - Documents that absolute symlinks are followed
+2. **read_fails_gracefully_at_fd_limit** - Tests ReadJSON at FD limit:
+   - Pre-writes a file before exhausting FDs
+   - Verifies ReadJSON returns proper error (not panic)
+   - No data corruption occurs
 
-3. **circular_symlinks** - Tests circular symlink chain (a -> b -> a):
-   - Read and write correctly rejected with "too many levels of symbolic links"
-   - Verifies OS protects against infinite loops
+3. **recovery_after_fd_freed** - Tests recovery scenario:
+   - Exhausts FDs, operations fail
+   - Closes all files to free FDs
+   - Verifies operations succeed again
+   - Confirms system recovers cleanly
 
-4. **deeply_nested_symlink_chain** - Tests chain of 10 symlinks:
-   - link1 -> link2 -> ... -> link10 -> target
-   - Verifies nested chains within OS limits work correctly
+4. **no_temp_file_leak_at_exhaustion** - Tests cleanup:
+   - Attempts 10 writes under FD pressure
+   - All writes fail at exhaustion
+   - Verifies no .tmp files are left behind
+   - Critical for preventing disk space leaks
 
-5. **symlink_toctou_race** - Tests time-of-check-time-of-use scenario:
-   - File exists, gets replaced with symlink
-   - Read is redirected to new symlink target
-   - Documents TOCTOU vulnerability
+5. **concurrent_writes_at_fd_pressure** - Tests concurrent operations:
+   - Creates moderate FD pressure (50 open files)
+   - 5 goroutines each perform 10 writes
+   - All 50 writes succeed under pressure
+   - No temp files left behind
 
-6. **symlink_to_dev_null** - Tests symlink to special files:
-   - Read from /dev/null symlink fails (empty JSON)
-   - Write to /dev/null symlink succeeds (data discarded)
-
-7. **broken_symlink** - Tests symlink to non-existent target:
-   - Read correctly returns ErrNotExist
-   - Write behavior documented
-
-8. **relative_symlink_escape** - Tests relative path escape (../../../):
-   - Documents that relative symlinks with parent traversal work
-   - Security note for directory escape via relative paths
+#### Key Implementation Details
+- Uses `syscall.Setrlimit` to temporarily lower FD limits for reliable testing
+- Helper function `setLowFDLimit` manages limit changes and restoration
+- Tests skip gracefully if setrlimit fails (e.g., insufficient privileges)
+- Skips on Windows (different resource model)
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-zfz6** | Closed | Added 8 subtests covering symlink security scenarios |
+| **vibefeld-kik3** | Closed | Added 5 subtests verifying graceful FD exhaustion handling |
 
 ### Files Changed
-- `internal/fs/json_io_test.go` (+346 lines)
+- `internal/fs/json_io_test.go` (+452 lines)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 92 (was 93)
-- **Closed:** 457 (was 456)
+- **Open:** 91 (was 92)
+- **Closed:** 458 (was 457)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -80,7 +80,7 @@ No P0 issues remain open.
 6. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
 7. State millions of events (`vibefeld-th1m`)
 8. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
-9. FS file descriptor exhaustion (`vibefeld-kik3`)
+9. E2E test: Error recovery scenarios (`vibefeld-8a2g`)
 
 ## Quick Commands
 
@@ -91,12 +91,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new symlink security tests
-go test -v ./internal/fs/... -run "TestJSON_SymlinkFollowing"
+# Run the new FD exhaustion tests
+go test -v ./internal/fs/... -run "TestJSON_FileDescriptorExhaustion"
 ```
 
 ## Session History
 
+**Session 93:** Closed 1 issue (FS file descriptor exhaustion edge case tests)
 **Session 92:** Closed 1 issue (FS symlink following security edge case tests)
 **Session 91:** Closed 1 issue (FS permission denied mid-operation edge case tests)
 **Session 90:** Closed 1 issue (ledger permission changes mid-operation edge case tests)
