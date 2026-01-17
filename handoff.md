@@ -1,39 +1,41 @@
-# Handoff - 2026-01-17 (Session 81)
+# Handoff - 2026-01-17 (Session 82)
 
 ## What Was Accomplished This Session
 
-### Session 81 Summary: Taint Sparse Node Set (Missing Parents) Edge Case Tests
+### Session 82 Summary: Taint Duplicate Nodes Edge Case Tests
 
-Closed issue `vibefeld-52xk` - "Edge case test: Taint sparse node set (missing parents)"
+Closed issue `vibefeld-n1vv` - "Edge case test: Taint AllNodes contains duplicates"
 
-Added comprehensive `TestPropagateTaint_SparseMissingParents` test suite with 7 subtests verifying that ancestor cache lookup handles sparse node sets correctly without failing silently.
+Added comprehensive `TestPropagateTaint_DuplicateNodes` test suite with 9 subtests verifying that PropagateTaint correctly handles cases where allNodes contains the same node multiple times.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-52xk** | internal/taint/propagate_unit_test.go | Test | Added TestPropagateTaint_SparseMissingParents with 7 subtests |
+| **vibefeld-n1vv** | internal/taint/propagate_unit_test.go | Test | Added TestPropagateTaint_DuplicateNodes with 9 subtests |
 
 #### Changes Made
 
 **internal/taint/propagate_unit_test.go:**
-- Added `TestPropagateTaint_SparseMissingParents` - Tests ancestor cache lookup with missing parent nodes
-- Subtests cover critical sparse tree scenarios:
-  - `multiple consecutive parents missing` - Deep node with 4 missing intermediate ancestors
-  - `sparse nodes at multiple depth levels` - Every other level missing
-  - `unresolved taint with missing ancestors` - Unresolved propagates through sparse ancestry
-  - `multiple branches with sparse nodes` - Mixed sparsity across branches
-  - `cache fallback with nil ancestors list` - Nil ancestors in cache correctly handled
-  - `deep sparse tree with admitted node in middle` - Self-admitted node in sparse tree
-  - `sparse tree with pending node blocking unresolved` - Pending node makes sparse descendants unresolved
+- Added `TestPropagateTaint_DuplicateNodes` - Tests handling of duplicate nodes in allNodes slice
+- Subtests cover critical duplicate scenarios:
+  - `same child appears twice in allNodes` - Basic duplicate handling
+  - `same child appears many times in allNodes` - Many duplicates of same node
+  - `duplicates at multiple hierarchy levels` - Duplicates across the tree structure
+  - `root appears multiple times in allNodes` - Duplicate root node handling
+  - `duplicates with nodes already at target taint` - Duplicates with pre-existing correct taint
+  - `duplicates interspersed with nil nodes` - Mixed duplicates and nil entries
+  - `duplicates across multiple branches` - Duplicates spanning different branches
+  - `duplicate with different taint propagation types` - Unresolved taint with duplicates
+  - `nodeMap deduplicates for ancestor lookup` - Verifies map-based deduplication
 
 All tests pass.
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 105 (was 106)
-- **Closed:** 444 (was 443)
+- **Open:** 104 (was 105)
+- **Closed:** 445 (was 444)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -68,12 +70,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run new sparse missing parents test
-go test -v ./internal/taint/... -run "TestPropagateTaint_SparseMissingParents"
+# Run new duplicate nodes test
+go test -v ./internal/taint/... -run "TestPropagateTaint_DuplicateNodes"
 ```
 
 ## Session History
 
+**Session 82:** Closed 1 issue (taint duplicate nodes edge case test)
 **Session 81:** Closed 1 issue (taint sparse node set missing parents edge case test)
 **Session 80:** Closed 1 issue (taint nil ancestors list edge case test)
 **Session 79:** Closed 1 issue (state mutation safety tests)
