@@ -648,3 +648,96 @@ func TestSuggestFlag_NoMatch(t *testing.T) {
 		})
 	}
 }
+
+// BenchmarkFuzzyMatchCommands benchmarks fuzzy matching against CLI commands.
+// Tests 50 commands with 10 misspellings each.
+func BenchmarkFuzzyMatchCommands(b *testing.B) {
+	// Expanded command list (50 commands)
+	commands := []string{
+		"init", "status", "claim", "release", "refine", "accept",
+		"challenge", "validate", "admit", "refute", "archive",
+		"jobs", "def", "assume", "lemma", "help", "version",
+		"get", "defs", "challenges", "deps", "scope", "log",
+		"replay", "reap", "recompute-taint", "def-add", "def-reject",
+		"extract-lemma", "export", "progress", "health", "pending-defs",
+		"pending-refs", "assumptions", "assumption", "schema", "inferences",
+		"types", "extend-claim", "resolve-challenge", "withdraw-challenge",
+		"amend", "search", "lemmas", "externals", "agents", "verify-ref",
+		"add-external", "completion", "watch",
+	}
+
+	// Common typos/misspellings
+	misspellings := []string{
+		"stauts", "chalenge", "refien", "accpet", "archve",
+		"relase", "valdate", "admitt", "refut", "initt",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, typo := range misspellings {
+			_ = SuggestCommand(typo, commands)
+		}
+	}
+}
+
+// BenchmarkFuzzyMatchVaryingCandidates benchmarks with different candidate counts.
+func BenchmarkFuzzyMatchVaryingCandidates(b *testing.B) {
+	benchmarks := []struct {
+		name       string
+		candidates int
+	}{
+		{"10_candidates", 10},
+		{"50_candidates", 50},
+		{"100_candidates", 100},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			// Generate candidate list
+			candidates := make([]string, bm.candidates)
+			for i := 0; i < bm.candidates; i++ {
+				candidates[i] = generateCommandName(i)
+			}
+
+			input := "stauts" // common typo
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = Match(input, candidates, 0.8)
+			}
+		})
+	}
+}
+
+// BenchmarkFuzzyMatchVaryingInputLength benchmarks with different input lengths.
+func BenchmarkFuzzyMatchVaryingInputLength(b *testing.B) {
+	candidates := []string{
+		"init", "status", "challenge", "validate", "accept",
+		"refine", "refute", "release", "archive", "admit",
+	}
+
+	benchmarks := []struct {
+		name  string
+		input string
+	}{
+		{"short_3char", "sta"},
+		{"medium_6char", "stauts"},
+		{"long_10char", "challlenge"},
+		{"exact_9char", "challenge"},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = Match(bm.input, candidates, 0.8)
+			}
+		})
+	}
+}
+
+// generateCommandName generates a unique command name for benchmarking.
+func generateCommandName(i int) string {
+	prefixes := []string{"get", "set", "add", "del", "run", "show", "list", "find", "new", "old"}
+	suffixes := []string{"node", "item", "task", "job", "def", "ref", "log", "tree", "all", "one"}
+	return prefixes[i%len(prefixes)] + "-" + suffixes[(i/len(prefixes))%len(suffixes)]
+}

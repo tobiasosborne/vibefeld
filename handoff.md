@@ -1,71 +1,91 @@
-# Handoff - 2026-01-17 (Session 112)
+# Handoff - 2026-01-17 (Session 113)
 
 ## What Was Accomplished This Session
 
-### Session 112 Summary: Fixed String Contains Error Checks with Proper Error Types
+### Session 113 Summary: Added Benchmarks for Critical Paths
 
-Closed issue `vibefeld-gd70` - "Code smell: String contains checks instead of error types"
+Closed issue `vibefeld-qrzs` - "Performance: Add benchmarks for critical paths"
 
 #### Problem
 
-The `cmd/af/refine.go` file used `strings.Contains(err.Error(), ...)` to detect specific error conditions instead of using proper error type assertions with `errors.Is()`. This is fragile and can break if error messages change.
-
-Location: `cmd/af/refine.go` lines 125-131 and lines 382-385
-
-Bad patterns:
-```go
-if strings.Contains(err.Error(), "not claimed") { ... }
-if strings.Contains(err.Error(), "owner does not match") { ... }
-if strings.Contains(errStr, "no events") || strings.Contains(errStr, "empty") { ... }
-```
+The codebase lacked benchmarks for performance-critical operations, making it difficult to:
+- Measure and track performance over time
+- Identify performance regressions
+- Optimize hot paths with data-driven decisions
 
 #### Solution
 
-1. **Added sentinel errors to service package** (`internal/service/proof.go`):
-   - `ErrNotClaimed` - returned when a node is not claimed but operation requires it
-   - `ErrOwnerMismatch` - returned when the owner doesn't match the claim owner
+Added comprehensive benchmarks to three packages:
 
-2. **Updated service layer** to return these sentinel errors instead of `errors.New()`:
-   - `RefreshClaim()` - uses `ErrNotClaimed` and wraps `ErrOwnerMismatch` with context
-   - `ReleaseNode()` - uses `ErrNotClaimed` and `ErrOwnerMismatch`
-   - `RefineNode()` - uses wrapped `ErrNotClaimed` and `ErrOwnerMismatch`
-   - `RefineNodeWithDeps()` - same
-   - `RefineNodeWithAllDeps()` - same
-   - `RefineNodeBulk()` - same
+**1. State Package (`internal/state/benchmark_test.go`)**
+- `BenchmarkFindChildrenLargeTree` - 10K nodes, 100 child lookups
+- `BenchmarkGetBlockingChallengesNode` - 10K challenges, 100 lookups
+- `BenchmarkStateReplay` - 100/500/1000 event replay scenarios
+- `BenchmarkChallengesByNodeID` - cached vs invalidated cache comparison
+- `BenchmarkAllChildrenValidated` - 100 children validation check
 
-3. **Updated refine.go** to use `errors.Is()`:
-   - `handleRefineError()` now uses `errors.Is(err, service.ErrNotClaimed)` and `errors.Is(err, service.ErrOwnerMismatch)`
-   - State loading error check now uses `os.IsNotExist(err)` instead of string matching
+**2. Fuzzy Package (`internal/fuzzy/match_test.go`)**
+- `BenchmarkFuzzyMatchCommands` - 50 commands × 10 misspellings
+- `BenchmarkFuzzyMatchVaryingCandidates` - 10/50/100 candidates
+- `BenchmarkFuzzyMatchVaryingInputLength` - 3/6/9/10 character inputs
+
+**3. Render Package (`internal/render/benchmark_test.go`)**
+- `BenchmarkTreeRendering` - 10/100/500/1000 nodes full tree
+- `BenchmarkTreeRenderingSubtree` - 500-node tree subtree extraction
+- `BenchmarkTreeRenderingForNodes` - 10/100/500 nodes flat list
+- `BenchmarkFindChildren` - 100/1000/5000 nodes child lookup
+- `BenchmarkSortNodesByID` - 10/100/1000 nodes sorting
+- `BenchmarkFormatNode` - single node formatting
+- `BenchmarkFormatNodeWithState` - node formatting with state context
+
+### Sample Benchmark Results
+
+```
+State Package:
+BenchmarkFindChildrenLargeTree          30ms/op (10K nodes, 100 lookups)
+BenchmarkGetBlockingChallengesNode      264μs/op (10K challenges, 100 lookups)
+BenchmarkStateReplay/1000_events        22ms/op
+BenchmarkChallengesByNodeID/cached      16ns/op (O(1) lookup)
+BenchmarkChallengesByNodeID/invalidated 70μs/op (cache rebuild)
+
+Fuzzy Package:
+BenchmarkFuzzyMatchCommands             176μs/op (50 commands × 10 typos)
+BenchmarkFuzzyMatchVaryingCandidates/100 28μs/op
+
+Render Package:
+BenchmarkTreeRendering/1000_nodes       15ms/op
+BenchmarkFindChildren/5000_nodes        83μs/op
+BenchmarkFormatNode                     487ns/op
+```
 
 ### Files Changed
 
-- `internal/service/proof.go` - Added `ErrNotClaimed` and `ErrOwnerMismatch` sentinel errors, updated 8 return statements
-- `cmd/af/refine.go` - Added `errors` and `os` imports, updated `handleRefineError()` and state loading error check
+- `internal/state/benchmark_test.go` (NEW) - 310 lines, 7 benchmarks + helpers
+- `internal/fuzzy/match_test.go` - Added 90 lines, 3 benchmarks
+- `internal/render/benchmark_test.go` (NEW) - 190 lines, 8 benchmarks + helpers
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-gd70** | Closed | Fixed by using errors.Is() with sentinel errors |
+| **vibefeld-qrzs** | Closed | Added all 5 recommended benchmarks plus 10 additional benchmarks |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 72 (was 73)
-- **Closed:** 477 (was 476)
+- **Open:** 71 (was 72)
+- **Closed:** 478 (was 477)
 
 ### Test Status
-All tests pass. Build succeeds.
+All tests pass. All benchmarks run successfully.
 
 ### Verification
 ```bash
-# Confirm errors.Is() is now used
-grep -n "errors.Is" cmd/af/refine.go
-# Returns: handleRefineError function uses errors.Is()
+# Run all benchmarks
+go test -run=^$ -bench=. ./internal/state/... ./internal/fuzzy/... ./internal/render/... -benchtime=1s
 
-# Confirm no more strings.Contains for error checking
-grep -n "strings.Contains.*Error()" cmd/af/refine.go
-# Returns: No matches found
+# Run specific benchmark
+go test -run=^$ -bench=BenchmarkTreeRendering ./internal/render/...
 ```
 
 ## Remaining P1 Issues
@@ -84,15 +104,11 @@ grep -n "strings.Contains.*Error()" cmd/af/refine.go
 
 ### P2 Performance
 5. Reflection in event parsing hot path (`vibefeld-s406`)
-6. Add benchmarks for critical paths (`vibefeld-qrzs`)
 
 ### P2 Code Quality
-7. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
-8. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-9. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
-
-### Follow-up Work (Not Tracked as Issues)
-- Migrate remaining ~30 CLI files to use `cli.Must*` helpers (incremental, low priority)
+6. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
+7. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+8. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
 
 ## Quick Commands
 
@@ -103,15 +119,16 @@ bd ready
 # Run tests
 go test ./...
 
-# Run integration tests
-go test -tags=integration ./...
+# Run benchmarks
+go test -run=^$ -bench=. ./... -benchtime=100ms
 
-# Check for remaining string-based error checks
-grep -rn 'strings.Contains.*Error()' cmd/af/
+# Run benchmarks with memory stats
+go test -run=^$ -bench=. ./... -benchmem -benchtime=1s
 ```
 
 ## Session History
 
+**Session 113:** Closed 1 issue (added benchmarks for critical paths - 3 packages, 18 benchmarks total)
 **Session 112:** Closed 1 issue (string contains error checks - added ErrNotClaimed/ErrOwnerMismatch sentinel errors, updated refine.go to use errors.Is())
 **Session 111:** Closed 1 issue (fixed inconsistent error wrapping - 22 `%v` to `%w` conversions in 6 cmd/af files)
 **Session 110:** Closed 1 issue (state package coverage 61.1% to 91.3% - added tests for ClaimRefreshed, NodeAmended, scope operations, replay.go unit tests)
