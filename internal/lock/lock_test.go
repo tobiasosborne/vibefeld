@@ -319,6 +319,55 @@ func TestRefresh_PreservesOtherFields(t *testing.T) {
 	}
 }
 
+// TestRefresh_ExpiredLockBehavior verifies that refreshing an expired lock succeeds.
+// This is intentional behavior: it allows recovery from brief expirations caused by
+// clock skew or timing issues. The alternative (rejecting refresh on expired locks)
+// would require agents to re-acquire locks through the full claim process, creating
+// unnecessary churn. Since the lock owner is preserved, refreshing an expired lock
+// is safe - no other agent could have claimed it in the meantime without the original
+// agent releasing it or the lock being reaped.
+func TestRefresh_ExpiredLockBehavior(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	// Create lock with very short timeout
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	// Wait for expiration
+	time.Sleep(10 * time.Millisecond)
+
+	// Verify lock is expired
+	if !lk.IsExpired() {
+		t.Fatal("Lock should be expired after timeout")
+	}
+
+	// Refresh the expired lock - this should succeed
+	err = lk.Refresh(1 * time.Hour)
+	if err != nil {
+		t.Fatalf("Refresh() on expired lock should succeed, got error: %v", err)
+	}
+
+	// Lock should no longer be expired after refresh
+	if lk.IsExpired() {
+		t.Error("IsExpired() = true after refresh, want false")
+	}
+
+	// Owner should still be preserved
+	if !lk.IsOwnedBy("agent-001") {
+		t.Errorf("IsOwnedBy(\"agent-001\") = false after refresh, want true")
+	}
+
+	// NodeID should still be preserved
+	if lk.NodeID().String() != "1" {
+		t.Errorf("NodeID() = %q after refresh, want \"1\"", lk.NodeID().String())
+	}
+}
+
 // TestJSON_Roundtrip verifies locks can be serialized and deserialized
 func TestJSON_Roundtrip(t *testing.T) {
 	tests := []struct {

@@ -1,59 +1,36 @@
-# Handoff - 2026-01-17 (Session 71)
+# Handoff - 2026-01-17 (Session 72)
 
 ## What Was Accomplished This Session
 
-### Session 71 Summary: Error Message Path Sanitization
+### Session 72 Summary: Lock Refresh Edge Case Test
 
-Closed issue `vibefeld-e0eh` - "MEDIUM: Error messages leak file paths"
+Closed issue `vibefeld-vmzq` - "Edge case test: Lock refresh on expired lock"
 
-Fixed security issue where error messages could reveal sensitive filesystem paths to users, providing reconnaissance information about system structure.
+Added test `TestRefresh_ExpiredLockBehavior` documenting that refreshing an expired lock intentionally succeeds. This is a design decision to allow recovery from brief expirations caused by clock skew or timing issues.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-e0eh** | internal/errors/errors.go | Security fix | Added SanitizePaths and SanitizeError functions |
-| | internal/errors/errors_test.go | Test | 12 new test cases for path sanitization |
-| | cmd/af/main.go | Integration | Applied sanitization at CLI error output |
+| **vibefeld-vmzq** | internal/lock/lock_test.go | Test | Added TestRefresh_ExpiredLockBehavior edge case test |
 
 #### Changes Made
 
-**internal/errors/errors.go:**
-- Added `SanitizePaths(s string) string` - sanitizes file paths in error messages
-- Added `SanitizeError(err error) error` - wraps error with sanitized paths
-- Added helper functions for Unix and Windows path detection
-- Strips absolute paths containing `.af/` down to relative `.af/...` paths
-
-**internal/errors/errors_test.go:**
-- `TestSanitizePaths` - 10 test cases covering:
-  - Unix absolute paths with `.af`
-  - Windows paths with backslashes
-  - Multiple paths in same message
-  - Paths without `.af` marker (preserved)
-  - Edge cases (empty strings, relative paths)
-- `TestSanitizeError` - 3 test cases for error wrapper
-
-**cmd/af/main.go:**
-- Applied `errors.SanitizeError()` at the single CLI error output point
-- All errors are now sanitized before display to users
-
-#### Solution Design
-
-The fix applies sanitization at the final output layer rather than at each error source:
-1. **Central sanitization**: Applied once in main.go where errors are printed
-2. **Pattern matching**: Finds absolute paths containing `.af/` and strips prefix
-3. **Cross-platform**: Handles both Unix (`/path/.af/`) and Windows (`C:\path\.af\`)
-4. **Safe fallback**: Non-AF paths are preserved unchanged
-
-Example transformations:
-- `/home/user/project/.af/ledger/0001.json` → `.af/ledger/0001.json`
-- `C:\Users\dev\.af\config.json` → `.af/config.json`
+**internal/lock/lock_test.go:**
+- Added `TestRefresh_ExpiredLockBehavior` test documenting that:
+  - Refreshing an expired lock succeeds (intentional design)
+  - Lock becomes non-expired after refresh
+  - Owner and NodeID are preserved through refresh
+- Comprehensive comment explaining the design rationale:
+  - Allows recovery from brief expirations caused by clock skew
+  - Alternative (rejecting refresh) would require full re-claim process
+  - Safe because lock owner is preserved - no other agent could claim in meantime
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 115 (was 116)
-- **Closed:** 434 (was 433)
+- **Open:** 114 (was 115)
+- **Closed:** 435 (was 434)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -77,7 +54,7 @@ No P0 issues remain open.
 6. Directory deleted during append (`vibefeld-iupw`)
 7. Permission changes mid-operation (`vibefeld-hzrs`)
 8. Concurrent metadata corruption (`vibefeld-be56`)
-9. Lock refresh on expired lock (`vibefeld-vmzq`)
+9. Lock clock skew handling (`vibefeld-v9yj`)
 
 ## Quick Commands
 
@@ -88,12 +65,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run error package tests specifically
-go test ./internal/errors/... -v
+# Run lock package tests specifically
+go test ./internal/lock/... -v
 ```
 
 ## Session History
 
+**Session 72:** Closed 1 issue (lock refresh expired lock edge case test)
 **Session 71:** Closed 1 issue (error message path sanitization security fix)
 **Session 70:** Closed 1 issue (PersistentManager singleton factory for synchronization)
 **Session 69:** Closed 1 issue (tree rendering performance - string conversion optimization)
