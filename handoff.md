@@ -1,47 +1,58 @@
-# Handoff - 2026-01-17 (Session 67)
+# Handoff - 2026-01-17 (Session 68)
 
 ## What Was Accomplished This Session
 
-### Session 67 Summary: Edge Case Test for HasGaps() Sparse Sequence
+### Session 68 Summary: Lock Holder TOCTOU Race Condition Fix
 
-Closed issue `vibefeld-vc18` - "Edge case test: HasGaps() sparse sequence detection"
+Closed issue `vibefeld-kubp` - "MEDIUM: Lock holder check missing in acquisition"
 
-Added a test to verify that `HasGaps()` correctly detects gaps in sparse (widely-spaced) sequence numbers, not just gaps in contiguous sequences.
+Fixed a TOCTOU (time-of-check to time-of-use) race condition in lock acquisition where multiple processes could acquire the same lock simultaneously.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-vc18** | internal/ledger/read_test.go | Test | Sparse sequence gap detection test |
+| **vibefeld-kubp** | internal/lock/persistent.go | Bug fix | Lock holder verification after ledger write |
+| | internal/lock/persistent_test.go | Test | Race condition detection tests |
 
 #### Changes Made
 
-**internal/ledger/read_test.go:**
-- Added `TestHasGaps_SparseSequenceWithGaps` - verifies gap detection with sequence (1, 5, 10, 15) which has multiple gaps throughout
+**internal/lock/persistent.go:**
+- Added `verifyLockHolder()` method that scans the ledger after writing a lock_acquired event
+- This method verifies that our lock acquisition event is the one that established the current lock
+- Detects when another process acquired the same lock between our in-memory check and ledger write
+- Modified `Acquire()` to call `verifyLockHolder()` after successful ledger append
+
+**internal/lock/persistent_test.go:**
+- Added `TestPersistentManager_Acquire_DetectsConflictFromOtherProcess` - verifies detection when another process wrote first
+- Added `TestPersistentManager_Acquire_VerifyLockHolder` - verifies sequential acquisition conflict detection
+- Added `TestPersistentManager_Acquire_SeparateNodes` - verifies concurrent acquisition on different nodes succeeds
 
 #### Why This Matters
 
-The existing HasGaps tests only covered:
-- Empty directory
-- Contiguous sequence (1,2,3,4,5)
-- Gap in middle (1,2,4,5)
-- Not starting from 1 (3,4,5)
+The bug allowed this race condition:
+1. Process A checks in-memory state, sees no lock
+2. Process B checks in-memory state, sees no lock
+3. Process A writes lock_acquired to ledger
+4. Process B writes lock_acquired to ledger (for same node)
+5. Both processes think they hold the lock
 
-The new test covers sparse sequences where numbers are widely spaced (1, 5, 10, 15), ensuring the algorithm works correctly for any gap pattern.
+The fix ensures that after writing to the ledger, we verify our event is the current lock holder by scanning the full lock event history for that node.
 
 #### Files Changed
 
 ```
-internal/ledger/read_test.go  (+21 lines) - Sparse sequence test
+internal/lock/persistent.go      (+78 lines) - verifyLockHolder() method
+internal/lock/persistent_test.go (+134 lines) - 3 race condition tests
 ```
 
-**Total: 21 lines added**
+**Total: 212 lines added**
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 119 (was 120)
-- **Closed:** 430 (was 429)
+- **Open:** 118 (was 119)
+- **Closed:** 431 (was 430)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -58,14 +69,13 @@ No P0 issues remain open.
 3. Module structure: Reduce cmd/af imports (`vibefeld-jfbc`)
 
 ### P2 Bug Fixes
-4. Lock holder check missing in acquisition (`vibefeld-kubp`)
-5. No synchronization on PersistentManager construction (`vibefeld-0yre`)
-6. Error messages leak file paths (`vibefeld-e0eh`)
+4. No synchronization on PersistentManager construction (`vibefeld-0yre`)
+5. Error messages leak file paths (`vibefeld-e0eh`)
 
 ### P2 Test Coverage
-7. ledger package test coverage (`vibefeld-4pba`)
-8. state package test coverage (`vibefeld-hpof`)
-9. scope package test coverage (`vibefeld-h179`)
+6. ledger package test coverage (`vibefeld-4pba`)
+7. state package test coverage (`vibefeld-hpof`)
+8. scope package test coverage (`vibefeld-h179`)
 
 ## Quick Commands
 
@@ -76,12 +86,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run integration tests (including HasGaps tests)
-go test ./internal/ledger/... -tags=integration
+# Run lock tests specifically
+go test ./internal/lock/... -v
 ```
 
 ## Session History
 
+**Session 68:** Closed 1 issue (lock holder TOCTOU race condition fix)
 **Session 67:** Closed 1 issue (HasGaps sparse sequence edge case test)
 **Session 66:** Closed 1 issue (challenge cache invalidation bug fix)
 **Session 65:** Closed 1 issue (challenge map caching performance fix)

@@ -265,6 +265,85 @@ func (pm *PersistentManager) applyLockReaped(evt ledger.LockReaped) {
 	delete(pm.locks, key)
 }
 
+// verifyLockHolder verifies that after writing a lock_acquired event at sequence seq,
+// we are the actual current holder of the lock. This handles TOCTOU races where
+// another process might have acquired the same lock between our in-memory check
+// and our ledger write.
+//
+// Returns nil if we are the valid lock holder, or an error if:
+// - Another process acquired the lock for the same node before our event
+// - We cannot read the ledger to verify
+func (pm *PersistentManager) verifyLockHolder(nodeID types.NodeID, owner string, seq int) error {
+	events, err := pm.ledger.ReadAll()
+	if err != nil {
+		return fmt.Errorf("failed to verify lock holder: %w", err)
+	}
+
+	targetKey := nodeID.String()
+
+	// Track lock state for the target node as we scan through events
+	type lockState struct {
+		owner    string
+		sequence int
+	}
+	var currentLock *lockState
+
+	for i, eventData := range events {
+		eventSeq := i + 1 // Events are 1-indexed
+
+		// Parse the event type
+		var base struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(eventData, &base); err != nil {
+			continue // Skip unparseable events (handled by replayLedger)
+		}
+
+		switch ledger.EventType(base.Type) {
+		case EventLockAcquired:
+			var evt LockAcquired
+			if err := json.Unmarshal(eventData, &evt); err != nil {
+				continue
+			}
+			if evt.NodeID.String() == targetKey {
+				currentLock = &lockState{owner: evt.Owner, sequence: eventSeq}
+			}
+
+		case EventLockReleased:
+			var evt LockReleased
+			if err := json.Unmarshal(eventData, &evt); err != nil {
+				continue
+			}
+			if evt.NodeID.String() == targetKey {
+				currentLock = nil
+			}
+
+		case ledger.EventLockReaped:
+			var evt ledger.LockReaped
+			if err := json.Unmarshal(eventData, &evt); err != nil {
+				continue
+			}
+			if evt.NodeID.String() == targetKey {
+				currentLock = nil
+			}
+		}
+	}
+
+	// Verify we are the current lock holder
+	if currentLock == nil {
+		// Lock was released or reaped after we wrote - this shouldn't happen
+		// but indicates a concurrent modification
+		return errors.New("lock was released concurrently")
+	}
+
+	if currentLock.sequence != seq || currentLock.owner != owner {
+		// Another process acquired the lock before or after our write
+		return fmt.Errorf("lock acquisition conflict: node locked by %s", currentLock.owner)
+	}
+
+	return nil
+}
+
 // Acquire acquires a lock on a node, persisting to the ledger.
 // Returns error if: node already locked and not expired, empty owner, whitespace owner, zero/negative timeout.
 func (pm *PersistentManager) Acquire(nodeID types.NodeID, owner string, timeout time.Duration) (*ClaimLock, error) {
@@ -289,8 +368,16 @@ func (pm *PersistentManager) Acquire(nodeID types.NodeID, owner string, timeout 
 
 	// Persist to ledger first (write-ahead)
 	evt := NewLockAcquired(nodeID, owner, lk.ExpiresAt())
-	if _, err := pm.ledger.Append(evt); err != nil {
+	seq, err := pm.ledger.Append(evt)
+	if err != nil {
 		return nil, fmt.Errorf("failed to persist lock: %w", err)
+	}
+
+	// Verify we are the actual lock holder by checking ledger state.
+	// This handles TOCTOU race where another process may have acquired
+	// the same lock between our in-memory check and ledger write.
+	if err := pm.verifyLockHolder(nodeID, owner, seq); err != nil {
+		return nil, err
 	}
 
 	// Update in-memory state

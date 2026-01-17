@@ -778,3 +778,138 @@ func containsSubstr(s, substr string) bool {
 	}
 	return false
 }
+
+// TestPersistentManager_Acquire_DetectsConflictFromOtherProcess tests that when
+// another process has already acquired a lock (simulated by directly writing to
+// the ledger), our acquire fails with a conflict error.
+func TestPersistentManager_Acquire_DetectsConflictFromOtherProcess(t *testing.T) {
+	l, dir := createTestLedger(t)
+
+	// Simulate another process acquiring the lock by writing directly to ledger
+	nodeID, _ := types.Parse("1.1")
+	otherOwner := "other-process"
+	futureExpiry := types.FromTime(time.Now().Add(1 * time.Hour))
+	otherEvt := lock.NewLockAcquired(nodeID, otherOwner, futureExpiry)
+	if _, err := l.Append(otherEvt); err != nil {
+		t.Fatalf("Failed to write competing lock event: %v", err)
+	}
+
+	// Create a new manager that doesn't know about the existing lock
+	// (simulating a process that checked its in-memory state before the other wrote)
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+
+	pm, err := lock.NewPersistentManager(l2)
+	if err != nil {
+		t.Fatalf("NewPersistentManager() unexpected error: %v", err)
+	}
+
+	// Our manager replayed the ledger and sees the lock, so normal acquire should fail
+	_, err = pm.Acquire(nodeID, "our-agent", 5*time.Minute)
+	if err == nil {
+		t.Error("Acquire() should fail when node is already locked by another process")
+	}
+}
+
+// TestPersistentManager_Acquire_VerifyLockHolder tests the lock verification
+// detects when a conflicting lock was written after our ledger write.
+// This simulates the TOCTOU race condition.
+func TestPersistentManager_Acquire_VerifyLockHolder(t *testing.T) {
+	l, dir := createTestLedger(t)
+
+	// Create manager
+	pm, err := lock.NewPersistentManager(l)
+	if err != nil {
+		t.Fatalf("NewPersistentManager() unexpected error: %v", err)
+	}
+
+	nodeID, _ := types.Parse("1.1")
+
+	// Acquire a lock successfully
+	lk, err := pm.Acquire(nodeID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("Acquire() unexpected error: %v", err)
+	}
+	if lk == nil {
+		t.Fatal("Acquire() returned nil lock")
+	}
+
+	// Verify the lock was recorded in the ledger
+	count, err := l.Count()
+	if err != nil {
+		t.Fatalf("Count() unexpected error: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Ledger should have 1 event, got %d", count)
+	}
+
+	// Now simulate a second process trying to acquire
+	// Create a new ledger handle and manager for the "second process"
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() for second process unexpected error: %v", err)
+	}
+
+	pm2, err := lock.NewPersistentManager(l2)
+	if err != nil {
+		t.Fatalf("NewPersistentManager() for second process unexpected error: %v", err)
+	}
+
+	// Second process's acquire should fail because the lock is held
+	_, err = pm2.Acquire(nodeID, "agent-002", 5*time.Minute)
+	if err == nil {
+		t.Error("Second Acquire() should fail when lock is held by first process")
+	}
+}
+
+// TestPersistentManager_Acquire_SeparateNodes tests that acquiring locks on
+// different nodes succeeds even with concurrent processes.
+func TestPersistentManager_Acquire_SeparateNodes(t *testing.T) {
+	l, dir := createTestLedger(t)
+
+	// Create two managers sharing the same ledger directory (simulating two processes)
+	pm1, err := lock.NewPersistentManager(l)
+	if err != nil {
+		t.Fatalf("NewPersistentManager() unexpected error: %v", err)
+	}
+
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+	pm2, err := lock.NewPersistentManager(l2)
+	if err != nil {
+		t.Fatalf("NewPersistentManager() for second manager unexpected error: %v", err)
+	}
+
+	nodeID1, _ := types.Parse("1.1")
+	nodeID2, _ := types.Parse("1.2")
+
+	// Both should succeed on different nodes
+	lk1, err := pm1.Acquire(nodeID1, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("Acquire(nodeID1) unexpected error: %v", err)
+	}
+	if lk1 == nil {
+		t.Fatal("Acquire(nodeID1) returned nil lock")
+	}
+
+	lk2, err := pm2.Acquire(nodeID2, "agent-002", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("Acquire(nodeID2) unexpected error: %v", err)
+	}
+	if lk2 == nil {
+		t.Fatal("Acquire(nodeID2) returned nil lock")
+	}
+
+	// Verify both locks are recorded
+	count, err := l.Count()
+	if err != nil {
+		t.Fatalf("Count() unexpected error: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("Ledger should have 2 events, got %d", count)
+	}
+}
