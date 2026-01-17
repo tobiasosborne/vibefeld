@@ -63,6 +63,59 @@ func RenderStatus(s *state.State, limit, offset int) string {
 	return sb.String()
 }
 
+// stateCounts holds the counts of epistemic and taint states for a collection of nodes.
+type stateCounts struct {
+	epistemic map[schema.EpistemicState]int
+	taint     map[node.TaintState]int
+}
+
+// countStates counts epistemic and taint states for the given nodes in a single pass.
+func countStates(nodes []*node.Node) stateCounts {
+	counts := stateCounts{
+		epistemic: make(map[schema.EpistemicState]int),
+		taint:     make(map[node.TaintState]int),
+	}
+	for _, n := range nodes {
+		counts.epistemic[n.EpistemicState]++
+		counts.taint[n.TaintState]++
+	}
+	return counts
+}
+
+// writeStateCounts writes epistemic and taint state counts to the builder.
+func writeStateCounts(sb *strings.Builder, counts stateCounts) {
+	// Write epistemic state counts (in fixed order for determinism) with color coding
+	sb.WriteString("  Epistemic: ")
+	epistemicStates := []schema.EpistemicState{
+		schema.EpistemicPending,
+		schema.EpistemicValidated,
+		schema.EpistemicAdmitted,
+		schema.EpistemicRefuted,
+		schema.EpistemicArchived,
+	}
+	epistemicParts := make([]string, len(epistemicStates))
+	for i, state := range epistemicStates {
+		epistemicParts[i] = fmt.Sprintf("%d %s", counts.epistemic[state], ColorEpistemicState(state))
+	}
+	sb.WriteString(strings.Join(epistemicParts, ", "))
+	sb.WriteString("\n")
+
+	// Write taint state counts (in fixed order for determinism) with color coding
+	sb.WriteString("  Taint: ")
+	taintStates := []node.TaintState{
+		node.TaintClean,
+		node.TaintSelfAdmitted,
+		node.TaintTainted,
+		node.TaintUnresolved,
+	}
+	taintParts := make([]string, len(taintStates))
+	for i, state := range taintStates {
+		taintParts[i] = fmt.Sprintf("%d %s", counts.taint[state], ColorTaintState(state))
+	}
+	sb.WriteString(strings.Join(taintParts, ", "))
+	sb.WriteString("\n")
+}
+
 // applyPagination applies limit and offset to a slice of nodes.
 // offset=0 means no skip, limit=0 means no limit.
 func applyPagination(nodes []*node.Node, limit, offset int) []*node.Node {
@@ -87,18 +140,7 @@ func applyPagination(nodes []*node.Node, limit, offset int) []*node.Node {
 // renderStatisticsWithPagination writes the statistics section including pagination info.
 func renderStatisticsWithPagination(sb *strings.Builder, nodes []*node.Node, totalNodes, limit, offset int) {
 	displayed := len(nodes)
-
-	// Count epistemic states
-	epistemicCounts := make(map[schema.EpistemicState]int)
-	for _, n := range nodes {
-		epistemicCounts[n.EpistemicState]++
-	}
-
-	// Count taint states
-	taintCounts := make(map[node.TaintState]int)
-	for _, n := range nodes {
-		taintCounts[n.TaintState]++
-	}
+	counts := countStates(nodes)
 
 	// Write total count with pagination info
 	if limit > 0 || offset > 0 {
@@ -107,87 +149,15 @@ func renderStatisticsWithPagination(sb *strings.Builder, nodes []*node.Node, tot
 		sb.WriteString(fmt.Sprintf("Nodes: %d total\n", totalNodes))
 	}
 
-	// Write epistemic state counts (in fixed order for determinism) with color coding
-	sb.WriteString("  Epistemic: ")
-	epistemicStates := []schema.EpistemicState{
-		schema.EpistemicPending,
-		schema.EpistemicValidated,
-		schema.EpistemicAdmitted,
-		schema.EpistemicRefuted,
-		schema.EpistemicArchived,
-	}
-	epistemicParts := make([]string, len(epistemicStates))
-	for i, state := range epistemicStates {
-		epistemicParts[i] = fmt.Sprintf("%d %s", epistemicCounts[state], ColorEpistemicState(state))
-	}
-	sb.WriteString(strings.Join(epistemicParts, ", "))
-	sb.WriteString("\n")
-
-	// Write taint state counts (in fixed order for determinism) with color coding
-	sb.WriteString("  Taint: ")
-	taintStates := []node.TaintState{
-		node.TaintClean,
-		node.TaintSelfAdmitted,
-		node.TaintTainted,
-		node.TaintUnresolved,
-	}
-	taintParts := make([]string, len(taintStates))
-	for i, state := range taintStates {
-		taintParts[i] = fmt.Sprintf("%d %s", taintCounts[state], ColorTaintState(state))
-	}
-	sb.WriteString(strings.Join(taintParts, ", "))
-	sb.WriteString("\n")
+	writeStateCounts(sb, counts)
 }
 
 // renderStatistics writes the statistics section to the builder.
 func renderStatistics(sb *strings.Builder, nodes []*node.Node) {
-	total := len(nodes)
+	counts := countStates(nodes)
 
-	// Count epistemic states
-	epistemicCounts := make(map[schema.EpistemicState]int)
-	for _, n := range nodes {
-		epistemicCounts[n.EpistemicState]++
-	}
-
-	// Count taint states
-	taintCounts := make(map[node.TaintState]int)
-	for _, n := range nodes {
-		taintCounts[n.TaintState]++
-	}
-
-	// Write total count
-	sb.WriteString(fmt.Sprintf("Nodes: %d total\n", total))
-
-	// Write epistemic state counts (in fixed order for determinism) with color coding
-	sb.WriteString("  Epistemic: ")
-	epistemicStates := []schema.EpistemicState{
-		schema.EpistemicPending,
-		schema.EpistemicValidated,
-		schema.EpistemicAdmitted,
-		schema.EpistemicRefuted,
-		schema.EpistemicArchived,
-	}
-	epistemicParts := make([]string, len(epistemicStates))
-	for i, state := range epistemicStates {
-		epistemicParts[i] = fmt.Sprintf("%d %s", epistemicCounts[state], ColorEpistemicState(state))
-	}
-	sb.WriteString(strings.Join(epistemicParts, ", "))
-	sb.WriteString("\n")
-
-	// Write taint state counts (in fixed order for determinism) with color coding
-	sb.WriteString("  Taint: ")
-	taintStates := []node.TaintState{
-		node.TaintClean,
-		node.TaintSelfAdmitted,
-		node.TaintTainted,
-		node.TaintUnresolved,
-	}
-	taintParts := make([]string, len(taintStates))
-	for i, state := range taintStates {
-		taintParts[i] = fmt.Sprintf("%d %s", taintCounts[state], ColorTaintState(state))
-	}
-	sb.WriteString(strings.Join(taintParts, ", "))
-	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Nodes: %d total\n", len(nodes)))
+	writeStateCounts(sb, counts)
 }
 
 // renderJobs writes the jobs section to the builder.
