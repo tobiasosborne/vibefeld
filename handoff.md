@@ -1,57 +1,47 @@
-# Handoff - 2026-01-17 (Session 66)
+# Handoff - 2026-01-17 (Session 67)
 
 ## What Was Accomplished This Session
 
-### Session 66 Summary: Challenge Cache Invalidation Bug Fix
+### Session 67 Summary: Edge Case Test for HasGaps() Sparse Sequence
 
-Closed issue `vibefeld-q9kb` - "Performance: Challenge lookup O(N) instead of O(1)"
+Closed issue `vibefeld-vc18` - "Edge case test: HasGaps() sparse sequence detection"
 
-This was related to `vibefeld-7a8j` (closed in session 65), which added challenge map caching. However, a bug remained: when challenges were resolved, withdrawn, or superseded, the cache wasn't being invalidated. This caused stale cache data where `GetBlockingChallengesForNode()` would return incorrect results.
+Added a test to verify that `HasGaps()` correctly detects gaps in sparse (widely-spaced) sequence numbers, not just gaps in contiguous sequences.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-q9kb** | internal/state/apply.go, internal/state/apply_test.go | Bug fix | Cache invalidation on challenge status changes |
+| **vibefeld-vc18** | internal/ledger/read_test.go | Test | Sparse sequence gap detection test |
 
 #### Changes Made
 
-**internal/state/apply.go:**
-- Added `InvalidateChallengeCache()` call in `applyChallengeResolved()`
-- Added `InvalidateChallengeCache()` call in `applyChallengeWithdrawn()`
-- Added `InvalidateChallengeCache()` call in `applyChallengeSuperseded()`
-- Updated `supersedeOpenChallengesForNode()` to track if any changes were made and invalidate cache only when needed
-
-**internal/state/apply_test.go:**
-- Added `TestApplyChallengeResolvedInvalidatesCache` - verifies cache invalidation on resolve
-- Added `TestApplyChallengeWithdrawnInvalidatesCache` - verifies cache invalidation on withdraw
-- Added `TestApplyChallengeSupersededInvalidatesCache` - verifies cache invalidation on supersede
-- Added `TestApplyNodeArchivedSupersedeInvalidatesCache` - verifies cache invalidation when node archival auto-supersedes challenges
+**internal/ledger/read_test.go:**
+- Added `TestHasGaps_SparseSequenceWithGaps` - verifies gap detection with sequence (1, 5, 10, 15) which has multiple gaps throughout
 
 #### Why This Matters
 
-Before this fix, the following bug could occur:
-1. A challenge is raised on a node
-2. `ChallengesByNodeID()` is called, populating the cache
-3. The challenge is resolved via `Apply(ChallengeResolved)`
-4. `GetBlockingChallengesForNode()` still returns the challenge as blocking (stale cache)
+The existing HasGaps tests only covered:
+- Empty directory
+- Contiguous sequence (1,2,3,4,5)
+- Gap in middle (1,2,4,5)
+- Not starting from 1 (3,4,5)
 
-After the fix, step 3 invalidates the cache so step 4 correctly returns no blocking challenges.
+The new test covers sparse sequences where numbers are widely spaced (1, 5, 10, 15), ensuring the algorithm works correctly for any gap pattern.
 
 #### Files Changed
 
 ```
-internal/state/apply.go       (+8 lines) - Cache invalidation calls
-internal/state/apply_test.go  (+149 lines) - Cache invalidation tests
+internal/ledger/read_test.go  (+21 lines) - Sparse sequence test
 ```
 
-**Total: ~157 lines changed**
+**Total: 21 lines added**
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 120 (was 121)
-- **Closed:** 429 (was 428)
+- **Open:** 119 (was 120)
+- **Closed:** 430 (was 429)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -86,12 +76,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run E2E tests
-go test ./e2e/... -tags=integration
+# Run integration tests (including HasGaps tests)
+go test ./internal/ledger/... -tags=integration
 ```
 
 ## Session History
 
+**Session 67:** Closed 1 issue (HasGaps sparse sequence edge case test)
 **Session 66:** Closed 1 issue (challenge cache invalidation bug fix)
 **Session 65:** Closed 1 issue (challenge map caching performance fix)
 **Session 64:** Closed 1 issue (lock release ownership verification bug fix)

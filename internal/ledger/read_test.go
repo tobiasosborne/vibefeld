@@ -534,6 +534,27 @@ func TestHasGaps_NotStartingFromOne(t *testing.T) {
 	}
 }
 
+// TestHasGaps_SparseSequenceWithGaps verifies gap detection with widely spaced sequence numbers.
+func TestHasGaps_SparseSequenceWithGaps(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create sparse sequence (1, 5, 10, 15) - many gaps throughout
+	for _, seq := range []int{1, 5, 10, 15} {
+		path := filepath.Join(dir, GenerateFilename(seq))
+		content := `{"type":"proof_initialized","timestamp":"2025-01-01T00:00:00Z","conjecture":"test","author":"agent"}`
+		os.WriteFile(path, []byte(content), 0644)
+	}
+
+	hasGaps, err := HasGaps(dir)
+	if err != nil {
+		t.Fatalf("HasGaps failed: %v", err)
+	}
+
+	if !hasGaps {
+		t.Error("HasGaps = false, want true for sparse sequence with multiple gaps")
+	}
+}
+
 // TestReadEventTyped_Success verifies typed event reading.
 func TestReadEventTyped_Success(t *testing.T) {
 	dir := t.TempDir()
