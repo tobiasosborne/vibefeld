@@ -1414,3 +1414,287 @@ func TestChallengeMapForJobs(t *testing.T) {
 		t.Errorf("Expected Status %q, got %q", node.ChallengeStatusOpen, c.Status)
 	}
 }
+
+// TestState_NonExistentDependencyResolution verifies how state handles nodes
+// with dependencies that reference non-existent nodes (forward references).
+// This is an edge case that can occur when:
+// 1. Events are replayed in incorrect order
+// 2. A node references another node that was never created
+// 3. A dependency chain contains dangling references
+//
+// The state package stores nodes as-is; validation of dependency existence
+// is performed by the node.ValidateDepExistence function. This test verifies
+// that state correctly stores and retrieves nodes even when their dependencies
+// don't exist, and that proper validation detects these issues.
+func TestState_NonExistentDependencyResolution(t *testing.T) {
+	s := NewState()
+
+	// Create node 1 (no dependencies)
+	node1ID := mustParseNodeID(t, "1")
+	node1, err := node.NewNode(node1ID, schema.NodeTypeClaim, "Root claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create node1: %v", err)
+	}
+	s.AddNode(node1)
+
+	// Create node 1.1 with a dependency on non-existent node 1.99
+	node2ID := mustParseNodeID(t, "1.1")
+	nonExistentDepID := mustParseNodeID(t, "1.99")
+	node2, err := node.NewNodeWithOptions(
+		node2ID,
+		schema.NodeTypeClaim,
+		"Claim with non-existent dependency",
+		schema.InferenceModusPonens,
+		node.NodeOptions{
+			Dependencies: []types.NodeID{nonExistentDepID},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Failed to create node2: %v", err)
+	}
+	s.AddNode(node2)
+
+	// Verify the node was added to state despite having non-existent dependency
+	gotNode2 := s.GetNode(node2ID)
+	if gotNode2 == nil {
+		t.Fatal("Node with non-existent dependency should still be added to state")
+	}
+
+	// Verify the dependency is recorded even though it doesn't exist
+	if len(gotNode2.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency, got %d", len(gotNode2.Dependencies))
+	}
+	if gotNode2.Dependencies[0].String() != nonExistentDepID.String() {
+		t.Errorf("Dependency ID mismatch: got %q, want %q", gotNode2.Dependencies[0].String(), nonExistentDepID.String())
+	}
+
+	// Verify the dependency node doesn't exist in state
+	gotNonExistent := s.GetNode(nonExistentDepID)
+	if gotNonExistent != nil {
+		t.Error("Non-existent dependency node should not exist in state")
+	}
+
+	// Verify ValidateDepExistence correctly detects the missing dependency
+	err = node.ValidateDepExistence(gotNode2, s)
+	if err == nil {
+		t.Error("ValidateDepExistence should return error for non-existent dependency")
+	}
+}
+
+// TestState_NonExistentDependencyResolution_MultipleNonExistent verifies behavior
+// when a node has multiple dependencies, some existing and some non-existent.
+func TestState_NonExistentDependencyResolution_MultipleNonExistent(t *testing.T) {
+	s := NewState()
+
+	// Create existing dependency nodes
+	existingDep1ID := mustParseNodeID(t, "1")
+	existingDep1, _ := node.NewNode(existingDep1ID, schema.NodeTypeClaim, "Existing dep 1", schema.InferenceAssumption)
+	s.AddNode(existingDep1)
+
+	existingDep2ID := mustParseNodeID(t, "1.1")
+	existingDep2, _ := node.NewNode(existingDep2ID, schema.NodeTypeClaim, "Existing dep 2", schema.InferenceAssumption)
+	s.AddNode(existingDep2)
+
+	// Create node with mix of existing and non-existent dependencies
+	nodeID := mustParseNodeID(t, "1.2")
+	nonExistent1 := mustParseNodeID(t, "1.98")
+	nonExistent2 := mustParseNodeID(t, "1.99")
+
+	nodeWithMixedDeps, err := node.NewNodeWithOptions(
+		nodeID,
+		schema.NodeTypeClaim,
+		"Node with mixed dependencies",
+		schema.InferenceModusPonens,
+		node.NodeOptions{
+			Dependencies: []types.NodeID{existingDep1ID, nonExistent1, existingDep2ID, nonExistent2},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+	s.AddNode(nodeWithMixedDeps)
+
+	// Verify all 4 dependencies are recorded
+	got := s.GetNode(nodeID)
+	if got == nil {
+		t.Fatal("Node should be in state")
+	}
+	if len(got.Dependencies) != 4 {
+		t.Errorf("Expected 4 dependencies, got %d", len(got.Dependencies))
+	}
+
+	// Verify validation fails due to non-existent dependencies
+	err = node.ValidateDepExistence(got, s)
+	if err == nil {
+		t.Error("ValidateDepExistence should fail for partially missing dependencies")
+	}
+
+	// Verify existing dependencies can be resolved
+	if s.GetNode(existingDep1ID) == nil {
+		t.Error("Existing dep 1 should be resolvable")
+	}
+	if s.GetNode(existingDep2ID) == nil {
+		t.Error("Existing dep 2 should be resolvable")
+	}
+
+	// Verify non-existent dependencies cannot be resolved
+	if s.GetNode(nonExistent1) != nil {
+		t.Error("Non-existent dep 1 should not be resolvable")
+	}
+	if s.GetNode(nonExistent2) != nil {
+		t.Error("Non-existent dep 2 should not be resolvable")
+	}
+}
+
+// TestState_NonExistentDependencyResolution_CircularToNonExistent verifies
+// behavior when a node's dependency chain leads to a non-existent node.
+func TestState_NonExistentDependencyResolution_CircularToNonExistent(t *testing.T) {
+	s := NewState()
+
+	// Create chain: 1 -> 1.1 -> 1.2 -> (non-existent 1.3)
+	node1ID := mustParseNodeID(t, "1")
+	node1, _ := node.NewNode(node1ID, schema.NodeTypeClaim, "Root", schema.InferenceAssumption)
+	s.AddNode(node1)
+
+	node2ID := mustParseNodeID(t, "1.1")
+	node2, _ := node.NewNodeWithOptions(
+		node2ID,
+		schema.NodeTypeClaim,
+		"Second level",
+		schema.InferenceModusPonens,
+		node.NodeOptions{Dependencies: []types.NodeID{node1ID}},
+	)
+	s.AddNode(node2)
+
+	// Node 1.2 depends on non-existent 1.3
+	node3ID := mustParseNodeID(t, "1.2")
+	nonExistentID := mustParseNodeID(t, "1.3")
+	node3, _ := node.NewNodeWithOptions(
+		node3ID,
+		schema.NodeTypeClaim,
+		"Third level with dangling ref",
+		schema.InferenceModusPonens,
+		node.NodeOptions{Dependencies: []types.NodeID{node2ID, nonExistentID}},
+	)
+	s.AddNode(node3)
+
+	// All three nodes should exist in state
+	if s.GetNode(node1ID) == nil {
+		t.Error("Node 1 should exist")
+	}
+	if s.GetNode(node2ID) == nil {
+		t.Error("Node 1.1 should exist")
+	}
+	if s.GetNode(node3ID) == nil {
+		t.Error("Node 1.2 should exist")
+	}
+
+	// Validate each node
+	// Node 1: no dependencies, should pass
+	if err := node.ValidateDepExistence(s.GetNode(node1ID), s); err != nil {
+		t.Errorf("Node 1 validation should pass: %v", err)
+	}
+
+	// Node 1.1: depends on existing node 1, should pass
+	if err := node.ValidateDepExistence(s.GetNode(node2ID), s); err != nil {
+		t.Errorf("Node 1.1 validation should pass: %v", err)
+	}
+
+	// Node 1.2: has non-existent dependency, should fail
+	if err := node.ValidateDepExistence(s.GetNode(node3ID), s); err == nil {
+		t.Error("Node 1.2 validation should fail due to non-existent dependency")
+	}
+}
+
+// TestState_NonExistentDependencyResolution_LaterResolution verifies that
+// dependencies that don't exist initially can be resolved after the
+// dependency node is added to state (forward reference resolution).
+func TestState_NonExistentDependencyResolution_LaterResolution(t *testing.T) {
+	s := NewState()
+
+	// Create node 1.1 that depends on node 1 (which doesn't exist yet)
+	nodeID := mustParseNodeID(t, "1.1")
+	depID := mustParseNodeID(t, "1")
+
+	n, err := node.NewNodeWithOptions(
+		nodeID,
+		schema.NodeTypeClaim,
+		"Forward reference to node 1",
+		schema.InferenceModusPonens,
+		node.NodeOptions{Dependencies: []types.NodeID{depID}},
+	)
+	if err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+	s.AddNode(n)
+
+	// Initially, validation should fail (dependency doesn't exist)
+	err = node.ValidateDepExistence(s.GetNode(nodeID), s)
+	if err == nil {
+		t.Error("Validation should fail before dependency is added")
+	}
+
+	// Now add the dependency node
+	depNode, _ := node.NewNode(depID, schema.NodeTypeClaim, "Root", schema.InferenceAssumption)
+	s.AddNode(depNode)
+
+	// Now validation should pass (dependency exists)
+	err = node.ValidateDepExistence(s.GetNode(nodeID), s)
+	if err != nil {
+		t.Errorf("Validation should pass after dependency is added: %v", err)
+	}
+
+	// Verify the dependency can now be resolved
+	resolvedDep := s.GetNode(depID)
+	if resolvedDep == nil {
+		t.Error("Dependency should be resolvable after being added")
+	}
+	if resolvedDep.Statement != "Root" {
+		t.Errorf("Resolved dependency statement mismatch: got %q", resolvedDep.Statement)
+	}
+}
+
+// TestState_NonExistentDependencyResolution_SelfReference verifies behavior
+// when a node references itself as a dependency.
+func TestState_NonExistentDependencyResolution_SelfReference(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Create a node that depends on itself (but isn't in state yet)
+	n, err := node.NewNodeWithOptions(
+		nodeID,
+		schema.NodeTypeClaim,
+		"Self-referencing node",
+		schema.InferenceAssumption,
+		node.NodeOptions{Dependencies: []types.NodeID{nodeID}},
+	)
+	if err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+
+	// Before adding to state, validation should fail (node doesn't exist)
+	err = node.ValidateDepExistence(n, s)
+	if err == nil {
+		t.Error("Validation should fail when self-reference doesn't exist in state")
+	}
+
+	// Add to state
+	s.AddNode(n)
+
+	// After adding, the self-reference can be resolved (node exists)
+	// Note: ValidateDepExistence only checks existence, not semantic validity of self-reference
+	err = node.ValidateDepExistence(s.GetNode(nodeID), s)
+	if err != nil {
+		t.Errorf("Validation should pass for self-reference when node is in state: %v", err)
+	}
+
+	// Verify the self-reference is recorded
+	got := s.GetNode(nodeID)
+	if len(got.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency, got %d", len(got.Dependencies))
+	}
+	if got.Dependencies[0].String() != nodeID.String() {
+		t.Errorf("Self-reference dependency mismatch: got %q", got.Dependencies[0].String())
+	}
+}
