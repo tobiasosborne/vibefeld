@@ -1394,3 +1394,230 @@ func TestPropagateTaint_WithCircularDependencies(t *testing.T) {
 		}
 	})
 }
+
+// ==================== Duplicate Nodes in AllNodes Tests ====================
+
+// TestPropagateTaint_DuplicateNodes verifies that PropagateTaint handles cases where
+// allNodes contains the same node multiple times. This can occur due to programming
+// errors or when merging node lists from multiple sources.
+func TestPropagateTaint_DuplicateNodes(t *testing.T) {
+	t.Run("same child appears twice in allNodes", func(t *testing.T) {
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Include child twice
+		allNodes := []*node.Node{root, child, child}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// child should be tainted
+		if child.TaintState != node.TaintTainted {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintTainted)
+		}
+
+		// Should only report child once in changed list
+		if len(changed) != 1 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+		}
+	})
+
+	t.Run("same child appears many times in allNodes", func(t *testing.T) {
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Include child many times
+		allNodes := []*node.Node{root, child, child, child, child, child, child, child, child, child, child}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// child should be tainted
+		if child.TaintState != node.TaintTainted {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintTainted)
+		}
+
+		// Should only report child once in changed list (subsequent duplicates
+		// won't trigger a change because taint is already set)
+		if len(changed) != 1 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+		}
+	})
+
+	t.Run("duplicates at multiple hierarchy levels", func(t *testing.T) {
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		grandchild := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Include all nodes multiple times in mixed order
+		allNodes := []*node.Node{
+			root, child, grandchild,
+			child, root, grandchild,
+			grandchild, child, root,
+		}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// Both descendants should be tainted
+		if child.TaintState != node.TaintTainted {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintTainted)
+		}
+		if grandchild.TaintState != node.TaintTainted {
+			t.Errorf("grandchild.TaintState = %v, want %v", grandchild.TaintState, node.TaintTainted)
+		}
+
+		// Should only report each unique descendant once
+		if len(changed) != 2 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
+		}
+	})
+
+	t.Run("root appears multiple times in allNodes", func(t *testing.T) {
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Include root multiple times
+		allNodes := []*node.Node{root, root, root, child}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// child should be tainted
+		if child.TaintState != node.TaintTainted {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintTainted)
+		}
+
+		// Root should never appear in changed list (root is not its own descendant)
+		// Only child should be changed
+		if len(changed) != 1 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+		}
+
+		for _, n := range changed {
+			if n.ID.String() == "1" {
+				t.Error("root should not appear in changed list")
+			}
+		}
+	})
+
+	t.Run("duplicates with nodes already at target taint", func(t *testing.T) {
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintTainted) // Already tainted
+
+		// Include child multiple times
+		allNodes := []*node.Node{root, child, child, child}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// child taint unchanged (already correct)
+		if child.TaintState != node.TaintTainted {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintTainted)
+		}
+
+		// No changes since child was already correctly tainted
+		if len(changed) != 0 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 0", len(changed))
+		}
+	})
+
+	t.Run("duplicates interspersed with nil nodes", func(t *testing.T) {
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		grandchild := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Mix duplicates and nil nodes
+		allNodes := []*node.Node{
+			root, nil, child, nil,
+			child, nil, grandchild,
+			nil, grandchild, nil, child,
+		}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// Both descendants should be tainted
+		if child.TaintState != node.TaintTainted {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintTainted)
+		}
+		if grandchild.TaintState != node.TaintTainted {
+			t.Errorf("grandchild.TaintState = %v, want %v", grandchild.TaintState, node.TaintTainted)
+		}
+
+		// Should only report each unique descendant once
+		if len(changed) != 2 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
+		}
+	})
+
+	t.Run("duplicates across multiple branches", func(t *testing.T) {
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child1 := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		child2 := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+		grandchild1 := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		grandchild2 := makeNode("1.2.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Include nodes with duplicates from different branches
+		allNodes := []*node.Node{
+			root,
+			child1, child2, child1, child2,
+			grandchild1, grandchild2, grandchild1, grandchild2,
+		}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// All descendants should be tainted
+		for _, n := range []*node.Node{child1, child2, grandchild1, grandchild2} {
+			if n.TaintState != node.TaintTainted {
+				t.Errorf("%s.TaintState = %v, want %v", n.ID.String(), n.TaintState, node.TaintTainted)
+			}
+		}
+
+		// Should report exactly 4 unique descendants
+		if len(changed) != 4 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 4", len(changed))
+		}
+	})
+
+	t.Run("duplicate with different taint propagation types", func(t *testing.T) {
+		// Root is pending (unresolved), not admitted (tainted)
+		root := makeNode("1", schema.EpistemicPending, node.TaintUnresolved)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Include child multiple times
+		allNodes := []*node.Node{root, child, child, child}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// child should become unresolved (not tainted)
+		if child.TaintState != node.TaintUnresolved {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintUnresolved)
+		}
+
+		// Should only report child once
+		if len(changed) != 1 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+		}
+	})
+
+	t.Run("nodeMap deduplicates for ancestor lookup", func(t *testing.T) {
+		// Test that nodeMap correctly deduplicates when building ancestor chain
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		grandchild := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Include root and child many times
+		allNodes := []*node.Node{
+			root, root, root,
+			child, child, child,
+			grandchild,
+		}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// Grandchild should be correctly tainted through deduplicated ancestor chain
+		if grandchild.TaintState != node.TaintTainted {
+			t.Errorf("grandchild.TaintState = %v, want %v", grandchild.TaintState, node.TaintTainted)
+		}
+
+		// Should report child and grandchild
+		if len(changed) != 2 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
+		}
+	})
+}
