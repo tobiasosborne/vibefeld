@@ -1,41 +1,37 @@
-# Handoff - 2026-01-17 (Session 82)
+# Handoff - 2026-01-17 (Session 83)
 
 ## What Was Accomplished This Session
 
-### Session 82 Summary: Taint Duplicate Nodes Edge Case Tests
+### Session 83 Summary: Taint Unsorted AllNodes Edge Case Tests
 
-Closed issue `vibefeld-n1vv` - "Edge case test: Taint AllNodes contains duplicates"
+Closed issue `vibefeld-enlv` - "Edge case test: Taint AllNodes unsorted"
 
-Added comprehensive `TestPropagateTaint_DuplicateNodes` test suite with 9 subtests verifying that PropagateTaint correctly handles cases where allNodes contains the same node multiple times.
+Added comprehensive `TestPropagateTaint_UnsortedInput` test suite with 5 subtests verifying that PropagateTaint correctly handles allNodes provided in arbitrary order, testing that sortByDepth() properly orders descendants before processing.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-n1vv** | internal/taint/propagate_unit_test.go | Test | Added TestPropagateTaint_DuplicateNodes with 9 subtests |
+| **vibefeld-enlv** | internal/taint/propagate_unit_test.go | Test | Added TestPropagateTaint_UnsortedInput with 5 subtests |
 
 #### Changes Made
 
 **internal/taint/propagate_unit_test.go:**
-- Added `TestPropagateTaint_DuplicateNodes` - Tests handling of duplicate nodes in allNodes slice
-- Subtests cover critical duplicate scenarios:
-  - `same child appears twice in allNodes` - Basic duplicate handling
-  - `same child appears many times in allNodes` - Many duplicates of same node
-  - `duplicates at multiple hierarchy levels` - Duplicates across the tree structure
-  - `root appears multiple times in allNodes` - Duplicate root node handling
-  - `duplicates with nodes already at target taint` - Duplicates with pre-existing correct taint
-  - `duplicates interspersed with nil nodes` - Mixed duplicates and nil entries
-  - `duplicates across multiple branches` - Duplicates spanning different branches
-  - `duplicate with different taint propagation types` - Unresolved taint with duplicates
-  - `nodeMap deduplicates for ancestor lookup` - Verifies map-based deduplication
+- Added `TestPropagateTaint_UnsortedInput` - Tests handling of unsorted/chaotic node order in allNodes slice
+- Subtests cover critical unsorted input scenarios:
+  - `chaotic order with multiple depths` - Nodes in completely random order (deepest first, shallow, interleaved)
+  - `siblings interleaved with cousins` - Same-depth nodes from different branches mixed together
+  - `worst case reverse depth order` - Strictly reverse depth order (deepest to shallowest)
+  - `unresolved propagation with unsorted input` - Unresolved taint propagation with unsorted nodes
+  - `mixed taint types with unsorted siblings` - Mixed taint types with interleaved siblings
 
 All tests pass.
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 104 (was 105)
-- **Closed:** 445 (was 444)
+- **Open:** 103 (was 104)
+- **Closed:** 446 (was 445)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -70,12 +66,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run new duplicate nodes test
-go test -v ./internal/taint/... -run "TestPropagateTaint_DuplicateNodes"
+# Run new unsorted input test
+go test -v ./internal/taint/... -run "TestPropagateTaint_UnsortedInput"
 ```
 
 ## Session History
 
+**Session 83:** Closed 1 issue (taint unsorted allNodes edge case test)
 **Session 82:** Closed 1 issue (taint duplicate nodes edge case test)
 **Session 81:** Closed 1 issue (taint sparse node set missing parents edge case test)
 **Session 80:** Closed 1 issue (taint nil ancestors list edge case test)
