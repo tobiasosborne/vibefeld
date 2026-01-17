@@ -295,6 +295,7 @@ func applyChallengeResolved(s *State, e ledger.ChallengeResolved) error {
 		return fmt.Errorf("challenge %s not found", e.ChallengeID)
 	}
 	c.Status = "resolved"
+	s.InvalidateChallengeCache() // status changed, cache is now stale
 	return nil
 }
 
@@ -306,6 +307,7 @@ func applyChallengeWithdrawn(s *State, e ledger.ChallengeWithdrawn) error {
 		return fmt.Errorf("challenge %s not found", e.ChallengeID)
 	}
 	c.Status = "withdrawn"
+	s.InvalidateChallengeCache() // status changed, cache is now stale
 	return nil
 }
 
@@ -319,6 +321,7 @@ func applyChallengeSuperseded(s *State, e ledger.ChallengeSuperseded) error {
 		return fmt.Errorf("challenge %s not found", e.ChallengeID)
 	}
 	c.Status = "superseded"
+	s.InvalidateChallengeCache() // status changed, cache is now stale
 	return nil
 }
 
@@ -328,10 +331,15 @@ func applyChallengeSuperseded(s *State, e ledger.ChallengeSuperseded) error {
 func supersedeOpenChallengesForNode(s *State, nodeID types.NodeID) {
 	// Use the cached challengesByNode map for O(1) lookup
 	challenges := s.GetChallengesForNode(nodeID)
+	modified := false
 	for _, c := range challenges {
 		if c.Status == "open" {
 			c.Status = "superseded"
+			modified = true
 		}
+	}
+	if modified {
+		s.InvalidateChallengeCache() // status changed, cache is now stale
 	}
 }
 

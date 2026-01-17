@@ -1,66 +1,57 @@
-# Handoff - 2026-01-17 (Session 65)
+# Handoff - 2026-01-17 (Session 66)
 
 ## What Was Accomplished This Session
 
-### Session 65 Summary: Challenge Map Caching Performance Fix
+### Session 66 Summary: Challenge Cache Invalidation Bug Fix
 
-Closed issue `vibefeld-7a8j` - "Performance: Challenge map reconstructed on every call"
+Closed issue `vibefeld-q9kb` - "Performance: Challenge lookup O(N) instead of O(1)"
+
+This was related to `vibefeld-7a8j` (closed in session 65), which added challenge map caching. However, a bug remained: when challenges were resolved, withdrawn, or superseded, the cache wasn't being invalidated. This caused stale cache data where `GetBlockingChallengesForNode()` would return incorrect results.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-7a8j** | internal/state/state.go, cmd/af/jobs.go, cmd/af/health.go | Performance | Added challenge map caching in State struct |
+| **vibefeld-q9kb** | internal/state/apply.go, internal/state/apply_test.go | Bug fix | Cache invalidation on challenge status changes |
 
 #### Changes Made
 
-**internal/state/state.go:**
-- Added `challengesByNode` cache field to State struct
-- Added `InvalidateChallengeCache()` method
-- Added `ChallengesByNodeID()` method - returns cached map, rebuilds only when invalidated
-- Added `GetChallengesForNode()` method - O(1) lookup using cache
-- Added `ChallengeMapForJobs()` method - returns challenges in node.Challenge format for jobs package
-- Updated `AddChallenge()` to invalidate cache when challenges are added
-- Updated `GetBlockingChallengesForNode()` to use cached lookup
-- Updated `VerifierRaisedChallengeForNode()` to use cached lookup
-
 **internal/state/apply.go:**
-- Updated `supersedeOpenChallengesForNode()` to use `GetChallengesForNode()` for O(1) lookup
+- Added `InvalidateChallengeCache()` call in `applyChallengeResolved()`
+- Added `InvalidateChallengeCache()` call in `applyChallengeWithdrawn()`
+- Added `InvalidateChallengeCache()` call in `applyChallengeSuperseded()`
+- Updated `supersedeOpenChallengesForNode()` to track if any changes were made and invalidate cache only when needed
 
-**cmd/af/jobs.go:**
-- Replaced manual challenge map construction with `st.ChallengeMapForJobs()`
+**internal/state/apply_test.go:**
+- Added `TestApplyChallengeResolvedInvalidatesCache` - verifies cache invalidation on resolve
+- Added `TestApplyChallengeWithdrawnInvalidatesCache` - verifies cache invalidation on withdraw
+- Added `TestApplyChallengeSupersededInvalidatesCache` - verifies cache invalidation on supersede
+- Added `TestApplyNodeArchivedSupersedeInvalidatesCache` - verifies cache invalidation when node archival auto-supersedes challenges
 
-**cmd/af/health.go:**
-- Replaced manual challenge map construction with `st.ChallengeMapForJobs()`
-- Replaced manual open challenge counting with `st.OpenChallenges()`
+#### Why This Matters
 
-**internal/state/state_test.go:**
-- Added `TestChallengesByNodeID` - tests cached challenge lookup by node ID
-- Added `TestChallengesByNodeIDCacheInvalidation` - tests cache invalidation on new challenge
-- Added `TestChallengeMapForJobs` - tests conversion to node.Challenge format
+Before this fix, the following bug could occur:
+1. A challenge is raised on a node
+2. `ChallengesByNodeID()` is called, populating the cache
+3. The challenge is resolved via `Apply(ChallengeResolved)`
+4. `GetBlockingChallengesForNode()` still returns the challenge as blocking (stale cache)
 
-#### Performance Impact
-
-- Before: O(n) iteration over all challenges for every job lookup, health check, and related operations
-- After: O(1) lookup per node using cached map; cache is lazily built once per session
+After the fix, step 3 invalidates the cache so step 4 correctly returns no blocking challenges.
 
 #### Files Changed
 
 ```
-internal/state/state.go       (+53 lines) - Caching implementation
-internal/state/apply.go       (+3/-6 lines) - Use cached lookup
-cmd/af/jobs.go                (+2/-13 lines) - Use new method
-cmd/af/health.go              (+3/-14 lines) - Use new method
-internal/state/state_test.go  (+114 lines) - New cache tests
+internal/state/apply.go       (+8 lines) - Cache invalidation calls
+internal/state/apply_test.go  (+149 lines) - Cache invalidation tests
 ```
 
-**Total: ~160 lines changed**
+**Total: ~157 lines changed**
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 121 (was 122)
-- **Closed:** 428 (was 427)
+- **Open:** 120 (was 121)
+- **Closed:** 429 (was 428)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -73,14 +64,18 @@ No P0 issues remain open.
 
 ### High Priority (P1) - Ready for work
 1. Performance: String conversion caching in tree rendering (`vibefeld-ryeb`)
-2. Performance: Challenge lookup O(1) instead of O(N) (`vibefeld-q9kb`) - may be partially addressed by this session
-3. CLI UX: Verifier severity level explanations in claim (`vibefeld-z05c`)
-4. Module structure: Reduce cmd/af imports (`vibefeld-jfbc`)
+2. CLI UX: Verifier severity level explanations in claim (`vibefeld-z05c`)
+3. Module structure: Reduce cmd/af imports (`vibefeld-jfbc`)
 
 ### P2 Bug Fixes
-5. Lock holder check missing in acquisition (`vibefeld-kubp`)
-6. No synchronization on PersistentManager construction (`vibefeld-0yre`)
-7. Error messages leak file paths (`vibefeld-e0eh`)
+4. Lock holder check missing in acquisition (`vibefeld-kubp`)
+5. No synchronization on PersistentManager construction (`vibefeld-0yre`)
+6. Error messages leak file paths (`vibefeld-e0eh`)
+
+### P2 Test Coverage
+7. ledger package test coverage (`vibefeld-4pba`)
+8. state package test coverage (`vibefeld-hpof`)
+9. scope package test coverage (`vibefeld-h179`)
 
 ## Quick Commands
 
@@ -97,6 +92,7 @@ go test ./e2e/... -tags=integration
 
 ## Session History
 
+**Session 66:** Closed 1 issue (challenge cache invalidation bug fix)
 **Session 65:** Closed 1 issue (challenge map caching performance fix)
 **Session 64:** Closed 1 issue (lock release ownership verification bug fix)
 **Session 63:** Closed 2 issues with 5 parallel agents (workflow docs + symlink security) - 3 lost to race conditions

@@ -1394,6 +1394,156 @@ func TestApplyNodeArchivedNoChallenges(t *testing.T) {
 	}
 }
 
+// TestApplyChallengeResolvedInvalidatesCache verifies that resolving a challenge invalidates
+// the challengesByNode cache so that subsequent lookups reflect the new status.
+func TestApplyChallengeResolvedInvalidatesCache(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a challenge
+	raiseEvent := ledger.NewChallengeRaised("chal-001", nodeID, "statement", "This is incorrect")
+	if err := Apply(s, raiseEvent); err != nil {
+		t.Fatalf("Apply ChallengeRaised failed: %v", err)
+	}
+
+	// Access the cache to populate it
+	_ = s.ChallengesByNodeID()
+
+	// Verify the challenge is open in the state
+	c := s.GetChallenge("chal-001")
+	if c.Status != "open" {
+		t.Fatalf("Challenge status should be open, got %q", c.Status)
+	}
+
+	// Get blocking challenges (should include our challenge since it defaults to major severity)
+	blocking := s.GetBlockingChallengesForNode(nodeID)
+	if len(blocking) != 1 {
+		t.Fatalf("Expected 1 blocking challenge before resolve, got %d", len(blocking))
+	}
+
+	// Now resolve the challenge
+	resolveEvent := ledger.NewChallengeResolved("chal-001")
+	if err := Apply(s, resolveEvent); err != nil {
+		t.Fatalf("Apply ChallengeResolved failed: %v", err)
+	}
+
+	// The cache should be invalidated, so GetBlockingChallengesForNode should return 0
+	// (the challenge is now resolved, not open)
+	blocking = s.GetBlockingChallengesForNode(nodeID)
+	if len(blocking) != 0 {
+		t.Errorf("Expected 0 blocking challenges after resolve, got %d (cache not invalidated?)", len(blocking))
+	}
+}
+
+// TestApplyChallengeWithdrawnInvalidatesCache verifies that withdrawing a challenge invalidates
+// the challengesByNode cache so that subsequent lookups reflect the new status.
+func TestApplyChallengeWithdrawnInvalidatesCache(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a challenge
+	raiseEvent := ledger.NewChallengeRaised("chal-001", nodeID, "statement", "This is incorrect")
+	if err := Apply(s, raiseEvent); err != nil {
+		t.Fatalf("Apply ChallengeRaised failed: %v", err)
+	}
+
+	// Access the cache to populate it
+	_ = s.ChallengesByNodeID()
+
+	// Get blocking challenges before withdrawal
+	blocking := s.GetBlockingChallengesForNode(nodeID)
+	if len(blocking) != 1 {
+		t.Fatalf("Expected 1 blocking challenge before withdraw, got %d", len(blocking))
+	}
+
+	// Now withdraw the challenge
+	withdrawEvent := ledger.NewChallengeWithdrawn("chal-001")
+	if err := Apply(s, withdrawEvent); err != nil {
+		t.Fatalf("Apply ChallengeWithdrawn failed: %v", err)
+	}
+
+	// The cache should be invalidated, so GetBlockingChallengesForNode should return 0
+	blocking = s.GetBlockingChallengesForNode(nodeID)
+	if len(blocking) != 0 {
+		t.Errorf("Expected 0 blocking challenges after withdraw, got %d (cache not invalidated?)", len(blocking))
+	}
+}
+
+// TestApplyChallengeSupersededInvalidatesCache verifies that superseding a challenge invalidates
+// the challengesByNode cache so that subsequent lookups reflect the new status.
+func TestApplyChallengeSupersededInvalidatesCache(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	// Add a challenge
+	raiseEvent := ledger.NewChallengeRaised("chal-001", nodeID, "statement", "This is incorrect")
+	if err := Apply(s, raiseEvent); err != nil {
+		t.Fatalf("Apply ChallengeRaised failed: %v", err)
+	}
+
+	// Access the cache to populate it
+	_ = s.ChallengesByNodeID()
+
+	// Get blocking challenges before supersede
+	blocking := s.GetBlockingChallengesForNode(nodeID)
+	if len(blocking) != 1 {
+		t.Fatalf("Expected 1 blocking challenge before supersede, got %d", len(blocking))
+	}
+
+	// Now supersede the challenge
+	supersededEvent := ledger.NewChallengeSuperseded("chal-001", nodeID)
+	if err := Apply(s, supersededEvent); err != nil {
+		t.Fatalf("Apply ChallengeSuperseded failed: %v", err)
+	}
+
+	// The cache should be invalidated, so GetBlockingChallengesForNode should return 0
+	blocking = s.GetBlockingChallengesForNode(nodeID)
+	if len(blocking) != 0 {
+		t.Errorf("Expected 0 blocking challenges after supersede, got %d (cache not invalidated?)", len(blocking))
+	}
+}
+
+// TestApplyNodeArchivedSupersedeInvalidatesCache verifies that archiving a node and superseding
+// its challenges invalidates the cache correctly.
+func TestApplyNodeArchivedSupersedeInvalidatesCache(t *testing.T) {
+	s := NewState()
+
+	// Add a node
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	s.AddNode(n)
+
+	// Add a challenge
+	raiseEvent := ledger.NewChallengeRaised("chal-001", nodeID, "statement", "This is incorrect")
+	if err := Apply(s, raiseEvent); err != nil {
+		t.Fatalf("Apply ChallengeRaised failed: %v", err)
+	}
+
+	// Populate the cache
+	_ = s.ChallengesByNodeID()
+
+	// Verify we have 1 blocking challenge
+	blocking := s.GetBlockingChallengesForNode(nodeID)
+	if len(blocking) != 1 {
+		t.Fatalf("Expected 1 blocking challenge before archive, got %d", len(blocking))
+	}
+
+	// Archive the node (should auto-supersede the challenge)
+	archiveEvent := ledger.NewNodeArchived(nodeID)
+	if err := Apply(s, archiveEvent); err != nil {
+		t.Fatalf("Apply NodeArchived failed: %v", err)
+	}
+
+	// Cache should be invalidated, blocking challenges should now be 0
+	blocking = s.GetBlockingChallengesForNode(nodeID)
+	if len(blocking) != 0 {
+		t.Errorf("Expected 0 blocking challenges after archive, got %d (cache not invalidated?)", len(blocking))
+	}
+}
+
 // TestApplyNodeRefutedOnlyAffectsMatchingChallenges verifies that refuting a node only supersedes challenges on that specific node.
 func TestApplyNodeRefutedOnlyAffectsMatchingChallenges(t *testing.T) {
 	s := NewState()
