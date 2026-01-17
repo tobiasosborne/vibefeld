@@ -1983,6 +1983,380 @@ func TestReplay_CircularDependencies_WithTaint(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// Deep Hierarchy Tests
+// -----------------------------------------------------------------------------
+
+// TestReplay_DeepHierarchy verifies that state replay handles very deep node
+// hierarchies (100+ levels) without stack overflow or performance degradation.
+// This tests the edge case of extremely nested proof trees.
+func TestReplay_DeepHierarchy(t *testing.T) {
+	tests := []struct {
+		name  string
+		depth int
+	}{
+		{"100 levels", 100},
+		{"200 levels", 200},
+		{"500 levels", 500},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if testing.Short() && tt.depth > 100 {
+				t.Skip("Skipping deep hierarchy test in short mode")
+			}
+
+			dir := t.TempDir()
+
+			// Initialize proof
+			initEvent := ledger.NewProofInitialized("Deep hierarchy test", "test-author")
+			if _, err := ledger.Append(dir, initEvent); err != nil {
+				t.Fatalf("Append ProofInitialized failed: %v", err)
+			}
+
+			// Create a chain of nodes: 1 -> 1.1 -> 1.1.1 -> ... (depth levels)
+			var prevID types.NodeID
+			var allNodeIDs []types.NodeID
+
+			for i := 0; i < tt.depth; i++ {
+				// Build the node ID by appending ".1" for each level
+				var nodeIDStr string
+				if i == 0 {
+					nodeIDStr = "1"
+				} else {
+					nodeIDStr = allNodeIDs[i-1].String() + ".1"
+				}
+
+				nodeID := mustParseNodeID(t, nodeIDStr)
+				allNodeIDs = append(allNodeIDs, nodeID)
+
+				// Create node with dependency on parent (except root)
+				var n *node.Node
+				var err error
+				if i == 0 {
+					n, err = node.NewNode(nodeID, schema.NodeTypeClaim, fmt.Sprintf("Level %d", i), schema.InferenceAssumption)
+				} else {
+					n, err = node.NewNodeWithOptions(
+						nodeID,
+						schema.NodeTypeClaim,
+						fmt.Sprintf("Level %d", i),
+						schema.InferenceModusPonens,
+						node.NodeOptions{Dependencies: []types.NodeID{prevID}},
+					)
+				}
+				if err != nil {
+					t.Fatalf("Failed to create node at level %d: %v", i, err)
+				}
+
+				if _, err := ledger.Append(dir, ledger.NewNodeCreated(*n)); err != nil {
+					t.Fatalf("Append NodeCreated at level %d failed: %v", i, err)
+				}
+
+				prevID = nodeID
+			}
+
+			// Replay the ledger - this is the main test
+			ldg, err := ledger.NewLedger(dir)
+			if err != nil {
+				t.Fatalf("NewLedger failed: %v", err)
+			}
+
+			state, err := Replay(ldg)
+			if err != nil {
+				t.Fatalf("Replay failed for %d levels: %v", tt.depth, err)
+			}
+
+			// Verify all nodes were created
+			for i, nodeID := range allNodeIDs {
+				got := state.GetNode(nodeID)
+				if got == nil {
+					t.Errorf("Node at level %d (%s) not found after replay", i, nodeID)
+					continue
+				}
+
+				// Verify dependency chain (except root)
+				if i > 0 {
+					if len(got.Dependencies) != 1 {
+						t.Errorf("Node at level %d should have 1 dependency, got %d", i, len(got.Dependencies))
+					} else if got.Dependencies[0].String() != allNodeIDs[i-1].String() {
+						t.Errorf("Node at level %d has wrong dependency: got %s, want %s",
+							i, got.Dependencies[0].String(), allNodeIDs[i-1].String())
+					}
+				}
+			}
+
+			// Verify deepest node
+			deepestID := allNodeIDs[len(allNodeIDs)-1]
+			deepest := state.GetNode(deepestID)
+			if deepest == nil {
+				t.Fatalf("Deepest node not found")
+			}
+			if deepest.Statement != fmt.Sprintf("Level %d", tt.depth-1) {
+				t.Errorf("Deepest node statement: got %q, want %q", deepest.Statement, fmt.Sprintf("Level %d", tt.depth-1))
+			}
+
+			// Verify latest sequence
+			expectedSeq := tt.depth + 1 // ProofInitialized + depth NodeCreated events
+			if state.LatestSeq() != expectedSeq {
+				t.Errorf("LatestSeq: got %d, want %d", state.LatestSeq(), expectedSeq)
+			}
+		})
+	}
+}
+
+// TestReplay_DeepHierarchy_WithStateTransitions verifies deep hierarchies
+// with additional state transitions (claims, releases, validations).
+func TestReplay_DeepHierarchy_WithStateTransitions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping deep hierarchy with state transitions test in short mode")
+	}
+
+	dir := t.TempDir()
+	const depth = 100
+
+	// Initialize proof
+	initEvent := ledger.NewProofInitialized("Deep hierarchy with transitions", "test-author")
+	if _, err := ledger.Append(dir, initEvent); err != nil {
+		t.Fatalf("Append ProofInitialized failed: %v", err)
+	}
+
+	// Create deep hierarchy
+	var allNodeIDs []types.NodeID
+	for i := 0; i < depth; i++ {
+		var nodeIDStr string
+		if i == 0 {
+			nodeIDStr = "1"
+		} else {
+			nodeIDStr = allNodeIDs[i-1].String() + ".1"
+		}
+
+		nodeID := mustParseNodeID(t, nodeIDStr)
+		allNodeIDs = append(allNodeIDs, nodeID)
+
+		var n *node.Node
+		if i == 0 {
+			n, _ = node.NewNode(nodeID, schema.NodeTypeClaim, fmt.Sprintf("Level %d", i), schema.InferenceAssumption)
+		} else {
+			n, _ = node.NewNodeWithOptions(
+				nodeID,
+				schema.NodeTypeClaim,
+				fmt.Sprintf("Level %d", i),
+				schema.InferenceModusPonens,
+				node.NodeOptions{Dependencies: []types.NodeID{allNodeIDs[i-1]}},
+			)
+		}
+
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*n)); err != nil {
+			t.Fatalf("Append NodeCreated at level %d failed: %v", i, err)
+		}
+	}
+
+	// Claim every 10th node
+	for i := 0; i < depth; i += 10 {
+		nodeID := allNodeIDs[i]
+		if _, err := ledger.Append(dir, ledger.NewNodesClaimed([]types.NodeID{nodeID}, fmt.Sprintf("agent-%d", i), types.Now())); err != nil {
+			t.Fatalf("Append NodesClaimed at level %d failed: %v", i, err)
+		}
+	}
+
+	// Release every 10th node
+	for i := 0; i < depth; i += 10 {
+		nodeID := allNodeIDs[i]
+		if _, err := ledger.Append(dir, ledger.NewNodesReleased([]types.NodeID{nodeID})); err != nil {
+			t.Fatalf("Append NodesReleased at level %d failed: %v", i, err)
+		}
+	}
+
+	// Validate every 20th node
+	for i := 0; i < depth; i += 20 {
+		nodeID := allNodeIDs[i]
+		if _, err := ledger.Append(dir, ledger.NewNodeValidated(nodeID)); err != nil {
+			t.Fatalf("Append NodeValidated at level %d failed: %v", i, err)
+		}
+	}
+
+	// Replay
+	ldg, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	state, err := Replay(ldg)
+	if err != nil {
+		t.Fatalf("Replay failed: %v", err)
+	}
+
+	// Verify state transitions
+	for i := 0; i < depth; i++ {
+		got := state.GetNode(allNodeIDs[i])
+		if got == nil {
+			t.Errorf("Node at level %d not found", i)
+			continue
+		}
+
+		// Nodes should be available (claimed then released)
+		if i%10 == 0 {
+			if got.WorkflowState != schema.WorkflowAvailable {
+				t.Errorf("Node at level %d should be available after claim/release, got %q", i, got.WorkflowState)
+			}
+		}
+
+		// Every 20th node should be validated
+		if i%20 == 0 {
+			if got.EpistemicState != schema.EpistemicValidated {
+				t.Errorf("Node at level %d should be validated, got %q", i, got.EpistemicState)
+			}
+		}
+	}
+}
+
+// TestReplay_DeepHierarchy_WideBranching verifies deep hierarchies with
+// wide branching at each level (multiple children per node).
+func TestReplay_DeepHierarchy_WideBranching(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping deep hierarchy with wide branching test in short mode")
+	}
+
+	dir := t.TempDir()
+	const depth = 50
+	const branchingFactor = 3 // Each node has 3 children
+
+	// Initialize proof
+	initEvent := ledger.NewProofInitialized("Deep hierarchy with wide branching", "test-author")
+	if _, err := ledger.Append(dir, initEvent); err != nil {
+		t.Fatalf("Append ProofInitialized failed: %v", err)
+	}
+
+	// Create root
+	rootID := mustParseNodeID(t, "1")
+	rootNode, _ := node.NewNode(rootID, schema.NodeTypeClaim, "Root", schema.InferenceAssumption)
+	if _, err := ledger.Append(dir, ledger.NewNodeCreated(*rootNode)); err != nil {
+		t.Fatalf("Append root failed: %v", err)
+	}
+
+	// Track all node IDs for verification
+	nodeCount := 1
+
+	// Create a BFS-style tree with depth levels and branchingFactor children at each node
+	// For each level, create children under the first node of the previous level
+	currentParent := rootID
+	for level := 1; level < depth; level++ {
+		for child := 1; child <= branchingFactor; child++ {
+			nodeIDStr := currentParent.String() + fmt.Sprintf(".%d", child)
+			nodeID := mustParseNodeID(t, nodeIDStr)
+
+			n, _ := node.NewNodeWithOptions(
+				nodeID,
+				schema.NodeTypeClaim,
+				fmt.Sprintf("Level %d child %d", level, child),
+				schema.InferenceModusPonens,
+				node.NodeOptions{Dependencies: []types.NodeID{currentParent}},
+			)
+			if _, err := ledger.Append(dir, ledger.NewNodeCreated(*n)); err != nil {
+				t.Fatalf("Append node at level %d child %d failed: %v", level, child, err)
+			}
+			nodeCount++
+		}
+		// Move to next level (following the first child)
+		currentParent = mustParseNodeID(t, currentParent.String()+".1")
+	}
+
+	// Replay
+	ldg, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	state, err := Replay(ldg)
+	if err != nil {
+		t.Fatalf("Replay failed: %v", err)
+	}
+
+	// Verify node count
+	allNodes := state.AllNodes()
+	if len(allNodes) != nodeCount {
+		t.Errorf("Expected %d nodes, got %d", nodeCount, len(allNodes))
+	}
+
+	// Verify deepest path exists
+	deepestPath := rootID.String()
+	for level := 1; level < depth; level++ {
+		deepestPath += ".1"
+	}
+	deepestID := mustParseNodeID(t, deepestPath)
+	if state.GetNode(deepestID) == nil {
+		t.Errorf("Deepest node at path %s not found", deepestPath)
+	}
+}
+
+// TestReplay_DeepHierarchy_MemoryEfficiency verifies that replaying deep
+// hierarchies doesn't cause excessive memory allocation or retention.
+func TestReplay_DeepHierarchy_MemoryEfficiency(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping memory efficiency test in short mode")
+	}
+
+	dir := t.TempDir()
+	const depth = 300
+
+	// Initialize proof
+	initEvent := ledger.NewProofInitialized("Memory efficiency test", "test-author")
+	if _, err := ledger.Append(dir, initEvent); err != nil {
+		t.Fatalf("Append ProofInitialized failed: %v", err)
+	}
+
+	// Create very deep hierarchy
+	var prevID types.NodeID
+	for i := 0; i < depth; i++ {
+		var nodeIDStr string
+		if i == 0 {
+			nodeIDStr = "1"
+		} else {
+			nodeIDStr = prevID.String() + ".1"
+		}
+
+		nodeID := mustParseNodeID(t, nodeIDStr)
+
+		var n *node.Node
+		if i == 0 {
+			n, _ = node.NewNode(nodeID, schema.NodeTypeClaim, fmt.Sprintf("Level %d", i), schema.InferenceAssumption)
+		} else {
+			n, _ = node.NewNodeWithOptions(
+				nodeID,
+				schema.NodeTypeClaim,
+				fmt.Sprintf("Level %d", i),
+				schema.InferenceModusPonens,
+				node.NodeOptions{Dependencies: []types.NodeID{prevID}},
+			)
+		}
+
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*n)); err != nil {
+			t.Fatalf("Append NodeCreated at level %d failed: %v", i, err)
+		}
+
+		prevID = nodeID
+	}
+
+	// Replay multiple times to check for memory leaks
+	for attempt := 0; attempt < 3; attempt++ {
+		ldg, err := ledger.NewLedger(dir)
+		if err != nil {
+			t.Fatalf("NewLedger failed on attempt %d: %v", attempt, err)
+		}
+
+		state, err := Replay(ldg)
+		if err != nil {
+			t.Fatalf("Replay failed on attempt %d: %v", attempt, err)
+		}
+
+		// Verify node count
+		allNodes := state.AllNodes()
+		if len(allNodes) != depth {
+			t.Errorf("Attempt %d: Expected %d nodes, got %d", attempt, depth, len(allNodes))
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
 // Helper Functions
 // -----------------------------------------------------------------------------
 

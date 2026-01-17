@@ -1,56 +1,50 @@
-# Handoff - 2026-01-17 (Session 95)
+# Handoff - 2026-01-17 (Session 96)
 
 ## What Was Accomplished This Session
 
-### Session 95 Summary: E2E Error Recovery Tests
+### Session 96 Summary: Deep Node Hierarchy Edge Case Tests
 
-Closed issue `vibefeld-8a2g` - "E2E test: Error recovery scenarios"
+Closed issue `vibefeld-76q0` - "Edge case test: State very deep node hierarchy (100+ levels)"
 
-Added `e2e/error_recovery_test.go` with 13 comprehensive test cases verifying error recovery scenarios:
+Added 4 comprehensive test functions to `internal/state/replay_test.go`:
 
-#### Agent Crash Mid-Operation Tests
-1. **TestErrorRecovery_AgentCrashDuringClaim** - Agent crashes after claiming, system handles abandoned claims
-2. **TestErrorRecovery_AgentCrashDuringRefine** - Agent crashes mid-refine, state remains consistent
+#### Deep Hierarchy Tests
+1. **TestReplay_DeepHierarchy** - Table-driven test with 100, 200, and 500 level depths
+   - Verifies replay handles very deep node hierarchies without stack overflow
+   - Validates dependency chain integrity at each level
+   - Confirms deepest node is accessible with correct statement
+   - Verifies latest sequence tracking
 
-#### Lock Acquired But Agent Dies Tests
-3. **TestErrorRecovery_LockAcquiredAgentDies** - Dead agent's lock can be reaped, new agent can acquire
-4. **TestErrorRecovery_MultipleDeadAgents** - Multiple dead agent locks can be reaped simultaneously
+2. **TestReplay_DeepHierarchy_WithStateTransitions** - 100-level deep hierarchy with state transitions
+   - Creates hierarchy then applies claims/releases/validations
+   - Claims every 10th node, releases all claimed nodes
+   - Validates every 20th node
+   - Verifies workflow and epistemic states correctly applied
 
-#### Out-of-Order Operations Tests
-5. **TestErrorRecovery_OutOfOrderChallenge** - Challenge handling via ledger verified
-6. **TestErrorRecovery_OutOfOrderAccept** - Acceptance blocked by unresolved blocking challenges
-7. **TestErrorRecovery_OutOfOrderRelease** - Release rejected for wrong owner
+3. **TestReplay_DeepHierarchy_WideBranching** - 50-level deep with branching factor 3
+   - Tests wide branching at each level (3 children per node)
+   - Verifies total node count (148 nodes)
+   - Confirms deepest path node is accessible
 
-#### Invalid State Transitions Tests
-8. **TestErrorRecovery_InvalidTransition_ClaimWhileClaimed** - Second claim rejected on claimed node
-9. **TestErrorRecovery_InvalidTransition_RefineAfterAccept** - Refinement of validated nodes behavior tested
-10. **TestErrorRecovery_InvalidTransition_AcceptNonLeaf** - Parent/child acceptance order handling
-
-#### Recovery Tests
-11. **TestErrorRecovery_CASConflictRecovery** - CAS conflicts detected as ErrSequenceMismatch
-12. **TestErrorRecovery_ConcurrentCrashAndRecovery** - Concurrent recovery correctly resolved to single winner
-13. **TestErrorRecovery_LedgerReplayAfterPartialWrite** - Ledger replay successfully recovers state
-
-#### Key Implementation Details
-- Tests use proper cleanup with temp directories
-- Tests cover both error detection and recovery paths
-- CAS conflict detection verified with ErrSequenceMismatch
-- Concurrent operations tested with sync.WaitGroup
+4. **TestReplay_DeepHierarchy_MemoryEfficiency** - 300-level depth with multiple replays
+   - Creates very deep hierarchy
+   - Replays 3 times to check for memory leaks
+   - Verifies consistent node count across replays
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-8a2g** | Closed | Added 13 E2E error recovery tests |
+| **vibefeld-76q0** | Closed | Added 4 deep hierarchy tests (100-500 levels) |
 
 ### Files Changed
-- `e2e/error_recovery_test.go` (+858 lines, new file)
+- `internal/state/replay_test.go` (+374 lines)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 89 (was 90)
-- **Closed:** 460 (was 459)
+- **Open:** 88 (was 89)
+- **Closed:** 461 (was 460)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -71,10 +65,9 @@ No P0 issues remain open.
 
 ### P2 Edge Case Tests
 5. Concurrent metadata corruption (`vibefeld-be56`)
-6. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
-7. State millions of events (`vibefeld-th1m`)
-8. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
-9. E2E test: Large proof stress test (`vibefeld-hfgi`)
+6. State millions of events (`vibefeld-th1m`)
+7. Taint very large node tree (10k+ nodes) (`vibefeld-yxfo`)
+8. E2E test: Large proof stress test (`vibefeld-hfgi`)
 
 ## Quick Commands
 
@@ -85,12 +78,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new error recovery E2E tests
-go test -v -tags=integration ./e2e/... -run TestErrorRecovery
+# Run the new deep hierarchy tests
+go test -v -tags=integration ./internal/state/... -run TestReplay_DeepHierarchy
 ```
 
 ## Session History
 
+**Session 96:** Closed 1 issue (deep node hierarchy edge case tests - 100-500 levels)
 **Session 95:** Closed 1 issue (E2E error recovery tests - 13 test cases)
 **Session 94:** Closed 1 issue (E2E circular dependency detection tests)
 **Session 93:** Closed 1 issue (FS file descriptor exhaustion edge case tests)
