@@ -942,3 +942,76 @@ func TestNode_Timestamp_Truncation(t *testing.T) {
 
 // Placeholder to avoid unused import warning for time package
 var _ = time.Now
+
+// TestContentHashCollision verifies behavior when two different nodes produce the same content hash.
+// This tests that the system correctly handles the case where two nodes with identical content
+// (same type, statement, inference, context, and dependencies) produce the same hash.
+// The AF system allows this - identical content means identical hash, which is correct behavior.
+func TestContentHashCollision(t *testing.T) {
+	id1, _ := types.Parse("1.1")
+	id2, _ := types.Parse("1.2")
+
+	// Create two nodes with identical content but different IDs
+	statement := "For all x in S, P(x) holds"
+	nodeType := schema.NodeTypeClaim
+	inference := schema.InferenceUniversalGeneralization
+
+	dep1, _ := types.Parse("1")
+	opts := node.NodeOptions{
+		Latex:        "\\forall x \\in S, P(x)",
+		Context:      []string{"def:S", "assume:A1"},
+		Dependencies: []types.NodeID{dep1},
+	}
+
+	n1, err := node.NewNodeWithOptions(id1, nodeType, statement, inference, opts)
+	if err != nil {
+		t.Fatalf("NewNodeWithOptions() for node 1 error: %v", err)
+	}
+
+	n2, err := node.NewNodeWithOptions(id2, nodeType, statement, inference, opts)
+	if err != nil {
+		t.Fatalf("NewNodeWithOptions() for node 2 error: %v", err)
+	}
+
+	// Verify both nodes have the same content hash (this is expected and correct)
+	if n1.ContentHash != n2.ContentHash {
+		t.Errorf("Nodes with identical content should have same hash: got %q and %q", n1.ContentHash, n2.ContentHash)
+	}
+
+	// Verify the IDs are different
+	if n1.ID.String() == n2.ID.String() {
+		t.Errorf("Test setup error: nodes should have different IDs")
+	}
+
+	// Verify both nodes independently verify their hashes
+	if !n1.VerifyContentHash() {
+		t.Errorf("Node 1 should verify its content hash")
+	}
+	if !n2.VerifyContentHash() {
+		t.Errorf("Node 2 should verify its content hash")
+	}
+
+	// Verify the hash is deterministic - compute it again
+	computed1 := n1.ComputeContentHash()
+	computed2 := n2.ComputeContentHash()
+
+	if computed1 != computed2 {
+		t.Errorf("Re-computed hashes should match: got %q and %q", computed1, computed2)
+	}
+
+	if computed1 != n1.ContentHash {
+		t.Errorf("Re-computed hash should match stored hash: got %q, stored %q", computed1, n1.ContentHash)
+	}
+
+	// Verify that hash does NOT include the ID (important for content-addressing)
+	// If we change only the ID and keep content the same, hash should remain the same
+	id3, _ := types.Parse("2.3.4")
+	n3, err := node.NewNodeWithOptions(id3, nodeType, statement, inference, opts)
+	if err != nil {
+		t.Fatalf("NewNodeWithOptions() for node 3 error: %v", err)
+	}
+
+	if n3.ContentHash != n1.ContentHash {
+		t.Errorf("Changing only ID should not affect content hash: got %q, expected %q", n3.ContentHash, n1.ContentHash)
+	}
+}

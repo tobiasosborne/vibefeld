@@ -942,3 +942,254 @@ func TestGetAncestorsCached_AlreadyCached(t *testing.T) {
 		t.Errorf("ancestor = %v, want 1", ancestors[0].ID.String())
 	}
 }
+
+// ==================== Circular Dependencies Tests ====================
+
+// TestPropagateTaint_WithCircularDependencies verifies that taint propagation
+// handles circular dependency scenarios without infinite looping.
+//
+// Note: The AF hierarchical ID system (e.g., 1.1.1) structurally prevents true
+// circular dependencies since parent-child relationships are strictly determined
+// by ID prefixes. A node "1.1" cannot be both a parent and child of "1.1.1".
+// However, these tests verify that the algorithm terminates correctly and produces
+// correct results in scenarios that could theoretically cause infinite loops
+// in a less careful implementation.
+func TestPropagateTaint_WithCircularDependencies(t *testing.T) {
+	t.Run("deeply nested chain terminates", func(t *testing.T) {
+		// Create a deeply nested chain where each node depends on its parent
+		// This tests that ancestor traversal terminates correctly
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		n1 := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		n2 := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		n3 := makeNode("1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+		n4 := makeNode("1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+		n5 := makeNode("1.1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+		n6 := makeNode("1.1.1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+		n7 := makeNode("1.1.1.1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+		n8 := makeNode("1.1.1.1.1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+		n9 := makeNode("1.1.1.1.1.1.1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, n1, n2, n3, n4, n5, n6, n7, n8, n9}
+
+		// Should terminate and return all descendants as changed
+		changed := PropagateTaint(root, allNodes)
+
+		if len(changed) != 9 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 9", len(changed))
+		}
+
+		// All descendants should be tainted
+		for _, n := range []*node.Node{n1, n2, n3, n4, n5, n6, n7, n8, n9} {
+			if n.TaintState != node.TaintTainted {
+				t.Errorf("node %s.TaintState = %v, want %v", n.ID.String(), n.TaintState, node.TaintTainted)
+			}
+		}
+	})
+
+	t.Run("same node in allNodes multiple times", func(t *testing.T) {
+		// If the same node appears multiple times in allNodes (edge case),
+		// the algorithm should still terminate correctly
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Include child multiple times (simulating potential map/list corruption)
+		allNodes := []*node.Node{root, child, child, child}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// Should process child only once and return it once
+		// (because after first change, TaintState is already TaintTainted)
+		if len(changed) != 1 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+		}
+
+		if child.TaintState != node.TaintTainted {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintTainted)
+		}
+	})
+
+	t.Run("multiple branches with shared ancestor", func(t *testing.T) {
+		// Multiple branches all share a common tainted ancestor
+		// Tests that taint propagates correctly through all paths
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+
+		// Branch A
+		a1 := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		a2 := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		a3 := makeNode("1.1.2", schema.EpistemicValidated, node.TaintClean)
+
+		// Branch B
+		b1 := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+		b2 := makeNode("1.2.1", schema.EpistemicValidated, node.TaintClean)
+		b3 := makeNode("1.2.2", schema.EpistemicValidated, node.TaintClean)
+
+		// Branch C
+		c1 := makeNode("1.3", schema.EpistemicValidated, node.TaintClean)
+		c2 := makeNode("1.3.1", schema.EpistemicValidated, node.TaintClean)
+		c3 := makeNode("1.3.2", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, a1, a2, a3, b1, b2, b3, c1, c2, c3}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// All 9 descendants should be changed
+		if len(changed) != 9 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 9", len(changed))
+		}
+
+		// All should be tainted
+		for _, n := range []*node.Node{a1, a2, a3, b1, b2, b3, c1, c2, c3} {
+			if n.TaintState != node.TaintTainted {
+				t.Errorf("node %s.TaintState = %v, want %v", n.ID.String(), n.TaintState, node.TaintTainted)
+			}
+		}
+	})
+
+	t.Run("root that is also in descendants list", func(t *testing.T) {
+		// Root is included as if it were its own descendant (edge case)
+		// IsAncestorOf should return false for self-comparison
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Include root twice in allNodes
+		allNodes := []*node.Node{root, child, root}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// Only child should be changed (root is not its own descendant)
+		if len(changed) != 1 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 1", len(changed))
+		}
+
+		// Root should not appear in changed list
+		for _, n := range changed {
+			if n.ID.String() == "1" {
+				t.Error("root node should not be in the changed list")
+			}
+		}
+	})
+
+	t.Run("propagation from middle of chain terminates", func(t *testing.T) {
+		// Start propagation from middle of hierarchy, not root
+		// Tests that ancestor computation terminates at actual root
+		grandparent := makeNode("1", schema.EpistemicValidated, node.TaintClean)
+		parent := makeNode("1.1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		grandchild := makeNode("1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{grandparent, parent, child, grandchild}
+
+		// Propagate from parent (middle of chain)
+		changed := PropagateTaint(parent, allNodes)
+
+		// child and grandchild should be changed
+		if len(changed) != 2 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
+		}
+
+		if child.TaintState != node.TaintTainted {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintTainted)
+		}
+		if grandchild.TaintState != node.TaintTainted {
+			t.Errorf("grandchild.TaintState = %v, want %v", grandchild.TaintState, node.TaintTainted)
+		}
+
+		// grandparent should remain clean (not a descendant of parent)
+		if grandparent.TaintState != node.TaintClean {
+			t.Errorf("grandparent.TaintState = %v, want %v", grandparent.TaintState, node.TaintClean)
+		}
+	})
+
+	t.Run("complex diamond pattern terminates", func(t *testing.T) {
+		// While true diamonds aren't possible with hierarchical IDs,
+		// this tests a complex tree structure that exercises all code paths
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+
+		// Level 2: two children
+		l2a := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		l2b := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+
+		// Level 3: four grandchildren (2 per child)
+		l3a := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		l3b := makeNode("1.1.2", schema.EpistemicValidated, node.TaintClean)
+		l3c := makeNode("1.2.1", schema.EpistemicValidated, node.TaintClean)
+		l3d := makeNode("1.2.2", schema.EpistemicValidated, node.TaintClean)
+
+		// Level 4: multiple great-grandchildren
+		l4a := makeNode("1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+		l4b := makeNode("1.1.2.1", schema.EpistemicValidated, node.TaintClean)
+		l4c := makeNode("1.2.1.1", schema.EpistemicValidated, node.TaintClean)
+		l4d := makeNode("1.2.2.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, l2a, l2b, l3a, l3b, l3c, l3d, l4a, l4b, l4c, l4d}
+
+		changed := PropagateTaint(root, allNodes)
+
+		// All 10 descendants should be changed
+		if len(changed) != 10 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 10", len(changed))
+		}
+
+		// All should be tainted
+		for _, n := range []*node.Node{l2a, l2b, l3a, l3b, l3c, l3d, l4a, l4b, l4c, l4d} {
+			if n.TaintState != node.TaintTainted {
+				t.Errorf("node %s.TaintState = %v, want %v", n.ID.String(), n.TaintState, node.TaintTainted)
+			}
+		}
+	})
+
+	t.Run("interleaved depth order in input", func(t *testing.T) {
+		// Provide nodes in an unusual order (deepest first, then shallow)
+		// to test that sortByDepth handles this correctly without loops
+		root := makeNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+		child := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+		grandchild := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		greatGrandchild := makeNode("1.1.1.1", schema.EpistemicValidated, node.TaintClean)
+
+		// Provide in reverse depth order
+		allNodes := []*node.Node{greatGrandchild, grandchild, child, root}
+
+		changed := PropagateTaint(root, allNodes)
+
+		if len(changed) != 3 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 3", len(changed))
+		}
+
+		// Verify correct taint propagation
+		if child.TaintState != node.TaintTainted {
+			t.Errorf("child.TaintState = %v, want %v", child.TaintState, node.TaintTainted)
+		}
+		if grandchild.TaintState != node.TaintTainted {
+			t.Errorf("grandchild.TaintState = %v, want %v", grandchild.TaintState, node.TaintTainted)
+		}
+		if greatGrandchild.TaintState != node.TaintTainted {
+			t.Errorf("greatGrandchild.TaintState = %v, want %v", greatGrandchild.TaintState, node.TaintTainted)
+		}
+	})
+
+	t.Run("unresolved taint in circular-like structure", func(t *testing.T) {
+		// Test that unresolved taint propagates correctly through a complex structure
+		// without infinite loops, even when multiple pending nodes exist
+		root := makeNode("1", schema.EpistemicPending, node.TaintUnresolved)
+		child1 := makeNode("1.1", schema.EpistemicPending, node.TaintUnresolved)
+		child2 := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+		grandchild1 := makeNode("1.1.1", schema.EpistemicValidated, node.TaintClean)
+		grandchild2 := makeNode("1.2.1", schema.EpistemicValidated, node.TaintClean)
+
+		allNodes := []*node.Node{root, child1, child2, grandchild1, grandchild2}
+
+		_ = PropagateTaint(root, allNodes)
+
+		// All validated descendants should become unresolved
+		// child1 is already unresolved, child2 becomes unresolved, grandchildren become unresolved
+		if grandchild1.TaintState != node.TaintUnresolved {
+			t.Errorf("grandchild1.TaintState = %v, want %v", grandchild1.TaintState, node.TaintUnresolved)
+		}
+		if grandchild2.TaintState != node.TaintUnresolved {
+			t.Errorf("grandchild2.TaintState = %v, want %v", grandchild2.TaintState, node.TaintUnresolved)
+		}
+		if child2.TaintState != node.TaintUnresolved {
+			t.Errorf("child2.TaintState = %v, want %v", child2.TaintState, node.TaintUnresolved)
+		}
+	})
+}

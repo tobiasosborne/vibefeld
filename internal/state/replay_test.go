@@ -821,6 +821,163 @@ func TestReplay_SequenceGapDetection(t *testing.T) {
 	}
 }
 
+// TestReplay_WithLedgerGaps comprehensively tests how state replay handles various gap scenarios
+// in ledger sequence numbers. This includes single gaps, multiple gaps, large gaps, and validates
+// the error messages include the expected and actual sequence numbers.
+func TestReplay_WithLedgerGaps(t *testing.T) {
+	tests := []struct {
+		name          string
+		sequences     []int // sequence numbers to create (gaps are implicit)
+		expectError   bool
+		errorContains string // substring that should appear in error message
+	}{
+		{
+			name:          "single gap in middle",
+			sequences:     []int{1, 3}, // missing 2
+			expectError:   true,
+			errorContains: "gap",
+		},
+		{
+			name:          "large gap",
+			sequences:     []int{1, 10}, // missing 2-9
+			expectError:   true,
+			errorContains: "gap",
+		},
+		{
+			name:          "multiple gaps",
+			sequences:     []int{1, 3, 6}, // missing 2, 4, 5
+			expectError:   true,
+			errorContains: "gap",
+		},
+		{
+			name:          "gap at start (missing 1)",
+			sequences:     []int{2, 3, 4},
+			expectError:   true,
+			errorContains: "gap",
+		},
+		{
+			name:          "consecutive sequences valid",
+			sequences:     []int{1, 2, 3, 4, 5},
+			expectError:   false,
+			errorContains: "",
+		},
+		{
+			name:          "single event valid",
+			sequences:     []int{1},
+			expectError:   false,
+			errorContains: "",
+		},
+		{
+			name:          "gap after valid start",
+			sequences:     []int{1, 2, 3, 5}, // missing 4
+			expectError:   true,
+			errorContains: "gap",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+
+			// Create event files for each sequence number
+			event := `{"type":"proof_initialized","timestamp":"2025-01-01T00:00:00Z","conjecture":"test","author":"agent"}`
+			for _, seq := range tt.sequences {
+				filename := fmt.Sprintf("%06d.json", seq)
+				if err := os.WriteFile(filepath.Join(dir, filename), []byte(event), 0644); err != nil {
+					t.Fatalf("WriteFile %s failed: %v", filename, err)
+				}
+			}
+
+			ldg, err := ledger.NewLedger(dir)
+			if err != nil {
+				t.Fatalf("NewLedger failed: %v", err)
+			}
+
+			state, err := Replay(ldg)
+
+			if tt.expectError {
+				if err == nil {
+					t.Fatal("Replay should return error for sequence gap")
+				}
+				if !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("Error should contain %q: got %q", tt.errorContains, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Replay should succeed for valid sequence: %v", err)
+				}
+				if state == nil {
+					t.Fatal("Replay returned nil state for valid sequence")
+				}
+				// Verify the latest sequence is tracked correctly
+				expectedLatest := tt.sequences[len(tt.sequences)-1]
+				if state.LatestSeq() != expectedLatest {
+					t.Errorf("LatestSeq: got %d, want %d", state.LatestSeq(), expectedLatest)
+				}
+			}
+		})
+	}
+}
+
+// TestReplay_WithLedgerGaps_ErrorDetails verifies that gap detection provides useful error details.
+func TestReplay_WithLedgerGaps_ErrorDetails(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create events with a gap (1, 2, 5 - missing 3 and 4)
+	event := `{"type":"proof_initialized","timestamp":"2025-01-01T00:00:00Z","conjecture":"test","author":"agent"}`
+	for _, seq := range []int{1, 2, 5} {
+		filename := fmt.Sprintf("%06d.json", seq)
+		if err := os.WriteFile(filepath.Join(dir, filename), []byte(event), 0644); err != nil {
+			t.Fatalf("WriteFile %s failed: %v", filename, err)
+		}
+	}
+
+	ldg, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	_, err = Replay(ldg)
+	if err == nil {
+		t.Fatal("Replay should return error for sequence gap")
+	}
+
+	// Verify the error message includes both expected (3) and actual (5) sequence numbers
+	errStr := err.Error()
+	if !strings.Contains(errStr, "3") || !strings.Contains(errStr, "5") {
+		t.Errorf("Error should mention expected (3) and actual (5) sequence numbers: got %q", errStr)
+	}
+}
+
+// TestReplay_WithLedgerGaps_ReplayWithVerify tests that ReplayWithVerify also catches gaps.
+func TestReplay_WithLedgerGaps_ReplayWithVerify(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create events with a gap (1, 3 - missing 2)
+	event := `{"type":"proof_initialized","timestamp":"2025-01-01T00:00:00Z","conjecture":"test","author":"agent"}`
+	for _, seq := range []int{1, 3} {
+		filename := fmt.Sprintf("%06d.json", seq)
+		if err := os.WriteFile(filepath.Join(dir, filename), []byte(event), 0644); err != nil {
+			t.Fatalf("WriteFile %s failed: %v", filename, err)
+		}
+	}
+
+	ldg, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	// ReplayWithVerify should also detect the gap (it uses the same underlying logic)
+	_, err = ReplayWithVerify(ldg)
+	if err == nil {
+		t.Fatal("ReplayWithVerify should return error for sequence gap")
+	}
+
+	if !strings.Contains(err.Error(), "gap") {
+		t.Errorf("Error should mention gap: got %q", err.Error())
+	}
+}
+
 // TestReplay_SequenceDuplicateDetection verifies that duplicate sequence numbers are detected.
 func TestReplay_SequenceDuplicateDetection(t *testing.T) {
 	dir := t.TempDir()

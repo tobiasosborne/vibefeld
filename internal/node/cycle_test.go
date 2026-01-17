@@ -619,3 +619,105 @@ func TestDetectCycle_MultipleEntryPointsToCycle(t *testing.T) {
 		t.Errorf("DetectCycle() cyclePath too short: %v", cyclePath)
 	}
 }
+
+// TestDetectCycle_TransitiveCircular explicitly tests the A->B->C->A transitive cycle pattern.
+// This is a classic three-node circular dependency where the cycle requires following
+// the full transitive chain to detect.
+func TestDetectCycle_TransitiveCircular(t *testing.T) {
+	s := state.NewState()
+
+	// Create root
+	createNode(t, s, "1")
+
+	// Create transitive cycle: A(1.1) -> B(1.2) -> C(1.3) -> A(1.1)
+	// This is a classic circular dependency that requires following all three edges to detect.
+	createNodeWithDeps(t, s, "1.1", "1.2") // A depends on B
+	createNodeWithDeps(t, s, "1.2", "1.3") // B depends on C
+	createNodeWithDeps(t, s, "1.3", "1.1") // C depends on A (closes the cycle)
+
+	// Test detection from each node in the cycle
+
+	t.Run("detect from A", func(t *testing.T) {
+		id, _ := types.Parse("1.1")
+		hasCycle, cyclePath := node.DetectCycle(s, id)
+
+		if !hasCycle {
+			t.Error("DetectCycle() should detect A->B->C->A cycle starting from A")
+		}
+
+		// Verify cycle path contains all three nodes
+		if len(cyclePath) < 3 {
+			t.Errorf("cyclePath should contain at least 3 nodes for A->B->C->A: got %v", cyclePath)
+		}
+
+		// Verify the cycle closes (first and last elements should be the same)
+		if len(cyclePath) > 0 && cyclePath[0].String() != cyclePath[len(cyclePath)-1].String() {
+			t.Errorf("cyclePath should close (first and last same): got %v", cyclePath)
+		}
+
+		// Verify all cycle participants are present
+		pathNodes := make(map[string]bool)
+		for _, n := range cyclePath {
+			pathNodes[n.String()] = true
+		}
+		for _, expected := range []string{"1.1", "1.2", "1.3"} {
+			if !pathNodes[expected] {
+				t.Errorf("cyclePath should contain %s: got %v", expected, cyclePath)
+			}
+		}
+	})
+
+	t.Run("detect from B", func(t *testing.T) {
+		id, _ := types.Parse("1.2")
+		hasCycle, cyclePath := node.DetectCycle(s, id)
+
+		if !hasCycle {
+			t.Error("DetectCycle() should detect cycle starting from B")
+		}
+
+		// Cycle should still be detected and contain all three nodes
+		if len(cyclePath) < 3 {
+			t.Errorf("cyclePath should contain at least 3 nodes: got %v", cyclePath)
+		}
+	})
+
+	t.Run("detect from C", func(t *testing.T) {
+		id, _ := types.Parse("1.3")
+		hasCycle, cyclePath := node.DetectCycle(s, id)
+
+		if !hasCycle {
+			t.Error("DetectCycle() should detect cycle starting from C")
+		}
+
+		// Cycle should still be detected and contain all three nodes
+		if len(cyclePath) < 3 {
+			t.Errorf("cyclePath should contain at least 3 nodes: got %v", cyclePath)
+		}
+	})
+
+	// Test that ValidateDependencies also finds this cycle
+	t.Run("validate dependencies finds cycle", func(t *testing.T) {
+		cycles := node.ValidateDependencies(s)
+
+		if len(cycles) == 0 {
+			t.Error("ValidateDependencies() should find the transitive cycle")
+		}
+
+		// Verify at least one cycle contains all three nodes
+		foundComplete := false
+		for _, cycle := range cycles {
+			pathNodes := make(map[string]bool)
+			for _, n := range cycle {
+				pathNodes[n.String()] = true
+			}
+			if pathNodes["1.1"] && pathNodes["1.2"] && pathNodes["1.3"] {
+				foundComplete = true
+				break
+			}
+		}
+
+		if !foundComplete {
+			t.Errorf("ValidateDependencies() should find cycle with all three nodes: got %v", cycles)
+		}
+	})
+}
