@@ -1,67 +1,61 @@
-# Handoff - 2026-01-17 (Session 126)
+# Handoff - 2026-01-17 (Session 127)
 
 ## What Was Accomplished This Session
 
-### Session 126 Summary: Improved accept command blocking challenges guidance
+### Session 127 Summary: Added verification checklist examples
 
 Closed 1 issue this session:
 
-1. **vibefeld-o1aj** - "CLI UX: Accept command blocking challenges guidance minimal"
-   - Added "To investigate" section with specific commands for the blocked node
-   - Shows `af show <node-id>` and `af challenges --node <node-id>` commands
-   - Fixed command names from `af resolve` to `af resolve-challenge` and `af withdraw` to `af withdraw-challenge`
+1. **vibefeld-x6ui** - "CLI UX: No 'what to look for' guide in verification checklist"
+   - Added concrete BAD/GOOD examples to all 6 checklist categories in text output
+   - Added structured examples to JSON output via new `JSONCheckExample` struct
+   - Categories covered: statement precision, inference validity, dependencies, hidden assumptions, domain restrictions, notation consistency
 
 #### Changes Made
 
 | File | Change |
 |------|--------|
-| `cmd/af/accept.go` | Added investigation commands and corrected resolve/withdraw command names in blocking challenges guidance |
+| `internal/render/verification_checklist.go` | Added BAD/GOOD examples to all 6 render functions + JSON struct/builder |
 
 ### Example Output Before/After
 
 **Before:**
 ```
-Cannot accept node 1.1: blocking challenges must be resolved first.
-
-Blocking Challenges:
-  1. [ch-abc123] 1.1 (severity: blocking)
-     Reason: Missing justification
-
-How to resolve:
-  - Use 'af refine' to address the challenges by improving the proof
-  - Use 'af resolve <challenge-id>' to resolve a challenge with an explanation
-  - Use 'af withdraw <challenge-id>' to withdraw a challenge if it was raised in error
+[ ] STATEMENT PRECISION
+    Statement: x is irrational
+    - Is the statement mathematically precise?
+    - Are all terms clearly defined?
+    - Are quantifiers explicit and correct?
 ```
 
 **After:**
 ```
-Cannot accept node 1.1: blocking challenges must be resolved first.
+[ ] STATEMENT PRECISION
+    Statement: x is irrational
+    - Is the statement mathematically precise?
+    - Are all terms clearly defined?
+    - Are quantifiers explicit and correct?
 
-Blocking Challenges:
-  1. [ch-abc123] 1.1 (severity: blocking)
-     Reason: Missing justification
-
-To investigate:
-  af show 1.1              View node details and context
-  af challenges --node 1.1  List all challenges on this node
-
-How to resolve:
-  - Use 'af refine' to address the challenges by improving the proof
-  - Use 'af resolve-challenge <challenge-id>' to mark a challenge resolved
-  - Use 'af withdraw-challenge <challenge-id>' to withdraw a challenge raised in error
+    Examples of issues:
+      BAD:  "x is small" (vague, no definition of small)
+      GOOD: "x < epsilon for epsilon > 0"
+      BAD:  "the function is continuous" (which function? where?)
+      GOOD: "f: R -> R is continuous on [a,b]"
+      BAD:  "for some n" (existential should be explicit)
+      GOOD: "there exists n in N such that..."
 ```
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-o1aj** | Closed | Added investigation commands and corrected command names in blocking challenges guidance |
+| **vibefeld-x6ui** | Closed | Added concrete BAD/GOOD examples to all 6 checklist categories in text and JSON output |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 57 (was 58)
-- **Closed:** 492 (was 491)
+- **Open:** 56 (was 57)
+- **Closed:** 493 (was 492)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -120,6 +114,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 127:** Closed 1 issue (CLI UX - verification checklist examples for all 6 categories)
 **Session 126:** Closed 1 issue (CLI UX - accept command blocking challenges guidance)
 **Session 125:** Closed 1 issue (CLI UX - actionable challenge guidance in prover context)
 **Session 124:** Closed 1 issue (CLI UX - comprehensive workflow guidance after init command)

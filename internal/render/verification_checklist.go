@@ -62,6 +62,14 @@ func renderStatementCheck(sb *strings.Builder, n *node.Node) {
 	sb.WriteString("    - Are all terms clearly defined?\n")
 	sb.WriteString("    - Are quantifiers explicit and correct?\n")
 	sb.WriteString("\n")
+	sb.WriteString("    Examples of issues:\n")
+	sb.WriteString("      BAD:  \"x is small\" (vague, no definition of small)\n")
+	sb.WriteString("      GOOD: \"x < epsilon for epsilon > 0\"\n")
+	sb.WriteString("      BAD:  \"the function is continuous\" (which function? where?)\n")
+	sb.WriteString("      GOOD: \"f: R -> R is continuous on [a,b]\"\n")
+	sb.WriteString("      BAD:  \"for some n\" (existential should be explicit)\n")
+	sb.WriteString("      GOOD: \"there exists n in N such that...\"\n")
+	sb.WriteString("\n")
 }
 
 // renderInferenceCheck writes the inference validity check section.
@@ -85,6 +93,13 @@ func renderInferenceCheck(sb *strings.Builder, n *node.Node) {
 	sb.WriteString("    - Does the inference rule apply correctly?\n")
 	sb.WriteString("    - Are the premises sufficient for the conclusion?\n")
 	sb.WriteString("    - Is this the most appropriate inference type?\n")
+	sb.WriteString("\n")
+	sb.WriteString("    Examples of issues:\n")
+	sb.WriteString("      BAD:  Using modus_ponens but P->Q not established\n")
+	sb.WriteString("      BAD:  Claiming \"by contradiction\" but no contradiction derived\n")
+	sb.WriteString("      BAD:  \"Therefore\" with no logical connection to premises\n")
+	sb.WriteString("      BAD:  Using universal_instantiation on a non-universal statement\n")
+	sb.WriteString("      GOOD: P and P->Q established, then concluding Q by modus_ponens\n")
 	sb.WriteString("\n")
 }
 
@@ -134,6 +149,13 @@ func renderDependenciesCheck(sb *strings.Builder, n *node.Node, s *state.State) 
 	sb.WriteString("    - Are the dependencies validated?\n")
 	sb.WriteString("    - Are there missing dependencies?\n")
 	sb.WriteString("\n")
+	sb.WriteString("    Examples of issues:\n")
+	sb.WriteString("      BAD:  Uses result from node 1.3 but 1.3 not listed as dependency\n")
+	sb.WriteString("      BAD:  Depends on node 1.2 which is still pending (unvalidated)\n")
+	sb.WriteString("      BAD:  Lists 1.1 as dependency but never actually uses it\n")
+	sb.WriteString("      BAD:  Circular dependency (1.2 depends on 1.3, 1.3 depends on 1.2)\n")
+	sb.WriteString("      GOOD: All referenced results listed, all dependencies validated\n")
+	sb.WriteString("\n")
 }
 
 // renderDependencyStatus returns a human-readable status indicator for a dependency's epistemic state.
@@ -161,6 +183,13 @@ func renderHiddenAssumptionsCheck(sb *strings.Builder) {
 	sb.WriteString("    - Are all preconditions explicitly stated?\n")
 	sb.WriteString("    - Does the step rely on facts not in scope?\n")
 	sb.WriteString("\n")
+	sb.WriteString("    Examples of issues:\n")
+	sb.WriteString("      BAD:  Assumes x > 0 without stating it (division by x)\n")
+	sb.WriteString("      BAD:  Uses continuity of f without f being declared continuous\n")
+	sb.WriteString("      BAD:  \"Clearly\" or \"obviously\" hiding non-trivial steps\n")
+	sb.WriteString("      BAD:  Assumes set is non-empty without establishing it\n")
+	sb.WriteString("      GOOD: All assumptions explicit in scope or stated as preconditions\n")
+	sb.WriteString("\n")
 }
 
 // renderDomainRestrictionsCheck writes the domain restrictions check section.
@@ -170,6 +199,13 @@ func renderDomainRestrictionsCheck(sb *strings.Builder) {
 	sb.WriteString("    - Are variables in the correct domains?\n")
 	sb.WriteString("    - Are edge cases handled (division by zero, etc.)?\n")
 	sb.WriteString("\n")
+	sb.WriteString("    Examples of issues:\n")
+	sb.WriteString("      BAD:  sqrt(x) used but x could be negative\n")
+	sb.WriteString("      BAD:  Division by (n-1) but n=1 not excluded\n")
+	sb.WriteString("      BAD:  log(x) applied to x in R instead of x > 0\n")
+	sb.WriteString("      BAD:  Treating integers as reals without justification\n")
+	sb.WriteString("      GOOD: Domain restrictions stated: \"for all x > 0 in R\"\n")
+	sb.WriteString("\n")
 }
 
 // renderNotationConsistencyCheck writes the notation consistency check section.
@@ -178,6 +214,13 @@ func renderNotationConsistencyCheck(sb *strings.Builder) {
 	sb.WriteString("    - Is notation consistent with the rest of the proof?\n")
 	sb.WriteString("    - Are symbols used with their defined meanings?\n")
 	sb.WriteString("    - Are there naming conflicts or ambiguities?\n")
+	sb.WriteString("\n")
+	sb.WriteString("    Examples of issues:\n")
+	sb.WriteString("      BAD:  Using 'n' for two different variables in same scope\n")
+	sb.WriteString("      BAD:  f(x) here but F(x) elsewhere for same function\n")
+	sb.WriteString("      BAD:  Using [a,b] for both intervals and sequences\n")
+	sb.WriteString("      BAD:  Redefining epsilon mid-proof\n")
+	sb.WriteString("      GOOD: Consistent symbol usage matching definitions\n")
 	sb.WriteString("\n")
 }
 
@@ -223,10 +266,18 @@ type JSONVerificationChecklist struct {
 
 // JSONChecklistItem represents a single checklist item for verification.
 type JSONChecklistItem struct {
-	Category    string   `json:"category"`
-	Description string   `json:"description"`
-	Details     string   `json:"details,omitempty"`
-	Checks      []string `json:"checks"`
+	Category    string             `json:"category"`
+	Description string             `json:"description"`
+	Details     string             `json:"details,omitempty"`
+	Checks      []string           `json:"checks"`
+	Examples    []JSONCheckExample `json:"examples,omitempty"`
+}
+
+// JSONCheckExample represents a good/bad example for verification guidance.
+type JSONCheckExample struct {
+	Type   string `json:"type"` // "good" or "bad"
+	Text   string `json:"text"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // JSONChecklistDependency represents a dependency with its status for verification.
@@ -282,6 +333,14 @@ func buildChecklistItems(n *node.Node) []JSONChecklistItem {
 			"Are all terms clearly defined?",
 			"Are quantifiers explicit and correct?",
 		},
+		Examples: []JSONCheckExample{
+			{Type: "bad", Text: "x is small", Reason: "vague, no definition of small"},
+			{Type: "good", Text: "x < epsilon for epsilon > 0", Reason: ""},
+			{Type: "bad", Text: "the function is continuous", Reason: "which function? where?"},
+			{Type: "good", Text: "f: R -> R is continuous on [a,b]", Reason: ""},
+			{Type: "bad", Text: "for some n", Reason: "existential should be explicit"},
+			{Type: "good", Text: "there exists n in N such that...", Reason: ""},
+		},
 	})
 
 	// 2. Inference validity
@@ -298,6 +357,13 @@ func buildChecklistItems(n *node.Node) []JSONChecklistItem {
 			"Are the premises sufficient for the conclusion?",
 			"Is this the most appropriate inference type?",
 		},
+		Examples: []JSONCheckExample{
+			{Type: "bad", Text: "Using modus_ponens but P->Q not established", Reason: ""},
+			{Type: "bad", Text: "Claiming contradiction but no contradiction derived", Reason: ""},
+			{Type: "bad", Text: "Therefore with no logical connection to premises", Reason: ""},
+			{Type: "bad", Text: "Using universal_instantiation on non-universal statement", Reason: ""},
+			{Type: "good", Text: "P and P->Q established, then concluding Q by modus_ponens", Reason: ""},
+		},
 	})
 
 	// 3. Dependencies (item without dependency-specific details; those go in the dependencies array)
@@ -310,6 +376,13 @@ func buildChecklistItems(n *node.Node) []JSONChecklistItem {
 			"Are the dependencies validated?",
 			"Are there missing dependencies?",
 		},
+		Examples: []JSONCheckExample{
+			{Type: "bad", Text: "Uses result from node 1.3 but 1.3 not listed as dependency", Reason: ""},
+			{Type: "bad", Text: "Depends on node 1.2 which is still pending", Reason: "unvalidated"},
+			{Type: "bad", Text: "Lists 1.1 as dependency but never actually uses it", Reason: ""},
+			{Type: "bad", Text: "Circular dependency (1.2 depends on 1.3, 1.3 depends on 1.2)", Reason: ""},
+			{Type: "good", Text: "All referenced results listed, all dependencies validated", Reason: ""},
+		},
 	})
 
 	// 4. Hidden assumptions
@@ -320,6 +393,13 @@ func buildChecklistItems(n *node.Node) []JSONChecklistItem {
 			"Are there unstated assumptions being used?",
 			"Are all preconditions explicitly stated?",
 			"Does the step rely on facts not in scope?",
+		},
+		Examples: []JSONCheckExample{
+			{Type: "bad", Text: "Assumes x > 0 without stating it", Reason: "division by x"},
+			{Type: "bad", Text: "Uses continuity of f without f being declared continuous", Reason: ""},
+			{Type: "bad", Text: "Clearly or obviously hiding non-trivial steps", Reason: ""},
+			{Type: "bad", Text: "Assumes set is non-empty without establishing it", Reason: ""},
+			{Type: "good", Text: "All assumptions explicit in scope or stated as preconditions", Reason: ""},
 		},
 	})
 
@@ -332,6 +412,13 @@ func buildChecklistItems(n *node.Node) []JSONChecklistItem {
 			"Are variables in the correct domains?",
 			"Are edge cases handled (division by zero, etc.)?",
 		},
+		Examples: []JSONCheckExample{
+			{Type: "bad", Text: "sqrt(x) used but x could be negative", Reason: ""},
+			{Type: "bad", Text: "Division by (n-1) but n=1 not excluded", Reason: ""},
+			{Type: "bad", Text: "log(x) applied to x in R instead of x > 0", Reason: ""},
+			{Type: "bad", Text: "Treating integers as reals without justification", Reason: ""},
+			{Type: "good", Text: "Domain restrictions stated: for all x > 0 in R", Reason: ""},
+		},
 	})
 
 	// 6. Notation consistency
@@ -342,6 +429,13 @@ func buildChecklistItems(n *node.Node) []JSONChecklistItem {
 			"Is notation consistent with the rest of the proof?",
 			"Are symbols used with their defined meanings?",
 			"Are there naming conflicts or ambiguities?",
+		},
+		Examples: []JSONCheckExample{
+			{Type: "bad", Text: "Using n for two different variables in same scope", Reason: ""},
+			{Type: "bad", Text: "f(x) here but F(x) elsewhere for same function", Reason: ""},
+			{Type: "bad", Text: "Using [a,b] for both intervals and sequences", Reason: ""},
+			{Type: "bad", Text: "Redefining epsilon mid-proof", Reason: ""},
+			{Type: "good", Text: "Consistent symbol usage matching definitions", Reason: ""},
 		},
 	})
 
