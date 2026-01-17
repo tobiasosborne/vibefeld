@@ -1,61 +1,65 @@
-# Handoff - 2026-01-17 (Session 127)
+# Handoff - 2026-01-17 (Session 128)
 
 ## What Was Accomplished This Session
 
-### Session 127 Summary: Added verification checklist examples
+### Session 128 Summary: Added challenge target guidance to verifier UX
 
 Closed 1 issue this session:
 
-1. **vibefeld-x6ui** - "CLI UX: No 'what to look for' guide in verification checklist"
-   - Added concrete BAD/GOOD examples to all 6 checklist categories in text output
-   - Added structured examples to JSON output via new `JSONCheckExample` struct
-   - Categories covered: statement precision, inference validity, dependencies, hidden assumptions, domain restrictions, notation consistency
+1. **vibefeld-nvaf** - "CLI UX: Challenge targets not explained to verifier"
+   - Added comprehensive "CHALLENGE TARGETS - WHICH TO USE WHEN" section to challenge.go help
+   - All 9 targets now have descriptions and concrete examples
+   - Examples use realistic mathematical proof scenarios
 
 #### Changes Made
 
 | File | Change |
 |------|--------|
-| `internal/render/verification_checklist.go` | Added BAD/GOOD examples to all 6 render functions + JSON struct/builder |
+| `cmd/af/challenge.go` | Added detailed target guidance section with examples for all 9 challenge targets |
 
-### Example Output Before/After
+### Example Output (af challenge --help)
 
-**Before:**
+**New "CHALLENGE TARGETS - WHICH TO USE WHEN" section:**
 ```
-[ ] STATEMENT PRECISION
-    Statement: x is irrational
-    - Is the statement mathematically precise?
-    - Are all terms clearly defined?
-    - Are quantifiers explicit and correct?
-```
+  statement     - The claim text itself is wrong or unclear
+                  Example: "The claim says x > 0 but should be x >= 0"
 
-**After:**
-```
-[ ] STATEMENT PRECISION
-    Statement: x is irrational
-    - Is the statement mathematically precise?
-    - Are all terms clearly defined?
-    - Are quantifiers explicit and correct?
+  inference     - The reasoning/logic step is invalid or unjustified
+                  Example: "This modus ponens is invalid; P→Q and R given, not P"
 
-    Examples of issues:
-      BAD:  "x is small" (vague, no definition of small)
-      GOOD: "x < epsilon for epsilon > 0"
-      BAD:  "the function is continuous" (which function? where?)
-      GOOD: "f: R -> R is continuous on [a,b]"
-      BAD:  "for some n" (existential should be explicit)
-      GOOD: "there exists n in N such that..."
+  context       - Referenced definitions are wrong, missing, or misapplied
+                  Example: "The definition of 'continuous' is used incorrectly here"
+
+  dependencies  - The node depends on wrong or missing parent nodes
+                  Example: "This step assumes 1.2 but should depend on 1.3"
+
+  scope         - Local assumption issues (used outside valid scope)
+                  Example: "Variable x was introduced in 1.1 and is out of scope here"
+
+  gap           - Logical gap in reasoning (missing intermediate steps)
+                  Example: "How do we get from A to C? Step B is missing"
+
+  type_error    - Mathematical object types don't match
+                  Example: "Applying a function to a set when it expects an element"
+
+  domain        - Domain restriction violated (division by zero, etc.)
+                  Example: "This uses sqrt(-1) but we're working in reals"
+
+  completeness  - Missing cases or incomplete argument
+                  Example: "Proof by cases only covers n=0 and n>0, missing n<0"
 ```
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-x6ui** | Closed | Added concrete BAD/GOOD examples to all 6 checklist categories in text and JSON output |
+| **vibefeld-nvaf** | Closed | Added comprehensive challenge target guidance with all 9 targets, descriptions, and concrete examples |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 56 (was 57)
-- **Closed:** 493 (was 492)
+- **Open:** 55 (was 56)
+- **Closed:** 494 (was 493)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -114,6 +118,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 128:** Closed 1 issue (CLI UX - challenge target guidance for verifiers)
 **Session 127:** Closed 1 issue (CLI UX - verification checklist examples for all 6 categories)
 **Session 126:** Closed 1 issue (CLI UX - accept command blocking challenges guidance)
 **Session 125:** Closed 1 issue (CLI UX - actionable challenge guidance in prover context)

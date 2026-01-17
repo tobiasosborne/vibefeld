@@ -29,6 +29,35 @@ This is a verifier action that identifies an issue with a node's
 statement, inference, context, dependencies, scope, or other aspect.
 The prover must address the challenge before the node can be validated.
 
+CHALLENGE TARGETS - WHICH TO USE WHEN:
+
+  statement     - The claim text itself is wrong or unclear
+                  Example: "The claim says x > 0 but should be x >= 0"
+
+  inference     - The reasoning/logic step is invalid or unjustified
+                  Example: "This modus ponens is invalid; P→Q and R given, not P"
+
+  context       - Referenced definitions are wrong, missing, or misapplied
+                  Example: "The definition of 'continuous' is used incorrectly here"
+
+  dependencies  - The node depends on wrong or missing parent nodes
+                  Example: "This step assumes 1.2 but should depend on 1.3"
+
+  scope         - Local assumption issues (used outside valid scope)
+                  Example: "Variable x was introduced in 1.1 and is out of scope here"
+
+  gap           - Logical gap in reasoning (missing intermediate steps)
+                  Example: "How do we get from A to C? Step B is missing"
+
+  type_error    - Mathematical object types don't match
+                  Example: "Applying a function to a set when it expects an element"
+
+  domain        - Domain restriction violated (division by zero, etc.)
+                  Example: "This uses sqrt(-1) but we're working in reals"
+
+  completeness  - Missing cases or incomplete argument
+                  Example: "Proof by cases only covers n=0 and n>0, missing n<0"
+
 SEVERITY LEVELS AND ACCEPTANCE BLOCKING:
 
   Blocking severities (node CANNOT be accepted until resolved):
@@ -43,13 +72,11 @@ SEVERITY LEVELS AND ACCEPTANCE BLOCKING:
   the proof can proceed. Choose "minor" or "note" for suggestions
   or clarifications that don't affect correctness.
 
-Valid targets: statement, inference, context, dependencies, scope,
-               gap, type_error, domain, completeness
-
 Examples:
   af challenge 1 --reason "The inference is invalid"
   af challenge 1.2 --reason "Missing case" --target completeness
-  af challenge 1 --severity critical --reason "This is fundamentally wrong"
+  af challenge 1.1 --reason "sqrt undefined for negative" --target domain
+  af challenge 1 --severity critical --reason "Conclusion contradicts premise"
   af challenge 1 --severity note --reason "Consider clarifying this step"
   af challenge 1 -r "Statement is unclear" -t statement -d ./proof
 
