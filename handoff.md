@@ -1,36 +1,44 @@
-# Handoff - 2026-01-17 (Session 154)
+# Handoff - 2026-01-17 (Session 155)
 
 ## What Was Accomplished This Session
 
-### Session 154 Summary: Closed 1 issue (Code smell)
+### Session 155 Summary: Closed 1 issue (API documentation)
 
-1. **vibefeld-xhrc** - "Code smell: Unclear inputMethodCount variable name"
-   - Renamed `inputMethodCount` to `activeInputMethods` in cmd/af/refine.go (lines 339-356)
-   - The new name clarifies that it counts how many of the three mutually exclusive input methods are currently in use (--statement, --children, or positional args)
-   - Improved the comment to describe what's being counted
-   - Build passes, all tests pass
+1. **vibefeld-7w1q** - "API design: Taint emission not part of validation transaction"
+   - Added ATOMICITY NOTE documentation to 5 methods in internal/service/proof.go:
+     - `AcceptNodeWithNote` (main doc block with full explanation)
+     - `AcceptNodeBulk`
+     - `AdmitNode`
+     - `RefuteNode`
+     - `ArchiveNode`
+   - Also documented `emitTaintRecomputedEvents` helper function
+   - Documentation explains:
+     1. The window where validation is committed but taint isn't
+     2. Why this is acceptable (taint is derived state, eventual consistency on replay)
+     3. That the epistemic event is the authoritative record
+   - Build passes, service tests pass
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| cmd/af/refine.go | Renamed variable `inputMethodCount` → `activeInputMethods` |
+| internal/service/proof.go | Added ATOMICITY NOTE documentation to 6 functions |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-xhrc** | Closed | Renamed variable for clarity |
+| **vibefeld-7w1q** | Closed | Documented the non-atomicity risk |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 25 (was 26)
-- **Closed:** 524 (was 523)
+- **Open:** 24 (was 25)
+- **Closed:** 525 (was 524)
 
 ### Test Status
 - Build: PASS
-- Unit tests: PASS
+- Service package tests: PASS
 - Pre-existing failures in lock package (unrelated to this session)
 
 ### Known Issues (Pre-existing)
@@ -42,7 +50,7 @@
 go build ./cmd/af
 
 # Run tests for modified package
-go test ./cmd/af
+go test ./internal/service/...
 
 # Run all tests
 go test ./...
@@ -91,6 +99,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 155:** Closed 1 issue (API design - documented taint emission non-atomicity in AcceptNodeWithNote and related methods)
 **Session 154:** Closed 1 issue (Code smell - renamed inputMethodCount to activeInputMethods in refine.go)
 **Session 153:** Closed 1 issue (False positive - unnecessary else after return, comprehensive search found 0 instances)
 **Session 152:** Closed 1 issue (Code smell - default timeout hard-coded, added DefaultClaimTimeout constant in config package)

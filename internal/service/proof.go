@@ -711,6 +711,16 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 // After validation, automatically recomputes and emits taint state changes
 // for the node and any affected descendants.
 //
+// ATOMICITY NOTE: The validation event and subsequent taint recomputation events
+// are NOT atomic - they are written as separate ledger appends. This means:
+// 1. If taint emission fails after validation succeeds, the validation stands
+//    but taint state in the ledger may be stale until the next state replay.
+// 2. Concurrent readers may briefly see the validated node with outdated taint.
+// 3. The taint package computes correct taint on replay, so eventual consistency
+//    is guaranteed - the ledger just won't contain explicit taint events.
+// This is acceptable because taint is derived state (can be recomputed from
+// epistemic states) and the validation event is the authoritative record.
+//
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
@@ -781,6 +791,10 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 //
 // After validation, automatically recomputes and emits taint state changes for each
 // node and any affected descendants.
+//
+// ATOMICITY NOTE: The validation events and subsequent taint events are NOT atomic.
+// Taint emission failures are silently ignored (the validation events stand).
+// See AcceptNodeWithNote for details on the implications and why this is acceptable.
 //
 // Returns nil if all nodes were successfully accepted.
 // Returns error if any node doesn't exist, isn't pending, or validation fails.
@@ -872,6 +886,9 @@ func (s *ProofService) GetPendingNodes() ([]*node.Node, error) {
 // After admission, automatically recomputes and emits taint state changes
 // for the node and any affected descendants (they become tainted).
 //
+// ATOMICITY NOTE: The admission event and subsequent taint events are NOT atomic.
+// See AcceptNodeWithNote for details on the implications and why this is acceptable.
+//
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AdmitNode(id types.NodeID) error {
@@ -915,6 +932,9 @@ func (s *ProofService) AdmitNode(id types.NodeID) error {
 // After refutation, automatically recomputes and emits taint state changes
 // for the node and any affected descendants.
 //
+// ATOMICITY NOTE: The refutation event and subsequent taint events are NOT atomic.
+// See AcceptNodeWithNote for details on the implications and why this is acceptable.
+//
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefuteNode(id types.NodeID) error {
@@ -957,6 +977,9 @@ func (s *ProofService) RefuteNode(id types.NodeID) error {
 //
 // After archiving, automatically recomputes and emits taint state changes
 // for the node and any affected descendants.
+//
+// ATOMICITY NOTE: The archive event and subsequent taint events are NOT atomic.
+// See AcceptNodeWithNote for details on the implications and why this is acceptable.
 //
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
@@ -1220,6 +1243,15 @@ func (s *ProofService) Path() string {
 // This is called automatically after validation events (AcceptNode, AdmitNode,
 // RefuteNode, ArchiveNode) to ensure the ledger contains explicit taint state
 // records for audit and replay purposes.
+//
+// IMPORTANT: This function is intentionally NOT atomic with the preceding epistemic
+// state change event. The taint events are appended separately after the validation
+// event is committed. This means:
+// - If this function fails, the epistemic state change still stands
+// - Taint state is derived (computable from epistemic states), so eventual consistency
+//   is guaranteed on the next state replay even if these events are never written
+// - The ledger may lack explicit taint records, but the taint package will compute
+//   correct taint on replay
 func (s *ProofService) emitTaintRecomputedEvents(ldg *ledger.Ledger, nodeID types.NodeID) error {
 	// Reload state to get the updated epistemic state (validation event was just applied)
 	st, err := s.LoadState()
