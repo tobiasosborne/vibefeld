@@ -943,6 +943,77 @@ func TestNode_Timestamp_Truncation(t *testing.T) {
 // Placeholder to avoid unused import warning for time package
 var _ = time.Now
 
+// TestNewNode_StatementWithNullBytes tests that statements with null bytes serialize correctly.
+// Null bytes (\x00) are valid UTF-8 but can cause issues with some JSON parsers.
+// This test verifies the node package handles them correctly.
+func TestNewNode_StatementWithNullBytes(t *testing.T) {
+	id, _ := types.Parse("1")
+
+	tests := []struct {
+		name      string
+		statement string
+	}{
+		{
+			name:      "single null byte at end",
+			statement: "Statement with null\x00",
+		},
+		{
+			name:      "null byte in middle",
+			statement: "Before\x00After",
+		},
+		{
+			name:      "multiple null bytes",
+			statement: "A\x00B\x00C",
+		},
+		{
+			name:      "null byte at start",
+			statement: "\x00Starting with null",
+		},
+		{
+			name:      "only null bytes with text",
+			statement: "\x00\x00text\x00\x00",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test node creation succeeds
+			n, err := node.NewNode(id, schema.NodeTypeClaim, tt.statement, schema.InferenceAssumption)
+			if err != nil {
+				t.Fatalf("NewNode() unexpected error: %v", err)
+			}
+
+			// Verify statement is preserved exactly
+			if n.Statement != tt.statement {
+				t.Errorf("Statement = %q, want %q", n.Statement, tt.statement)
+			}
+
+			// Test JSON serialization
+			data, err := json.Marshal(n)
+			if err != nil {
+				t.Fatalf("json.Marshal() error: %v", err)
+			}
+
+			// Test JSON deserialization
+			var restored node.Node
+			err = json.Unmarshal(data, &restored)
+			if err != nil {
+				t.Fatalf("json.Unmarshal() error: %v", err)
+			}
+
+			// Verify statement survives round-trip
+			if restored.Statement != tt.statement {
+				t.Errorf("After JSON round-trip: Statement = %q, want %q", restored.Statement, tt.statement)
+			}
+
+			// Verify content hash is consistent
+			if restored.ContentHash != n.ContentHash {
+				t.Errorf("ContentHash changed after round-trip: %q != %q", restored.ContentHash, n.ContentHash)
+			}
+		})
+	}
+}
+
 // TestContentHashCollision verifies behavior when two different nodes produce the same content hash.
 // This tests that the system correctly handles the case where two nodes with identical content
 // (same type, statement, inference, context, and dependencies) produce the same hash.

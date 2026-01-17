@@ -1,41 +1,42 @@
-# Handoff - 2026-01-17 (Session 137)
+# Handoff - 2026-01-17 (Session 138)
 
 ## What Was Accomplished This Session
 
-### Session 137 Summary: Fix whitespace owner validation in JSON unmarshal
+### Session 138 Summary: Add null bytes edge case test for node statements
 
-Fixed validation inconsistency in the lock package where `UnmarshalJSON` only rejected empty owner strings but accepted whitespace-only strings, unlike `NewClaimLock()` which rejected both.
+Added missing edge case test for node statements containing null bytes to verify JSON serialization handles them correctly.
 
-1. **vibefeld-f6n3** - "Edge case test: Lock empty owner string in JSON"
-   - Added `TestUnmarshalJSON_EmptyOwner` - verifies empty owner is rejected
-   - Added `TestUnmarshalJSON_WhitespaceOwner` - verifies whitespace-only owners (spaces, tabs, newlines) are rejected
-   - Fixed `UnmarshalJSON` to use `strings.TrimSpace()` check, matching constructor validation
-   - Error message changed from "missing required field: owner" to "invalid owner: empty or whitespace" for consistency
+1. **vibefeld-3994** - "Edge case test: Node statement with null bytes"
+   - Added `TestNewNode_StatementWithNullBytes` to `internal/node/node_test.go`
+   - Tests 5 scenarios: null at end, null in middle, multiple nulls, null at start, nulls surrounding text
+   - Verifies node creation succeeds with null bytes
+   - Verifies statement is preserved exactly through node creation
+   - Verifies JSON serialization/deserialization round-trip preserves null bytes
+   - Verifies content hash remains consistent after round-trip
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `internal/lock/lock.go` | Fixed UnmarshalJSON to reject whitespace-only owners |
-| `internal/lock/lock_test.go` | Added TestUnmarshalJSON_EmptyOwner and TestUnmarshalJSON_WhitespaceOwner (89 lines) |
+| `internal/node/node_test.go` | Added TestNewNode_StatementWithNullBytes (67 lines) |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-f6n3** | Closed | Added tests for empty/whitespace owner in JSON unmarshal and fixed UnmarshalJSON to reject whitespace-only owners |
+| **vibefeld-3994** | Closed | Added TestNewNode_StatementWithNullBytes test to internal/node/node_test.go. Test verifies that null bytes in node statements are handled correctly during node creation and JSON serialization/deserialization round-trips. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 46 (was 47)
-- **Closed:** 503 (was 502)
+- **Open:** 45 (was 46)
+- **Closed:** 504 (was 503)
 
 ### Test Status
-All tests pass for lock_test.go. Build succeeds.
+All tests pass for node package. Build succeeds.
 - Unit tests: PASS
 - Build: PASS
-- New tests: PASS (6 sub-tests total)
+- New tests: PASS (5 sub-tests total)
 
 ### Known Issues (Pre-existing)
 1. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
@@ -44,11 +45,11 @@ All tests pass for lock_test.go. Build succeeds.
 
 ### Verification
 ```bash
-# Run the new tests
-go test ./internal/lock/... -run "TestUnmarshalJSON_EmptyOwner|TestUnmarshalJSON_WhitespaceOwner" -v
+# Run the new test
+go test ./internal/node/... -run "TestNewNode_StatementWithNullBytes" -v
 
-# Run all JSON-related lock tests
-go test ./internal/lock/... -run "JSON" -v
+# Run all node tests
+go test ./internal/node/...
 
 # Build
 go build ./cmd/af
@@ -92,6 +93,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 138:** Closed 1 issue (Edge case test - null bytes in node statements JSON serialization)
 **Session 137:** Closed 1 issue (Bug fix - whitespace owner validation inconsistency in JSON unmarshal)
 **Session 136:** Closed 1 issue (Edge case test - far-future timestamp JSON unmarshaling in lock package)
 **Session 135:** Closed 1 issue (Security - ledger package size limits for DoS prevention)
