@@ -29,11 +29,19 @@ This is a verifier action that identifies an issue with a node's
 statement, inference, context, dependencies, scope, or other aspect.
 The prover must address the challenge before the node can be validated.
 
-Severity levels:
-  critical - Fundamental error that must be fixed (blocks acceptance)
-  major    - Significant issue that should be addressed (blocks acceptance)
-  minor    - Minor issue that could be improved (does NOT block acceptance)
-  note     - Clarification request or suggestion (does NOT block acceptance)
+SEVERITY LEVELS AND ACCEPTANCE BLOCKING:
+
+  Blocking severities (node CANNOT be accepted until resolved):
+    critical - Fundamental error that invalidates the proof step
+    major    - Significant issue that must be addressed
+
+  Non-blocking severities (node CAN be accepted without resolution):
+    minor    - Minor issue or improvement suggestion
+    note     - Clarification request or informational comment
+
+  Choose "critical" or "major" when the issue MUST be fixed before
+  the proof can proceed. Choose "minor" or "note" for suggestions
+  or clarifications that don't affect correctness.
 
 Valid targets: statement, inference, context, dependencies, scope,
                gap, type_error, domain, completeness
