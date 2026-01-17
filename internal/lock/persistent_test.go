@@ -1048,3 +1048,78 @@ func TestUnregisterManager(t *testing.T) {
 		t.Error("New manager should see lock from ledger replay")
 	}
 }
+
+// TestPersistentManager_OversizedLockEventCausesError verifies that lock events
+// exceeding MaxEventSize are detected as corrupted.
+func TestPersistentManager_OversizedLockEventCausesError(t *testing.T) {
+	_, dir := createTestLedger(t)
+
+	// Create a lock_acquired event that exceeds MaxEventSize (1MB)
+	// by using an extremely long owner field
+	largeOwner := make([]byte, lock.MaxEventSize+1)
+	for i := range largeOwner {
+		largeOwner[i] = 'a'
+	}
+	oversizedEvent := []byte(fmt.Sprintf(`{"type":"lock_acquired","node_id":"1.1","owner":"%s","expires_at":"2024-01-01T00:00:00Z"}`, string(largeOwner)))
+	appendCorruptedEvent(t, dir, oversizedEvent)
+
+	// Re-open ledger and try to create manager - should fail with corruption error
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+
+	_, err = lock.NewPersistentManager(l2)
+	if err == nil {
+		t.Error("NewPersistentManager() with oversized lock event expected error, got nil")
+	}
+
+	// Verify it's a corruption error (exit code 4)
+	if !aferrors.IsCorruption(err) {
+		t.Errorf("Expected corruption error, got: %v", err)
+	}
+
+	// Error message should mention size
+	errMsg := err.Error()
+	if !containsSubstr(errMsg, "exceeds maximum size") {
+		t.Errorf("Error message should mention 'exceeds maximum size', got: %s", errMsg)
+	}
+}
+
+// TestPersistentManager_OversizedNonLockEventIgnored verifies that oversized non-lock
+// events are silently skipped without causing errors.
+func TestPersistentManager_OversizedNonLockEventIgnored(t *testing.T) {
+	l, dir := createTestLedger(t)
+
+	// First, create a valid lock
+	nodeID, _ := types.Parse("1.1")
+	futureExpiry := types.FromTime(time.Now().Add(1 * time.Hour))
+	evt := lock.NewLockAcquired(nodeID, "agent-001", futureExpiry)
+	if _, err := l.Append(evt); err != nil {
+		t.Fatalf("Append() unexpected error: %v", err)
+	}
+
+	// Create an oversized non-lock event (custom_event type, not a lock event)
+	largeData := make([]byte, lock.MaxEventSize+1)
+	for i := range largeData {
+		largeData[i] = 'x'
+	}
+	oversizedEvent := []byte(fmt.Sprintf(`{"type":"custom_event","data":"%s"}`, string(largeData)))
+	appendCorruptedEvent(t, dir, oversizedEvent)
+
+	// Re-open ledger - should succeed because non-lock events are ignored
+	l2, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger() unexpected error: %v", err)
+	}
+
+	pm, err := lock.NewPersistentManager(l2)
+	if err != nil {
+		t.Fatalf("NewPersistentManager() unexpected error for oversized non-lock event: %v", err)
+	}
+
+	// Lock should still be present
+	if !pm.IsLocked(nodeID) {
+		t.Error("Lock should still exist when oversized non-lock events are present")
+	}
+}

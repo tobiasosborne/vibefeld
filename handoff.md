@@ -1,30 +1,38 @@
-# Handoff - 2026-01-17 (Session 133)
+# Handoff - 2026-01-17 (Session 134)
 
 ## What Was Accomplished This Session
 
-### Session 133 Summary: Role-specific context in command help
+### Session 134 Summary: Fix unsafe JSON unmarshaling security issue
 
-Added role annotations to all prover commands' help text:
+Fixed P3 security bug in `internal/lock/persistent.go` where JSON unmarshaling had no size limits:
 
-1. **vibefeld-n7bl** - "CLI UX: Add role-specific context section to each command's help"
-   - Added "This is a prover action..." annotation to:
-     - `refine` - "This is a prover action that develops the proof by adding child steps."
-     - `amend` - "This is a prover action that corrects a node's statement text."
-     - `request-def` - "This is a prover action that requests a formal definition for a term."
-     - `resolve-challenge` - "This is a prover action that addresses a verifier's objection."
-   - Verifier commands (`accept`, `challenge`) already had annotations from prior work
+1. **vibefeld-tn5n** - "LOW: Unsafe JSON unmarshaling without size limits"
+   - Added `MaxEventSize` constant (1MB) to prevent DoS via oversized events
+   - Created `unmarshalJSONSafe()` helper function using `json.Decoder`
+   - Updated `replayLedger()` to check event size before parsing
+   - Updated `verifyLockHolder()` to use safe unmarshaling
+   - Added 2 new tests:
+     - `TestPersistentManager_OversizedLockEventCausesError` - verifies oversized lock events cause corruption error
+     - `TestPersistentManager_OversizedNonLockEventIgnored` - verifies oversized non-lock events are safely skipped
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `internal/lock/persistent.go` | Added MaxEventSize, unmarshalJSONSafe(), updated replayLedger() and verifyLockHolder() |
+| `internal/lock/persistent_test.go` | Added 2 new tests for oversized event handling |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-n7bl** | Closed | Added role annotations to all prover commands. Each command help now shows 'This is a prover/verifier action' to prevent role confusion. |
+| **vibefeld-tn5n** | Closed | Fixed by adding MaxEventSize limit (1MB) and safe JSON unmarshaling helper function. Added two new tests for oversized event handling. |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 50 (was 51)
-- **Closed:** 499 (was 498)
+- **Open:** 49 (was 50)
+- **Closed:** 500 (was 499)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -39,13 +47,8 @@ go test ./...
 # Build
 go build ./cmd/af
 
-# Test the feature manually
-./af refine --help | head -6           # Shows prover action annotation
-./af amend --help | head -6            # Shows prover action annotation
-./af request-def --help | head -7      # Shows prover action annotation
-./af resolve-challenge --help | head -7 # Shows prover action annotation
-./af accept --help | head -6           # Shows verifier action annotation
-./af challenge --help | head -6        # Shows verifier action annotation
+# Run specific new tests
+go test ./internal/lock/... -v -run "TestPersistentManager_Oversized"
 ```
 
 ### Known Issue
@@ -92,6 +95,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 134:** Closed 1 issue (Security - unsafe JSON unmarshaling with size limits)
 **Session 133:** Closed 1 issue (CLI UX - role-specific context annotations in prover command help)
 **Session 132:** Closed 1 issue (CLI UX - role-specific help filtering with --role prover/verifier)
 **Session 131:** Closed 1 issue (CLI UX - verified getting started guide already fixed, closed duplicate)

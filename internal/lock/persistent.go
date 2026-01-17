@@ -2,6 +2,7 @@
 package lock
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,11 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/types"
 )
+
+// MaxEventSize is the maximum size in bytes for a single event during replay.
+// This limit prevents DoS attacks via maliciously large ledger files.
+// 1MB is generous for any reasonable event (typical events are <1KB).
+const MaxEventSize = 1024 * 1024 // 1MB
 
 // LockEvent types for persistence.
 const (
@@ -198,11 +204,23 @@ func (pm *PersistentManager) replayLedger() error {
 	var corruptedEvents []CorruptedEvent
 
 	for i, eventData := range events {
+		// Check event size before parsing to prevent DoS via oversized events
+		if len(eventData) > MaxEventSize {
+			if isLikelyLockEvent(eventData) {
+				corruptedEvents = append(corruptedEvents, CorruptedEvent{
+					Index:     i,
+					EventType: "unknown",
+					Error:     fmt.Errorf("event exceeds maximum size (%d > %d bytes)", len(eventData), MaxEventSize),
+				})
+			}
+			continue
+		}
+
 		// Parse the event type first
 		var base struct {
 			Type string `json:"type"`
 		}
-		if err := json.Unmarshal(eventData, &base); err != nil {
+		if err := unmarshalJSONSafe(eventData, &base); err != nil {
 			// Only record if this might be a lock event (we can't tell, so check raw data)
 			if isLikelyLockEvent(eventData) {
 				corruptedEvents = append(corruptedEvents, CorruptedEvent{
@@ -217,7 +235,7 @@ func (pm *PersistentManager) replayLedger() error {
 		switch ledger.EventType(base.Type) {
 		case EventLockAcquired:
 			var evt LockAcquired
-			if err := json.Unmarshal(eventData, &evt); err != nil {
+			if err := unmarshalJSONSafe(eventData, &evt); err != nil {
 				corruptedEvents = append(corruptedEvents, CorruptedEvent{
 					Index:     i,
 					EventType: string(EventLockAcquired),
@@ -229,7 +247,7 @@ func (pm *PersistentManager) replayLedger() error {
 
 		case EventLockReleased:
 			var evt LockReleased
-			if err := json.Unmarshal(eventData, &evt); err != nil {
+			if err := unmarshalJSONSafe(eventData, &evt); err != nil {
 				corruptedEvents = append(corruptedEvents, CorruptedEvent{
 					Index:     i,
 					EventType: string(EventLockReleased),
@@ -241,7 +259,7 @@ func (pm *PersistentManager) replayLedger() error {
 
 		case ledger.EventLockReaped:
 			var evt ledger.LockReaped
-			if err := json.Unmarshal(eventData, &evt); err != nil {
+			if err := unmarshalJSONSafe(eventData, &evt); err != nil {
 				corruptedEvents = append(corruptedEvents, CorruptedEvent{
 					Index:     i,
 					EventType: string(ledger.EventLockReaped),
@@ -305,6 +323,16 @@ func formatCorruptedEvents(events []CorruptedEvent) string {
 	}
 	result += "]"
 	return result
+}
+
+// unmarshalJSONSafe safely unmarshals JSON data into dest with size limits.
+// Returns an error if the data exceeds MaxEventSize or if unmarshaling fails.
+func unmarshalJSONSafe(data []byte, dest interface{}) error {
+	if len(data) > MaxEventSize {
+		return fmt.Errorf("event data exceeds maximum size (%d > %d bytes)", len(data), MaxEventSize)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	return decoder.Decode(dest)
 }
 
 // applyLockAcquired applies a LockAcquired event to the in-memory state.
@@ -373,18 +401,23 @@ func (pm *PersistentManager) verifyLockHolder(nodeID types.NodeID, owner string,
 	for i, eventData := range events {
 		eventSeq := i + 1 // Events are 1-indexed
 
+		// Skip oversized events (handled by replayLedger)
+		if len(eventData) > MaxEventSize {
+			continue
+		}
+
 		// Parse the event type
 		var base struct {
 			Type string `json:"type"`
 		}
-		if err := json.Unmarshal(eventData, &base); err != nil {
+		if err := unmarshalJSONSafe(eventData, &base); err != nil {
 			continue // Skip unparseable events (handled by replayLedger)
 		}
 
 		switch ledger.EventType(base.Type) {
 		case EventLockAcquired:
 			var evt LockAcquired
-			if err := json.Unmarshal(eventData, &evt); err != nil {
+			if err := unmarshalJSONSafe(eventData, &evt); err != nil {
 				continue
 			}
 			if evt.NodeID.String() == targetKey {
@@ -393,7 +426,7 @@ func (pm *PersistentManager) verifyLockHolder(nodeID types.NodeID, owner string,
 
 		case EventLockReleased:
 			var evt LockReleased
-			if err := json.Unmarshal(eventData, &evt); err != nil {
+			if err := unmarshalJSONSafe(eventData, &evt); err != nil {
 				continue
 			}
 			if evt.NodeID.String() == targetKey {
@@ -402,7 +435,7 @@ func (pm *PersistentManager) verifyLockHolder(nodeID types.NodeID, owner string,
 
 		case ledger.EventLockReaped:
 			var evt ledger.LockReaped
-			if err := json.Unmarshal(eventData, &evt); err != nil {
+			if err := unmarshalJSONSafe(eventData, &evt); err != nil {
 				continue
 			}
 			if evt.NodeID.String() == targetKey {
