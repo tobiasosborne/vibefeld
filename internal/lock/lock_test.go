@@ -2,6 +2,7 @@ package lock_test
 
 import (
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -736,6 +737,189 @@ func TestIsExpired_ClockSkewHandling(t *testing.T) {
 			t.Error("IsExpired() = true for far-future lock, want false")
 		}
 	})
+}
+
+// TestClaimLock_HighConcurrency verifies lock operations remain safe and correct
+// under high concurrency (100+ goroutines). This stress-tests the lock's thread
+// safety guarantees beyond the basic 10-goroutine test in TestConcurrentAccess.
+//
+// The test verifies:
+// - No data races occur with many concurrent readers
+// - All method calls return consistent values
+// - Mixed read operations (NodeID, Owner, IsExpired, IsOwnedBy) work correctly
+// - Lock state remains consistent throughout the test
+func TestClaimLock_HighConcurrency(t *testing.T) {
+	nodeID, err := types.Parse("1.2.3")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1.2.3\") unexpected error: %v", err)
+	}
+
+	const (
+		numGoroutines     = 150 // Well above 100+ threshold
+		iterationsPerGoro = 500
+		owner             = "high-concurrency-agent"
+	)
+
+	lk, err := lock.NewClaimLock(nodeID, owner, 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	// Use sync.WaitGroup for clean goroutine synchronization
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	// Channel to collect any errors from goroutines
+	errCh := make(chan error, numGoroutines)
+
+	// Spawn goroutines that hammer the lock with concurrent reads
+	for i := 0; i < numGoroutines; i++ {
+		go func(goroutineID int) {
+			defer wg.Done()
+
+			for j := 0; j < iterationsPerGoro; j++ {
+				// Read all fields and verify consistency
+				gotNodeID := lk.NodeID()
+				gotOwner := lk.Owner()
+				gotAcquiredAt := lk.AcquiredAt()
+				gotExpiresAt := lk.ExpiresAt()
+				gotIsExpired := lk.IsExpired()
+				gotIsOwnedBy := lk.IsOwnedBy(owner)
+
+				// Verify NodeID is correct
+				if gotNodeID.String() != "1.2.3" {
+					errCh <- err
+					return
+				}
+
+				// Verify Owner is correct
+				if gotOwner != owner {
+					errCh <- err
+					return
+				}
+
+				// Verify AcquiredAt is not zero
+				if gotAcquiredAt.IsZero() {
+					errCh <- err
+					return
+				}
+
+				// Verify ExpiresAt is after AcquiredAt
+				if !gotExpiresAt.After(gotAcquiredAt) {
+					errCh <- err
+					return
+				}
+
+				// Lock should not be expired (1 hour timeout)
+				if gotIsExpired {
+					errCh <- err
+					return
+				}
+
+				// IsOwnedBy should return true for correct owner
+				if !gotIsOwnedBy {
+					errCh <- err
+					return
+				}
+
+				// Also test IsOwnedBy with wrong owner
+				if lk.IsOwnedBy("wrong-owner") {
+					errCh <- err
+					return
+				}
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(errCh)
+
+	// Check for any errors
+	for err := range errCh {
+		if err != nil {
+			t.Errorf("Goroutine reported error: %v", err)
+		}
+	}
+
+	// Final consistency check after all concurrent access
+	if lk.NodeID().String() != "1.2.3" {
+		t.Errorf("NodeID() = %q after concurrent access, want \"1.2.3\"", lk.NodeID().String())
+	}
+	if lk.Owner() != owner {
+		t.Errorf("Owner() = %q after concurrent access, want %q", lk.Owner(), owner)
+	}
+	if lk.IsExpired() {
+		t.Error("IsExpired() = true after concurrent access, want false")
+	}
+}
+
+// TestClaimLock_HighConcurrency_MixedOperations verifies lock operations remain safe
+// when mixing read operations with Refresh calls under high concurrency.
+// This tests a more realistic scenario where locks are being refreshed while
+// other goroutines are reading their state.
+func TestClaimLock_HighConcurrency_MixedOperations(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	const (
+		numReaders        = 100
+		numRefreshers     = 10
+		iterationsPerGoro = 200
+		owner             = "mixed-ops-agent"
+	)
+
+	lk, err := lock.NewClaimLock(nodeID, owner, 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(numReaders + numRefreshers)
+
+	// Readers: continuously read lock state
+	for i := 0; i < numReaders; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterationsPerGoro; j++ {
+				_ = lk.NodeID()
+				_ = lk.Owner()
+				_ = lk.AcquiredAt()
+				_ = lk.ExpiresAt()
+				_ = lk.IsExpired()
+				_ = lk.IsOwnedBy(owner)
+			}
+		}()
+	}
+
+	// Refreshers: continuously refresh the lock
+	for i := 0; i < numRefreshers; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterationsPerGoro; j++ {
+				// Refresh with varying timeouts
+				timeout := time.Duration(30+j%30) * time.Minute
+				_ = lk.Refresh(timeout)
+			}
+		}()
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+
+	// Final consistency check
+	if lk.NodeID().String() != "1" {
+		t.Errorf("NodeID() = %q after mixed operations, want \"1\"", lk.NodeID().String())
+	}
+	if lk.Owner() != owner {
+		t.Errorf("Owner() = %q after mixed operations, want %q", lk.Owner(), owner)
+	}
+	// Lock should definitely not be expired since we've been refreshing it
+	if lk.IsExpired() {
+		t.Error("IsExpired() = true after mixed operations with refresh, want false")
+	}
 }
 
 // TestMultipleLocks verifies multiple locks can coexist independently

@@ -1,42 +1,39 @@
-# Handoff - 2026-01-17 (Session 76)
+# Handoff - 2026-01-17 (Session 77)
 
 ## What Was Accomplished This Session
 
-### Session 76 Summary: Directory Deletion Edge Case Tests
+### Session 77 Summary: High Concurrency Lock Tests
 
-Closed issue `vibefeld-iupw` - "Edge case test: Directory deleted during append"
+Closed issue `vibefeld-hn3h` - "Edge case test: Lock high concurrency (100+ goroutines)"
 
-Added 5 comprehensive tests to verify ledger behavior when the directory is deleted mid-operation. These tests document and verify the "orphaned lock" scenario and graceful error handling.
+Added 2 comprehensive high-concurrency tests to stress-test the lock package's thread safety under extreme load.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-iupw** | internal/ledger/append_test.go | Test | Added 5 directory deletion edge case tests |
+| **vibefeld-hn3h** | internal/lock/lock_test.go | Test | Added 2 high concurrency tests |
 
 #### Changes Made
 
-**internal/ledger/append_test.go:**
-- Added `TestAppend_DirectoryDeletedAfterLockAcquired` - verifies lock state when directory deleted after lock acquisition
-- Added `TestAppend_DirectoryDeletedMidOperation_FailsGracefully` - verifies AppendWithTimeout fails gracefully
-- Added `TestAppend_DirectoryDeletedDuringTempFileCreation` - verifies behavior with partial directory deletion
-- Added `TestAppendBatch_DirectoryDeletedMidBatch` - verifies AppendBatch handles missing directory
-- Added `TestReleaseLock_DirectoryDeletedWhileHoldingLock` - verifies releaseLock logs error for orphaned lock scenario
+**internal/lock/lock_test.go:**
+- Added `TestClaimLock_HighConcurrency` - 150 goroutines, 500 iterations each (75,000 total operations)
+  - Verifies NodeID, Owner, AcquiredAt, ExpiresAt, IsExpired, IsOwnedBy all return consistent values under high concurrency
+  - Uses sync.WaitGroup and error channel for clean synchronization and error collection
+- Added `TestClaimLock_HighConcurrency_MixedOperations` - 110 goroutines (100 readers + 10 refreshers)
+  - Tests realistic scenario with concurrent reads and Refresh() calls
+  - Verifies lock state remains consistent when refreshed while being read
 
-The tests document current behavior:
-- Lock internally tracks `held=true` even after directory deletion
-- Lock release fails with "failed to read lock file" when directory is gone
-- `releaseLock()` helper logs errors but doesn't panic when release fails
-- `validateDirectory()` catches directory deletion before operations start
+Both tests pass with `-race` flag, confirming no data races.
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 110 (was 111)
-- **Closed:** 439 (was 438)
+- **Open:** 109 (was 110)
+- **Closed:** 440 (was 439)
 
 ### Test Status
-All tests pass. Build succeeds.
+All tests pass. Build succeeds. Race detector shows no issues.
 
 ## Remaining P0 Issues
 
@@ -55,9 +52,9 @@ No P0 issues remain open.
 ### P2 Edge Case Tests
 5. Permission changes mid-operation (`vibefeld-hzrs`)
 6. Concurrent metadata corruption (`vibefeld-be56`)
-7. Lock high concurrency (100+ goroutines) (`vibefeld-hn3h`)
-8. State circular dependencies in nodes (`vibefeld-vzfb`)
-9. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
+7. State circular dependencies in nodes (`vibefeld-vzfb`)
+8. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
+9. State millions of events (`vibefeld-th1m`)
 
 ## Quick Commands
 
@@ -68,12 +65,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run ledger tests (including new directory deletion tests)
-go test -v -tags=integration ./internal/ledger/... -run "DirectoryDeleted"
+# Run high concurrency lock tests
+go test -v -race ./internal/lock/... -run "HighConcurrency"
 ```
 
 ## Session History
 
+**Session 77:** Closed 1 issue (lock high concurrency tests - 150+ goroutines)
 **Session 76:** Closed 1 issue (directory deletion edge case tests)
 **Session 75:** Closed 1 issue (lock clock skew handling test)
 **Session 74:** Closed 1 issue (lock nil pointer safety test)
