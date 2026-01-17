@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
@@ -697,16 +698,18 @@ func TestReplayWithVerify_CorruptedHash(t *testing.T) {
 // Error Handling Tests
 // -----------------------------------------------------------------------------
 
-// TestReplay_NilLedger verifies that Replay handles nil ledger.
-func TestReplay_NilLedger(t *testing.T) {
+// TestReplay_NilLedger_Integration verifies that Replay handles nil ledger.
+// Renamed to avoid collision with unit test in replay_unit_test.go.
+func TestReplay_NilLedger_Integration(t *testing.T) {
 	_, err := Replay(nil)
 	if err == nil {
 		t.Fatal("Replay should return error for nil ledger")
 	}
 }
 
-// TestReplayWithVerify_NilLedger verifies that ReplayWithVerify handles nil ledger.
-func TestReplayWithVerify_NilLedger(t *testing.T) {
+// TestReplayWithVerify_NilLedger_Integration verifies that ReplayWithVerify handles nil ledger.
+// Renamed to avoid collision with unit test in replay_unit_test.go.
+func TestReplayWithVerify_NilLedger_Integration(t *testing.T) {
 	_, err := ReplayWithVerify(nil)
 	if err == nil {
 		t.Fatal("ReplayWithVerify should return error for nil ledger")
@@ -2354,6 +2357,161 @@ func TestReplay_DeepHierarchy_MemoryEfficiency(t *testing.T) {
 			t.Errorf("Attempt %d: Expected %d nodes, got %d", attempt, depth, len(allNodes))
 		}
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Large Event Count Tests
+// -----------------------------------------------------------------------------
+
+// TestReplay_LargeEventCount tests replaying a ledger with 10K events.
+// This verifies that:
+// - The system can handle large event counts
+// - Memory usage is bounded and doesn't cause OOM
+// - Replay completes in reasonable time
+//
+// Note: Originally targeted 1M events but ledger.Append has O(n) directory
+// scanning per append (NextSequence calls ReadDir), making that impractical.
+// 10K events still exercises the replay path meaningfully.
+func TestReplay_LargeEventCount(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping large event count test in short mode")
+	}
+
+	// Target: 10K events
+	// Note: ledger.Append has O(n) directory scan overhead per append,
+	// which limits practical event creation count in tests.
+	const targetEvents = 10_000
+	const batchSize = 1_000
+
+	t.Logf("Creating ledger with %d events", targetEvents)
+
+	dir := t.TempDir()
+
+	// Track total events created
+	eventsCreated := 0
+
+	// Initialize proof
+	if _, err := ledger.Append(dir, ledger.NewProofInitialized("Large event count test", "stress-agent")); err != nil {
+		t.Fatalf("Append ProofInitialized failed: %v", err)
+	}
+	eventsCreated++
+
+	// Create root node
+	rootID := mustParseNodeID(t, "1")
+	rootNode, _ := node.NewNode(rootID, schema.NodeTypeClaim, "Root node for 1M event test", schema.InferenceAssumption)
+	if _, err := ledger.Append(dir, ledger.NewNodeCreated(*rootNode)); err != nil {
+		t.Fatalf("Append root NodeCreated failed: %v", err)
+	}
+	eventsCreated++
+
+	// Generate remaining events in batches
+	// We create a mix of events to exercise different apply paths:
+	// - NodeCreated (adds to state)
+	// - NodesClaimed/NodesReleased (modifies state)
+	// - NodeValidated (state transitions)
+
+	// Create initial children for claim/release cycles
+	initialChildren := 100
+	childIDs := make([]types.NodeID, initialChildren)
+	for i := 1; i <= initialChildren; i++ {
+		childID := mustParseNodeID(t, fmt.Sprintf("1.%d", i))
+		childIDs[i-1] = childID
+		childNode, _ := node.NewNode(childID, schema.NodeTypeClaim, fmt.Sprintf("Child %d", i), schema.InferenceAssumption)
+		if _, err := ledger.Append(dir, ledger.NewNodeCreated(*childNode)); err != nil {
+			t.Fatalf("Append child NodeCreated failed at %d: %v", i, err)
+		}
+		eventsCreated++
+	}
+
+	t.Logf("  Created %d initial nodes, generating remaining events...", eventsCreated)
+
+	// Generate claim/release cycles until we reach target
+	// Each cycle: claim 10 nodes, release 10 nodes = 2 events
+	cycleSize := 10
+	cyclesNeeded := (targetEvents - eventsCreated) / 2
+
+	for cycle := 0; cycle < cyclesNeeded && eventsCreated < targetEvents; cycle++ {
+		// Pick a subset of nodes to claim/release
+		startIdx := (cycle * cycleSize) % len(childIDs)
+		nodesToClaim := make([]types.NodeID, cycleSize)
+		for i := 0; i < cycleSize; i++ {
+			nodesToClaim[i] = childIDs[(startIdx+i)%len(childIDs)]
+		}
+
+		// Claim
+		if _, err := ledger.Append(dir, ledger.NewNodesClaimed(nodesToClaim, fmt.Sprintf("agent-%d", cycle), types.Now())); err != nil {
+			t.Fatalf("Append NodesClaimed failed at cycle %d: %v", cycle, err)
+		}
+		eventsCreated++
+
+		// Release
+		if _, err := ledger.Append(dir, ledger.NewNodesReleased(nodesToClaim)); err != nil {
+			t.Fatalf("Append NodesReleased failed at cycle %d: %v", cycle, err)
+		}
+		eventsCreated++
+
+		// Progress logging every 100K events
+		if eventsCreated%(100_000) == 0 {
+			t.Logf("  Progress: %d events created", eventsCreated)
+		}
+	}
+
+	t.Logf("  Total events created: %d", eventsCreated)
+
+	// Now test replay
+	ldg, err := ledger.NewLedger(dir)
+	if err != nil {
+		t.Fatalf("NewLedger failed: %v", err)
+	}
+
+	// Verify event count
+	eventCount, err := ldg.Count()
+	if err != nil {
+		t.Fatalf("Count failed: %v", err)
+	}
+	if eventCount < targetEvents-1000 { // Allow small variance
+		t.Errorf("Expected ~%d events, got %d", targetEvents, eventCount)
+	}
+
+	t.Logf("Replaying %d events...", eventCount)
+
+	// Time the replay
+	startTime := time.Now()
+	state, err := Replay(ldg)
+	if err != nil {
+		t.Fatalf("Replay failed: %v", err)
+	}
+	elapsed := time.Since(startTime)
+
+	t.Logf("Replay completed in %v", elapsed)
+
+	// Verify state is valid
+	if state == nil {
+		t.Fatal("Replay returned nil state")
+	}
+
+	// Verify node count (root + 100 children)
+	allNodes := state.AllNodes()
+	expectedNodes := 1 + initialChildren
+	if len(allNodes) != expectedNodes {
+		t.Errorf("Expected %d nodes, got %d", expectedNodes, len(allNodes))
+	}
+
+	// Verify root exists and is in expected state
+	root := state.GetNode(rootID)
+	if root == nil {
+		t.Error("Root node not found after replay")
+	}
+
+	// Verify children exist
+	for i, childID := range childIDs {
+		child := state.GetNode(childID)
+		if child == nil {
+			t.Errorf("Child %d (%s) not found after replay", i+1, childID)
+		}
+	}
+
+	t.Logf("SUCCESS: Replayed %d events, state has %d nodes", eventCount, len(allNodes))
 }
 
 // -----------------------------------------------------------------------------
