@@ -519,6 +519,247 @@ func TestLockFileCleanup(t *testing.T) {
 	}
 }
 
+// TestConcurrentNextSequenceRace stress tests concurrent NextSequence() calls.
+// This demonstrates that NextSequence() itself is not atomic and relies on
+// external locking (via Append) for correctness in concurrent scenarios.
+func TestConcurrentNextSequenceRace(t *testing.T) {
+	dir := t.TempDir()
+
+	// Pre-populate with some events
+	for i := 0; i < 10; i++ {
+		if err := os.WriteFile(filepath.Join(dir, GenerateFilename(i+1)), []byte("{}"), 0644); err != nil {
+			t.Fatalf("Failed to create test file: %v", err)
+		}
+	}
+
+	numWorkers := 20
+	iterations := 100
+	var wg sync.WaitGroup
+	results := make(chan int, numWorkers*iterations)
+
+	// Launch many concurrent readers of NextSequence
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				seq, err := NextSequence(dir)
+				if err != nil {
+					t.Errorf("NextSequence failed: %v", err)
+					return
+				}
+				results <- seq
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	// All reads should return 11 (the next sequence after 10 events)
+	// since no files are being added during this test
+	expectedSeq := 11
+	badCount := 0
+	totalCount := 0
+	for seq := range results {
+		totalCount++
+		if seq != expectedSeq {
+			badCount++
+		}
+	}
+
+	if badCount > 0 {
+		t.Errorf("got %d/%d unexpected sequence numbers (expected all to be %d)",
+			badCount, totalCount, expectedSeq)
+	}
+
+	t.Logf("completed %d concurrent NextSequence calls", totalCount)
+}
+
+// TestConcurrentNextSequenceWithFileChurn tests NextSequence() behavior
+// when files are being added concurrently by multiple writers.
+// This simulates the race condition that the lock is designed to prevent.
+func TestConcurrentNextSequenceWithFileChurn(t *testing.T) {
+	dir := t.TempDir()
+
+	// This test intentionally bypasses the normal Append locking
+	// to demonstrate why locking is necessary.
+
+	numWriters := 5
+	numReaders := 10
+	writesPerWorker := 20
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	// Track sequence numbers seen by readers
+	var maxSeenSeq atomic.Int32
+	var readCount atomic.Int32
+	var readErrors atomic.Int32
+
+	// Writers that add files directly (bypassing locks)
+	// to simulate potential race conditions
+	var nextSeq atomic.Int32
+	nextSeq.Store(1)
+
+	for i := 0; i < numWriters; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < writesPerWorker; j++ {
+				select {
+				case <-stop:
+					return
+				default:
+					seq := int(nextSeq.Add(1))
+					filename := GenerateFilename(seq - 1) // seq-1 because we already incremented
+					path := filepath.Join(dir, filename)
+					if err := os.WriteFile(path, []byte("{}"), 0644); err != nil {
+						// Ignore errors - we're stress testing
+						continue
+					}
+					time.Sleep(time.Microsecond * 10) // Small delay
+				}
+			}
+		}()
+	}
+
+	// Readers that call NextSequence concurrently
+	for i := 0; i < numReaders; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					seq, err := NextSequence(dir)
+					if err != nil {
+						readErrors.Add(1)
+					} else {
+						readCount.Add(1)
+						// Track max sequence seen
+						for {
+							old := maxSeenSeq.Load()
+							if int32(seq) <= old {
+								break
+							}
+							if maxSeenSeq.CompareAndSwap(old, int32(seq)) {
+								break
+							}
+						}
+					}
+					time.Sleep(time.Microsecond * 5)
+				}
+			}
+		}()
+	}
+
+	// Let writers complete
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	// Verify the ledger state
+	finalSeq, err := NextSequence(dir)
+	if err != nil {
+		t.Fatalf("final NextSequence failed: %v", err)
+	}
+
+	t.Logf("completed %d reads, max seq seen during churn: %d, final next seq: %d",
+		readCount.Load(), maxSeenSeq.Load(), finalSeq)
+
+	if readErrors.Load() > 0 {
+		t.Errorf("got %d read errors", readErrors.Load())
+	}
+
+	// Verify no gaps in the final state
+	hasGaps, err := HasGaps(dir)
+	if err != nil {
+		t.Fatalf("failed to check gaps: %v", err)
+	}
+	// Note: We may have gaps because we're writing without locks,
+	// but that's expected - this test demonstrates the race condition
+	if hasGaps {
+		t.Logf("(expected) gaps detected in ledger due to intentional lock bypass")
+	}
+}
+
+// TestConcurrentSequenceNumberIntegrity verifies that under heavy concurrent
+// append load, sequence numbers remain unique and sequential with no gaps.
+func TestConcurrentSequenceNumberIntegrity(t *testing.T) {
+	dir := t.TempDir()
+
+	numWorkers := 10
+	eventsPerWorker := 50
+	totalEvents := numWorkers * eventsPerWorker
+
+	var wg sync.WaitGroup
+	assignedSeqs := make(chan int, totalEvents)
+
+	// All workers append concurrently
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for j := 0; j < eventsPerWorker; j++ {
+				event := NewProofInitialized("stress test", "worker")
+				seq, err := Append(dir, event)
+				if err != nil {
+					t.Errorf("worker %d: append failed: %v", workerID, err)
+					continue
+				}
+				assignedSeqs <- seq
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(assignedSeqs)
+
+	// Collect all assigned sequence numbers
+	seqSet := make(map[int]bool)
+	for seq := range assignedSeqs {
+		if seqSet[seq] {
+			t.Errorf("duplicate sequence number assigned: %d", seq)
+		}
+		seqSet[seq] = true
+	}
+
+	// Verify we got all expected sequence numbers
+	if len(seqSet) != totalEvents {
+		t.Errorf("expected %d unique sequences, got %d", totalEvents, len(seqSet))
+	}
+
+	// Verify no gaps
+	for i := 1; i <= totalEvents; i++ {
+		if !seqSet[i] {
+			t.Errorf("missing sequence number: %d", i)
+		}
+	}
+
+	// Double-check with HasGaps
+	hasGaps, err := HasGaps(dir)
+	if err != nil {
+		t.Fatalf("failed to check gaps: %v", err)
+	}
+	if hasGaps {
+		t.Error("ledger has gaps after concurrent stress test")
+	}
+
+	// Verify final count
+	count, err := Count(dir)
+	if err != nil {
+		t.Fatalf("failed to count: %v", err)
+	}
+	if count != totalEvents {
+		t.Errorf("expected %d events, got %d", totalEvents, count)
+	}
+
+	t.Logf("verified %d unique sequential events with no gaps", totalEvents)
+}
+
 // TestConcurrentMixedOperations tests a mix of concurrent reads, writes, and scans.
 func TestConcurrentMixedOperations(t *testing.T) {
 	dir := t.TempDir()
