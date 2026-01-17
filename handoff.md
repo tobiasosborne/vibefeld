@@ -1,62 +1,43 @@
-# Handoff - 2026-01-17 (Session 93)
+# Handoff - 2026-01-17 (Session 94)
 
 ## What Was Accomplished This Session
 
-### Session 93 Summary: FS File Descriptor Exhaustion Edge Case Tests
+### Session 94 Summary: E2E Circular Dependency Detection Tests
 
-Closed issue `vibefeld-kik3` - "Edge case test: FS file descriptor exhaustion"
+Closed issue `vibefeld-k99h` - "E2E test: Circular dependency detection"
 
-Added `TestJSON_FileDescriptorExhaustion` in `internal/fs/json_io_test.go` with 5 comprehensive subtests verifying graceful degradation under FD exhaustion:
+Added `e2e/cycle_detection_test.go` with 9 comprehensive test cases verifying the cycle detection system works correctly at the E2E level:
 
-1. **write_fails_gracefully_at_fd_limit** - Tests WriteJSON at FD limit:
-   - Uses setrlimit to lower FD limit to 50
-   - Opens files until limit is hit
-   - Verifies WriteJSON returns proper error (not panic)
-   - Error message: "too many open files"
-
-2. **read_fails_gracefully_at_fd_limit** - Tests ReadJSON at FD limit:
-   - Pre-writes a file before exhausting FDs
-   - Verifies ReadJSON returns proper error (not panic)
-   - No data corruption occurs
-
-3. **recovery_after_fd_freed** - Tests recovery scenario:
-   - Exhausts FDs, operations fail
-   - Closes all files to free FDs
-   - Verifies operations succeed again
-   - Confirms system recovers cleanly
-
-4. **no_temp_file_leak_at_exhaustion** - Tests cleanup:
-   - Attempts 10 writes under FD pressure
-   - All writes fail at exhaustion
-   - Verifies no .tmp files are left behind
-   - Critical for preventing disk space leaks
-
-5. **concurrent_writes_at_fd_pressure** - Tests concurrent operations:
-   - Creates moderate FD pressure (50 open files)
-   - 5 goroutines each perform 10 writes
-   - All 50 writes succeed under pressure
-   - No temp files left behind
+1. **TestCycleDetection_SelfReference** - Node depending on itself is detected
+2. **TestCycleDetection_SimpleTwoNodeCycle** - A -> B -> A cycle detected
+3. **TestCycleDetection_TransitiveThreeNodeCycle** - A -> B -> C -> A detected
+4. **TestCycleDetection_CheckAllCycles** - CheckAllCycles finds no false positives
+5. **TestCycleDetection_DiamondPatternNoCycle** - Diamond pattern not falsely flagged
+6. **TestCycleDetection_LinearChainNoCycle** - Linear chains not falsely flagged
+7. **TestCycleDetection_NodeDependsOnDescendant** - Parent -> descendant case tested
+8. **TestCycleDetection_CheckCyclesFromSpecificNode** - CheckCycles from specific nodes
+9. **TestCycleDetection_WouldCreateCycleValidation** - Validation workflow test
 
 #### Key Implementation Details
-- Uses `syscall.Setrlimit` to temporarily lower FD limits for reliable testing
-- Helper function `setLowFDLimit` manages limit changes and restoration
-- Tests skip gracefully if setrlimit fails (e.g., insufficient privileges)
-- Skips on Windows (different resource model)
+- Tests the `WouldCreateCycle`, `CheckCycles`, and `CheckAllCycles` service methods
+- Helper function `claimAndRefineWithDeps` streamlines creating nodes with dependencies
+- All tests use proper setup/cleanup with temp directories
+- Tests cover both positive (cycle detected) and negative (no false positives) cases
 
 #### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-kik3** | Closed | Added 5 subtests verifying graceful FD exhaustion handling |
+| **vibefeld-k99h** | Closed | Added 9 E2E tests for circular dependency detection |
 
 ### Files Changed
-- `internal/fs/json_io_test.go` (+452 lines)
+- `e2e/cycle_detection_test.go` (+444 lines, new file)
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 91 (was 92)
-- **Closed:** 458 (was 457)
+- **Open:** 90 (was 91)
+- **Closed:** 459 (was 458)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -91,12 +72,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run the new FD exhaustion tests
-go test -v ./internal/fs/... -run "TestJSON_FileDescriptorExhaustion"
+# Run the new cycle detection E2E tests
+go test -v -tags=integration ./e2e/cycle_detection_test.go
 ```
 
 ## Session History
 
+**Session 94:** Closed 1 issue (E2E circular dependency detection tests)
 **Session 93:** Closed 1 issue (FS file descriptor exhaustion edge case tests)
 **Session 92:** Closed 1 issue (FS symlink following security edge case tests)
 **Session 91:** Closed 1 issue (FS permission denied mid-operation edge case tests)
