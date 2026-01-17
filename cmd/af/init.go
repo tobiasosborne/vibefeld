@@ -129,8 +129,21 @@ func runInit(cmd *cobra.Command, conjecture, author, dir, templateName string) e
 	}
 
 	cmd.Println("\nNext steps:")
-	cmd.Println("  af status    - View proof status")
-	cmd.Println("  af claim     - Claim a job to work on")
+	cmd.Println("  1. af status    - View the proof tree (root node '1' is your conjecture)")
+	cmd.Println("  2. af jobs      - See available work (root is now a verifier job)")
+	cmd.Println("  3. af claim 1   - Claim the root node to start working")
+	cmd.Println("")
+	cmd.Println("Workflow overview:")
+	cmd.Println("  - New nodes start as VERIFIER jobs (ready for review)")
+	cmd.Println("  - Verifiers either ACCEPT nodes or raise CHALLENGES")
+	cmd.Println("  - Challenged nodes become PROVER jobs (need refinement)")
+	cmd.Println("  - Provers use REFINE to break down claims into substeps")
+	cmd.Println("  - The cycle repeats until all nodes are accepted")
+	cmd.Println("")
+	cmd.Println("Quick reference:")
+	cmd.Println("  Verifier commands: af accept, af challenge")
+	cmd.Println("  Prover commands:   af refine, af amend, af resolve-challenge")
+	cmd.Println("  Info commands:     af get <id>, af schema, af inferences")
 
 	return nil
 }

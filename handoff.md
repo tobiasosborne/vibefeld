@@ -1,42 +1,38 @@
-# Handoff - 2026-01-17 (Session 123)
+# Handoff - 2026-01-17 (Session 124)
 
 ## What Was Accomplished This Session
 
-### Session 123 Summary: Added claim workflow guidance to jobs command
+### Session 124 Summary: Added comprehensive workflow guidance after init command
 
-Closed 2 issues this session:
+Closed 1 issue this session:
 
-1. **vibefeld-ep41** - "CLI UX: resolve-challenge and withdraw-challenge lack workflow context"
-   - Status: Already fixed by previous session (commit f72e534)
-   - Closed as already resolved
-
-2. **vibefeld-oryn** - "CLI UX: Jobs command should suggest how to claim"
-   - Added Workflow section to jobs command help explaining the claim workflow
-   - Updated verifier jobs output to mention claiming before accepting/challenging
+1. **vibefeld-rra8** - "CLI UX: No guided workflow after init"
+   - Enhanced the "Next steps" section after `af init` to include:
+     - Numbered steps (status → jobs → claim)
+     - Workflow overview explaining verifier/prover cycle
+     - Quick reference for verifier/prover/info commands
 
 #### Changes Made
 
 | File | Change |
 |------|--------|
-| `cmd/af/jobs.go` | Added Workflow section to Long description explaining how to claim jobs |
-| `cmd/af/jobs.go` | Updated verifier jobs output to mention `af claim` before `af accept`/`af challenge` |
+| `cmd/af/init.go` | Expanded "Next steps" from 2 lines to comprehensive 15-line guidance |
 
 ### Files Changed
 
-- `cmd/af/jobs.go` - Added Workflow section and updated verifier output
+- `cmd/af/init.go` - Enhanced post-init workflow guidance
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-ep41** | Closed | Already fixed by commit f72e534 (Session 122) |
-| **vibefeld-oryn** | Closed | Added claim workflow guidance to jobs command |
+| **vibefeld-rra8** | Closed | Added comprehensive workflow guidance after init command |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 60 (was 62)
-- **Closed:** 489 (was 487)
+- **Open:** 59 (was 60)
+- **Closed:** 490 (was 489)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -45,8 +41,8 @@ All tests pass. Build succeeds.
 
 ### Verification
 ```bash
-# Verify workflow section in jobs help
-./af jobs --help | grep -A8 "Workflow:"
+# Verify enhanced init output
+./af init --conjecture "Test" --author "Claude" -d /tmp/test-init && rm -rf /tmp/test-init
 
 # Run tests
 go test ./...
@@ -98,6 +94,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 124:** Closed 1 issue (CLI UX - comprehensive workflow guidance after init command)
 **Session 123:** Closed 2 issues (CLI UX - jobs command claim guidance, verified ep41 already fixed)
 **Session 122:** Closed 1 issue (CLI UX - added Workflow sections to 9 command help texts)
 **Session 121:** Closed 1 issue (Config() silent error swallowing - now returns error, updated all callers)
