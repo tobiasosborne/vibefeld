@@ -1,39 +1,39 @@
-# Handoff - 2026-01-17 (Session 75)
+# Handoff - 2026-01-17 (Session 76)
 
 ## What Was Accomplished This Session
 
-### Session 75 Summary: Lock Clock Skew Handling Test
+### Session 76 Summary: Directory Deletion Edge Case Tests
 
-Closed issue `vibefeld-v9yj` - "Edge case test: Lock clock skew handling"
+Closed issue `vibefeld-iupw` - "Edge case test: Directory deleted during append"
 
-Added `TestIsExpired_ClockSkewHandling` test to document and verify lock expiration behavior under clock skew scenarios (when system time jumps forward or backward, e.g., NTP synchronization).
+Added 5 comprehensive tests to verify ledger behavior when the directory is deleted mid-operation. These tests document and verify the "orphaned lock" scenario and graceful error handling.
 
 #### Issue Closed
 
 | Issue | File | Change Type | Description |
 |-------|------|-------------|-------------|
-| **vibefeld-v9yj** | internal/lock/lock_test.go | Test | Added TestIsExpired_ClockSkewHandling test |
+| **vibefeld-iupw** | internal/ledger/append_test.go | Test | Added 5 directory deletion edge case tests |
 
 #### Changes Made
 
-**internal/lock/lock_test.go:**
-- Added `TestIsExpired_ClockSkewHandling` test with 5 subtests:
-  - "clock jumps forward - lock appears expired early" - verifies past expiration detected
-  - "clock jumps backward - lock appears valid longer" - verifies future expiration not expired
-  - "expiration at boundary - near-current time" - verifies no panic at boundary
-  - "extreme clock skew - year-old expiration" - verifies ancient locks detected as expired
-  - "extreme clock skew - far future expiration" - verifies far-future locks not expired
+**internal/ledger/append_test.go:**
+- Added `TestAppend_DirectoryDeletedAfterLockAcquired` - verifies lock state when directory deleted after lock acquisition
+- Added `TestAppend_DirectoryDeletedMidOperation_FailsGracefully` - verifies AppendWithTimeout fails gracefully
+- Added `TestAppend_DirectoryDeletedDuringTempFileCreation` - verifies behavior with partial directory deletion
+- Added `TestAppendBatch_DirectoryDeletedMidBatch` - verifies AppendBatch handles missing directory
+- Added `TestReleaseLock_DirectoryDeletedWhileHoldingLock` - verifies releaseLock logs error for orphaned lock scenario
 
-The test documents current behavior:
-- `IsExpired()` compares against `time.Now()`, reflecting current system time
-- If system time jumps backward, previously expired locks may appear valid again
-- If system time jumps forward, locks expire earlier than expected
+The tests document current behavior:
+- Lock internally tracks `held=true` even after directory deletion
+- Lock release fails with "failed to read lock file" when directory is gone
+- `releaseLock()` helper logs errors but doesn't panic when release fails
+- `validateDirectory()` catches directory deletion before operations start
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 111 (was 112)
-- **Closed:** 438 (was 437)
+- **Open:** 110 (was 111)
+- **Closed:** 439 (was 438)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -53,11 +53,11 @@ No P0 issues remain open.
 4. scope package test coverage - 59.5% (`vibefeld-h179`)
 
 ### P2 Edge Case Tests
-5. Directory deleted during append (`vibefeld-iupw`)
-6. Permission changes mid-operation (`vibefeld-hzrs`)
-7. Concurrent metadata corruption (`vibefeld-be56`)
-8. Lock high concurrency (100+ goroutines) (`vibefeld-hn3h`)
-9. State circular dependencies in nodes (`vibefeld-vzfb`)
+5. Permission changes mid-operation (`vibefeld-hzrs`)
+6. Concurrent metadata corruption (`vibefeld-be56`)
+7. Lock high concurrency (100+ goroutines) (`vibefeld-hn3h`)
+8. State circular dependencies in nodes (`vibefeld-vzfb`)
+9. State very deep node hierarchy (100+ levels) (`vibefeld-76q0`)
 
 ## Quick Commands
 
@@ -68,12 +68,13 @@ bd ready
 # Run tests
 go test ./...
 
-# Run lock package tests specifically
-go test ./internal/lock/... -v
+# Run ledger tests (including new directory deletion tests)
+go test -v -tags=integration ./internal/ledger/... -run "DirectoryDeleted"
 ```
 
 ## Session History
 
+**Session 76:** Closed 1 issue (directory deletion edge case tests)
 **Session 75:** Closed 1 issue (lock clock skew handling test)
 **Session 74:** Closed 1 issue (lock nil pointer safety test)
 **Session 73:** Closed 1 issue (verifier context severity explanation)

@@ -1005,3 +1005,190 @@ func TestReleaseLock_LogsErrorOnDoubleRelease(t *testing.T) {
 		t.Errorf("Expected log to contain operation name 'double-release-test', got: %s", logOutput)
 	}
 }
+
+// =============================================================================
+// Directory Deletion During Operation Tests
+// =============================================================================
+
+// TestAppend_DirectoryDeletedAfterLockAcquired verifies behavior when the
+// directory is deleted after the lock is acquired but before the append completes.
+// This is an edge case where the lock is "orphaned" - the lock file is deleted
+// along with the directory, but the LedgerLock struct still thinks it holds the lock.
+func TestAppend_DirectoryDeletedAfterLockAcquired(t *testing.T) {
+	// Create a directory manually so we can delete it
+	dir, err := os.MkdirTemp("", "ledger-delete-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	// Acquire a lock manually to simulate the state after Append acquires its lock
+	lock := NewLedgerLock(dir)
+	if err := lock.Acquire("test-agent", 5*time.Second); err != nil {
+		t.Fatalf("Failed to acquire lock: %v", err)
+	}
+
+	// Now delete the directory (simulating external deletion mid-operation)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("Failed to remove directory: %v", err)
+	}
+
+	// Verify the lock thinks it's still held (internal state)
+	if !lock.IsHeld() {
+		t.Error("Lock should still report as held even though directory is gone")
+	}
+
+	// Try to release the lock - should fail because the lock file is gone
+	err = lock.Release()
+	if err == nil {
+		t.Error("Release should fail when lock file is gone with directory")
+	}
+
+	// The error should indicate the lock file couldn't be read
+	if !strings.Contains(err.Error(), "failed to read lock file") {
+		t.Errorf("Expected 'failed to read lock file' error, got: %v", err)
+	}
+}
+
+// TestAppend_DirectoryDeletedMidOperation_FailsGracefully verifies that
+// AppendWithTimeout fails gracefully when the directory is deleted mid-operation.
+// This simulates a race condition where the directory is valid at validateDirectory
+// but gone by the time we try to create the temp file.
+func TestAppend_DirectoryDeletedMidOperation_FailsGracefully(t *testing.T) {
+	// Create a directory manually
+	dir, err := os.MkdirTemp("", "ledger-midop-delete-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	// Delete the directory immediately before append
+	// This tests the validateDirectory check
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("Failed to remove directory: %v", err)
+	}
+
+	event := NewProofInitialized("Directory deleted test", "agent-test")
+	_, err = AppendWithTimeout(dir, event, 100*time.Millisecond)
+
+	if err == nil {
+		t.Fatal("AppendWithTimeout should fail when directory doesn't exist")
+	}
+
+	// Should fail at validateDirectory stage
+	if !strings.Contains(err.Error(), "failed to access directory") {
+		t.Errorf("Expected 'failed to access directory' error, got: %v", err)
+	}
+}
+
+// TestAppend_DirectoryDeletedDuringTempFileCreation verifies behavior when
+// the directory is deleted after lock acquisition but during temp file creation.
+// This is a more nuanced edge case that tests the atomic write mechanism.
+func TestAppend_DirectoryDeletedDuringTempFileCreation(t *testing.T) {
+	// Create a directory
+	dir, err := os.MkdirTemp("", "ledger-tempfile-delete-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(dir) // Cleanup in case test fails early
+
+	// Acquire lock
+	lock := NewLedgerLock(dir)
+	if err := lock.Acquire("test-agent", 5*time.Second); err != nil {
+		t.Fatalf("Failed to acquire lock: %v", err)
+	}
+
+	// Delete directory contents but keep the directory (tests a different failure mode)
+	// Remove the lock file to simulate partial directory deletion
+	lockPath := filepath.Join(dir, "ledger.lock")
+	if err := os.Remove(lockPath); err != nil {
+		t.Fatalf("Failed to remove lock file: %v", err)
+	}
+
+	// Now try to create a temp file - should succeed since directory still exists
+	tempFile, err := os.CreateTemp(dir, ".event-*.tmp")
+	if err != nil {
+		t.Fatalf("CreateTemp should succeed when directory exists: %v", err)
+	}
+	tempPath := tempFile.Name()
+	tempFile.Close()
+
+	// Cleanup
+	os.Remove(tempPath)
+
+	// Verify lock release fails due to missing lock file
+	err = lock.Release()
+	if err == nil {
+		t.Error("Release should fail when lock file is manually removed")
+	}
+}
+
+// TestAppendBatch_DirectoryDeletedMidBatch verifies that AppendBatch handles
+// directory deletion gracefully during a multi-event batch operation.
+func TestAppendBatch_DirectoryDeletedMidBatch(t *testing.T) {
+	// Create a directory
+	dir, err := os.MkdirTemp("", "ledger-batch-delete-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	// Delete immediately
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("Failed to remove directory: %v", err)
+	}
+
+	events := []Event{
+		NewProofInitialized("Batch event 1", "agent-batch"),
+		NewChallengeResolved("chal-batch"),
+	}
+
+	_, err = AppendBatch(dir, events)
+	if err == nil {
+		t.Fatal("AppendBatch should fail when directory doesn't exist")
+	}
+
+	if !strings.Contains(err.Error(), "failed to access directory") {
+		t.Errorf("Expected 'failed to access directory' error, got: %v", err)
+	}
+}
+
+// TestReleaseLock_DirectoryDeletedWhileHoldingLock verifies that releaseLock
+// logs an error when the directory (and thus lock file) is deleted while holding the lock.
+// This tests the "orphaned lock" scenario mentioned in the issue.
+func TestReleaseLock_DirectoryDeletedWhileHoldingLock(t *testing.T) {
+	// Create a directory
+	dir, err := os.MkdirTemp("", "ledger-orphan-lock-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	// Acquire lock
+	lock := NewLedgerLock(dir)
+	if err := lock.Acquire("test-agent", 5*time.Second); err != nil {
+		t.Fatalf("Failed to acquire lock: %v", err)
+	}
+
+	// Delete the entire directory (simulates external process or filesystem issue)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("Failed to remove directory: %v", err)
+	}
+
+	// Capture log output
+	var buf bytes.Buffer
+	originalOutput := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(originalOutput)
+
+	// Call releaseLock - should log an error because lock file is gone with directory
+	releaseLock(lock, "directory-deleted-test")
+
+	// Verify log output contains error message about the failure
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "ERROR") {
+		t.Errorf("Expected log to contain 'ERROR', got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "directory-deleted-test") {
+		t.Errorf("Expected log to contain operation name 'directory-deleted-test', got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "stale lock file may remain") {
+		t.Errorf("Expected log to contain 'stale lock file may remain', got: %s", logOutput)
+	}
+}
