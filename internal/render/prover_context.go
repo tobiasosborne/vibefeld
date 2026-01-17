@@ -478,10 +478,20 @@ func renderChallenges(sb *strings.Builder, s *state.State, nodeID types.NodeID) 
 			sb.WriteString(c.Resolution)
 			sb.WriteString("\"\n")
 		}
+
+		// Show actionable guidance for open challenges
+		if c.Status == "open" {
+			sb.WriteString("       -> Address with: af refine ")
+			sb.WriteString(c.NodeID.String())
+			sb.WriteString(" --children '[{\"statement\":\"...\",\"addresses_challenges\":[\"")
+			sb.WriteString(c.ID)
+			sb.WriteString("\"]}]'\n")
+		}
 	}
 
-	// Add guidance for open challenges
+	// Add summary guidance for open challenges
 	if openCount > 0 {
-		sb.WriteString("\n  To address challenges, use 'af refine' with --addresses flag.\n")
+		sb.WriteString("\n  Add child nodes with 'addresses_challenges' to respond to open challenges.\n")
+		sb.WriteString("  Once addressed, the verifier can resolve them with 'af resolve-challenge'.\n")
 	}
 }

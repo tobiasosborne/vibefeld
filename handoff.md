@@ -1,38 +1,54 @@
-# Handoff - 2026-01-17 (Session 124)
+# Handoff - 2026-01-17 (Session 125)
 
 ## What Was Accomplished This Session
 
-### Session 124 Summary: Added comprehensive workflow guidance after init command
+### Session 125 Summary: Added actionable challenge guidance in prover context
 
 Closed 1 issue this session:
 
-1. **vibefeld-rra8** - "CLI UX: No guided workflow after init"
-   - Enhanced the "Next steps" section after `af init` to include:
-     - Numbered steps (status → jobs → claim)
-     - Workflow overview explaining verifier/prover cycle
-     - Quick reference for verifier/prover/info commands
+1. **vibefeld-8nh8** - "CLI UX: Prover context lacks actionable guidance on challenges"
+   - Added per-challenge actionable command suggestions for open challenges
+   - Shows specific `af refine` command with `--children` JSON for each open challenge
+   - Updated summary guidance to explain the challenge workflow
 
 #### Changes Made
 
 | File | Change |
 |------|--------|
-| `cmd/af/init.go` | Expanded "Next steps" from 2 lines to comprehensive 15-line guidance |
+| `internal/render/prover_context.go` | Added per-challenge actionable guidance for open challenges |
+| `internal/render/render_views.go` | Added per-challenge actionable guidance for open challenges |
 
-### Files Changed
+### Example Output Before/After
 
-- `cmd/af/init.go` - Enhanced post-init workflow guidance
+**Before:**
+```
+Challenges (2 total, 1 open):
+  [ch-abc123] "Missing justification" (open)
+
+  To address challenges, use 'af refine' with --addresses flag.
+```
+
+**After:**
+```
+Challenges (2 total, 1 open):
+  [ch-abc123] "Missing justification" (open)
+       -> Address with: af refine 1.1 --children '[{"statement":"...","addresses_challenges":["ch-abc123"]}]'
+
+  Add child nodes with 'addresses_challenges' to respond to open challenges.
+  Once addressed, the verifier can resolve them with 'af resolve-challenge'.
+```
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-rra8** | Closed | Added comprehensive workflow guidance after init command |
+| **vibefeld-8nh8** | Closed | Added per-challenge actionable guidance with specific af refine commands |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 59 (was 60)
-- **Closed:** 490 (was 489)
+- **Open:** 58 (was 59)
+- **Closed:** 491 (was 490)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -41,9 +57,6 @@ All tests pass. Build succeeds.
 
 ### Verification
 ```bash
-# Verify enhanced init output
-./af init --conjecture "Test" --author "Claude" -d /tmp/test-init && rm -rf /tmp/test-init
-
 # Run tests
 go test ./...
 
@@ -94,6 +107,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 125:** Closed 1 issue (CLI UX - actionable challenge guidance in prover context)
 **Session 124:** Closed 1 issue (CLI UX - comprehensive workflow guidance after init command)
 **Session 123:** Closed 2 issues (CLI UX - jobs command claim guidance, verified ep41 already fixed)
 **Session 122:** Closed 1 issue (CLI UX - added Workflow sections to 9 command help texts)
