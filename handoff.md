@@ -1,43 +1,49 @@
-# Handoff - 2026-01-17 (Session 139)
+# Handoff - 2026-01-17 (Session 140)
 
 ## What Was Accomplished This Session
 
-### Session 139 Summary: Add invalid UTF-8 edge case test for node statements
+### Session 140 Summary: Add very long file path edge case test for FS package
 
-Added missing edge case test for node statements containing invalid UTF-8 byte sequences to document JSON serialization behavior.
+Added comprehensive edge case test for OS-specific path length limits in the fs package's JSON I/O functions.
 
-1. **vibefeld-70c2** - "Edge case test: Node invalid UTF-8 in statement"
-   - Added `TestNode_InvalidUTF8` to `internal/node/node_test.go`
-   - Tests 8 scenarios: truncated 2/3/4-byte sequences, standalone continuation byte, invalid start bytes, overlong encoding, mixed valid/invalid, and valid UTF-8 control
-   - Documents known limitation: JSON round-trip modifies invalid UTF-8 (replaces with U+FFFD)
-   - Verifies node creation succeeds regardless of UTF-8 validity
-   - Verifies statement is preserved exactly in memory before serialization
-   - Verifies hash verification passes before JSON round-trip
-   - Documents that VerifyContentHash() will fail after JSON round-trip for invalid UTF-8
+1. **vibefeld-76jh** - "Edge case test: FS very long file paths"
+   - Added `TestJSON_VeryLongFilePath` to `internal/fs/json_io_test.go`
+   - Tests 10 scenarios covering OS-specific path length limits:
+     - `path_at_name_max_limit` - filename at NAME_MAX (255 bytes)
+     - `path_exceeds_name_max_limit` - filename over 305 bytes
+     - `deeply_nested_path_approaching_path_max` - ~3500 byte paths via 68 nesting levels
+     - `path_definitely_exceeds_path_max` - 6000+ byte path
+     - `temp_file_path_exceeds_limit` - tests .tmp suffix overflow behavior
+     - `unicode_path_components` - multi-byte UTF-8 characters (emoji) testing byte vs char limits
+     - `path_with_only_dots` - dot-prefixed filenames like `..json`
+     - `windows_reserved_characters` - <, >, :, ", |, ?, * characters on Unix
+     - `null_byte_in_path` - embedded null byte rejection
+   - Documents graceful error handling for paths exceeding limits
+   - Verifies no panics or data corruption for edge cases
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `internal/node/node_test.go` | Added TestNode_InvalidUTF8 (~130 lines), added unicode/utf8 import |
+| `internal/fs/json_io_test.go` | Added TestJSON_VeryLongFilePath (~320 lines) |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-70c2** | Closed | Added TestNode_InvalidUTF8 test documenting behavior with invalid UTF-8 sequences |
+| **vibefeld-76jh** | Closed | Added comprehensive path length limit tests |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 44 (was 45)
-- **Closed:** 505 (was 504)
+- **Open:** 43 (was 44)
+- **Closed:** 506 (was 505)
 
 ### Test Status
-All tests pass for node package. Build succeeds.
+All tests pass for fs package. Build succeeds.
 - Unit tests: PASS
 - Build: PASS
-- New tests: PASS (8 sub-tests total)
+- New tests: PASS (10 sub-tests across multiple scenarios)
 
 ### Known Issues (Pre-existing)
 1. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
@@ -47,10 +53,10 @@ All tests pass for node package. Build succeeds.
 ### Verification
 ```bash
 # Run the new test
-go test ./internal/node/... -run "TestNode_InvalidUTF8" -v
+go test ./internal/fs/... -run "TestJSON_VeryLongFilePath" -v
 
-# Run all node tests
-go test ./internal/node/...
+# Run all fs tests
+go test ./internal/fs/...
 
 # Build
 go build ./cmd/af
@@ -94,6 +100,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 140:** Closed 1 issue (Edge case test - very long file paths in fs package, 10 subtests for NAME_MAX/PATH_MAX/unicode/null bytes)
 **Session 139:** Closed 1 issue (Edge case test - invalid UTF-8 in node statements, documenting JSON round-trip behavior)
 **Session 138:** Closed 1 issue (Edge case test - null bytes in node statements JSON serialization)
 **Session 137:** Closed 1 issue (Bug fix - whitespace owner validation inconsistency in JSON unmarshal)

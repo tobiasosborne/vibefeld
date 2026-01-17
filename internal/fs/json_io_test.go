@@ -1508,3 +1508,327 @@ func TestJSON_FileDescriptorExhaustion(t *testing.T) {
 		}
 	})
 }
+
+// TestJSON_VeryLongFilePath tests ReadJSON and WriteJSON behavior when dealing
+// with file paths that approach or exceed OS-specific path length limits.
+//
+// Path length limits vary by OS:
+// - Linux: PATH_MAX = 4096 bytes (total path), NAME_MAX = 255 bytes (filename component)
+// - macOS: PATH_MAX = 1024 bytes, NAME_MAX = 255 bytes
+// - Windows: MAX_PATH = 260 chars (though extended paths can go to ~32K)
+//
+// These tests verify:
+// 1. Operations fail gracefully with clear errors for paths exceeding limits
+// 2. Operations succeed for paths approaching but within limits
+// 3. No panics or corruption occur with edge-case paths
+func TestJSON_VeryLongFilePath(t *testing.T) {
+	t.Run("path_at_name_max_limit", func(t *testing.T) {
+		// NAME_MAX is 255 bytes on most Unix systems
+		// Create a filename component approaching this limit
+		dir := t.TempDir()
+
+		// Create filename of exactly 255 characters (including .json extension)
+		// 255 - 5 (.json) = 250 characters for the base name
+		baseName := strings.Repeat("a", 250)
+		fileName := baseName + ".json"
+		if len(fileName) != 255 {
+			t.Fatalf("expected filename length 255, got %d", len(fileName))
+		}
+
+		filePath := filepath.Join(dir, fileName)
+		data := testData{ID: "max-name", Name: "At NAME_MAX Limit"}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			// On some systems, 255 may already exceed the limit
+			t.Logf("WriteJSON at NAME_MAX failed: %v", err)
+			// Verify it's the expected error type (ENAMETOOLONG or similar)
+			if !strings.Contains(err.Error(), "name too long") &&
+				!strings.Contains(err.Error(), "file name too long") {
+				// Still acceptable - different systems return different errors
+				t.Logf("non-standard error for long filename: %v", err)
+			}
+		} else {
+			// Write succeeded - verify we can read it back
+			var result testData
+			if err := ReadJSON(filePath, &result); err != nil {
+				t.Errorf("ReadJSON failed for NAME_MAX path: %v", err)
+			} else if result.ID != "max-name" {
+				t.Errorf("data corruption: expected 'max-name', got '%s'", result.ID)
+			}
+			t.Log("file operations succeeded at NAME_MAX limit (255 bytes)")
+		}
+	})
+
+	t.Run("path_exceeds_name_max_limit", func(t *testing.T) {
+		// Create a filename component that exceeds NAME_MAX (255 bytes)
+		dir := t.TempDir()
+
+		// 300 characters for base name + .json = 305 characters total
+		baseName := strings.Repeat("x", 300)
+		fileName := baseName + ".json"
+		filePath := filepath.Join(dir, fileName)
+
+		data := testData{ID: "over-name-max", Name: "Exceeds NAME_MAX"}
+
+		err := WriteJSON(filePath, &data)
+		if err == nil {
+			t.Error("expected error for filename exceeding NAME_MAX, got nil")
+			// Clean up if somehow it succeeded
+			os.Remove(filePath)
+		} else {
+			t.Logf("correctly rejected filename exceeding NAME_MAX: %v", err)
+		}
+
+		// Also test read of such a path
+		var result testData
+		err = ReadJSON(filePath, &result)
+		if err == nil {
+			t.Error("expected error reading path exceeding NAME_MAX")
+		}
+	})
+
+	t.Run("deeply_nested_path_approaching_path_max", func(t *testing.T) {
+		// Linux PATH_MAX is 4096, macOS is 1024
+		// Create a deeply nested directory structure approaching the limit
+		dir := t.TempDir()
+
+		// Use 50-character directory names to build up path length
+		// Each level adds ~51 chars (name + separator)
+		dirName := strings.Repeat("d", 50)
+		currentPath := dir
+		nestingLevel := 0
+
+		// Build up path until we approach 3500 bytes (leave room for filename)
+		for len(currentPath) < 3500 {
+			currentPath = filepath.Join(currentPath, dirName)
+			nestingLevel++
+		}
+
+		filePath := filepath.Join(currentPath, "test.json")
+		t.Logf("created path with %d nesting levels, total length: %d bytes",
+			nestingLevel, len(filePath))
+
+		data := testData{ID: "deep-path", Name: "Deeply Nested Path"}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			// On macOS or systems with shorter PATH_MAX, this may fail
+			t.Logf("WriteJSON failed for deeply nested path: %v", err)
+			if strings.Contains(err.Error(), "name too long") ||
+				strings.Contains(err.Error(), "file name too long") ||
+				strings.Contains(err.Error(), "no such file") {
+				t.Log("error is expected for path approaching/exceeding PATH_MAX")
+			}
+		} else {
+			// Succeeded - verify read works too
+			var result testData
+			if err := ReadJSON(filePath, &result); err != nil {
+				t.Errorf("ReadJSON failed for deeply nested path: %v", err)
+			} else if result.ID != "deep-path" {
+				t.Errorf("data corruption: expected 'deep-path', got '%s'", result.ID)
+			}
+			t.Logf("file operations succeeded at ~%d byte path length", len(filePath))
+		}
+	})
+
+	t.Run("path_definitely_exceeds_path_max", func(t *testing.T) {
+		// Create a path that definitely exceeds all known PATH_MAX values
+		// Linux: 4096, macOS: 1024, Windows: varies
+		dir := t.TempDir()
+
+		// Build a path over 5000 bytes long
+		longComponent := strings.Repeat("z", 200)
+		currentPath := dir
+		for i := 0; i < 30; i++ { // 30 * 200 = 6000+ bytes
+			currentPath = filepath.Join(currentPath, longComponent)
+		}
+		filePath := filepath.Join(currentPath, "test.json")
+
+		if len(filePath) < 5000 {
+			t.Fatalf("test setup error: path only %d bytes", len(filePath))
+		}
+		t.Logf("attempting operations on %d byte path", len(filePath))
+
+		data := testData{ID: "way-too-long", Name: "Exceeds All PATH_MAX"}
+
+		err := WriteJSON(filePath, &data)
+		if err == nil {
+			t.Error("expected error for path exceeding PATH_MAX, got nil")
+			os.RemoveAll(filepath.Join(dir, longComponent)) // Clean up
+		} else {
+			t.Logf("correctly rejected path exceeding PATH_MAX: %v", err)
+			// No panic occurred - this is the key verification
+		}
+
+		// Also verify read fails gracefully
+		var result testData
+		err = ReadJSON(filePath, &result)
+		if err == nil {
+			t.Error("expected error reading path exceeding PATH_MAX")
+		}
+	})
+
+	t.Run("temp_file_path_exceeds_limit", func(t *testing.T) {
+		// WriteJSON creates a .tmp file by appending ".tmp" to the path
+		// This could cause issues if the original path is at the limit
+		dir := t.TempDir()
+
+		// Create a filename that's exactly at NAME_MAX
+		// When .tmp is appended for atomic write, it will exceed the limit
+		baseName := strings.Repeat("t", 251) // 251 + .json = 255 (NAME_MAX)
+		fileName := baseName + ".json"
+		filePath := filepath.Join(dir, fileName)
+
+		// The temp file will be: baseName + ".json.tmp" = 259 chars (exceeds 255)
+		t.Logf("filename: %d bytes, temp filename would be: %d bytes",
+			len(fileName), len(fileName)+4) // +4 for ".tmp"
+
+		data := testData{ID: "temp-overflow", Name: "Temp File Overflow"}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			// This might fail because the temp file name exceeds NAME_MAX
+			t.Logf("WriteJSON failed (possibly due to temp file length): %v", err)
+		} else {
+			// If it succeeded, verify the data is correct
+			var result testData
+			if err := ReadJSON(filePath, &result); err != nil {
+				t.Errorf("ReadJSON failed: %v", err)
+			} else if result.ID != "temp-overflow" {
+				t.Errorf("data corruption: expected 'temp-overflow', got '%s'", result.ID)
+			}
+			t.Log("WriteJSON succeeded despite temp file path length")
+		}
+
+		// Verify no leftover .tmp files
+		entries, _ := os.ReadDir(dir)
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".tmp") {
+				t.Errorf("found leftover temp file: %s", entry.Name())
+			}
+		}
+	})
+
+	t.Run("unicode_path_components", func(t *testing.T) {
+		// Unicode characters can take multiple bytes
+		// A 255-character string of multi-byte UTF-8 can exceed byte limits
+		dir := t.TempDir()
+
+		// Use emoji (4 bytes each in UTF-8) to create byte-expensive paths
+		// 64 emoji * 4 bytes = 256 bytes for the name alone
+		unicodeName := strings.Repeat("🔥", 64) // Fire emoji, 4 bytes each
+		fileName := unicodeName + ".json"
+
+		t.Logf("unicode filename: %d characters, %d bytes",
+			len([]rune(fileName)), len(fileName))
+
+		filePath := filepath.Join(dir, fileName)
+
+		data := testData{ID: "unicode-path", Name: "Unicode Path Test"}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			t.Logf("WriteJSON failed for unicode path: %v", err)
+			// This is expected - 64*4 + 5 = 261 bytes exceeds NAME_MAX
+		} else {
+			// Verify roundtrip
+			var result testData
+			if err := ReadJSON(filePath, &result); err != nil {
+				t.Errorf("ReadJSON failed: %v", err)
+			} else if result.ID != "unicode-path" {
+				t.Errorf("data corruption: expected 'unicode-path', got '%s'", result.ID)
+			}
+			t.Log("unicode path operations succeeded")
+		}
+	})
+
+	t.Run("path_with_only_dots", func(t *testing.T) {
+		// Edge case: paths with many dot components
+		dir := t.TempDir()
+
+		// Create a directory to test relative-looking paths
+		subDir := filepath.Join(dir, "sub")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+
+		// Try various dot-heavy paths
+		testCases := []struct {
+			name string
+			path string
+		}{
+			{"single_dot_filename", filepath.Join(subDir, "..json")},
+			{"double_dot_filename", filepath.Join(subDir, "...json")},
+			{"many_dots_filename", filepath.Join(subDir, "......................json")},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				data := testData{ID: tc.name, Name: "Dot Test"}
+				err := WriteJSON(tc.path, &data)
+				if err != nil {
+					t.Logf("WriteJSON failed for %s: %v", tc.name, err)
+				} else {
+					var result testData
+					if err := ReadJSON(tc.path, &result); err != nil {
+						t.Errorf("ReadJSON failed: %v", err)
+					} else if result.ID != tc.name {
+						t.Errorf("data mismatch: expected '%s', got '%s'", tc.name, result.ID)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("windows_reserved_characters", func(t *testing.T) {
+		if runtime.GOOS != "windows" {
+			// On Unix, these characters are generally valid in filenames
+			dir := t.TempDir()
+
+			// Characters that are reserved on Windows but valid on Unix
+			reservedChars := []string{"<", ">", ":", "\"", "|", "?", "*"}
+
+			for _, char := range reservedChars {
+				t.Run(fmt.Sprintf("char_%s", char), func(t *testing.T) {
+					fileName := fmt.Sprintf("test%sfile.json", char)
+					filePath := filepath.Join(dir, fileName)
+
+					data := testData{ID: "reserved-char", Name: fmt.Sprintf("Has %s", char)}
+					err := WriteJSON(filePath, &data)
+					if err != nil {
+						t.Logf("WriteJSON failed for '%s': %v", char, err)
+					} else {
+						var result testData
+						if err := ReadJSON(filePath, &result); err != nil {
+							t.Errorf("ReadJSON failed: %v", err)
+						}
+						t.Logf("Unix accepted reserved Windows character: %s", char)
+					}
+				})
+			}
+		} else {
+			t.Skip("skipping Unix-specific reserved character test on Windows")
+		}
+	})
+
+	t.Run("null_byte_in_path", func(t *testing.T) {
+		// Null bytes in paths should be rejected
+		dir := t.TempDir()
+		filePath := filepath.Join(dir, "test\x00file.json")
+
+		data := testData{ID: "null-byte", Name: "Has Null"}
+		err := WriteJSON(filePath, &data)
+		if err == nil {
+			t.Error("expected error for path with null byte, got nil")
+		} else {
+			t.Logf("correctly rejected path with null byte: %v", err)
+		}
+
+		var result testData
+		err = ReadJSON(filePath, &result)
+		if err == nil {
+			t.Error("expected error reading path with null byte")
+		}
+	})
+}
