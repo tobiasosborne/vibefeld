@@ -75,13 +75,13 @@ func runAmend(cmd *cobra.Command, nodeIDStr, owner, statement, dir, format strin
 	// Create service
 	svc, err := service.NewProofService(dir)
 	if err != nil {
-		return fmt.Errorf("failed to open proof: %v", err)
+		return fmt.Errorf("failed to open proof: %w", err)
 	}
 
 	// Check if proof is initialized
 	status, err := svc.Status()
 	if err != nil {
-		return fmt.Errorf("failed to check proof status: %v", err)
+		return fmt.Errorf("failed to check proof status: %w", err)
 	}
 	if !status.Initialized {
 		return fmt.Errorf("proof not initialized. Run 'af init' first")
@@ -90,7 +90,7 @@ func runAmend(cmd *cobra.Command, nodeIDStr, owner, statement, dir, format strin
 	// Load state to get the original statement for output
 	st, err := svc.LoadState()
 	if err != nil {
-		return fmt.Errorf("failed to load state: %v", err)
+		return fmt.Errorf("failed to load state: %w", err)
 	}
 
 	n := st.GetNode(nodeID)
@@ -126,7 +126,7 @@ func runAmend(cmd *cobra.Command, nodeIDStr, owner, statement, dir, format strin
 		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
+			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		cmd.Println(string(jsonBytes))
 	} else {

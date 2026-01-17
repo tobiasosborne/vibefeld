@@ -192,7 +192,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		output := nodeToJSONFull(nodes[0], nodeChallenges, amendments, scopeInfo)
 		data, err := json.Marshal(output)
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
+			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		cmd.Println(string(data))
 		return nil
@@ -209,7 +209,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		}
 		data, err := json.Marshal(jsonNodes)
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
+			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		cmd.Println(string(data))
 	} else {
@@ -219,7 +219,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		}
 		data, err := json.Marshal(jsonNodes)
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
+			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		cmd.Println(string(data))
 	}

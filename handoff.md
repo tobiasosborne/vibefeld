@@ -1,66 +1,65 @@
-# Handoff - 2026-01-17 (Session 110)
+# Handoff - 2026-01-17 (Session 111)
 
 ## What Was Accomplished This Session
 
-### Session 110 Summary: Improved state Package Test Coverage 61.1% → 91.3%
+### Session 111 Summary: Fixed Inconsistent Error Wrapping Patterns
 
-Closed issue `vibefeld-hpof` - "MEDIUM: state package has only 57% test coverage"
+Closed issue `vibefeld-mvpa` - "Code smell: Inconsistent error wrapping patterns"
 
 #### Problem
 
-The `internal/state` package had only 61.1% test coverage. Several key functions had 0% coverage:
-- `replay.go`: `Replay`, `ReplayWithVerify`, `replayInternal`, `extractEventType`, `parseEvent`
-- `apply.go`: `applyClaimRefreshed`, `applyNodeAmended`, `applyScopeOpened`, `applyScopeClosed`
-- `state.go`: `GetDefinitionByName`, `OpenChallenges`, `LatestSeq`, `SetLatestSeq`, `AddAmendment`, `GetAmendmentHistory`, scope operations
+The codebase had inconsistent error wrapping patterns in cmd/af files:
+- Some errors wrapped with `%w` (correct Go 1.13+ pattern, preserves error chain)
+- Some errors wrapped with `%v` (loses error chain)
+- Some bare `return err` (may or may not be appropriate)
+
+The `%v` patterns were definitively incorrect as they break error unwrapping.
 
 #### Solution
 
-1. **Added tests for apply.go functions** (`apply_test.go`):
-   - `TestApplyClaimRefreshed` - happy path and error cases (non-existent node, not claimed, wrong owner)
-   - `TestApplyNodeAmended` - happy path, error cases, and amendment history tracking
-   - `TestApplyScopeOpened` - scope opening
-   - `TestApplyScopeClosed` - scope closing
+Changed all `%v` error wrapping to `%w` in cmd/af files:
 
-2. **Added tests for state.go methods** (`state_test.go`):
-   - `TestGetDefinitionByName` - retrieving definitions by name
-   - `TestOpenChallenges` - filtering only open challenges
-   - `TestLatestSeqAndSetLatestSeq` - sequence number getter/setter
-   - `TestAddAmendmentAndGetAmendmentHistory` - amendment tracking per-node
-   - `TestScopeOperations` - opening, closing, and querying scopes
-   - `TestScopeTracker` - access to underlying scope tracker
+| File | Changes |
+|------|---------|
+| `amend.go` | 4 occurrences fixed |
+| `release.go` | 4 occurrences fixed |
+| `scope.go` | 2 occurrences fixed |
+| `deps.go` | 4 occurrences fixed |
+| `get.go` | 3 occurrences fixed |
+| `refine.go` | 5 occurrences fixed |
 
-3. **Created new unit test file** (`replay_unit_test.go`):
-   - `TestExtractEventType_*` - tests for all 20 event types, whitespace variations, malformed JSON
-   - `TestParseEvent_*` - tests for parsing various event types, error handling
-   - `TestReplay_NilLedger` / `TestReplayWithVerify_NilLedger` - nil ledger handling
-   - `TestEventFactoriesCompleteness` - verifies all event types have factories
-
-Coverage improved: **61.1% → 91.3%** (30% improvement!)
+Total: 22 `%v` → `%w` conversions
 
 ### Files Changed
 
-- `internal/state/apply_test.go` - Added ~300 lines of new tests
-- `internal/state/state_test.go` - Added ~360 lines of new tests
-- `internal/state/replay_unit_test.go` - New file with ~330 lines of unit tests
+- `cmd/af/amend.go` - Fixed 4 error wrapping patterns
+- `cmd/af/release.go` - Fixed 4 error wrapping patterns
+- `cmd/af/scope.go` - Fixed 2 error wrapping patterns
+- `cmd/af/deps.go` - Fixed 4 error wrapping patterns
+- `cmd/af/get.go` - Fixed 3 error wrapping patterns
+- `cmd/af/refine.go` - Fixed 5 error wrapping patterns
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-hpof** | Closed | Test coverage improved from 61.1% to 91.3% |
+| **vibefeld-mvpa** | Closed | Fixed all `%v` to `%w` error wrapping in cmd/af files |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 74 (was 75)
-- **Closed:** 475 (was 474)
+- **Open:** 73 (was 74)
+- **Closed:** 476 (was 475)
 
 ### Test Status
 All tests pass. Build succeeds.
 
-### Coverage Summary
-- state package: 91.3% (was 61.1%)
-- Remaining gaps: `replayInternal` (8%) - requires integration tests (filesystem-based)
+### Verification
+```bash
+# Confirm no more %v error wrapping remains
+grep -rn 'return fmt\.Errorf.*%v", err)' cmd/af/
+# Returns: No matches found
+```
 
 ## Remaining P1 Issues
 
@@ -81,7 +80,9 @@ All tests pass. Build succeeds.
 6. Add benchmarks for critical paths (`vibefeld-qrzs`)
 
 ### P2 Code Quality
-7. Inconsistent error wrapping patterns (`vibefeld-mvpa`)
+7. String contains checks instead of error types (`vibefeld-gd70`)
+8. Overloaded RefineNode methods should consolidate (`vibefeld-ns9q`)
+9. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
 
 ### Follow-up Work (Not Tracked as Issues)
 - Migrate remaining ~30 CLI files to use `cli.Must*` helpers (incremental, low priority)
@@ -98,12 +99,13 @@ go test ./...
 # Run integration tests
 go test -tags=integration ./...
 
-# Check state package coverage
-go test -cover ./internal/state/...
+# Check for remaining inconsistent error patterns
+grep -rn 'return fmt\.Errorf.*%v", err)' cmd/af/
 ```
 
 ## Session History
 
+**Session 111:** Closed 1 issue (fixed inconsistent error wrapping - 22 `%v` → `%w` conversions in 6 cmd/af files)
 **Session 110:** Closed 1 issue (state package coverage 61.1% → 91.3% - added tests for ClaimRefreshed, NodeAmended, scope operations, replay.go unit tests)
 **Session 109:** Closed 1 issue (scope package coverage 59.5% → 100% - removed integration build tags, added sorting test)
 **Session 108:** Closed 1 issue (silent JSON unmarshal error - explicit error handling in claim.go)

@@ -58,18 +58,18 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 	// Parse node ID
 	nodeID, err := types.Parse(nodeIDStr)
 	if err != nil {
-		return fmt.Errorf("invalid node ID %q: %v", nodeIDStr, err)
+		return fmt.Errorf("invalid node ID %q: %w", nodeIDStr, err)
 	}
 
 	// Create service and load state
 	svc, err := service.NewProofService(dir)
 	if err != nil {
-		return fmt.Errorf("failed to load proof: %v", err)
+		return fmt.Errorf("failed to load proof: %w", err)
 	}
 
 	st, err := svc.LoadState()
 	if err != nil {
-		return fmt.Errorf("failed to load state: %v", err)
+		return fmt.Errorf("failed to load state: %w", err)
 	}
 
 	// Get the target node
@@ -161,7 +161,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
+			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		cmd.Println(string(jsonBytes))
 	} else {

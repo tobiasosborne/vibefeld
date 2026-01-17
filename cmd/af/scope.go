@@ -171,7 +171,7 @@ func outputScopeJSON(cmd *cobra.Command, nodeID types.NodeID, info *scope.ScopeI
 
 	data, err := json.Marshal(result)
 	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %v", err)
+		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 	cmd.Println(string(data))
 	return nil
@@ -224,7 +224,7 @@ func outputAllScopesJSON(cmd *cobra.Command, allScopes, activeScopes []*scope.En
 
 	data, err := json.Marshal(result)
 	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %v", err)
+		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 	cmd.Println(string(data))
 	return nil

@@ -157,7 +157,7 @@ func formatMultiChildOutput(cmd *cobra.Command, format, parentIDStr string, spec
 		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
+			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		cmd.Println(string(jsonBytes))
 		return nil
@@ -219,7 +219,7 @@ func formatRefineOutput(cmd *cobra.Command, format string, params refineOutputPa
 		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
+			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		cmd.Println(string(jsonBytes))
 		return nil
@@ -372,7 +372,7 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 	// Create service
 	svc, err := service.NewProofService(dir)
 	if err != nil {
-		return fmt.Errorf("failed to open proof: %v", err)
+		return fmt.Errorf("failed to open proof: %w", err)
 	}
 
 	// Load state to determine next child ID
@@ -383,7 +383,7 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 			strings.Contains(errStr, "no such file or directory") || strings.Contains(errStr, "does not exist") {
 			return fmt.Errorf("proof not initialized. Run 'af init' first")
 		}
-		return fmt.Errorf("failed to load state: %v", err)
+		return fmt.Errorf("failed to load state: %w", err)
 	}
 
 	// Check if node exists
@@ -430,7 +430,7 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 
 	// Validate definition citations in statement
 	if err := lemma.ValidateDefCitations(statement, st); err != nil {
-		return fmt.Errorf("invalid definition citation: %v", err)
+		return fmt.Errorf("invalid definition citation: %w", err)
 	}
 
 	// Parse and validate dependencies

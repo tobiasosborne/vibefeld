@@ -75,15 +75,15 @@ func runRelease(cmd *cobra.Command, args []string) error {
 	svc, err := service.NewProofService(dir)
 	if err != nil {
 		if strings.Contains(err.Error(), "not exist") {
-			return fmt.Errorf("proof not initialized: %v", err)
+			return fmt.Errorf("proof not initialized: %w", err)
 		}
-		return fmt.Errorf("failed to open proof: %v", err)
+		return fmt.Errorf("failed to open proof: %w", err)
 	}
 
 	// Check if proof is initialized by loading state
 	st, err := svc.LoadState()
 	if err != nil {
-		return fmt.Errorf("proof not initialized: %v", err)
+		return fmt.Errorf("proof not initialized: %w", err)
 	}
 
 	// Check if node exists before attempting release
@@ -120,7 +120,7 @@ func runRelease(cmd *cobra.Command, args []string) error {
 	if format == "json" {
 		output, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %v", err)
+			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), string(output))
 	} else {
