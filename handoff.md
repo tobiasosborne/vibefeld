@@ -1,54 +1,67 @@
-# Handoff - 2026-01-17 (Session 125)
+# Handoff - 2026-01-17 (Session 126)
 
 ## What Was Accomplished This Session
 
-### Session 125 Summary: Added actionable challenge guidance in prover context
+### Session 126 Summary: Improved accept command blocking challenges guidance
 
 Closed 1 issue this session:
 
-1. **vibefeld-8nh8** - "CLI UX: Prover context lacks actionable guidance on challenges"
-   - Added per-challenge actionable command suggestions for open challenges
-   - Shows specific `af refine` command with `--children` JSON for each open challenge
-   - Updated summary guidance to explain the challenge workflow
+1. **vibefeld-o1aj** - "CLI UX: Accept command blocking challenges guidance minimal"
+   - Added "To investigate" section with specific commands for the blocked node
+   - Shows `af show <node-id>` and `af challenges --node <node-id>` commands
+   - Fixed command names from `af resolve` to `af resolve-challenge` and `af withdraw` to `af withdraw-challenge`
 
 #### Changes Made
 
 | File | Change |
 |------|--------|
-| `internal/render/prover_context.go` | Added per-challenge actionable guidance for open challenges |
-| `internal/render/render_views.go` | Added per-challenge actionable guidance for open challenges |
+| `cmd/af/accept.go` | Added investigation commands and corrected resolve/withdraw command names in blocking challenges guidance |
 
 ### Example Output Before/After
 
 **Before:**
 ```
-Challenges (2 total, 1 open):
-  [ch-abc123] "Missing justification" (open)
+Cannot accept node 1.1: blocking challenges must be resolved first.
 
-  To address challenges, use 'af refine' with --addresses flag.
+Blocking Challenges:
+  1. [ch-abc123] 1.1 (severity: blocking)
+     Reason: Missing justification
+
+How to resolve:
+  - Use 'af refine' to address the challenges by improving the proof
+  - Use 'af resolve <challenge-id>' to resolve a challenge with an explanation
+  - Use 'af withdraw <challenge-id>' to withdraw a challenge if it was raised in error
 ```
 
 **After:**
 ```
-Challenges (2 total, 1 open):
-  [ch-abc123] "Missing justification" (open)
-       -> Address with: af refine 1.1 --children '[{"statement":"...","addresses_challenges":["ch-abc123"]}]'
+Cannot accept node 1.1: blocking challenges must be resolved first.
 
-  Add child nodes with 'addresses_challenges' to respond to open challenges.
-  Once addressed, the verifier can resolve them with 'af resolve-challenge'.
+Blocking Challenges:
+  1. [ch-abc123] 1.1 (severity: blocking)
+     Reason: Missing justification
+
+To investigate:
+  af show 1.1              View node details and context
+  af challenges --node 1.1  List all challenges on this node
+
+How to resolve:
+  - Use 'af refine' to address the challenges by improving the proof
+  - Use 'af resolve-challenge <challenge-id>' to mark a challenge resolved
+  - Use 'af withdraw-challenge <challenge-id>' to withdraw a challenge raised in error
 ```
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-8nh8** | Closed | Added per-challenge actionable guidance with specific af refine commands |
+| **vibefeld-o1aj** | Closed | Added investigation commands and corrected command names in blocking challenges guidance |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 58 (was 59)
-- **Closed:** 491 (was 490)
+- **Open:** 57 (was 58)
+- **Closed:** 492 (was 491)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -107,6 +120,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 126:** Closed 1 issue (CLI UX - accept command blocking challenges guidance)
 **Session 125:** Closed 1 issue (CLI UX - actionable challenge guidance in prover context)
 **Session 124:** Closed 1 issue (CLI UX - comprehensive workflow guidance after init command)
 **Session 123:** Closed 2 issues (CLI UX - jobs command claim guidance, verified ep41 already fixed)

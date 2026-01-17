@@ -375,10 +375,14 @@ func outputBlockingChallengesText(cmd *cobra.Command, nodeID types.NodeID, chall
 		sb.WriteString("\n")
 	}
 
+	sb.WriteString(fmt.Sprintf("To investigate:\n"))
+	sb.WriteString(fmt.Sprintf("  af show %s              View node details and context\n", nodeID.String()))
+	sb.WriteString(fmt.Sprintf("  af challenges --node %s  List all challenges on this node\n", nodeID.String()))
+	sb.WriteString("\n")
 	sb.WriteString("How to resolve:\n")
 	sb.WriteString("  - Use 'af refine' to address the challenges by improving the proof\n")
-	sb.WriteString("  - Use 'af resolve <challenge-id>' to resolve a challenge with an explanation\n")
-	sb.WriteString("  - Use 'af withdraw <challenge-id>' to withdraw a challenge if it was raised in error\n")
+	sb.WriteString("  - Use 'af resolve-challenge <challenge-id>' to mark a challenge resolved\n")
+	sb.WriteString("  - Use 'af withdraw-challenge <challenge-id>' to withdraw a challenge raised in error\n")
 
 	// Print the output
 	fmt.Fprint(cmd.OutOrStdout(), sb.String())
