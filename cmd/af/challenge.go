@@ -51,7 +51,12 @@ Examples:
   af challenge 1.2 --reason "Missing case" --target completeness
   af challenge 1 --severity critical --reason "This is fundamentally wrong"
   af challenge 1 --severity note --reason "Consider clarifying this step"
-  af challenge 1 -r "Statement is unclear" -t statement -d ./proof`,
+  af challenge 1 -r "Statement is unclear" -t statement -d ./proof
+
+Workflow:
+  After raising a challenge, the prover must address it. Use 'af challenges'
+  to monitor status. Use 'af resolve-challenge' to mark it resolved or
+  'af withdraw-challenge' if no longer relevant.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runChallenge,
 	}

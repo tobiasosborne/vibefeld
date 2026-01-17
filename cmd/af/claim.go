@@ -31,7 +31,12 @@ Examples:
   af claim 1 --owner prover-001 --role prover
   af claim 1.2 --owner verifier-alpha --timeout 30m --role verifier
   af claim 1 -o prover-001 -r prover -t 2h --format json
-  af claim 1 --owner prover-001 --refresh --timeout 2h`,
+  af claim 1 --owner prover-001 --refresh --timeout 2h
+
+Workflow:
+  After claiming a node as a prover, use 'af refine' to develop the proof.
+  As a verifier, use 'af challenge' to raise objections or 'af accept' to validate.
+  Use 'af release' if you cannot complete the work.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runClaim,
 	}

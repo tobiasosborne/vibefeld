@@ -26,7 +26,11 @@ objection raised by a verifier.
 
 Examples:
   af resolve-challenge chal-001 --response "The statement is clarified..."
-  af resolve-challenge ch-abc123 -r "Here is the proof of the step..." -d ./proof`,
+  af resolve-challenge ch-abc123 -r "Here is the proof of the step..." -d ./proof
+
+Workflow:
+  After resolving a challenge, use 'af challenges' to check remaining issues.
+  Once all blocking challenges are resolved, the node can be accepted with 'af accept'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runResolveChallenge,
 	}

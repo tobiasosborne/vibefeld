@@ -33,7 +33,11 @@ raised it when they determine the challenge is no longer valid or relevant.
 Examples:
   af withdraw-challenge chal-001            Withdraw challenge chal-001
   af withdraw-challenge chal-abc123 -d .    Withdraw challenge in current directory
-  af withdraw-challenge chal-xyz -f json    Withdraw and output result as JSON`,
+  af withdraw-challenge chal-xyz -f json    Withdraw and output result as JSON
+
+Workflow:
+  After withdrawing a challenge, use 'af challenges' to check remaining issues.
+  Once all blocking challenges are resolved, the node can be accepted with 'af accept'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runWithdrawChallenge,
 	}

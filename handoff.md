@@ -1,67 +1,54 @@
-# Handoff - 2026-01-17 (Session 121)
+# Handoff - 2026-01-17 (Session 122)
 
 ## What Was Accomplished This Session
 
-### Session 121 Summary: Fixed Config() Silent Error Swallowing
+### Session 122 Summary: Added Workflow sections to CLI help text
 
-Closed issue `vibefeld-tigb` - "Error handling: Config() silently swallows errors"
+Closed issue `vibefeld-rg7n` - "CLI UX: Missing 'Next Steps' in help text itself"
 
 #### Problem
 
-`Config()` method silently returned a default config when `LoadConfig()` failed:
-
-```go
-func (s *ProofService) Config() *config.Config {
-    cfg, err := s.LoadConfig()
-    if err != nil {
-        return config.Default()  // ERROR SILENTLY SWALLOWED!
-    }
-    return cfg
-}
-```
-
-Callers couldn't distinguish between:
-- Valid default config (when meta.json doesn't exist - normal for uninitialized proofs)
-- Actual errors (permission denied, corrupt JSON, etc.)
-
-This could lead to silently applying wrong depth/children limits when config fails to load.
+Command help showed examples but didn't guide users to logical next commands. For example, `af claim --help` showed how to claim a node but didn't mention what to do next (use `af refine` as prover or `af accept`/`af challenge` as verifier).
 
 #### Solution
 
-Changed `Config()` to return `(*config.Config, error)` and updated all callers:
+Added a "Workflow:" section to the `Long` description of 9 key commands:
 
-```go
-func (s *ProofService) Config() (*config.Config, error) {
-    return s.LoadConfig()
-}
-```
-
-Updated callers:
-- `LockTimeout()` now returns `(time.Duration, error)`
-- `validateDepth()` wraps config errors
-- `validateChildCount()` wraps config errors
-- `RefineNodeBulk()` handles config loading errors
-- `cmd/af/refine.go findNextChildID()` handles error
-- Test files updated to check errors
+| Command | Workflow Guidance Added |
+|---------|------------------------|
+| `init` | Use `af status`, then `af jobs`, then `af claim` |
+| `claim` | Prover: use `af refine`. Verifier: use `af challenge`/`af accept`. Use `af release` if can't complete |
+| `refine` | Continue with `af refine` or use `af status` |
+| `accept` | Use `af status`, `af progress`, or `af jobs` for next work |
+| `challenge` | Use `af challenges` to monitor, `af resolve-challenge`/`af withdraw-challenge` to handle |
+| `release` | Use `af jobs` or `af claim` for other work |
+| `resolve-challenge` | Use `af challenges`, then `af accept` when clear |
+| `withdraw-challenge` | Use `af challenges`, then `af accept` when clear |
+| `admit` | Use `af status` to see taint, consider `af accept` later |
 
 ### Files Changed
 
-- `internal/service/proof.go` - Changed Config() and LockTimeout() signatures, updated internal callers
-- `internal/service/proof_test.go` - Updated LockTimeout test
-- `internal/service/service_test.go` - Updated Config() and LockTimeout() tests
-- `cmd/af/refine.go` - Updated findNextChildID() to handle Config() error
+- `cmd/af/init.go` - Added Workflow section
+- `cmd/af/claim.go` - Added Workflow section
+- `cmd/af/refine.go` - Added Workflow section
+- `cmd/af/accept.go` - Added Workflow section
+- `cmd/af/challenge.go` - Added Workflow section
+- `cmd/af/release.go` - Added Workflow section
+- `cmd/af/resolve_challenge.go` - Added Workflow section
+- `cmd/af/withdraw_challenge.go` - Added Workflow section
+- `cmd/af/admit.go` - Added Workflow section
 
 ### Issue Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-tigb** | Closed | Config() now returns (*Config, error) instead of silently swallowing errors. All 6 callers updated to handle errors properly. |
+| **vibefeld-rg7n** | Closed | Added Workflow section to help text for 9 key commands |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 63 (was 64)
-- **Closed:** 486 (was 485)
+- **Open:** 62 (was 63)
+- **Closed:** 487 (was 486)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -70,10 +57,10 @@ All tests pass. Build succeeds.
 
 ### Verification
 ```bash
-# Run service tests
-go test ./internal/service/... -v
+# Verify workflow section in help
+./af claim --help | grep -A5 "Workflow:"
 
-# Run all tests
+# Run tests
 go test ./...
 
 # Build
@@ -118,6 +105,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 122:** Closed 1 issue (CLI UX - added Workflow sections to 9 command help texts)
 **Session 121:** Closed 1 issue (Config() silent error swallowing - now returns error, updated all callers)
 **Session 120:** Closed 1 issue (RefineNode method consolidation - updated RefineNode and RefineNodeWithDeps to delegate to Refine)
 **Session 119:** Closed 1 issue (RefineNodeWithAllDeps parameter consolidation - added RefineSpec struct and Refine() method)

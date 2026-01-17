@@ -39,7 +39,11 @@ Use --list-templates to see all available templates.
 Example:
   af init --conjecture "All primes greater than 2 are odd" --author "Claude"
   af init -c "P = NP" -a "Alice" -d ./my-proof
-  af init -c "Sum of first n integers is n(n+1)/2" -a "Claude" --template induction`,
+  af init -c "Sum of first n integers is n(n+1)/2" -a "Claude" --template induction
+
+Workflow:
+  After initialization, use 'af status' to view the proof tree, then 'af jobs'
+  to see available work, and 'af claim' to start working on a node.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Handle --list-templates flag
 			if listTemplates {

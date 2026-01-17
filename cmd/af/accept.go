@@ -53,7 +53,12 @@ Examples:
   af accept 1 --with-note "Consider clarifying step 2"
   af accept 1 -d ./proof   Accept using specific directory
   af accept 1 --agent verifier-1  Accept with agent verification
-  af accept 1 --agent v1 --confirm  Accept without having raised challenges`,
+  af accept 1 --agent v1 --confirm  Accept without having raised challenges
+
+Workflow:
+  After accepting, use 'af status' to see the updated proof tree and
+  'af progress' to check overall completion. Use 'af jobs' to find the next
+  node to verify.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAccept(cmd, args, acceptAll, withNote, confirm, agent)

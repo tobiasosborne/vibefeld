@@ -302,7 +302,11 @@ Examples:
   af refine 1 --owner agent1 --children '[{"statement":"Child 1"},{"statement":"Child 2","type":"case"}]'
   af refine 1 --owner agent1 -s "By step 1.1, we have..." --depends 1.1
   af refine 1 --owner agent1 -s "Combining steps 1.1 and 1.2..." --depends 1.1,1.2
-  af refine 1.5 --owner agent1 -s "Step 1.5" --requires-validated 1.1,1.2,1.3,1.4`,
+  af refine 1.5 --owner agent1 -s "Step 1.5" --requires-validated 1.1,1.2,1.3,1.4
+
+Workflow:
+  Continue with 'af refine' to add more children or deepen the proof.
+  Use 'af status' to view the updated proof tree.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// args[0] is the parent ID, args[1:] are optional positional statements

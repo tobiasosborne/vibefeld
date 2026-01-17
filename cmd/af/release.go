@@ -28,7 +28,11 @@ Examples:
   af release 1 --owner prover-001           Release root node
   af release 1.2.3 -o prover-001            Release using short owner flag
   af release 1 -o prover-001 -d ./proof     Release using specific directory
-  af release 1 -o prover-001 -f json        Release with JSON output`,
+  af release 1 -o prover-001 -f json        Release with JSON output
+
+Workflow:
+  After releasing, the node becomes available for other agents. Use 'af jobs'
+  to find other work, or 'af claim' to claim a different node.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runRelease,
 	}

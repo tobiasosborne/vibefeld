@@ -26,7 +26,11 @@ verification. Any nodes that depend on an admitted node will inherit taint.
 Examples:
   af admit 1          Admit the root node
   af admit 1.2.3      Admit a specific child node
-  af admit 1 -d ./proof  Admit using specific directory`,
+  af admit 1 -d ./proof  Admit using specific directory
+
+Workflow:
+  After admitting, use 'af status' to see the taint propagation. Consider
+  returning later to properly verify the node with 'af accept'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runAdmit,
 	}
