@@ -1,65 +1,28 @@
-# Handoff - 2026-01-17 (Session 130)
+# Handoff - 2026-01-17 (Session 131)
 
 ## What Was Accomplished This Session
 
-### Session 130 Summary: Status command `--urgent` flag for filtering urgent items
+### Session 131 Summary: Closed duplicate issue (getting started guide)
 
 Closed 1 issue this session:
 
-1. **vibefeld-pysc** - "CLI UX: Status output doesn't highlight urgent items"
-   - Added `--urgent` / `-u` flag to status command
-   - Filters to show only urgent items needing immediate attention:
-     - Nodes with blocking challenges (critical or major severity)
-     - Available prover jobs (available + pending nodes needing refinement)
-     - Ready verifier jobs (claimed + pending with all children validated)
-   - Groups items by category with counts
-   - Includes summary section
-   - Supports JSON output format with `--urgent --format json`
-
-#### Changes Made
-
-| File | Change |
-|------|--------|
-| `cmd/af/status.go` | Added `--urgent` flag, updated help text with urgent mode documentation |
-| `cmd/af/status_test.go` | Added tests for urgent flag existence and default value |
-| `internal/render/status.go` | Added `UrgentItem` struct, `FilterUrgentNodes()` function, `RenderStatusUrgent()` function, `truncateStatement()` helper |
-| `internal/render/status_test.go` | Added 13 tests for urgent mode (filtering, rendering, edge cases) |
-| `internal/render/json.go` | Added `JSONUrgentStatus`, `JSONUrgentItem`, `JSONUrgentSummary` structs, `RenderStatusUrgentJSON()` function |
-
-### Example Output (af status --urgent)
-
-```
-=== Urgent Items ===
-
---- Blocking Challenges (1) ---
-  1.2: Proof step needs justification
-    [critical] statement: Missing justification for claim
-
---- Prover Jobs (2) ---
-  1: Root theorem to prove
-  1.1: First lemma
-
---- Verifier Jobs (1) ---
-  1.3: Completed step ready for review
-
---- Summary ---
-Total urgent items: 4
-  Blocking challenges: 1 (resolve before accepting)
-  Prover jobs: 2 (claim and refine)
-  Verifier jobs: 1 (review and accept/challenge)
-```
+1. **vibefeld-w2r7** - "CLI UX: No 'getting started' guide in help"
+   - Verified this was already fixed in commit `c85f0fc` (2026-01-17)
+   - The root command's Long description already contains a comprehensive "Typical Workflow" section with 6 numbered steps
+   - Shows: init → status → claim/refine/release → challenge → resolve-challenge → accept
+   - Issue was a duplicate of `vibefeld-ugda` which was closed previously
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-pysc** | Closed | Added --urgent flag to status command to filter and show only urgent items |
+| **vibefeld-w2r7** | Closed | Already fixed - 'Typical Workflow' section exists in main.go Long description (added in commit c85f0fc on 2026-01-17) |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 53 (was 54)
-- **Closed:** 496 (was 495)
+- **Open:** 52 (was 53)
+- **Closed:** 497 (was 496)
 
 ### Test Status
 All tests pass. Build succeeds.
@@ -106,7 +69,6 @@ Pre-existing duplicate test declarations in `internal/render/` (`json_unit_test.
 ### P2 CLI UX
 6. Add role-specific context section to each command's help (`vibefeld-n7bl`)
 7. No role-specific command filtering (`vibefeld-fsqm`)
-8. No 'getting started' guide in help (`vibefeld-w2r7`)
 
 ## Quick Commands
 
@@ -126,6 +88,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 131:** Closed 1 issue (CLI UX - verified getting started guide already fixed, closed duplicate)
 **Session 130:** Closed 1 issue (CLI UX - status --urgent flag for filtering urgent items)
 **Session 129:** Closed 1 issue (CLI UX - challenge severity/blocking display in prover context)
 **Session 128:** Closed 1 issue (CLI UX - challenge target guidance for verifiers)
