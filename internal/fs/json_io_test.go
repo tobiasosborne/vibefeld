@@ -1832,3 +1832,331 @@ func TestJSON_VeryLongFilePath(t *testing.T) {
 		}
 	})
 }
+
+// TestJSON_SpecialCharactersInPath tests ReadJSON and WriteJSON behavior with
+// paths containing characters that have special meaning in JSON encoding.
+// These characters need proper escaping when embedded in JSON strings:
+// - Backslashes (\) - JSON escape character
+// - Quotes (") - JSON string delimiter
+// - Control characters (newline, tab, carriage return)
+// - Unicode escape sequences
+//
+// This test verifies that file operations work correctly and data isn't
+// corrupted when paths contain these JSON-sensitive characters.
+func TestJSON_SpecialCharactersInPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping special character path tests on Windows (different path restrictions)")
+	}
+
+	t.Run("backslash_in_filename", func(t *testing.T) {
+		// Backslashes have special meaning in JSON (escape character)
+		// On Unix, backslash is a valid filename character
+		dir := t.TempDir()
+		filePath := filepath.Join(dir, "test\\data.json")
+
+		data := testData{ID: "backslash-test", Name: "Has\\Backslash", Count: 42}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			t.Fatalf("WriteJSON failed with backslash in path: %v", err)
+		}
+
+		var result testData
+		if err := ReadJSON(filePath, &result); err != nil {
+			t.Fatalf("ReadJSON failed: %v", err)
+		}
+
+		if result.ID != "backslash-test" {
+			t.Errorf("ID mismatch: expected 'backslash-test', got '%s'", result.ID)
+		}
+		if result.Name != "Has\\Backslash" {
+			t.Errorf("Name mismatch: expected 'Has\\Backslash', got '%s'", result.Name)
+		}
+		t.Log("backslash in filename handled correctly")
+	})
+
+	t.Run("double_quote_in_filename", func(t *testing.T) {
+		// Double quotes are JSON string delimiters
+		// On Unix, quotes are valid filename characters
+		dir := t.TempDir()
+		filePath := filepath.Join(dir, "test\"quoted\".json")
+
+		data := testData{ID: "quote-test", Name: "Has\"Quotes\"", Count: 100}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			t.Fatalf("WriteJSON failed with quotes in path: %v", err)
+		}
+
+		var result testData
+		if err := ReadJSON(filePath, &result); err != nil {
+			t.Fatalf("ReadJSON failed: %v", err)
+		}
+
+		if result.ID != "quote-test" {
+			t.Errorf("ID mismatch: expected 'quote-test', got '%s'", result.ID)
+		}
+		if result.Name != "Has\"Quotes\"" {
+			t.Errorf("Name mismatch: expected 'Has\"Quotes\"', got '%s'", result.Name)
+		}
+		t.Log("quotes in filename handled correctly")
+	})
+
+	t.Run("newline_in_filename", func(t *testing.T) {
+		// Newlines must be escaped in JSON strings (\n)
+		// On Unix, newline is a valid (though unusual) filename character
+		dir := t.TempDir()
+		filePath := filepath.Join(dir, "test\ndata.json")
+
+		data := testData{ID: "newline-test", Name: "Line1\nLine2", Count: 1}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			t.Logf("WriteJSON failed with newline in path (may be OS restriction): %v", err)
+			return
+		}
+
+		var result testData
+		if err := ReadJSON(filePath, &result); err != nil {
+			t.Fatalf("ReadJSON failed: %v", err)
+		}
+
+		if result.ID != "newline-test" {
+			t.Errorf("ID mismatch: expected 'newline-test', got '%s'", result.ID)
+		}
+		if result.Name != "Line1\nLine2" {
+			t.Errorf("Name mismatch: expected 'Line1\\nLine2', got '%s'", result.Name)
+		}
+		t.Log("newline in filename handled correctly")
+	})
+
+	t.Run("tab_in_filename", func(t *testing.T) {
+		// Tabs must be escaped in JSON strings (\t)
+		dir := t.TempDir()
+		filePath := filepath.Join(dir, "test\tdata.json")
+
+		data := testData{ID: "tab-test", Name: "Col1\tCol2", Count: 2}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			t.Logf("WriteJSON failed with tab in path (may be OS restriction): %v", err)
+			return
+		}
+
+		var result testData
+		if err := ReadJSON(filePath, &result); err != nil {
+			t.Fatalf("ReadJSON failed: %v", err)
+		}
+
+		if result.ID != "tab-test" {
+			t.Errorf("ID mismatch: expected 'tab-test', got '%s'", result.ID)
+		}
+		if result.Name != "Col1\tCol2" {
+			t.Errorf("Name mismatch: expected 'Col1\\tCol2', got '%s'", result.Name)
+		}
+		t.Log("tab in filename handled correctly")
+	})
+
+	t.Run("carriage_return_in_filename", func(t *testing.T) {
+		// Carriage returns must be escaped in JSON strings (\r)
+		dir := t.TempDir()
+		filePath := filepath.Join(dir, "test\rdata.json")
+
+		data := testData{ID: "cr-test", Name: "Line\rReturn", Count: 3}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			t.Logf("WriteJSON failed with CR in path (may be OS restriction): %v", err)
+			return
+		}
+
+		var result testData
+		if err := ReadJSON(filePath, &result); err != nil {
+			t.Fatalf("ReadJSON failed: %v", err)
+		}
+
+		if result.ID != "cr-test" {
+			t.Errorf("ID mismatch: expected 'cr-test', got '%s'", result.ID)
+		}
+		if result.Name != "Line\rReturn" {
+			t.Errorf("Name mismatch: expected 'Line\\rReturn', got '%s'", result.Name)
+		}
+		t.Log("carriage return in filename handled correctly")
+	})
+
+	t.Run("backslash_escape_sequences_in_filename", func(t *testing.T) {
+		// Test filenames that look like JSON escape sequences
+		dir := t.TempDir()
+
+		testCases := []struct {
+			name     string
+			fileName string
+		}{
+			{"looks_like_escaped_n", "test\\n.json"},
+			{"looks_like_escaped_t", "test\\t.json"},
+			{"looks_like_escaped_r", "test\\r.json"},
+			{"looks_like_escaped_quote", "test\\\".json"},
+			{"double_backslash", "test\\\\.json"},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				filePath := filepath.Join(dir, tc.fileName)
+				data := testData{ID: tc.name, Name: "Test Data", Count: 99}
+
+				err := WriteJSON(filePath, &data)
+				if err != nil {
+					t.Logf("WriteJSON failed for %s: %v", tc.name, err)
+					return
+				}
+
+				var result testData
+				if err := ReadJSON(filePath, &result); err != nil {
+					t.Fatalf("ReadJSON failed for %s: %v", tc.name, err)
+				}
+
+				if result.ID != tc.name {
+					t.Errorf("ID mismatch for %s: expected '%s', got '%s'", tc.name, tc.name, result.ID)
+				}
+			})
+		}
+	})
+
+	t.Run("unicode_control_characters", func(t *testing.T) {
+		// Test ASCII control characters (0x01-0x1F except those already tested)
+		dir := t.TempDir()
+
+		// Test a subset of control characters
+		controlChars := []struct {
+			name string
+			char byte
+		}{
+			{"bell", 0x07},
+			{"backspace", 0x08},
+			{"form_feed", 0x0C},
+			{"vertical_tab", 0x0B},
+		}
+
+		for _, cc := range controlChars {
+			t.Run(cc.name, func(t *testing.T) {
+				fileName := fmt.Sprintf("test%cdata.json", cc.char)
+				filePath := filepath.Join(dir, fileName)
+
+				data := testData{ID: cc.name, Name: fmt.Sprintf("Has %s char", cc.name), Count: int(cc.char)}
+
+				err := WriteJSON(filePath, &data)
+				if err != nil {
+					t.Logf("WriteJSON failed for control char %s (0x%02x): %v", cc.name, cc.char, err)
+					return
+				}
+
+				var result testData
+				if err := ReadJSON(filePath, &result); err != nil {
+					t.Fatalf("ReadJSON failed: %v", err)
+				}
+
+				if result.ID != cc.name {
+					t.Errorf("ID mismatch: expected '%s', got '%s'", cc.name, result.ID)
+				}
+				t.Logf("control character %s (0x%02x) in filename handled correctly", cc.name, cc.char)
+			})
+		}
+	})
+
+	t.Run("mixed_special_characters", func(t *testing.T) {
+		// Test filename with multiple JSON-sensitive characters combined
+		dir := t.TempDir()
+		filePath := filepath.Join(dir, "test\\with\"special.json")
+
+		data := testData{
+			ID:      "mixed-special",
+			Name:    "Has\\\"Mixed\nSpecial\tChars",
+			Count:   777,
+			Enabled: true,
+		}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			t.Fatalf("WriteJSON failed with mixed special chars: %v", err)
+		}
+
+		var result testData
+		if err := ReadJSON(filePath, &result); err != nil {
+			t.Fatalf("ReadJSON failed: %v", err)
+		}
+
+		if result.ID != data.ID {
+			t.Errorf("ID mismatch: expected '%s', got '%s'", data.ID, result.ID)
+		}
+		if result.Name != data.Name {
+			t.Errorf("Name mismatch: expected '%s', got '%s'", data.Name, result.Name)
+		}
+		if result.Count != data.Count {
+			t.Errorf("Count mismatch: expected %d, got %d", data.Count, result.Count)
+		}
+		t.Log("mixed special characters handled correctly")
+	})
+
+	t.Run("directory_with_special_chars", func(t *testing.T) {
+		// Test nested directories with special characters
+		dir := t.TempDir()
+		specialDir := filepath.Join(dir, "path\\with", "special\"chars")
+
+		// WriteJSON should create parent directories
+		filePath := filepath.Join(specialDir, "data.json")
+
+		data := testData{ID: "nested-special", Name: "In Special Dir", Count: 888}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			t.Fatalf("WriteJSON failed creating dirs with special chars: %v", err)
+		}
+
+		// Verify the directories were created
+		if _, err := os.Stat(specialDir); os.IsNotExist(err) {
+			t.Error("special directory was not created")
+		}
+
+		var result testData
+		if err := ReadJSON(filePath, &result); err != nil {
+			t.Fatalf("ReadJSON failed: %v", err)
+		}
+
+		if result.ID != "nested-special" {
+			t.Errorf("ID mismatch: expected 'nested-special', got '%s'", result.ID)
+		}
+		t.Log("directories with special characters handled correctly")
+	})
+
+	t.Run("json_content_with_path_like_strings", func(t *testing.T) {
+		// Test that JSON content containing path-like strings doesn't interfere
+		dir := t.TempDir()
+		filePath := filepath.Join(dir, "paths.json")
+
+		// Data containing strings that look like file paths
+		data := testData{
+			ID:      "/path/to/file.json",
+			Name:    "C:\\Windows\\System32\\config",
+			Count:   123,
+			Enabled: true,
+		}
+
+		err := WriteJSON(filePath, &data)
+		if err != nil {
+			t.Fatalf("WriteJSON failed: %v", err)
+		}
+
+		var result testData
+		if err := ReadJSON(filePath, &result); err != nil {
+			t.Fatalf("ReadJSON failed: %v", err)
+		}
+
+		if result.ID != data.ID {
+			t.Errorf("ID mismatch: expected '%s', got '%s'", data.ID, result.ID)
+		}
+		if result.Name != data.Name {
+			t.Errorf("Name mismatch: expected '%s', got '%s'", data.Name, result.Name)
+		}
+		t.Log("JSON content with path-like strings handled correctly")
+	})
+}

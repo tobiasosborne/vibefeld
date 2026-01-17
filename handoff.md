@@ -1,49 +1,50 @@
-# Handoff - 2026-01-17 (Session 140)
+# Handoff - 2026-01-17 (Session 141)
 
 ## What Was Accomplished This Session
 
-### Session 140 Summary: Add very long file path edge case test for FS package
+### Session 141 Summary: Add special characters in file path edge case test
 
-Added comprehensive edge case test for OS-specific path length limits in the fs package's JSON I/O functions.
+Added comprehensive edge case test for JSON-sensitive special characters in file paths in the fs package.
 
-1. **vibefeld-76jh** - "Edge case test: FS very long file paths"
-   - Added `TestJSON_VeryLongFilePath` to `internal/fs/json_io_test.go`
-   - Tests 10 scenarios covering OS-specific path length limits:
-     - `path_at_name_max_limit` - filename at NAME_MAX (255 bytes)
-     - `path_exceeds_name_max_limit` - filename over 305 bytes
-     - `deeply_nested_path_approaching_path_max` - ~3500 byte paths via 68 nesting levels
-     - `path_definitely_exceeds_path_max` - 6000+ byte path
-     - `temp_file_path_exceeds_limit` - tests .tmp suffix overflow behavior
-     - `unicode_path_components` - multi-byte UTF-8 characters (emoji) testing byte vs char limits
-     - `path_with_only_dots` - dot-prefixed filenames like `..json`
-     - `windows_reserved_characters` - <, >, :, ", |, ?, * characters on Unix
-     - `null_byte_in_path` - embedded null byte rejection
-   - Documents graceful error handling for paths exceeding limits
-   - Verifies no panics or data corruption for edge cases
+1. **vibefeld-2p0a** - "Edge case test: FS special characters in filenames"
+   - Added `TestJSON_SpecialCharactersInPath` to `internal/fs/json_io_test.go`
+   - Tests 10 scenarios covering characters with special meaning in JSON encoding:
+     - `backslash_in_filename` - JSON escape character (\)
+     - `double_quote_in_filename` - JSON string delimiter (")
+     - `newline_in_filename` - control char requiring \n escape
+     - `tab_in_filename` - control char requiring \t escape
+     - `carriage_return_in_filename` - control char requiring \r escape
+     - `backslash_escape_sequences_in_filename` - strings that look like escape sequences (\\n, \\t, etc.)
+     - `unicode_control_characters` - bell, backspace, form feed, vertical tab
+     - `mixed_special_characters` - combination of multiple special chars
+     - `directory_with_special_chars` - nested directories with special chars
+     - `json_content_with_path_like_strings` - JSON content containing Windows/Unix path strings
+   - Verifies JSON encoding doesn't corrupt data in paths with special characters
+   - Documents graceful handling of edge cases
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `internal/fs/json_io_test.go` | Added TestJSON_VeryLongFilePath (~320 lines) |
+| `internal/fs/json_io_test.go` | Added TestJSON_SpecialCharactersInPath (~330 lines) |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-76jh** | Closed | Added comprehensive path length limit tests |
+| **vibefeld-2p0a** | Closed | Added comprehensive special characters in path test |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 43 (was 44)
-- **Closed:** 506 (was 505)
+- **Open:** 42 (was 43)
+- **Closed:** 507 (was 506)
 
 ### Test Status
 All tests pass for fs package. Build succeeds.
 - Unit tests: PASS
 - Build: PASS
-- New tests: PASS (10 sub-tests across multiple scenarios)
+- New tests: PASS (10+ sub-tests across multiple scenarios)
 
 ### Known Issues (Pre-existing)
 1. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
@@ -53,7 +54,7 @@ All tests pass for fs package. Build succeeds.
 ### Verification
 ```bash
 # Run the new test
-go test ./internal/fs/... -run "TestJSON_VeryLongFilePath" -v
+go test ./internal/fs/... -run "TestJSON_SpecialCharactersInPath" -v
 
 # Run all fs tests
 go test ./internal/fs/...
@@ -100,6 +101,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 141:** Closed 1 issue (Edge case test - special characters in file paths for JSON encoding)
 **Session 140:** Closed 1 issue (Edge case test - very long file paths in fs package, 10 subtests for NAME_MAX/PATH_MAX/unicode/null bytes)
 **Session 139:** Closed 1 issue (Edge case test - invalid UTF-8 in node statements, documenting JSON round-trip behavior)
 **Session 138:** Closed 1 issue (Edge case test - null bytes in node statements JSON serialization)
