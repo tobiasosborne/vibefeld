@@ -1,49 +1,41 @@
-# Handoff - 2026-01-17 (Session 136)
+# Handoff - 2026-01-17 (Session 137)
 
 ## What Was Accomplished This Session
 
-### Session 136 Summary: Add far-future timestamp test for lock package
+### Session 137 Summary: Fix whitespace owner validation in JSON unmarshal
 
-Added edge case test for JSON unmarshaling of far-future timestamps in the lock package:
+Fixed validation inconsistency in the lock package where `UnmarshalJSON` only rejected empty owner strings but accepted whitespace-only strings, unlike `NewClaimLock()` which rejected both.
 
-1. **vibefeld-q74k** - "Edge case test: Lock unmarshal with far-future timestamp"
-   - Added `TestUnmarshalJSON_FutureTimestamps` to `internal/lock/lock_test.go`
-   - Tests 5 far-future timestamp scenarios:
-     - Year 3000
-     - Year 9999 (max common representation)
-     - Year 2999 (millennium boundary)
-     - 100 years from now (2126)
-     - Year 5000 (mid-range future)
-   - Verifies:
-     - Timestamps parse without overflow or errors
-     - Lock fields are correctly populated
-     - ExpiresAt is after AcquiredAt
-     - Lock is not marked expired
-     - JSON roundtrip preserves timestamps
+1. **vibefeld-f6n3** - "Edge case test: Lock empty owner string in JSON"
+   - Added `TestUnmarshalJSON_EmptyOwner` - verifies empty owner is rejected
+   - Added `TestUnmarshalJSON_WhitespaceOwner` - verifies whitespace-only owners (spaces, tabs, newlines) are rejected
+   - Fixed `UnmarshalJSON` to use `strings.TrimSpace()` check, matching constructor validation
+   - Error message changed from "missing required field: owner" to "invalid owner: empty or whitespace" for consistency
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `internal/lock/lock_test.go` | Added TestUnmarshalJSON_FutureTimestamps (119 lines) |
+| `internal/lock/lock.go` | Fixed UnmarshalJSON to reject whitespace-only owners |
+| `internal/lock/lock_test.go` | Added TestUnmarshalJSON_EmptyOwner and TestUnmarshalJSON_WhitespaceOwner (89 lines) |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-q74k** | Closed | Added TestUnmarshalJSON_FutureTimestamps test covering year 3000, 5000, 9999 and other far-future timestamps |
+| **vibefeld-f6n3** | Closed | Added tests for empty/whitespace owner in JSON unmarshal and fixed UnmarshalJSON to reject whitespace-only owners |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 47 (was 48)
-- **Closed:** 502 (was 501)
+- **Open:** 46 (was 47)
+- **Closed:** 503 (was 502)
 
 ### Test Status
 All tests pass for lock_test.go. Build succeeds.
 - Unit tests: PASS
 - Build: PASS
-- New test: PASS (5 sub-tests)
+- New tests: PASS (6 sub-tests total)
 
 ### Known Issues (Pre-existing)
 1. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
@@ -52,11 +44,11 @@ All tests pass for lock_test.go. Build succeeds.
 
 ### Verification
 ```bash
-# Run the new test
-go test ./internal/lock/... -run TestUnmarshalJSON_FutureTimestamps -v
+# Run the new tests
+go test ./internal/lock/... -run "TestUnmarshalJSON_EmptyOwner|TestUnmarshalJSON_WhitespaceOwner" -v
 
-# Run all lock_test.go tests
-go test ./internal/lock/... -run "^Test(NewLock|IsExpired|IsOwnedBy|Refresh|JSON|Validation|Expiration|Concurrent|Multiple|Unmarshal)" -v
+# Run all JSON-related lock tests
+go test ./internal/lock/... -run "JSON" -v
 
 # Build
 go build ./cmd/af
@@ -100,6 +92,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 137:** Closed 1 issue (Bug fix - whitespace owner validation inconsistency in JSON unmarshal)
 **Session 136:** Closed 1 issue (Edge case test - far-future timestamp JSON unmarshaling in lock package)
 **Session 135:** Closed 1 issue (Security - ledger package size limits for DoS prevention)
 **Session 134:** Closed 1 issue (Security - unsafe JSON unmarshaling with size limits in lock package)
