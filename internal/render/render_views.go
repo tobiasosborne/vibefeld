@@ -372,9 +372,10 @@ func formatNodeView(v NodeView, nodeLookup map[string]NodeView) string {
 			}
 		}
 		if blockedCount > 0 {
-			blockedStr := "[BLOCKED: " + strings.Join(blocked, ", ") + "]"
 			sb.WriteString(" ")
-			sb.WriteString(Red(blockedStr))
+			sb.WriteString(Red("[BLOCKED: "))
+			sb.WriteString(Red(strings.Join(blocked, ", ")))
+			sb.WriteString(Red("]"))
 		}
 	}
 

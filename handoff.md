@@ -1,50 +1,40 @@
-# Handoff - 2026-01-17 (Session 141)
+# Handoff - 2026-01-17 (Session 142)
 
 ## What Was Accomplished This Session
 
-### Session 141 Summary: Add special characters in file path edge case test
+### Session 142 Summary: Fix string concatenation performance in render package
 
-Added comprehensive edge case test for JSON-sensitive special characters in file paths in the fs package.
+Fixed P3 performance issue with string concatenation in tree rendering code.
 
-1. **vibefeld-2p0a** - "Edge case test: FS special characters in filenames"
-   - Added `TestJSON_SpecialCharactersInPath` to `internal/fs/json_io_test.go`
-   - Tests 10 scenarios covering characters with special meaning in JSON encoding:
-     - `backslash_in_filename` - JSON escape character (\)
-     - `double_quote_in_filename` - JSON string delimiter (")
-     - `newline_in_filename` - control char requiring \n escape
-     - `tab_in_filename` - control char requiring \t escape
-     - `carriage_return_in_filename` - control char requiring \r escape
-     - `backslash_escape_sequences_in_filename` - strings that look like escape sequences (\\n, \\t, etc.)
-     - `unicode_control_characters` - bell, backspace, form feed, vertical tab
-     - `mixed_special_characters` - combination of multiple special chars
-     - `directory_with_special_chars` - nested directories with special chars
-     - `json_content_with_path_like_strings` - JSON content containing Windows/Unix path strings
-   - Verifies JSON encoding doesn't corrupt data in paths with special characters
-   - Documents graceful handling of edge cases
+1. **vibefeld-6rk8** - "Performance: String concatenation with + in loop"
+   - Fixed `internal/render/tree.go:225` - removed `"[BLOCKED: " + formatBlockedDeps(n, s) + "]"` concatenation
+   - Fixed `internal/render/render_views.go:375` - removed `"[BLOCKED: " + strings.Join(blocked, ", ") + "]"` concatenation
+   - Both now use `strings.Builder.WriteString()` pattern consistently
+   - These functions are called recursively for every node in the tree, so avoiding allocations matters
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `internal/fs/json_io_test.go` | Added TestJSON_SpecialCharactersInPath (~330 lines) |
+| `internal/render/tree.go` | Fixed string concatenation at line 225 |
+| `internal/render/render_views.go` | Fixed string concatenation at line 375 |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-2p0a** | Closed | Added comprehensive special characters in path test |
+| **vibefeld-6rk8** | Closed | Fixed string concatenation using strings.Builder pattern |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 42 (was 43)
-- **Closed:** 507 (was 506)
+- **Open:** 41 (was 42)
+- **Closed:** 508 (was 507)
 
 ### Test Status
-All tests pass for fs package. Build succeeds.
+All render package tests pass. Build succeeds.
 - Unit tests: PASS
 - Build: PASS
-- New tests: PASS (10+ sub-tests across multiple scenarios)
 
 ### Known Issues (Pre-existing)
 1. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
@@ -53,11 +43,8 @@ All tests pass for fs package. Build succeeds.
 
 ### Verification
 ```bash
-# Run the new test
-go test ./internal/fs/... -run "TestJSON_SpecialCharactersInPath" -v
-
-# Run all fs tests
-go test ./internal/fs/...
+# Run the render tests
+go test ./internal/render/... -v
 
 # Build
 go build ./cmd/af
@@ -101,6 +88,7 @@ go test -run=^$ -bench=. ./... -benchtime=100ms
 
 ## Session History
 
+**Session 142:** Closed 1 issue (Performance - string concatenation in render package)
 **Session 141:** Closed 1 issue (Edge case test - special characters in file paths for JSON encoding)
 **Session 140:** Closed 1 issue (Edge case test - very long file paths in fs package, 10 subtests for NAME_MAX/PATH_MAX/unicode/null bytes)
 **Session 139:** Closed 1 issue (Edge case test - invalid UTF-8 in node statements, documenting JSON round-trip behavior)

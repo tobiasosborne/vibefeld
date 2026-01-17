@@ -222,9 +222,10 @@ func formatNodeWithState(n *node.Node, s *state.State) string {
 	if s != nil && len(n.ValidationDeps) > 0 {
 		blockedCount := countUnvalidatedDeps(n, s)
 		if blockedCount > 0 {
-			blockedStr := "[BLOCKED: " + formatBlockedDeps(n, s) + "]"
 			sb.WriteString(" ")
-			sb.WriteString(Red(blockedStr))
+			sb.WriteString(Red("[BLOCKED: "))
+			sb.WriteString(Red(formatBlockedDeps(n, s)))
+			sb.WriteString(Red("]"))
 		}
 	}
 
