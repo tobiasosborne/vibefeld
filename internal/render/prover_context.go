@@ -320,22 +320,6 @@ func collectDefinitionNames(s *state.State, targetNode *node.Node) []string {
 		names = append(names, name)
 	}
 
-	// Also try to find definitions by their Name field (not just ID)
-	// by scanning all nodes and looking up by common patterns
-	allNodes := s.AllNodes()
-	for _, n := range allNodes {
-		for _, entry := range n.Context {
-			if strings.HasPrefix(entry, "def:") {
-				name := strings.TrimPrefix(entry, "def:")
-				def := s.GetDefinition(name)
-				if def != nil && !nameSet[name] {
-					names = append(names, name)
-					nameSet[name] = true
-				}
-			}
-		}
-	}
-
 	return names
 }
 
