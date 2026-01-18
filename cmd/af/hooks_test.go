@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/hooks"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -54,20 +53,20 @@ func TestHooksListCmd_WithHooks(t *testing.T) {
 	defer cleanup()
 
 	// Create config with hooks
-	config := hooks.NewConfig()
-	config.Hooks = []hooks.Hook{
+	config := service.NewHookConfig()
+	config.Hooks = []service.Hook{
 		{
 			ID:          "hook-1",
-			EventType:   hooks.EventNodeCreated,
-			HookType:    hooks.HookTypeWebhook,
+			EventType:   service.HookEventNodeCreated,
+			HookType:    service.HookTypeWebhook,
 			Target:      "https://example.com/webhook",
 			Enabled:     true,
 			Description: "Test webhook",
 		},
 		{
 			ID:          "hook-2",
-			EventType:   hooks.EventChallengeRaised,
-			HookType:    hooks.HookTypeCommand,
+			EventType:   service.HookEventChallengeRaised,
+			HookType:    service.HookTypeCommand,
 			Target:      "echo 'Challenge raised'",
 			Enabled:     false,
 			Description: "Test command",
@@ -108,12 +107,12 @@ func TestHooksListCmd_JSON(t *testing.T) {
 	defer cleanup()
 
 	// Create config with a hook
-	config := hooks.NewConfig()
-	config.Hooks = []hooks.Hook{
+	config := service.NewHookConfig()
+	config.Hooks = []service.Hook{
 		{
 			ID:        "hook-1",
-			EventType: hooks.EventNodeCreated,
-			HookType:  hooks.HookTypeWebhook,
+			EventType: service.HookEventNodeCreated,
+			HookType:  service.HookTypeWebhook,
 			Target:    "https://example.com/webhook",
 			Enabled:   true,
 		},
@@ -133,7 +132,7 @@ func TestHooksListCmd_JSON(t *testing.T) {
 	}
 
 	// Verify JSON is valid
-	var result []hooks.Hook
+	var result []service.Hook
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		t.Fatalf("invalid JSON output: %v\nOutput: %s", err, buf.String())
 	}
@@ -167,7 +166,7 @@ func TestHooksAddCmd_Webhook(t *testing.T) {
 	}
 
 	// Verify hook was saved
-	config, err := hooks.LoadConfig(dir)
+	config, err := service.LoadHookConfig(dir)
 	if err != nil {
 		t.Fatalf("failed to load config: %v", err)
 	}
@@ -177,10 +176,10 @@ func TestHooksAddCmd_Webhook(t *testing.T) {
 	}
 
 	hook := config.Hooks[0]
-	if hook.EventType != hooks.EventNodeCreated {
+	if hook.EventType != service.HookEventNodeCreated {
 		t.Errorf("expected event_type node_created, got %s", hook.EventType)
 	}
-	if hook.HookType != hooks.HookTypeWebhook {
+	if hook.HookType != service.HookTypeWebhook {
 		t.Errorf("expected hook_type webhook, got %s", hook.HookType)
 	}
 	if hook.Target != "https://example.com/hook" {
@@ -207,7 +206,7 @@ func TestHooksAddCmd_Command(t *testing.T) {
 	}
 
 	// Verify hook was saved with description
-	config, err := hooks.LoadConfig(dir)
+	config, err := service.LoadHookConfig(dir)
 	if err != nil {
 		t.Fatalf("failed to load config: %v", err)
 	}
@@ -217,10 +216,10 @@ func TestHooksAddCmd_Command(t *testing.T) {
 	}
 
 	hook := config.Hooks[0]
-	if hook.EventType != hooks.EventChallengeRaised {
+	if hook.EventType != service.HookEventChallengeRaised {
 		t.Errorf("expected event_type challenge_raised, got %s", hook.EventType)
 	}
-	if hook.HookType != hooks.HookTypeCommand {
+	if hook.HookType != service.HookTypeCommand {
 		t.Errorf("expected hook_type command, got %s", hook.HookType)
 	}
 	if hook.Description != "Test hook" {
@@ -294,19 +293,19 @@ func TestHooksRemoveCmd(t *testing.T) {
 	defer cleanup()
 
 	// Create config with hooks
-	config := hooks.NewConfig()
-	config.Hooks = []hooks.Hook{
+	config := service.NewHookConfig()
+	config.Hooks = []service.Hook{
 		{
 			ID:        "hook-1",
-			EventType: hooks.EventNodeCreated,
-			HookType:  hooks.HookTypeWebhook,
+			EventType: service.HookEventNodeCreated,
+			HookType:  service.HookTypeWebhook,
 			Target:    "https://example.com/webhook",
 			Enabled:   true,
 		},
 		{
 			ID:        "hook-2",
-			EventType: hooks.EventChallengeRaised,
-			HookType:  hooks.HookTypeCommand,
+			EventType: service.HookEventChallengeRaised,
+			HookType:  service.HookTypeCommand,
 			Target:    "echo test",
 			Enabled:   true,
 		},
@@ -331,7 +330,7 @@ func TestHooksRemoveCmd(t *testing.T) {
 	}
 
 	// Verify hook was removed
-	config, err := hooks.LoadConfig(dir)
+	config, err := service.LoadHookConfig(dir)
 	if err != nil {
 		t.Fatalf("failed to load config: %v", err)
 	}
@@ -378,12 +377,12 @@ func TestHooksTestCmd(t *testing.T) {
 	defer server.Close()
 
 	// Create config with hook pointing to test server
-	config := hooks.NewConfig()
-	config.Hooks = []hooks.Hook{
+	config := service.NewHookConfig()
+	config.Hooks = []service.Hook{
 		{
 			ID:        "test-hook",
-			EventType: hooks.EventNodeCreated,
-			HookType:  hooks.HookTypeWebhook,
+			EventType: service.HookEventNodeCreated,
+			HookType:  service.HookTypeWebhook,
 			Target:    server.URL,
 			Enabled:   true,
 		},
@@ -421,12 +420,12 @@ func TestHooksTestCmd_Command(t *testing.T) {
 	tmpFile := filepath.Join(dir, "test-output.txt")
 
 	// Create config with command hook
-	config := hooks.NewConfig()
-	config.Hooks = []hooks.Hook{
+	config := service.NewHookConfig()
+	config.Hooks = []service.Hook{
 		{
 			ID:        "test-cmd",
-			EventType: hooks.EventNodeValidated,
-			HookType:  hooks.HookTypeCommand,
+			EventType: service.HookEventNodeValidated,
+			HookType:  service.HookTypeCommand,
 			Target:    "echo success > " + tmpFile,
 			Enabled:   true,
 		},
@@ -508,7 +507,7 @@ func TestHooksAddCmd_Disabled(t *testing.T) {
 	}
 
 	// Verify hook was saved as disabled
-	config, err := hooks.LoadConfig(dir)
+	config, err := service.LoadHookConfig(dir)
 	if err != nil {
 		t.Fatalf("failed to load config: %v", err)
 	}

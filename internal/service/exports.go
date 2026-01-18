@@ -518,6 +518,10 @@ var LoadHookConfig = hooks.LoadConfig
 // Re-export of hooks.NewManager.
 var NewHookManager = hooks.NewManager
 
+// NewHookConfig creates a new default hooks config.
+// Re-export of hooks.NewConfig.
+var NewHookConfig = hooks.NewConfig
+
 // Re-exported types and functions from internal/jobs to reduce cmd/af import count.
 // Consumers should use service.JobResult, service.FindJobs, etc. instead of
 // importing the jobs package directly.

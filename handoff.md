@@ -1,37 +1,33 @@
-# Handoff - 2026-01-18 (Session 200)
+# Handoff - 2026-01-18 (Session 201)
 
 ## What Was Accomplished This Session
 
-### Session 200 Summary: Eliminated jobs package import from cmd/af
+### Session 201 Summary: Eliminated hooks import from hooks_test.go
 
-Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 8 to 7 by eliminating the jobs package.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 8 to 7 by eliminating the remaining hooks package import from hooks_test.go.
 
 ### Changes Made
 
 **1. Updated internal/service/exports.go:**
-- Added import for `github.com/tobias/vibefeld/internal/jobs`
-- Re-exported `jobs.JobResult` as `service.JobResult` (type alias)
-- Re-exported `jobs.FindJobs` as `service.FindJobs`
-- Re-exported `jobs.FindProverJobs` as `service.FindProverJobs`
-- Re-exported `jobs.FindVerifierJobs` as `service.FindVerifierJobs`
+- Added `NewHookConfig` re-export (var NewHookConfig = hooks.NewConfig)
 
-**2. Updated cmd/af/jobs.go:**
-- Removed `jobs` import, now uses `service` for job detection
-- Changed `jobs.FindJobs` → `service.FindJobs`
-- Changed `jobs.JobResult` → `service.JobResult`
-
-**3. Updated cmd/af/health.go:**
-- Removed `jobs` import
-- Changed `jobs.FindJobs` → `service.FindJobs`
+**2. Updated cmd/af/hooks_test.go:**
+- Removed `hooks` import, now uses `service` exclusively
+- Changed `hooks.NewConfig()` → `service.NewHookConfig()`
+- Changed `hooks.Hook` → `service.Hook`
+- Changed `hooks.EventNodeCreated` → `service.HookEventNodeCreated`
+- Changed `hooks.EventChallengeRaised` → `service.HookEventChallengeRaised`
+- Changed `hooks.EventNodeValidated` → `service.HookEventNodeValidated`
+- Changed `hooks.LoadConfig` → `service.LoadHookConfig`
 
 **Verification:**
 - `go build ./...` succeeds
 - `go test ./...` passes (all 27 packages)
-- Import count reduced from 8 → 7 unique internal packages (5 non-target packages remaining)
+- Import count: 7 unique internal packages (5 non-target packages remaining)
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added session 200 progress note (jobs package eliminated)
+- **Updated vibefeld-jfbc** - Added session 201 progress note (hooks import fully eliminated)
 - Epic remains open - still 5 packages to reduce to 0 (plus 2 targets = 7 total)
 
 ## Current State
@@ -82,7 +78,8 @@ go build ./cmd/af
 
 ## Session History
 
-**Session 200:** Eliminated jobs package import by re-exporting JobResult, FindJobs, FindProverJobs, FindVerifierJobs through service, reduced imports from 8→7
+**Session 201:** Eliminated hooks import from hooks_test.go by adding NewHookConfig re-export through service, reduced imports from 8→7
+**Session 200:** Eliminated jobs package import by re-exporting JobResult, FindJobs, FindProverJobs, FindVerifierJobs through service, reduced imports from 8→7 (non-test files only)
 **Session 199:** Eliminated hooks package import by re-exporting HookType, HookEventType, Hook, HookConfig, HookManager, ValidateHookType, ValidateHookEventType, GenerateHookID, LoadHookConfig, NewHookManager through service, reduced imports from 9→8
 **Session 198:** Eliminated shell package import by re-exporting Shell, ShellOption, NewShell, ShellWith* functions through service, reduced imports from 10→9
 **Session 197:** Eliminated patterns package import by re-exporting PatternType, Pattern, PatternLibrary, PatternAnalyzer, PotentialIssue, and ChallengeStatus constants through service, reduced imports from 11→10
