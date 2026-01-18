@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -36,7 +35,7 @@ func setupLemmasTest(t *testing.T) (string, func()) {
 	cleanup := func() { os.RemoveAll(tmpDir) }
 
 	// Initialize the proof directory structure
-	if err := fs.InitProofDir(tmpDir); err != nil {
+	if err := service.InitProofDir(tmpDir); err != nil {
 		cleanup()
 		t.Fatal(err)
 	}
@@ -1199,7 +1198,7 @@ func TestLemmasCmd_RelativeDirectory(t *testing.T) {
 	defer os.RemoveAll(baseDir)
 
 	proofDir := filepath.Join(baseDir, "subdir", "proof")
-	if err := fs.InitProofDir(proofDir); err != nil {
+	if err := service.InitProofDir(proofDir); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Init(proofDir, "Test conjecture", "author"); err != nil {

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -54,7 +53,7 @@ func setupWizardTestWithProof(t *testing.T) (string, func()) {
 	proofDir := filepath.Join(tmpDir, "proof")
 
 	// Initialize proof directory structure
-	if err := fs.InitProofDir(proofDir); err != nil {
+	if err := service.InitProofDir(proofDir); err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}

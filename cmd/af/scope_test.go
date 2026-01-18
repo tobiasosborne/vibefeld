@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
@@ -26,7 +25,7 @@ func setupScopeTest(t *testing.T) (string, func()) {
 	tmpDir := t.TempDir()
 
 	// Initialize the proof directory structure
-	if err := fs.InitProofDir(tmpDir); err != nil {
+	if err := service.InitProofDir(tmpDir); err != nil {
 		t.Fatal(err)
 	}
 

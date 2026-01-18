@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -29,7 +28,7 @@ func setupChallengeSeverityTest(t *testing.T) (string, func()) {
 	cleanup := func() { os.RemoveAll(tmpDir) }
 
 	// Initialize the proof directory structure
-	if err := fs.InitProofDir(tmpDir); err != nil {
+	if err := service.InitProofDir(tmpDir); err != nil {
 		cleanup()
 		t.Fatal(err)
 	}

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -31,7 +30,7 @@ func setupExtendClaimTest(t *testing.T, owner string) (string, func()) {
 	proofDir := filepath.Join(tmpDir, "proof")
 
 	// Initialize proof directory structure
-	if err := fs.InitProofDir(proofDir); err != nil {
+	if err := service.InitProofDir(proofDir); err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
 	}
@@ -143,7 +142,7 @@ func TestExtendClaimCmd_NodeNotClaimed(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	proofDir := filepath.Join(tmpDir, "proof")
-	if err := fs.InitProofDir(proofDir); err != nil {
+	if err := service.InitProofDir(proofDir); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Init(proofDir, "Test conjecture", "test-author"); err != nil {

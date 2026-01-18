@@ -1,59 +1,60 @@
-# Handoff - 2026-01-18 (Session 177)
+# Handoff - 2026-01-18 (Session 178)
 
 ## What Was Accomplished This Session
 
-### Session 177 Summary: Migrated cmd/af to use service.ParseNodeID
+### Session 178 Summary: Wrapped fs.InitProofDir in service layer
 
-Completed **vibefeld-hufm** - mechanical migration of cmd/af files to use re-exported types from service package instead of importing internal/types directly.
+Completed **vibefeld-x5mh** - Added `service.InitProofDir` re-export and migrated 32 cmd/af test files to use it instead of importing fs directly.
 
 ### Migration Statistics
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Files importing types | 59 | 6 |
-| Files using types.Parse | 57 | 0 |
-| Files using types.NodeID | 25 | 0 |
-| Files using types.ToStringSlice | 5 | 0 |
+| Files importing fs for InitProofDir only | 32 | 0 |
+| Files using service.InitProofDir | 0 | 32 |
+| fs imports removed | 0 | 28 |
 
-**Note:** 6 files still import types for `Timestamp` functionality (not part of this migration scope).
+**Note:** 4 test files still import fs (def_reject_test.go, pending_defs_test.go, request_def_test.go) for other fs operations beyond InitProofDir.
 
 ### Changes Made
 
-- Replaced `types.Parse(` → `service.ParseNodeID(` (197 occurrences)
-- Replaced `types.NodeID` → `service.NodeID` (84 occurrences)
-- Replaced `types.ToStringSlice` → `service.ToStringSlice` (5 occurrences)
-- Removed unused types imports via goimports (53 files cleaned up)
+- Added `service.InitProofDir = fs.InitProofDir` re-export in `internal/service/exports.go`
+- Added test for `service.InitProofDir` in `internal/service/exports_test.go`
+- Replaced `fs.InitProofDir` → `service.InitProofDir` in 32 test files
+- Removed unnecessary fs imports from 28 test files via goimports
 
 ### Issue Updates
 
-1. **Closed vibefeld-hufm** - Migrate cmd/af files to use service.ParseNodeID
-   - Unblocks vibefeld-jfbc (P1 epic: reduce cmd/af imports from 17 to 2)
+1. **Closed vibefeld-x5mh** - Wrap fs.InitProofDir in service layer
+   - Contributes to vibefeld-jfbc (P1 epic: reduce cmd/af imports from 17 to 2)
 
 ## Current State
 
 ### Issue Statistics
-- **Closed this session:** 1 (vibefeld-hufm)
-- **Open:** ~12
-- **Ready for work:** ~11
+- **Closed this session:** 1 (vibefeld-x5mh)
+- **Open:** ~11
+- **Ready for work:** ~10
 
 ### Test Status
-- All cmd/af tests pass (0.544s)
 - Build succeeds
-- Pre-existing failures in fuzzy_flag_test.go (unrelated to this change)
+- service package tests all pass
+- cmd/af tests have pre-existing failures (unrelated to this change):
+  - Some tests missing `--yes` flag for non-interactive mode
+  - Pre-existing fuzzy_flag_test.go failures
 
 ### Known Issues (Pre-existing)
 1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in internal/cli/fuzzy_flag_test.go
+2. Several archive/refute/release tests fail due to missing `--yes` flag
 
 ## Recommended Next Steps
 
 ### Continue Import Reduction (P1 Epic vibefeld-jfbc)
 
-More sub-tasks to reduce cmd/af imports from 17 packages to ~2:
+More sub-tasks to reduce cmd/af imports:
 
 1. **vibefeld-li8a** - Move fs assumption/external operations to service layer
 2. **vibefeld-rvzl** - Move fs pending-def operations to service layer
-3. **vibefeld-x5mh** - Wrap fs.InitProofDir in service layer
-4. **vibefeld-0zsm** - Re-export schema constants through service package
+3. **vibefeld-0zsm** - Re-export schema constants through service package
 
 ### P2 Code Quality (API Design)
 - `vibefeld-9maw` - Inconsistent return types for ID-returning operations
@@ -77,6 +78,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 178:** Added service.InitProofDir, migrated 32 test files, closed vibefeld-x5mh
 **Session 177:** Migrated 65 cmd/af files to use service.ParseNodeID, closed vibefeld-hufm
 **Session 176:** Created types re-exports in service/exports.go, closed vibefeld-3iiz
 **Session 175:** Analyzed cmd/af imports, created 5 sub-tasks for vibefeld-jfbc epic

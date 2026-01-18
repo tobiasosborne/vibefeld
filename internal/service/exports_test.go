@@ -1,8 +1,54 @@
 package service
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+func TestInitProofDir(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test-initproofdir-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	proofDir := filepath.Join(tmpDir, "proof")
+
+	// Test that InitProofDir creates the directory structure
+	if err := InitProofDir(proofDir); err != nil {
+		t.Fatalf("InitProofDir failed: %v", err)
+	}
+
+	// Verify the directory was created
+	info, err := os.Stat(proofDir)
+	if err != nil {
+		t.Fatalf("proof dir not created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Error("proof dir is not a directory")
+	}
+
+	// Verify subdirectories were created
+	subdirs := []string{"ledger", "nodes", "defs", "assumptions", "externals", "lemmas", "locks"}
+	for _, sub := range subdirs {
+		subPath := filepath.Join(proofDir, sub)
+		info, err := os.Stat(subPath)
+		if err != nil {
+			t.Errorf("subdir %s not created: %v", sub, err)
+			continue
+		}
+		if !info.IsDir() {
+			t.Errorf("subdir %s is not a directory", sub)
+		}
+	}
+
+	// Verify meta.json was created
+	metaPath := filepath.Join(proofDir, "meta.json")
+	if _, err := os.Stat(metaPath); err != nil {
+		t.Errorf("meta.json not created: %v", err)
+	}
+}
 
 func TestParseNodeID(t *testing.T) {
 	id, err := ParseNodeID("1.2.3")

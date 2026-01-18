@@ -233,7 +233,7 @@ func TestInitCmd_DirectoryDoesNotExist(t *testing.T) {
 	// The init command should either:
 	// 1. Create the directory and succeed, OR
 	// 2. Return an error about directory not existing
-	// Based on service.Init and fs.InitProofDir, it should create the directory.
+	// Based on service.Init and service.InitProofDir, it should create the directory.
 	if err != nil {
 		// If error, check it's about directory creation
 		errStr := err.Error()
