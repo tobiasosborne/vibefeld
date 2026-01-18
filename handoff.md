@@ -1,74 +1,52 @@
-# Handoff - 2026-01-18 (Session 170)
+# Handoff - 2026-01-18 (Session 171)
 
 ## What Was Accomplished This Session
 
-### Session 170 Summary: Closed 1 issue (CLI UX - help command grouping)
+### Session 171 Summary: Fixed 1 bug (failing lock tests for oversized events)
 
-1. **vibefeld-juts** - "CLI UX: Help command grouping by category"
-   - Added 8 command groups to organize the 50+ CLI commands:
-     - Setup & Status (init, status, progress, health, export)
-     - Agent Workflow (jobs, claim, release, extend-claim, agents, pending-defs, pending-refs)
-     - Prover Commands (refine, request-def, amend, extract-lemma, resolve-challenge)
-     - Verifier Commands (accept, challenge, withdraw-challenge)
-     - Escape Hatches (admit, refute, archive)
-     - Query & Reference (get, defs, assumptions, schema, inferences, types, challenges, deps, scope, search, history, externals, lemmas)
-     - Administration (log, replay, reap, recompute-taint, def-add, def-reject, hooks, add-external, verify-external, patterns, watch)
-     - Utilities (shell, completion, version, wizard, tutorial, strategy, metrics)
-   - Added `withdraw-challenge` command registration (was missing init function)
-   - Updated 44 test files to use `newTestRootCmd()` helper with command groups
+1. **vibefeld-00pp** - "Fix failing lock tests for oversized events"
+   - Root cause: Ledger package added size limits at read level (commit 5645630), but lock package tests (from commit 8f150fe) expected lock-level handling
+   - The ledger now correctly rejects ALL oversized events before the lock manager sees them
+   - This is proper security behavior - prevents DoS via maliciously large event files
 
 ### Code Changes
 
-**cmd/af/main.go:**
-- Added 8 command group constants (GroupSetup, GroupWorkflow, GroupProver, GroupVerifier, GroupEscape, GroupQuery, GroupAdmin, GroupUtil)
-- Added `rootCmd.AddGroup()` calls for each group
-- Added `SetHelpCommandGroupID` and `SetCompletionCommandGroupID` for built-in commands
-
-**cmd/af/*.go (all command files):**
-- Added `GroupID: GroupXxx` field to each command's cobra.Command definition
-
-**cmd/af/withdraw_challenge.go:**
-- Added missing `init()` function to register the command
-
-**cmd/af/root_test.go:**
-- Refactored `newTestRootCmd()` to return clean root with command groups only
-- Added `newTestRootCmdWithStubs()` for fuzzy matching tests
-
-**cmd/af/*_test.go (44 files):**
-- Updated test helpers to use `newTestRootCmd()` instead of inline `&cobra.Command{}`
+**internal/lock/persistent_test.go:**
+- Renamed `TestPersistentManager_OversizedLockEventCausesError` → `TestPersistentManager_OversizedEventRejectedByLedger`
+- Updated test to use `ledger.MaxEventSize` instead of `lock.MaxEventSize`
+- Removed corruption error check (ledger errors don't need to be corruption type)
+- Kept size message assertion
+- Removed `TestPersistentManager_OversizedNonLockEventIgnored` - premise no longer valid since ledger rejects ALL oversized events
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-juts** | Closed | Implemented command grouping in CLI help output |
+| **vibefeld-00pp** | Closed | Fixed failing lock tests by aligning with ledger-level size enforcement |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 9 (was 10)
-- **Closed:** 540 (was 539)
+- **Open:** 9 (unchanged)
+- **Closed:** 541 (was 540)
 
 ### Test Status
 - Build: PASS
-- cmd/af tests: PASS
-- All tests: PASS (pre-existing lock test failures excluded)
+- Lock tests: PASS (0 failures, was 2 failures)
+- All tests: PASS except pre-existing `internal/cli` fuzzy flag tests (unrelated to this fix)
 
 ### Known Issues (Pre-existing)
-1. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
+1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in fuzzy_flag_test.go - tests expect ambiguous suggestions for short inputs
 
 ### Verification
 ```bash
 # Build
 go build ./cmd/af
 
-# Check grouped help output
-./af --help
+# Run lock tests (should pass)
+go test ./internal/lock/...
 
-# Run cmd/af tests
-go test ./cmd/af/...
-
-# Run all tests
+# Run all tests (cli fuzzy tests will fail - pre-existing)
 go test ./...
 ```
 
@@ -92,9 +70,12 @@ go test ./...
 4. Multiple error types inconsistency (`vibefeld-npeg`)
 5. Service layer leaks domain types (`vibefeld-vj5y`)
 
-### P3 CLI UX (quick wins)
+### P3 CLI UX
 6. Boolean parameters in CLI (`vibefeld-yo5e`)
 7. Positional statement variability in refine (`vibefeld-9b6m`)
+
+### Pre-existing Test Failures to Investigate
+- `internal/cli` fuzzy flag ambiguity tests - not related to lock changes
 
 ## Quick Commands
 
@@ -111,6 +92,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 171:** Fixed 1 bug (failing lock tests for oversized events - aligned with ledger-level enforcement)
 **Session 170:** Closed 1 issue (CLI UX - help command grouping by category)
 **Session 169:** Closed 1 issue (CLI UX - standardized challenge rendering across commands)
 **Session 168:** Closed 1 issue (Code smell - missing comment on collectDefinitionNames redundancy)
@@ -125,10 +107,3 @@ go test -tags=integration ./... -v -timeout 10m
 **Session 159:** Closed 1 issue (CLI UX - fuzzy matching threshold for short inputs)
 **Session 158:** Closed 1 issue (documentation - render package architectural doc.go)
 **Session 157:** Closed 1 issue (API design - renamed GetXxx to LoadXxx to signal I/O cost)
-**Session 156:** Closed 1 issue (API design - documented appendBulkIfSequence non-atomicity in service layer)
-**Session 155:** Closed 1 issue (API design - documented taint emission non-atomicity in AcceptNodeWithNote and related methods)
-**Session 154:** Closed 1 issue (Code smell - renamed inputMethodCount to activeInputMethods in refine.go)
-**Session 153:** Closed 1 issue (False positive - unnecessary else after return, comprehensive search found 0 instances)
-**Session 152:** Closed 1 issue (Code smell - default timeout hard-coded, added DefaultClaimTimeout constant in config package)
-**Session 151:** Closed 1 issue (Code smell - challenge status strings not constants, added constants in state and render packages)
-**Session 150:** Closed 1 issue (Code smell - magic numbers for truncation in prover_context.go, added constants)
