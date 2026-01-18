@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 )
 

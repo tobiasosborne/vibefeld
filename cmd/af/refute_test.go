@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 )
 

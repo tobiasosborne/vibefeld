@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
