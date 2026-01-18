@@ -506,10 +506,10 @@ func TestMatch_ThresholdBoundary(t *testing.T) {
 			wantAuto:  true,
 		},
 		{
-			name:      "just below threshold",
-			input:     "st",   // 2 chars
-			candidate: "start", // 5 chars, distance 3
-			threshold: 0.5,     // similarity = 1 - (3/5) = 0.4 < 0.5
+			name:      "just below threshold (non-prefix)",
+			input:     "xy",    // 2 chars, NOT a prefix of target
+			candidate: "start", // 5 chars, distance 5 (all different)
+			threshold: 0.5,     // similarity = 1 - (5/5) = 0 < 0.5
 			wantAuto:  false,
 		},
 	}
@@ -644,6 +644,67 @@ func TestSuggestFlag_NoMatch(t *testing.T) {
 			}
 			if got.AutoCorrect {
 				t.Errorf("SuggestFlag() AutoCorrect = true, want false for no match")
+			}
+		})
+	}
+}
+
+func TestSuggestFlag_ShortInput(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		flags        []string
+		wantMatch    string
+		wantMinSuggs int
+		wantAuto     bool
+	}{
+		{
+			name:         "single char 'a' matches 'all'",
+			input:        "a",
+			flags:        []string{"all", "help", "version"},
+			wantMatch:    "all",
+			wantMinSuggs: 1,
+			wantAuto:     true, // with lowered threshold for short inputs
+		},
+		{
+			name:         "single char 'h' matches 'help' (prefix)",
+			input:        "h",
+			flags:        []string{"all", "help", "version"},
+			wantMatch:    "help",
+			wantMinSuggs: 1,
+			wantAuto:     true, // lowered threshold 0.3 for short inputs, prefix match allows it
+		},
+		{
+			name:         "two chars 'al' matches 'all'",
+			input:        "al",
+			flags:        []string{"all", "help", "version"},
+			wantMatch:    "all",
+			wantMinSuggs: 1,
+			wantAuto:     true,
+		},
+		{
+			name:         "three chars 'ver' provides suggestions",
+			input:        "ver",
+			flags:        []string{"verbose", "version", "help"},
+			wantMatch:    "verbose", // alphabetically first among prefix matches
+			wantMinSuggs: 2,         // both verbose and version
+			wantAuto:     true,      // prefix match on short input triggers autocorrect
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SuggestFlag(tt.input, tt.flags)
+			if got.Match != tt.wantMatch {
+				t.Errorf("SuggestFlag(%q) Match = %q, want %q", tt.input, got.Match, tt.wantMatch)
+			}
+			if len(got.Suggestions) < tt.wantMinSuggs {
+				t.Errorf("SuggestFlag(%q) Suggestions = %v, want at least %d",
+					tt.input, got.Suggestions, tt.wantMinSuggs)
+			}
+			if got.AutoCorrect != tt.wantAuto {
+				t.Errorf("SuggestFlag(%q) AutoCorrect = %v, want %v",
+					tt.input, got.AutoCorrect, tt.wantAuto)
 			}
 		})
 	}

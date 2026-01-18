@@ -1,36 +1,40 @@
-# Handoff - 2026-01-18 (Session 158)
+# Handoff - 2026-01-18 (Session 159)
 
 ## What Was Accomplished This Session
 
-### Session 158 Summary: Closed 1 issue (documentation)
+### Session 159 Summary: Closed 1 issue (CLI UX - fuzzy matching)
 
-1. **vibefeld-0wuv** - "Module structure: Document render package intentional complexity"
-   - Created `internal/render/doc.go` with architectural explanation
-   - Documents why the render package is intentionally comprehensive (needs all domain types)
-   - Explains the view model pattern: adapters.go isolates domain imports, other files are domain-free
-   - Build passes, tests pass
+1. **vibefeld-xgbi** - "CLI UX: Fuzzy matching threshold may be too strict for short inputs"
+   - Fixed fuzzy matching for short inputs (1-3 characters)
+   - Added prefix-aware sorting: prefix matches are prioritized for short inputs
+   - Lowered thresholds dynamically: 0.3 for 1-2 chars, 0.5 for 3 chars
+   - Added prefix match exception to minimum similarity threshold
+   - Added `TestSuggestFlag_ShortInput` with 4 test cases
+   - Updated `TestMatch_ThresholdBoundary` to reflect new prefix behavior
+   - Examples: "a" -> "all", "h" -> "help", "al" -> "all", "ver" -> "verbose" now work
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| internal/render/doc.go | Created - architectural documentation for render package |
+| internal/fuzzy/match.go | Added prefix-aware sorting and threshold handling for short inputs |
+| internal/fuzzy/match_test.go | Added TestSuggestFlag_ShortInput, updated TestMatch_ThresholdBoundary |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-0wuv** | Closed | Added doc.go with architectural explanation |
+| **vibefeld-xgbi** | Closed | Fixed fuzzy matching for short inputs by adding prefix-aware sorting and lower thresholds for 1-3 char inputs |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 21 (was 22)
-- **Closed:** 528 (was 527)
+- **Open:** 20 (was 21)
+- **Closed:** 529 (was 528)
 
 ### Test Status
 - Build: PASS
-- Render package tests: PASS
+- Fuzzy package tests: PASS (all 30+ tests)
 - Pre-existing failures in lock package (unrelated to this session)
 
 ### Known Issues (Pre-existing)
@@ -42,7 +46,7 @@
 go build ./cmd/af
 
 # Run tests for modified package
-go test ./internal/render/...
+go test ./internal/fuzzy/...
 
 # Run all tests
 go test ./...
@@ -87,6 +91,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 159:** Closed 1 issue (CLI UX - fuzzy matching threshold for short inputs)
 **Session 158:** Closed 1 issue (documentation - render package architectural doc.go)
 **Session 157:** Closed 1 issue (API design - renamed GetXxx to LoadXxx to signal I/O cost)
 **Session 156:** Closed 1 issue (API design - documented appendBulkIfSequence non-atomicity in service layer)

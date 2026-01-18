@@ -1,6 +1,9 @@
 package fuzzy
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // MatchResult contains the result of fuzzy matching.
 type MatchResult struct {
@@ -41,7 +44,16 @@ func Match(input string, candidates []string, threshold float64) MatchResult {
 	}
 
 	// Sort by distance (ascending), then alphabetically for stable ordering
+	// For short inputs (1-3 chars), prioritize prefix matches over non-prefix matches
 	sort.Slice(scores, func(i, j int) bool {
+		// For short inputs, prefer prefix matches
+		if len(input) <= 3 {
+			iPfx := strings.HasPrefix(scores[i].candidate, input)
+			jPfx := strings.HasPrefix(scores[j].candidate, input)
+			if iPfx != jPfx {
+				return iPfx // prefix matches come first
+			}
+		}
 		if scores[i].distance != scores[j].distance {
 			return scores[i].distance < scores[j].distance
 		}
@@ -58,12 +70,18 @@ func Match(input string, candidates []string, threshold float64) MatchResult {
 	}
 	similarity := 1.0 - float64(best.distance)/float64(maxLen)
 
+	// For short inputs (1-3 chars), check for prefix matching
+	// This allows "a" -> "all", "h" -> "help", "ver" -> "verbose" even when similarity is low
+	isPrefixMatch := len(input) <= 3 && strings.HasPrefix(best.candidate, input)
+
 	// Determine if we should autocorrect
-	autoCorrect := similarity >= threshold
+	// For prefix matches on short inputs, autocorrect more aggressively
+	autoCorrect := similarity >= threshold || (isPrefixMatch && threshold <= 0.5)
 
 	// If similarity is too low, return no match
 	// Use a minimum similarity threshold of 0.3 to filter out completely unrelated matches
-	if similarity < 0.3 {
+	// Exception: allow prefix matches for very short inputs
+	if similarity < 0.3 && !isPrefixMatch {
 		return MatchResult{
 			Input:       input,
 			Match:       "",
@@ -119,6 +137,15 @@ func SuggestCommand(input string, commands []string) MatchResult {
 // SuggestFlag suggests similar flags for a mistyped flag name.
 // It handles both long flags (--foo) and short flags (-f).
 // The threshold is slightly lower (0.7) than commands to be more forgiving.
+// For very short inputs (1-2 chars), uses an even lower threshold to allow
+// prefix matching (e.g., "a" -> "all").
 func SuggestFlag(input string, flags []string) MatchResult {
-	return Match(input, flags, 0.7)
+	threshold := 0.7
+	// For very short inputs, lower the threshold to allow prefix matching
+	if len(input) <= 2 {
+		threshold = 0.3
+	} else if len(input) == 3 {
+		threshold = 0.5
+	}
+	return Match(input, flags, threshold)
 }
