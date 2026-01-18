@@ -120,6 +120,23 @@ func Match(input string, candidates []string, threshold float64) MatchResult {
 		}
 	}
 
+	// Check for ambiguity: if the input is a prefix that matches multiple candidates,
+	// don't autocorrect. For example, "for" is a prefix of both "force" and "format".
+	// But "formt" → "format" should still autocorrect (it's a typo, not a prefix).
+	if autoCorrect && isPrefixMatch && len(suggestions) > 1 {
+		// Count how many suggestions have the input as a prefix
+		prefixMatches := 0
+		for _, s := range suggestions {
+			if strings.HasPrefix(s, input) {
+				prefixMatches++
+			}
+		}
+		// If there are multiple prefix matches, mark as ambiguous
+		if prefixMatches > 1 {
+			autoCorrect = false
+		}
+	}
+
 	return MatchResult{
 		Input:       input,
 		Match:       best.candidate,

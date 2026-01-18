@@ -303,11 +303,11 @@ func TestMatch_Threshold_Low(t *testing.T) {
 			wantAuto:   true,
 		},
 		{
-			name:       "loose threshold accepts short prefix",
+			name:       "ambiguous prefix does not autocorrect",
 			input:      "sta",
 			candidates: []string{"status", "start"},
 			threshold:  0.4,
-			wantAuto:   true,
+			wantAuto:   false, // "sta" is prefix of both "status" and "start" - ambiguous
 		},
 	}
 
@@ -683,12 +683,12 @@ func TestSuggestFlag_ShortInput(t *testing.T) {
 			wantAuto:     true,
 		},
 		{
-			name:         "three chars 'ver' provides suggestions",
+			name:         "three chars 'ver' is ambiguous",
 			input:        "ver",
 			flags:        []string{"verbose", "version", "help"},
 			wantMatch:    "verbose", // alphabetically first among prefix matches
 			wantMinSuggs: 2,         // both verbose and version
-			wantAuto:     true,      // prefix match on short input triggers autocorrect
+			wantAuto:     false,     // "ver" is prefix of both verbose and version - ambiguous
 		},
 	}
 

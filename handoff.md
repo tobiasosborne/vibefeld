@@ -1,63 +1,51 @@
-# Handoff - 2026-01-18 (Session 181)
+# Handoff - 2026-01-18 (Session 182)
 
 ## What Was Accomplished This Session
 
-### Session 181 Summary: Added assumption/external service methods
+### Session 182 Summary: Fixed fuzzy flag matching ambiguous prefix bug
 
-Completed **vibefeld-li8a** - Added ReadAssumption, ListAssumptions, ReadExternal, ListExternals wrapper methods to ProofService and migrated cmd/af files to use them instead of direct fs calls.
+Fixed a failing test in `internal/cli` where ambiguous prefix inputs (like `--for` matching both `force` and `format`) were incorrectly auto-correcting instead of being marked ambiguous.
 
-### Migration Statistics
+### Bug Details
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Production files importing fs for assumptions/externals | 4 | 1* |
-| Service assumption/external methods | 0 | 4 |
+The issue was in `internal/fuzzy/match.go`. When a short input (1-3 chars) was a prefix of multiple candidates, the fuzzy matcher would pick the closest one and auto-correct. The correct behavior is to mark such cases as ambiguous so the user can clarify.
 
-*Note: verify_external.go still imports fs for WriteExternal (write operation not in scope)
-
-### What Was Added to ProofService
-
-**Methods:**
-- `ReadAssumption(id)` - reads assumption by ID from proof dir
-- `ListAssumptions()` - lists all assumption IDs
-- `ReadExternal(id)` - reads external reference by ID from proof dir
-- `ListExternals()` - lists all external reference IDs
+**Example:**
+- Input: `--for`
+- Candidates: `force` (distance 2), `format` (distance 3)
+- Old behavior: Auto-correct to `--force`
+- New behavior: Mark as ambiguous, suggest both `force` and `format`
 
 ### Files Changed
 
-- `internal/service/proof.go` - Added 4 assumption/external wrapper methods
-- 4 cmd/af files updated:
-  - `assumptions.go` - Removed fs import, updated `getAllAssumptions()` and `findAssumption()` helpers to use service
-  - `externals.go` - Removed fs import, updated `getAllExternals()` to use service
-  - `pending_refs.go` - Removed fs import, updated `getPendingExternals()` to use service
-  - `verify_external.go` - Updated `ReadExternal` call to use service (still imports fs for WriteExternal)
+- `internal/fuzzy/match.go` - Added logic to detect multiple prefix matches and disable auto-correct in those cases
+- `internal/fuzzy/match_test.go` - Updated 2 tests that expected incorrect behavior:
+  - `TestMatch_Threshold_Low/ambiguous_prefix_does_not_autocorrect`
+  - `TestSuggestFlag_ShortInput/three_chars_'ver'_is_ambiguous`
 
 ### Issue Updates
 
-1. **Closed vibefeld-li8a** - Move fs assumption/external operations to service layer
-   - Contributes to vibefeld-jfbc (P1 epic: reduce cmd/af imports from 17 to 2)
+1. **Created and closed vibefeld-b51q** - Fix fuzzy flag matching ambiguous prefix autocorrect bug
 
 ## Current State
 
-### Issue Statistics
-- **Closed this session:** 1 (vibefeld-li8a)
-- **Open:** ~8
-- **Ready for work:** ~8
-
 ### Test Status
-- Build succeeds
-- cmd/af tests pass
-- service package tests pass
-- Pre-existing test failures in internal/cli (fuzzy_flag_test.go) - unrelated
+- All tests pass (`go test ./...`)
+- Build succeeds (`go build ./cmd/af`)
+- The previously noted test failures in internal/cli are now fixed
 
-### Known Issues (Pre-existing)
-1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in internal/cli/fuzzy_flag_test.go
+### Issue Statistics
+- **Closed this session:** 1 (vibefeld-b51q)
+- **Open:** 8
+- **Ready for work:** 8
 
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc Progress
-The import reduction epic has made significant progress. Two sub-tasks remain:
-- No further sub-tasks filed - need to analyze remaining fs imports and create new sub-tasks if needed
+The import reduction epic sub-tasks are all closed. However, cmd/af still imports many packages beyond the target of `{service, render}`. Need to analyze remaining imports and create new sub-tasks if the epic is to continue.
+
+Current packages still imported by cmd/af (excluding service/render):
+- node (20 files), ledger (18 files), state (12 files), cli (9 files), types (6 files), fs (4 files), and others
 
 ### P2 Code Quality (API Design)
 - `vibefeld-9maw` - Inconsistent return types for ID-returning operations
@@ -65,6 +53,10 @@ The import reduction epic has made significant progress. Two sub-tasks remain:
 - `vibefeld-vj5y` - Service layer leaks domain types
 - `vibefeld-264n` - Module structure: service package acts as hub
 - `vibefeld-qsyt` - Missing intermediate layer for service
+
+### P3 API Design
+- `vibefeld-yo5e` - Boolean parameters in CLI
+- `vibefeld-9b6m` - Positional statement variability in refine
 
 ## Quick Commands
 
@@ -81,6 +73,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 182:** Fixed fuzzy flag matching ambiguous prefix bug, closed vibefeld-b51q
 **Session 181:** Added assumption/external service methods, migrated 4 files, closed vibefeld-li8a
 **Session 180:** Added pending-def service methods, migrated 4 files, closed vibefeld-rvzl
 **Session 179:** Re-exported schema constants through service, migrated 11 production files, closed vibefeld-0zsm
