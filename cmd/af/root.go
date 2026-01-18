@@ -119,12 +119,14 @@ func collectFlags(cmd *cobra.Command) []string {
 
 // unknownCommandError creates an error with fuzzy suggestions for an unknown command.
 func unknownCommandError(cmd *cobra.Command, unknown string) error {
-	// Collect all subcommand names
+	// Build a map from command name to its *cobra.Command for usage lookup
+	subCmds := make(map[string]*cobra.Command)
 	candidates := make([]string, 0)
 	for _, sub := range cmd.Commands() {
 		// Skip hidden and help commands
 		if !sub.Hidden && sub.Name() != "help" && sub.Name() != "completion" {
 			candidates = append(candidates, sub.Name())
+			subCmds[sub.Name()] = sub
 		}
 	}
 
@@ -138,11 +140,23 @@ func unknownCommandError(cmd *cobra.Command, unknown string) error {
 	if len(result.Suggestions) > 0 {
 		msg.WriteString("\n\nDid you mean")
 		if len(result.Suggestions) == 1 {
-			msg.WriteString(fmt.Sprintf(": %s", result.Suggestions[0]))
+			suggestion := result.Suggestions[0]
+			msg.WriteString(fmt.Sprintf(": %s", suggestion))
+			// Add usage example for single suggestion
+			if subCmd, ok := subCmds[suggestion]; ok && subCmd.Use != "" {
+				msg.WriteString(fmt.Sprintf("\n\nUsage:\n  %s %s", cmd.CommandPath(), subCmd.Use))
+			}
 		} else {
 			msg.WriteString(" one of these?")
 			for _, s := range result.Suggestions {
 				msg.WriteString(fmt.Sprintf("\n  %s", s))
+			}
+			// Add usage examples for all suggestions
+			msg.WriteString("\n\nUsage:")
+			for _, s := range result.Suggestions {
+				if subCmd, ok := subCmds[s]; ok && subCmd.Use != "" {
+					msg.WriteString(fmt.Sprintf("\n  %s %s", cmd.CommandPath(), subCmd.Use))
+				}
 			}
 		}
 	}

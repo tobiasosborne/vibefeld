@@ -1,52 +1,64 @@
-# Handoff - 2026-01-18 (Session 159)
+# Handoff - 2026-01-18 (Session 160)
 
 ## What Was Accomplished This Session
 
-### Session 159 Summary: Closed 1 issue (CLI UX - fuzzy matching)
+### Session 160 Summary: Closed 1 issue (CLI UX - usage examples in fuzzy match errors)
 
-1. **vibefeld-xgbi** - "CLI UX: Fuzzy matching threshold may be too strict for short inputs"
-   - Fixed fuzzy matching for short inputs (1-3 characters)
-   - Added prefix-aware sorting: prefix matches are prioritized for short inputs
-   - Lowered thresholds dynamically: 0.3 for 1-2 chars, 0.5 for 3 chars
-   - Added prefix match exception to minimum similarity threshold
-   - Added `TestSuggestFlag_ShortInput` with 4 test cases
-   - Updated `TestMatch_ThresholdBoundary` to reflect new prefix behavior
-   - Examples: "a" -> "all", "h" -> "help", "al" -> "all", "ver" -> "verbose" now work
+1. **vibefeld-wdbe** - "CLI UX: No examples shown when fuzzy match fails"
+   - Added usage examples to unknown command error messages
+   - When user types typo like `af acept 1`, they now see:
+     ```
+     unknown command "acept" for "af"
+
+     Did you mean this?
+         accept
+
+     Usage:
+       af accept [node-id]...
+     ```
+   - Implemented in main.go by enhancing cobra's error messages post-execution
+   - Added `enhanceUnknownCommandError()` function that parses cobra's suggestions and appends usage
+   - Set `SilenceUsage: true` and `SilenceErrors: true` on rootCmd to prevent duplicate output
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| internal/fuzzy/match.go | Added prefix-aware sorting and threshold handling for short inputs |
-| internal/fuzzy/match_test.go | Added TestSuggestFlag_ShortInput, updated TestMatch_ThresholdBoundary |
+| cmd/af/main.go | Added `enhanceUnknownCommandError()`, regex pattern for suggestion parsing, SilenceUsage/SilenceErrors flags |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-xgbi** | Closed | Fixed fuzzy matching for short inputs by adding prefix-aware sorting and lower thresholds for 1-3 char inputs |
+| **vibefeld-wdbe** | Closed | Added usage examples to fuzzy match error messages in main.go |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 20 (was 21)
-- **Closed:** 529 (was 528)
+- **Open:** 19 (was 20)
+- **Closed:** 530 (was 529)
 
 ### Test Status
 - Build: PASS
-- Fuzzy package tests: PASS (all 30+ tests)
-- Pre-existing failures in lock package (unrelated to this session)
+- cmd/af tests: PASS (all fuzzy matching tests pass)
+- Pre-existing failures in internal/cli and internal/lock (unrelated to this session)
 
 ### Known Issues (Pre-existing)
-1. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
+1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in fuzzy_flag_test.go - tests expect different behavior for ambiguous short inputs
+2. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
 
 ### Verification
 ```bash
 # Build
 go build ./cmd/af
 
-# Run tests for modified package
-go test ./internal/fuzzy/...
+# Test the fix manually
+./af acept 1    # Should show usage example
+./af statsu     # Should show usage example
+./af refien     # Should show usage example
+
+# Run fuzzy/unknown command tests
+go test ./cmd/af/ -run "Fuzzy|Unknown"
 
 # Run all tests
 go test ./...
@@ -91,6 +103,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 160:** Closed 1 issue (CLI UX - usage examples in fuzzy match error messages)
 **Session 159:** Closed 1 issue (CLI UX - fuzzy matching threshold for short inputs)
 **Session 158:** Closed 1 issue (documentation - render package architectural doc.go)
 **Session 157:** Closed 1 issue (API design - renamed GetXxx to LoadXxx to signal I/O cost)

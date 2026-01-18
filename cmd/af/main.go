@@ -9,6 +9,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/errors"
@@ -19,16 +21,68 @@ const Version = "0.1.0"
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
+		// Enhance error with usage examples if this is an unknown command error
+		enhanced := enhanceUnknownCommandError(rootCmd, err)
 		// Sanitize error messages to prevent leaking filesystem paths
-		sanitized := errors.SanitizeError(err)
+		sanitized := errors.SanitizeError(enhanced)
 		fmt.Fprintln(os.Stderr, sanitized)
 		os.Exit(1)
 	}
 }
 
+// suggestionPattern matches cobra's "Did you mean" suggestions
+var suggestionPattern = regexp.MustCompile(`Did you mean (?:this|one of these)\?\s*\n((?:\s*\w+\s*\n?)+)`)
+
+// enhanceUnknownCommandError adds usage examples to cobra's unknown command errors.
+func enhanceUnknownCommandError(cmd *cobra.Command, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	errStr := err.Error()
+
+	// Check if this is an unknown command error with suggestions
+	matches := suggestionPattern.FindStringSubmatch(errStr)
+	if matches == nil {
+		return err
+	}
+
+	// Extract suggested command names
+	suggestions := strings.Fields(matches[1])
+	if len(suggestions) == 0 {
+		return err
+	}
+
+	// Build a map of command name to *cobra.Command for usage lookup
+	subCmds := make(map[string]*cobra.Command)
+	for _, sub := range cmd.Commands() {
+		if !sub.Hidden && sub.Name() != "help" && sub.Name() != "completion" {
+			subCmds[sub.Name()] = sub
+		}
+	}
+
+	// Build usage examples
+	var usageLines []string
+	for _, s := range suggestions {
+		if subCmd, ok := subCmds[s]; ok && subCmd.Use != "" {
+			usageLines = append(usageLines, fmt.Sprintf("  %s %s", cmd.CommandPath(), subCmd.Use))
+		}
+	}
+
+	if len(usageLines) == 0 {
+		return err
+	}
+
+	// Append usage examples to the error message
+	enhanced := errStr + "\n\nUsage:\n" + strings.Join(usageLines, "\n")
+	return fmt.Errorf("%s", enhanced)
+}
+
 var rootCmd = &cobra.Command{
-	Use:   "af",
-	Short: "Adversarial Proof Framework CLI",
+	Use:           "af",
+	Short:         "Adversarial Proof Framework CLI",
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	Long: `AF (Adversarial Proof Framework) is a command-line tool for collaborative
 construction of natural-language mathematical proofs.
 
