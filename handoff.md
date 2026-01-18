@@ -1,61 +1,56 @@
-# Handoff - 2026-01-18 (Session 175)
+# Handoff - 2026-01-18 (Session 176)
 
 ## What Was Accomplished This Session
 
-### Session 175 Summary: Broke down P1 epic into actionable sub-tasks
+### Session 176 Summary: Created types re-exports for service package
 
-1. **vibefeld-jfbc** - "Module structure: cmd/af imports 17 packages instead of 2"
-   - Analyzed all imports across 60+ files in cmd/af
-   - Identified top import offenders: types (59 files), schema (44 files), fs (40 files)
-   - Created 5 actionable sub-tasks with proper dependencies
-   - Epic is now blocked by sub-tasks (correct dependency direction)
+Completed the first step of **vibefeld-3iiz** - created `internal/service/exports.go` with type aliases and function re-exports to reduce cmd/af import count.
 
-### Sub-Tasks Created
+### Files Created
 
-| Issue | Title | Scope |
-|-------|-------|-------|
-| **vibefeld-3iiz** | Re-export types.Parse/NodeID through service | 59 files, ~280 uses |
-| **vibefeld-x5mh** | Wrap fs.InitProofDir in service layer | 32 files, 59 uses |
-| **vibefeld-0zsm** | Re-export schema constants through service | 44 files, ~200 uses |
-| **vibefeld-rvzl** | Move fs pending-def operations to service | 33 uses |
-| **vibefeld-li8a** | Move fs assumption/external operations to service | 10 uses |
+| File | Purpose |
+|------|---------|
+| `internal/service/exports.go` | Re-exports NodeID, ParseNodeID, ToStringSlice from types package |
+| `internal/service/exports_test.go` | Tests for the re-exports |
 
-### Import Analysis Summary
+### Issue Updates
 
-| Package | Files | Uses | Priority |
-|---------|-------|------|----------|
-| types | 59 | 280+ | High - most pervasive |
-| schema | 44 | 200+ | High - enum constants |
-| fs | 40 | 90+ | Medium - InitProofDir + file ops |
-| node | 20 | - | Deferred - needs analysis |
-| ledger | 18 | - | Deferred - needs analysis |
-| state | 12 | - | Deferred - needs analysis |
+1. **Closed vibefeld-3iiz** - Re-export types through service package
+   - Created exports.go with type alias and var exports
+   - Added tests to verify the exports work correctly
+   - Migration of 58 cmd/af files tracked separately
+
+2. **Created vibefeld-hufm** - Migrate cmd/af files to use service.ParseNodeID
+   - Follow-up task for the actual file migration
+   - Blocks vibefeld-jfbc (the P1 epic)
+   - Scope: 58 files, ~280 uses to replace
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 13 (was 8, added 5 sub-tasks)
-- **Blocked:** 1 (vibefeld-jfbc, blocked by 5 sub-tasks)
-- **Ready:** 12 (includes all 5 new sub-tasks)
+- **Closed this session:** 1 (vibefeld-3iiz)
+- **Created this session:** 1 (vibefeld-hufm)
+- **Open:** 13
+- **Ready for work:** 12
 
 ### Test Status
-- No code changes this session (planning only)
-- All tests remain in previous state
+- All service tests pass (including new exports_test.go)
+- Build succeeds
+- Pre-existing failures in fuzzy_flag_test.go (unchanged)
 
 ### Known Issues (Pre-existing)
 1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in fuzzy_flag_test.go
 
 ## Recommended Next Steps
 
-### Immediate (Pick one sub-task)
+### Immediate (Sub-task migration)
 
-Start with smallest scope for quick win:
-1. **vibefeld-li8a** - fs assumption/external ops (10 uses) - smallest
-2. **vibefeld-rvzl** - fs pending-def ops (33 uses) - small
-3. **vibefeld-x5mh** - fs.InitProofDir (59 uses) - medium
+The exports are ready. Pick a sub-task for import reduction:
 
-Or start with highest impact:
-4. **vibefeld-3iiz** - types re-export (280 uses) - foundational
+1. **vibefeld-hufm** - Migrate cmd/af to use service.ParseNodeID (58 files) - mechanical refactor
+2. **vibefeld-li8a** - fs assumption/external ops (10 uses) - smallest
+3. **vibefeld-rvzl** - fs pending-def ops (33 uses) - small
+4. **vibefeld-x5mh** - fs.InitProofDir (59 uses) - medium
 
 ### P2 Code Quality (unchanged)
 - Inconsistent return types (`vibefeld-9maw`)
@@ -64,25 +59,22 @@ Or start with highest impact:
 - Service package acts as hub (`vibefeld-264n`)
 - Missing intermediate layer (`vibefeld-qsyt`)
 
-### P3 CLI UX (unchanged)
-- Boolean parameters in CLI (`vibefeld-yo5e`)
-- Positional statement variability in refine (`vibefeld-9b6m`)
-
 ## Quick Commands
 
 ```bash
-# See ready work (includes new sub-tasks)
+# See ready work
 bd ready
-
-# See blocked work
-bd blocked
 
 # Run tests
 go test ./...
+
+# Build
+go build ./cmd/af
 ```
 
 ## Session History
 
+**Session 176:** Created types re-exports in service/exports.go, closed vibefeld-3iiz
 **Session 175:** Analyzed cmd/af imports, created 5 sub-tasks for vibefeld-jfbc epic
 **Session 174:** Completed error types refactoring - closed vibefeld-npeg with all 3 phases done
 **Session 173:** Converted 13 not-found errors to AFError types with NODE_NOT_FOUND/PARENT_NOT_FOUND codes
