@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/templates"
 )
 
 // newInitCmd creates the init command for initializing a new proof workspace.
@@ -67,7 +66,7 @@ func runListTemplates(cmd *cobra.Command) error {
 	cmd.Println("Available proof templates:")
 	cmd.Println()
 
-	for _, tmpl := range templates.List() {
+	for _, tmpl := range service.ListTemplates() {
 		cmd.Printf("  %s\n", tmpl.Name)
 		cmd.Printf("    %s\n", tmpl.Description)
 		cmd.Println()
@@ -91,11 +90,11 @@ func runInit(cmd *cobra.Command, conjecture, author, dir, templateName string) e
 	}
 
 	// Validate template if specified
-	var tmpl templates.Template
+	var tmpl service.Template
 	hasTemplate := false
 	if templateName != "" {
 		var ok bool
-		tmpl, ok = templates.Get(templateName)
+		tmpl, ok = service.GetTemplate(templateName)
 		if !ok {
 			return fmt.Errorf("unknown template: %q (use --list-templates to see available templates)", templateName)
 		}
@@ -149,7 +148,7 @@ func runInit(cmd *cobra.Command, conjecture, author, dir, templateName string) e
 }
 
 // applyTemplate creates the child nodes defined by the template.
-func applyTemplate(dir string, tmpl templates.Template) error {
+func applyTemplate(dir string, tmpl service.Template) error {
 	svc, err := service.NewProofService(dir)
 	if err != nil {
 		return err

@@ -1,35 +1,40 @@
-# Handoff - 2026-01-18 (Session 194)
+# Handoff - 2026-01-18 (Session 195)
 
 ## What Was Accomplished This Session
 
-### Session 194 Summary: Eliminated metrics package import from cmd/af
+### Session 195 Summary: Eliminated templates package import from cmd/af
 
-Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 14 to 13 by eliminating the metrics package.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 13 to 12 by eliminating the templates package.
 
 ### Changes Made
 
 **1. Updated internal/service/exports.go:**
-- Added import for `github.com/tobias/vibefeld/internal/metrics`
-- Re-exported `metrics.QualityReport` as `service.QualityReport` (type alias)
-- Re-exported `metrics.OverallQuality` as `service.OverallQuality` (wrapper function)
-- Re-exported `metrics.SubtreeQuality` as `service.SubtreeQuality` (wrapper function)
+- Added import for `github.com/tobias/vibefeld/internal/templates`
+- Re-exported `templates.Template` as `service.Template` (type alias)
+- Re-exported `templates.Get` as `service.GetTemplate`
+- Re-exported `templates.List` as `service.ListTemplates`
+- Re-exported `templates.Names` as `service.TemplateNames`
+- Note: Did NOT re-export `templates.ChildSpec` because `service.ChildSpec` already exists for a different purpose (bulk refine operations)
 
-**2. Updated cmd/af/metrics.go:**
-- Removed `metrics` import
-- Changed `*metrics.QualityReport` → `*service.QualityReport`
-- Changed `metrics.SubtreeQuality(st, id)` → `service.SubtreeQuality(st, id)`
-- Changed `metrics.OverallQuality(st)` → `service.OverallQuality(st)`
+**2. Updated cmd/af/init.go:**
+- Removed `templates` import
+- Changed `templates.List()` → `service.ListTemplates()`
+- Changed `templates.Template` → `service.Template`
+- Changed `templates.Get(...)` → `service.GetTemplate(...)`
+
+**3. Updated cmd/af/wizard.go:**
+- Removed `templates` import
+- Changed `templates.Get(...)` → `service.GetTemplate(...)`
 
 **Verification:**
 - `go build ./cmd/af` succeeds
 - `go test ./...` passes (all packages)
-- Import count reduced from 14 → 13 unique internal packages
+- Import count reduced from 13 → 12 unique internal packages
 
 ### Issue Updates
 
-- **Created and closed vibefeld-jsba** - Task for metrics re-export work
-- **Updated vibefeld-jfbc** - Added session 194 progress note (metrics package eliminated)
-- Epic remains open - still 13 packages to reduce to 2
+- **Updated vibefeld-jfbc** - Added session 195 progress note (templates package eliminated)
+- Epic remains open - still 12 packages to reduce to 2
 
 ## Current State
 
@@ -44,13 +49,13 @@ Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal im
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Continues with 13 internal packages still imported by cmd/af:
+Continues with 12 internal packages still imported by cmd/af:
 - `node` (19 files) - node.Node type
 - `ledger` (18 files) - ledger.Event type
 - `state` (12 files) - state.ProofState type
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 6 more single-use imports (strategy, shell, templates, patterns, jobs, hooks)
+- Plus 5 more single-use imports (strategy, shell, patterns, jobs, hooks)
 
 Next candidates for elimination (fewest files):
 - `strategy` (1 file) - strategy.go only
@@ -58,7 +63,6 @@ Next candidates for elimination (fewest files):
 - `jobs` (2 files)
 - `patterns` (2 files)
 - `shell` (2 files)
-- `templates` (2 files)
 
 ### P2 Code Quality (API Design)
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -84,6 +88,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 195:** Eliminated templates package import by re-exporting Template, GetTemplate, ListTemplates, TemplateNames through service, reduced imports from 13→12
 **Session 194:** Eliminated metrics package import by re-exporting QualityReport, OverallQuality, SubtreeQuality through service, reduced imports from 14→13
 **Session 193:** Eliminated export package import by re-exporting ValidateExportFormat and ExportProof through service, reduced imports from 15→14
 **Session 192:** Eliminated lemma package import by re-exporting ValidateDefCitations through service, reduced imports from 16→15

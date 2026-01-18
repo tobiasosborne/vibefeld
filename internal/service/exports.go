@@ -12,6 +12,7 @@ import (
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/scope"
 	"github.com/tobias/vibefeld/internal/state"
+	"github.com/tobias/vibefeld/internal/templates"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -285,3 +286,26 @@ func OverallQuality(s *state.State) *QualityReport {
 func SubtreeQuality(s *state.State, rootID NodeID) *QualityReport {
 	return metrics.SubtreeQuality(s, rootID)
 }
+
+// Re-exported types and functions from internal/templates to reduce cmd/af import count.
+// Consumers should use service.Template, service.GetTemplate, etc. instead of
+// importing the templates package directly.
+// Note: templates.ChildSpec is NOT re-exported because service.ChildSpec already exists
+// for a different purpose (bulk refine operations). The templates ChildSpec is
+// accessed indirectly through Template.Children.
+
+// Template defines a proof structure template.
+// Re-export of templates.Template.
+type Template = templates.Template
+
+// GetTemplate retrieves a template by name.
+// Re-export of templates.Get.
+var GetTemplate = templates.Get
+
+// ListTemplates returns all available templates in a consistent order.
+// Re-export of templates.List.
+var ListTemplates = templates.List
+
+// TemplateNames returns all available template names in a consistent order.
+// Re-export of templates.Names.
+var TemplateNames = templates.Names

@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/templates"
 )
 
 // newWizardCmd creates the wizard command for guided workflows.
@@ -240,7 +239,7 @@ func runWizardNewProof(cmd *cobra.Command, conjecture, author, dir, template str
 
 	// Apply template if specified
 	if template != "" {
-		tmpl, ok := templates.Get(template)
+		tmpl, ok := service.GetTemplate(template)
 		if ok {
 			if err := applyTemplate(dir, tmpl); err != nil {
 				// Don't fail completely - proof is initialized
@@ -555,7 +554,7 @@ func validateWizardTemplate(template string) error {
 	if template == "" {
 		return nil // Optional
 	}
-	if _, ok := templates.Get(template); !ok {
+	if _, ok := service.GetTemplate(template); !ok {
 		return fmt.Errorf("unknown template %q (valid: contradiction, induction, cases)", template)
 	}
 	return nil
