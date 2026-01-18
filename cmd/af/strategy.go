@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/strategy"
+	"github.com/tobias/vibefeld/internal/service"
 )
 
 // newStrategyCmd creates the strategy command with subcommands.
@@ -141,7 +141,7 @@ func runStrategyList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
 	}
 
-	strategies := strategy.All()
+	strategies := service.AllStrategies()
 	out := cmd.OutOrStdout()
 
 	if format == "json" {
@@ -184,7 +184,7 @@ type stepJSON struct {
 }
 
 // outputStrategyListJSON outputs strategies in JSON format.
-func outputStrategyListJSON(cmd *cobra.Command, strategies []strategy.Strategy) error {
+func outputStrategyListJSON(cmd *cobra.Command, strategies []service.Strategy) error {
 	output := strategyListJSON{
 		Strategies: make([]strategyJSON, len(strategies)),
 	}
@@ -223,7 +223,7 @@ func runStrategySuggest(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
 	}
 
-	suggestions := strategy.Suggest(conjecture)
+	suggestions := service.SuggestStrategies(conjecture)
 	out := cmd.OutOrStdout()
 
 	if format == "json" {
@@ -266,7 +266,7 @@ type suggestionJSON struct {
 }
 
 // outputSuggestJSON outputs suggestions in JSON format.
-func outputSuggestJSON(cmd *cobra.Command, conjecture string, suggestions []strategy.Suggestion) error {
+func outputSuggestJSON(cmd *cobra.Command, conjecture string, suggestions []service.StrategySuggestion) error {
 	output := suggestJSON{
 		Conjecture:  conjecture,
 		Suggestions: make([]suggestionJSON, len(suggestions)),
@@ -294,10 +294,10 @@ func runStrategyApply(cmd *cobra.Command, args []string) error {
 	strategyName := args[0]
 	conjecture := args[1]
 
-	s, ok := strategy.Get(strategyName)
+	s, ok := service.GetStrategy(strategyName)
 	if !ok {
 		// List available strategies in error message
-		names := strategy.Names()
+		names := service.StrategyNames()
 		return fmt.Errorf("unknown strategy %q: valid strategies are %s", strategyName, strings.Join(names, ", "))
 	}
 

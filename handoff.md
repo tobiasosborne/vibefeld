@@ -1,40 +1,41 @@
-# Handoff - 2026-01-18 (Session 195)
+# Handoff - 2026-01-18 (Session 196)
 
 ## What Was Accomplished This Session
 
-### Session 195 Summary: Eliminated templates package import from cmd/af
+### Session 196 Summary: Eliminated strategy package import from cmd/af
 
-Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 13 to 12 by eliminating the templates package.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 12 to 11 by eliminating the strategy package.
 
 ### Changes Made
 
 **1. Updated internal/service/exports.go:**
-- Added import for `github.com/tobias/vibefeld/internal/templates`
-- Re-exported `templates.Template` as `service.Template` (type alias)
-- Re-exported `templates.Get` as `service.GetTemplate`
-- Re-exported `templates.List` as `service.ListTemplates`
-- Re-exported `templates.Names` as `service.TemplateNames`
-- Note: Did NOT re-export `templates.ChildSpec` because `service.ChildSpec` already exists for a different purpose (bulk refine operations)
+- Added import for `github.com/tobias/vibefeld/internal/strategy`
+- Re-exported `strategy.Strategy` as `service.Strategy` (type alias)
+- Re-exported `strategy.Step` as `service.StrategyStep` (type alias)
+- Re-exported `strategy.Suggestion` as `service.StrategySuggestion` (type alias)
+- Re-exported `strategy.All` as `service.AllStrategies`
+- Re-exported `strategy.Get` as `service.GetStrategy`
+- Re-exported `strategy.Names` as `service.StrategyNames`
+- Re-exported `strategy.Suggest` as `service.SuggestStrategies`
 
-**2. Updated cmd/af/init.go:**
-- Removed `templates` import
-- Changed `templates.List()` → `service.ListTemplates()`
-- Changed `templates.Template` → `service.Template`
-- Changed `templates.Get(...)` → `service.GetTemplate(...)`
-
-**3. Updated cmd/af/wizard.go:**
-- Removed `templates` import
-- Changed `templates.Get(...)` → `service.GetTemplate(...)`
+**2. Updated cmd/af/strategy.go:**
+- Removed `strategy` import, now imports only `service`
+- Changed `strategy.All()` → `service.AllStrategies()`
+- Changed `strategy.Strategy` → `service.Strategy`
+- Changed `strategy.Suggest()` → `service.SuggestStrategies()`
+- Changed `strategy.Suggestion` → `service.StrategySuggestion`
+- Changed `strategy.Get()` → `service.GetStrategy()`
+- Changed `strategy.Names()` → `service.StrategyNames()`
 
 **Verification:**
 - `go build ./cmd/af` succeeds
-- `go test ./...` passes (all packages)
-- Import count reduced from 13 → 12 unique internal packages
+- `go test ./internal/service/... ./cmd/af/...` passes
+- Import count reduced from 12 → 11 unique internal packages
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added session 195 progress note (templates package eliminated)
-- Epic remains open - still 12 packages to reduce to 2
+- **Updated vibefeld-jfbc** - Added session 196 progress note (strategy package eliminated)
+- Epic remains open - still 11 packages to reduce to 2
 
 ## Current State
 
@@ -49,16 +50,15 @@ Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal im
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Continues with 12 internal packages still imported by cmd/af:
+Continues with 11 internal packages still imported by cmd/af:
 - `node` (19 files) - node.Node type
 - `ledger` (18 files) - ledger.Event type
 - `state` (12 files) - state.ProofState type
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 5 more single-use imports (strategy, shell, patterns, jobs, hooks)
+- Plus 4 more single-use imports (shell, patterns, jobs, hooks)
 
 Next candidates for elimination (fewest files):
-- `strategy` (1 file) - strategy.go only
 - `hooks` (2 files)
 - `jobs` (2 files)
 - `patterns` (2 files)
@@ -88,6 +88,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 196:** Eliminated strategy package import by re-exporting Strategy, StrategyStep, StrategySuggestion, AllStrategies, GetStrategy, StrategyNames, SuggestStrategies through service, reduced imports from 12→11
 **Session 195:** Eliminated templates package import by re-exporting Template, GetTemplate, ListTemplates, TemplateNames through service, reduced imports from 13→12
 **Session 194:** Eliminated metrics package import by re-exporting QualityReport, OverallQuality, SubtreeQuality through service, reduced imports from 14→13
 **Session 193:** Eliminated export package import by re-exporting ValidateExportFormat and ExportProof through service, reduced imports from 15→14

@@ -12,6 +12,7 @@ import (
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/scope"
 	"github.com/tobias/vibefeld/internal/state"
+	"github.com/tobias/vibefeld/internal/strategy"
 	"github.com/tobias/vibefeld/internal/templates"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -309,3 +310,35 @@ var ListTemplates = templates.List
 // TemplateNames returns all available template names in a consistent order.
 // Re-export of templates.Names.
 var TemplateNames = templates.Names
+
+// Re-exported types and functions from internal/strategy to reduce cmd/af import count.
+// Consumers should use service.Strategy, service.StrategyStep, etc. instead of
+// importing the strategy package directly.
+
+// Strategy represents a proof strategy with its structure and guidance.
+// Re-export of strategy.Strategy.
+type Strategy = strategy.Strategy
+
+// StrategyStep represents a single step in a proof strategy.
+// Re-export of strategy.Step.
+type StrategyStep = strategy.Step
+
+// StrategySuggestion represents a strategy suggestion with reasoning.
+// Re-export of strategy.Suggestion.
+type StrategySuggestion = strategy.Suggestion
+
+// AllStrategies returns all available strategies in a consistent order.
+// Re-export of strategy.All.
+var AllStrategies = strategy.All
+
+// GetStrategy retrieves a strategy by name.
+// Re-export of strategy.Get.
+var GetStrategy = strategy.Get
+
+// StrategyNames returns all available strategy names in a consistent order.
+// Re-export of strategy.Names.
+var StrategyNames = strategy.Names
+
+// SuggestStrategies analyzes a conjecture and suggests appropriate proof strategies.
+// Re-export of strategy.Suggest.
+var SuggestStrategies = strategy.Suggest
