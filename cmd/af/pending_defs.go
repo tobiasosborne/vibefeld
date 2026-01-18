@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -100,7 +99,7 @@ func runPendingDefs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get all pending definitions from filesystem
-	pendingDefs, err := getAllPendingDefs(svc.Path())
+	pendingDefs, err := svc.LoadAllPendingDefs()
 	if err != nil {
 		return fmt.Errorf("error loading pending definitions: %w", err)
 	}
@@ -151,7 +150,7 @@ func runPendingDef(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get all pending definitions
-	pendingDefs, err := getAllPendingDefs(svc.Path())
+	pendingDefs, err := svc.LoadAllPendingDefs()
 	if err != nil {
 		return fmt.Errorf("error loading pending definitions: %w", err)
 	}
@@ -169,27 +168,6 @@ func runPendingDef(cmd *cobra.Command, args []string) error {
 	}
 
 	return outputPendingDefText(cmd, pd, full)
-}
-
-// getAllPendingDefs returns all pending definitions from the proof directory.
-func getAllPendingDefs(proofDir string) ([]*node.PendingDef, error) {
-	// List pending def node IDs from filesystem
-	nodeIDs, err := fs.ListPendingDefs(proofDir)
-	if err != nil {
-		return nil, err
-	}
-
-	// Load each pending def
-	pendingDefs := make([]*node.PendingDef, 0, len(nodeIDs))
-	for _, nodeID := range nodeIDs {
-		pd, err := fs.ReadPendingDef(proofDir, nodeID)
-		if err != nil {
-			return nil, err
-		}
-		pendingDefs = append(pendingDefs, pd)
-	}
-
-	return pendingDefs, nil
 }
 
 // findPendingDef searches for a pending definition by term, node ID, or pending def ID.

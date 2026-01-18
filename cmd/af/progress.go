@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/cli"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
@@ -96,7 +95,7 @@ func runProgress(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load pending definitions
-	pendingDefs, err := loadPendingDefs(svc.Path())
+	pendingDefs, err := loadPendingDefs(svc)
 	if err != nil {
 		return fmt.Errorf("error loading pending definitions: %w", err)
 	}
@@ -113,19 +112,16 @@ func runProgress(cmd *cobra.Command, args []string) error {
 }
 
 // loadPendingDefs loads all pending definitions from the proof directory.
-func loadPendingDefs(proofDir string) ([]*node.PendingDef, error) {
-	nodeIDs, err := fs.ListPendingDefs(proofDir)
+// Only returns definitions in "pending" status (not resolved or cancelled).
+func loadPendingDefs(svc *service.ProofService) ([]*node.PendingDef, error) {
+	allPendingDefs, err := svc.LoadAllPendingDefs()
 	if err != nil {
 		return nil, err
 	}
 
-	pendingDefs := make([]*node.PendingDef, 0, len(nodeIDs))
-	for _, nodeID := range nodeIDs {
-		pd, err := fs.ReadPendingDef(proofDir, nodeID)
-		if err != nil {
-			return nil, err
-		}
-		// Only count pending (not resolved or cancelled)
+	// Filter to only pending (not resolved or cancelled)
+	pendingDefs := make([]*node.PendingDef, 0, len(allPendingDefs))
+	for _, pd := range allPendingDefs {
 		if pd.IsPending() {
 			pendingDefs = append(pendingDefs, pd)
 		}

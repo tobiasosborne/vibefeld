@@ -1763,3 +1763,50 @@ func (s *ProofService) LoadAmendmentHistory(nodeID types.NodeID) ([]state.Amendm
 
 	return st.GetAmendmentHistory(nodeID), nil
 }
+
+// WritePendingDef writes a pending definition to the proof's pending_defs directory.
+// This is a convenience wrapper around fs.WritePendingDef that uses the service's path.
+func (s *ProofService) WritePendingDef(nodeID types.NodeID, pd *node.PendingDef) error {
+	return fs.WritePendingDef(s.path, nodeID, pd)
+}
+
+// ReadPendingDef reads a pending definition from the proof's pending_defs directory.
+// Returns an error if the pending def doesn't exist.
+// This is a convenience wrapper around fs.ReadPendingDef that uses the service's path.
+func (s *ProofService) ReadPendingDef(nodeID types.NodeID) (*node.PendingDef, error) {
+	return fs.ReadPendingDef(s.path, nodeID)
+}
+
+// ListPendingDefs returns all pending definition node IDs in the proof.
+// Returns an empty slice (not an error) if no pending definitions exist.
+// This is a convenience wrapper around fs.ListPendingDefs that uses the service's path.
+func (s *ProofService) ListPendingDefs() ([]types.NodeID, error) {
+	return fs.ListPendingDefs(s.path)
+}
+
+// DeletePendingDef removes a pending definition from the proof.
+// This is idempotent: it does NOT return an error if the pending def doesn't exist.
+// This is a convenience wrapper around fs.DeletePendingDef that uses the service's path.
+func (s *ProofService) DeletePendingDef(nodeID types.NodeID) error {
+	return fs.DeletePendingDef(s.path, nodeID)
+}
+
+// LoadAllPendingDefs loads all pending definitions from the proof directory.
+// This is a convenience method that combines ListPendingDefs and ReadPendingDef.
+func (s *ProofService) LoadAllPendingDefs() ([]*node.PendingDef, error) {
+	nodeIDs, err := s.ListPendingDefs()
+	if err != nil {
+		return nil, err
+	}
+
+	pendingDefs := make([]*node.PendingDef, 0, len(nodeIDs))
+	for _, nodeID := range nodeIDs {
+		pd, err := s.ReadPendingDef(nodeID)
+		if err != nil {
+			return nil, err
+		}
+		pendingDefs = append(pendingDefs, pd)
+	}
+
+	return pendingDefs, nil
+}

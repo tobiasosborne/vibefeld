@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -90,7 +89,7 @@ func runDefReject(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get all pending definitions
-	pendingDefs, err := getAllPendingDefs(svc.Path())
+	pendingDefs, err := svc.LoadAllPendingDefs()
 	if err != nil {
 		return fmt.Errorf("error loading pending definitions: %w", err)
 	}
@@ -113,7 +112,7 @@ func runDefReject(cmd *cobra.Command, args []string) error {
 	}
 
 	// Write the updated pending definition back to filesystem
-	if err := fs.WritePendingDef(svc.Path(), pd.RequestedBy, pd); err != nil {
+	if err := svc.WritePendingDef(pd.RequestedBy, pd); err != nil {
 		return fmt.Errorf("error saving pending definition: %w", err)
 	}
 

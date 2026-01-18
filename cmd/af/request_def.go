@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -101,7 +100,7 @@ func runRequestDef(cmd *cobra.Command, args []string) error {
 	}
 
 	// Write the pending definition to filesystem
-	if err := fs.WritePendingDef(dir, nodeID, pd); err != nil {
+	if err := svc.WritePendingDef(nodeID, pd); err != nil {
 		return fmt.Errorf("error writing pending definition: %w", err)
 	}
 
