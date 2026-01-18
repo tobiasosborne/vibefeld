@@ -1,53 +1,62 @@
-# Handoff - 2026-01-18 (Session 184)
+# Handoff - 2026-01-18 (Session 185)
 
 ## What Was Accomplished This Session
 
-### Session 184 Summary: Closed vibefeld-9maw as "Won't Fix"
+### Session 185 Summary: Removed 28 Unused Schema Imports
 
-Investigated the "inconsistent return types for ID-returning operations" issue (vibefeld-9maw) and determined it should be closed without code changes.
+Made incremental progress on the P1 epic vibefeld-jfbc by removing unused `schema` package imports from 28 test files in `cmd/af/`.
 
-### Analysis Summary
+### Changes Made
 
-The issue highlighted two concerns:
-1. Some operations return bare strings for IDs (AddDefinition, AddAssumption)
-2. Both static `Init()` and instance `Init()` exist (apparent duplication)
+**Removed unused imports from 28 test files:**
+- `accept_bulk_test.go`, `accept_note_test.go`, `accept_test.go`
+- `accept_validation_deps_test.go`, `admit_test.go`, `agents_integration_test.go`
+- `archive_test.go`, `assumptions_test.go`, `challenge_test.go`
+- `claim_test.go`, `def_reject_test.go`, `deps_test.go`
+- `extract_lemma_test.go`, `get_test.go`, `init_test.go`
+- `jobs_test.go`, `lemmas_test.go`, `log_test.go`
+- `pending_defs_test.go`, `reap_test.go`, `recompute_taint_test.go`
+- `refine_multi_test.go`, `refute_test.go`, `release_test.go`
+- `replay_integration_test.go`, `request_def_test.go`, `scope_test.go`
+- `watch_test.go`
 
-**Investigation findings:**
-- Static `service.Init(proofDir, conjecture, author)` - used ~100 times, mostly in test setup
-- Instance `svc.Init(conjecture, author)` - used ~70 times, satisfies ProofOperations interface
-- The instance method simply delegates to the static function
-- This delegation pattern serves different use cases well:
-  - Static: convenient for tests that need to specify proofDir explicitly
-  - Instance: required by ProofOperations interface for polymorphism
+**Verification:**
+- `go vet -tags=integration ./cmd/af` now passes (was failing before due to unused imports)
+- `go test ./...` passes
+- `go build ./cmd/af` succeeds
 
-**Decision:** Closed as "Won't Fix" with documented rationale. The delegation pattern (Option 2) is acceptable per the issue's own analysis. No functional issue exists; this is a code style preference that doesn't justify the migration effort of 170+ call sites.
+### Progress on vibefeld-jfbc
+
+- **Started at:** 22 unique internal package imports
+- **Session 181:** 21 (eliminated types package via re-exports)
+- **Session 185:** 20 (removed unused schema imports from test files)
+- **Target:** 2 (service + render only)
 
 ### Issue Updates
 
-- **Closed vibefeld-9maw** - "Won't Fix" with documented rationale
+- **Updated vibefeld-jfbc** - Added Session 182→185 progress (now at 20 imports)
 
 ## Current State
 
 ### Test Status
 - All tests pass (`go test ./...`)
 - Build succeeds (`go build ./cmd/af`)
+- Vet passes with integration tag
 
 ### Issue Statistics
-- **Closed this session:** 1 (vibefeld-9maw)
 - **Open:** 7
 - **Ready for work:** 7
 
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-The main epic continues with 21 internal packages still imported by cmd/af:
-- `schema` (28 files) - Many constants still imported directly
-- `node` (20 files) - node.Node type used widely
-- `ledger` (18 files) - ledger.Event type and ledger operations
+Continues with 20 internal packages still imported by cmd/af:
+- `node` (20 files) - node.Node, TaintState types
+- `ledger` (18 files) - ledger.Event type
 - `state` (12 files) - state.ProofState/State types
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 11 more single-use imports
+- Plus 10 more single-use imports
 
 ### P2 Code Quality (API Design)
 - `vibefeld-hn7l` - ProofOperations interface too large (30+ methods)
@@ -74,6 +83,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 185:** Removed 28 unused schema imports from test files, reduced imports from 21→20
 **Session 184:** Investigated and closed vibefeld-9maw as "Won't Fix" - delegation pattern acceptable
 **Session 183:** Re-exported types.Timestamp/Now/FromTime/ParseTimestamp, migrated 6 cmd/af files, types package eliminated from cmd/af
 **Session 182:** Fixed fuzzy flag matching ambiguous prefix bug, closed vibefeld-b51q
