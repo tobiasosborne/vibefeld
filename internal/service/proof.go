@@ -52,6 +52,14 @@ var ErrNotClaimed = aferrors.New(aferrors.NOT_CLAIM_HOLDER, "node is not claimed
 // Exit code: 1 (retriable - caller should claim the node)
 var ErrOwnerMismatch = aferrors.New(aferrors.NOT_CLAIM_HOLDER, "owner does not match")
 
+// ErrNodeNotFound is returned when a node does not exist.
+// Exit code: 3 (logic error)
+var ErrNodeNotFound = aferrors.New(aferrors.NODE_NOT_FOUND, "node not found")
+
+// ErrParentNotFound is returned when a parent node does not exist.
+// Exit code: 3 (logic error)
+var ErrParentNotFound = aferrors.New(aferrors.PARENT_NOT_FOUND, "parent node not found")
+
 // wrapSequenceMismatch converts ledger.ErrSequenceMismatch to ErrConcurrentModification
 // with additional context for the caller.
 func wrapSequenceMismatch(err error, operation string) error {
@@ -414,7 +422,7 @@ func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Dur
 	// Check if node exists
 	n := st.GetNode(id)
 	if n == nil {
-		return errors.New("node not found")
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 	}
 
 	// Check if node is available
@@ -466,7 +474,7 @@ func (s *ProofService) RefreshClaim(id types.NodeID, owner string, timeout time.
 	// Check if node exists
 	n := st.GetNode(id)
 	if n == nil {
-		return errors.New("node not found")
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 	}
 
 	// Check if node is claimed
@@ -509,7 +517,7 @@ func (s *ProofService) ReleaseNode(id types.NodeID, owner string) error {
 	// Check if node exists
 	n := st.GetNode(id)
 	if n == nil {
-		return errors.New("node not found")
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 	}
 
 	// Check if node is claimed
@@ -629,7 +637,7 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 	// Check if parent node exists
 	parent := st.GetNode(spec.ParentID)
 	if parent == nil {
-		return errors.New("parent node not found")
+		return fmt.Errorf("%w: %s", ErrParentNotFound, spec.ParentID.String())
 	}
 
 	// Check if parent is claimed
@@ -741,7 +749,7 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 	// Check if node exists
 	n := st.GetNode(id)
 	if n == nil {
-		return errors.New("node not found")
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 	}
 
 	// Check for blocking challenges (critical or major severity)
@@ -824,7 +832,7 @@ func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
 	for _, id := range ids {
 		n := st.GetNode(id)
 		if n == nil {
-			return fmt.Errorf("node %s not found", id.String())
+			return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 		}
 
 		// Check for blocking challenges (critical or major severity)
@@ -910,7 +918,7 @@ func (s *ProofService) AdmitNode(id types.NodeID) error {
 	// Check if node exists
 	n := st.GetNode(id)
 	if n == nil {
-		return errors.New("node not found")
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 	}
 
 	// Validate epistemic state transition (only pending -> admitted allowed)
@@ -956,7 +964,7 @@ func (s *ProofService) RefuteNode(id types.NodeID) error {
 	// Check if node exists
 	n := st.GetNode(id)
 	if n == nil {
-		return errors.New("node not found")
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 	}
 
 	// Validate epistemic state transition (only pending -> refuted allowed)
@@ -1002,7 +1010,7 @@ func (s *ProofService) ArchiveNode(id types.NodeID) error {
 	// Check if node exists
 	n := st.GetNode(id)
 	if n == nil {
-		return errors.New("node not found")
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 	}
 
 	// Validate epistemic state transition (only pending -> archived allowed)
@@ -1136,7 +1144,7 @@ func (s *ProofService) ExtractLemma(sourceNodeID types.NodeID, statement string)
 	// Check if source node exists
 	n := st.GetNode(sourceNodeID)
 	if n == nil {
-		return "", errors.New("source node not found")
+		return "", fmt.Errorf("%w: %s", ErrNodeNotFound, sourceNodeID.String())
 	}
 
 	// Create the lemma
@@ -1381,7 +1389,7 @@ func (s *ProofService) AllocateChildID(parentID types.NodeID) (types.NodeID, err
 
 	// Check if parent node exists
 	if st.GetNode(parentID) == nil {
-		return types.NodeID{}, errors.New("parent node not found")
+		return types.NodeID{}, fmt.Errorf("%w: %s", ErrParentNotFound, parentID.String())
 	}
 
 	// Find next available child ID
@@ -1431,7 +1439,7 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 	// Check if parent node exists
 	parent := st.GetNode(parentID)
 	if parent == nil {
-		return nil, errors.New("parent node not found")
+		return nil, fmt.Errorf("%w: %s", ErrParentNotFound, parentID.String())
 	}
 
 	// Check if parent is claimed
@@ -1701,7 +1709,7 @@ func (s *ProofService) AmendNode(nodeID types.NodeID, owner, newStatement string
 	// Check if node exists
 	n := st.GetNode(nodeID)
 	if n == nil {
-		return errors.New("node not found")
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
 	}
 
 	// Check epistemic state - can only amend pending nodes
