@@ -1,116 +1,81 @@
-# Handoff - 2026-01-18 (Session 174)
+# Handoff - 2026-01-18 (Session 175)
 
 ## What Was Accomplished This Session
 
-### Session 174 Summary: Completed error types refactoring (Phase 3 - final phase)
+### Session 175 Summary: Broke down P1 epic into actionable sub-tasks
 
-1. **vibefeld-npeg** - "API design: Multiple error types inconsistency" - **CLOSED**
-   - Completed Phase 3: converted remaining validation/state errors to AFError types
-   - Added 4 new error codes: `EMPTY_INPUT`, `INVALID_STATE`, `ALREADY_EXISTS`, `INVALID_TIMEOUT`
-   - Added 4 new sentinel errors to service/proof.go
-   - Converted ~15 validation error sites from plain `errors.New` to structured AFError types
+1. **vibefeld-jfbc** - "Module structure: cmd/af imports 17 packages instead of 2"
+   - Analyzed all imports across 60+ files in cmd/af
+   - Identified top import offenders: types (59 files), schema (44 files), fs (40 files)
+   - Created 5 actionable sub-tasks with proper dependencies
+   - Epic is now blocked by sub-tasks (correct dependency direction)
 
-### Code Changes
+### Sub-Tasks Created
 
-**internal/errors/errors.go:**
-- Added `EMPTY_INPUT` error code
-- Added `INVALID_STATE` error code
-- Added `ALREADY_EXISTS` error code
-- Added `INVALID_TIMEOUT` error code
-- Added string mappings for all 4 codes
+| Issue | Title | Scope |
+|-------|-------|-------|
+| **vibefeld-3iiz** | Re-export types.Parse/NodeID through service | 59 files, ~280 uses |
+| **vibefeld-x5mh** | Wrap fs.InitProofDir in service layer | 32 files, 59 uses |
+| **vibefeld-0zsm** | Re-export schema constants through service | 44 files, ~200 uses |
+| **vibefeld-rvzl** | Move fs pending-def operations to service | 33 uses |
+| **vibefeld-li8a** | Move fs assumption/external operations to service | 10 uses |
 
-**internal/service/proof.go:**
-- Added `ErrEmptyInput` sentinel error
-- Added `ErrInvalidState` sentinel error
-- Added `ErrAlreadyExists` sentinel error
-- Added `ErrInvalidTimeout` sentinel error
-- Converted validation errors in:
-  - `NewProofService` - empty path, path not exist, not directory
-  - `Init` - empty conjecture, empty author, already initialized
-  - `CreateNode` - proof not initialized, node already exists
-  - `ClaimNode` - empty owner, invalid timeout, node not available
-  - `RefreshClaim` - empty owner, invalid timeout
-  - `Refine` - child already exists
-  - `AddAssumption` - empty statement
-  - `AddExternal` - empty name, empty source
-  - `ExtractLemma` - empty statement
-  - `RefineNodeBulk` - empty children list
-  - `AmendNode` - empty owner, empty statement
+### Import Analysis Summary
 
-### Issues Closed
-
-| Issue | Status | Reason |
-|-------|--------|--------|
-| **vibefeld-npeg** | Closed | Completed all 3 phases of error type conversion |
+| Package | Files | Uses | Priority |
+|---------|-------|------|----------|
+| types | 59 | 280+ | High - most pervasive |
+| schema | 44 | 200+ | High - enum constants |
+| fs | 40 | 90+ | Medium - InitProofDir + file ops |
+| node | 20 | - | Deferred - needs analysis |
+| ledger | 18 | - | Deferred - needs analysis |
+| state | 12 | - | Deferred - needs analysis |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 8 (was 9, closed 1)
-- **Closed:** 544 (was 543)
+- **Open:** 13 (was 8, added 5 sub-tasks)
+- **Blocked:** 1 (vibefeld-jfbc, blocked by 5 sub-tasks)
+- **Ready:** 12 (includes all 5 new sub-tasks)
 
 ### Test Status
-- Build: PASS
-- Service tests: PASS (all tests)
-- Errors tests: PASS
-- All tests: PASS except pre-existing `internal/cli` fuzzy flag tests (unrelated)
+- No code changes this session (planning only)
+- All tests remain in previous state
 
 ### Known Issues (Pre-existing)
 1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in fuzzy_flag_test.go
 
-### Verification
-```bash
-# Build
-go build ./cmd/af
-
-# Run service and errors tests (should pass)
-go test ./internal/service/... ./internal/errors/...
-
-# Run all tests (cli fuzzy tests will fail - pre-existing)
-go test ./...
-```
-
-## Error Types Refactoring Summary
-
-All three phases of vibefeld-npeg are now complete:
-
-| Phase | Issue | Status | Error Sites |
-|-------|-------|--------|-------------|
-| Phase 1 | vibefeld-0iwu | ✅ Done | 7 sentinel errors |
-| Phase 2 | vibefeld-ra06 | ✅ Done | 13 not-found errors |
-| Phase 3 | This session | ✅ Done | ~15 validation errors |
-
-**Total error codes added:** 8
-- NODE_NOT_FOUND, PARENT_NOT_FOUND (Phase 2)
-- EMPTY_INPUT, INVALID_STATE, ALREADY_EXISTS, INVALID_TIMEOUT (Phase 3)
-
-**Remaining plain errors:** ~8 (fmt.Errorf wrapping external errors, acceptable)
-
-## Remaining P1 Issues
-
-1. Module structure: Reduce cmd/af imports from 22 to 2 (`vibefeld-jfbc`) - Large multi-session refactoring epic
-
 ## Recommended Next Steps
 
-### High Priority (P1) - Ready for work
-1. Module structure (`vibefeld-jfbc`) - Break into sub-tasks first
+### Immediate (Pick one sub-task)
 
-### P2 Code Quality
-2. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-3. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
-4. Service layer leaks domain types (`vibefeld-vj5y`)
-5. Service package acts as hub (9 imports) (`vibefeld-264n`)
-6. Missing intermediate layer for service (`vibefeld-qsyt`)
+Start with smallest scope for quick win:
+1. **vibefeld-li8a** - fs assumption/external ops (10 uses) - smallest
+2. **vibefeld-rvzl** - fs pending-def ops (33 uses) - small
+3. **vibefeld-x5mh** - fs.InitProofDir (59 uses) - medium
 
-### P3 CLI UX
-7. Boolean parameters in CLI (`vibefeld-yo5e`)
-8. Positional statement variability in refine (`vibefeld-9b6m`)
+Or start with highest impact:
+4. **vibefeld-3iiz** - types re-export (280 uses) - foundational
+
+### P2 Code Quality (unchanged)
+- Inconsistent return types (`vibefeld-9maw`)
+- ProofOperations interface too large (`vibefeld-hn7l`)
+- Service layer leaks domain types (`vibefeld-vj5y`)
+- Service package acts as hub (`vibefeld-264n`)
+- Missing intermediate layer (`vibefeld-qsyt`)
+
+### P3 CLI UX (unchanged)
+- Boolean parameters in CLI (`vibefeld-yo5e`)
+- Positional statement variability in refine (`vibefeld-9b6m`)
 
 ## Quick Commands
 
 ```bash
-# See remaining ready work
+# See ready work (includes new sub-tasks)
 bd ready
+
+# See blocked work
+bd blocked
 
 # Run tests
 go test ./...
@@ -118,6 +83,7 @@ go test ./...
 
 ## Session History
 
+**Session 175:** Analyzed cmd/af imports, created 5 sub-tasks for vibefeld-jfbc epic
 **Session 174:** Completed error types refactoring - closed vibefeld-npeg with all 3 phases done
 **Session 173:** Converted 13 not-found errors to AFError types with NODE_NOT_FOUND/PARENT_NOT_FOUND codes
 **Session 172:** Converted 7 sentinel errors to AFError types with proper exit codes
