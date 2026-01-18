@@ -6,6 +6,7 @@ import (
 	"github.com/tobias/vibefeld/internal/export"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/fuzzy"
+	"github.com/tobias/vibefeld/internal/hooks"
 	"github.com/tobias/vibefeld/internal/lemma"
 	"github.com/tobias/vibefeld/internal/metrics"
 	"github.com/tobias/vibefeld/internal/node"
@@ -457,3 +458,61 @@ var ShellWithExecutor = shell.WithExecutor
 // ErrShellExit is returned when the user requests to exit the shell.
 // Re-export of shell.ErrExit.
 var ErrShellExit = shell.ErrExit
+
+// Re-exported types and functions from internal/hooks to reduce cmd/af import count.
+// Consumers should use service.Hook, service.HookType, etc. instead of
+// importing the hooks package directly.
+
+// HookType represents the type of hook.
+// Re-export of hooks.HookType.
+type HookType = hooks.HookType
+
+// HookType constants.
+const (
+	HookTypeWebhook = hooks.HookTypeWebhook
+	HookTypeCommand = hooks.HookTypeCommand
+)
+
+// HookEventType represents the type of event that can trigger hooks.
+// Re-export of hooks.EventType.
+type HookEventType = hooks.EventType
+
+// HookEventType constants.
+const (
+	HookEventNodeCreated       = hooks.EventNodeCreated
+	HookEventNodeValidated     = hooks.EventNodeValidated
+	HookEventChallengeRaised   = hooks.EventChallengeRaised
+	HookEventChallengeResolved = hooks.EventChallengeResolved
+)
+
+// Hook represents a configured hook.
+// Re-export of hooks.Hook.
+type Hook = hooks.Hook
+
+// HookConfig holds the hooks configuration for a proof directory.
+// Re-export of hooks.Config.
+type HookConfig = hooks.Config
+
+// HookManager manages hook execution for a proof directory.
+// Re-export of hooks.Manager.
+type HookManager = hooks.Manager
+
+// ValidateHookType validates a hook type.
+// Re-export of hooks.ValidateHookType.
+var ValidateHookType = hooks.ValidateHookType
+
+// ValidateHookEventType validates an event type.
+// Re-export of hooks.ValidateEventType.
+var ValidateHookEventType = hooks.ValidateEventType
+
+// GenerateHookID generates a unique hook ID.
+// Re-export of hooks.GenerateHookID.
+var GenerateHookID = hooks.GenerateHookID
+
+// LoadHookConfig loads the hooks config from the proof directory.
+// Re-export of hooks.LoadConfig.
+var LoadHookConfig = hooks.LoadConfig
+
+// NewHookManager creates a new hook manager.
+// Re-export of hooks.NewManager.
+var NewHookManager = hooks.NewManager

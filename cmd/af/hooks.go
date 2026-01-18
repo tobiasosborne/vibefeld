@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/hooks"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -87,7 +86,7 @@ func runHooksList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load hooks config
-	config, err := hooks.LoadConfig(dir)
+	config, err := service.LoadHookConfig(dir)
 	if err != nil {
 		return fmt.Errorf("error loading hooks config: %w", err)
 	}
@@ -200,20 +199,20 @@ func runHooksAdd(cmd *cobra.Command, dir, eventTypeStr, hookTypeStr, target, des
 	}
 
 	// Validate event type
-	eventType := hooks.EventType(eventTypeStr)
-	if err := hooks.ValidateEventType(eventType); err != nil {
+	eventType := service.HookEventType(eventTypeStr)
+	if err := service.ValidateHookEventType(eventType); err != nil {
 		return fmt.Errorf("invalid event type %q: must be one of: node_created, node_validated, challenge_raised, challenge_resolved", eventTypeStr)
 	}
 
 	// Validate hook type
-	hookType := hooks.HookType(hookTypeStr)
-	if err := hooks.ValidateHookType(hookType); err != nil {
+	hookType := service.HookType(hookTypeStr)
+	if err := service.ValidateHookType(hookType); err != nil {
 		return fmt.Errorf("invalid hook type %q: must be 'webhook' or 'command'", hookTypeStr)
 	}
 
 	// Create hook
-	hook := hooks.Hook{
-		ID:          hooks.GenerateHookID(),
+	hook := service.Hook{
+		ID:          service.GenerateHookID(),
 		EventType:   eventType,
 		HookType:    hookType,
 		Target:      target,
@@ -228,7 +227,7 @@ func runHooksAdd(cmd *cobra.Command, dir, eventTypeStr, hookTypeStr, target, des
 	}
 
 	// Load existing config
-	config, err := hooks.LoadConfig(dir)
+	config, err := service.LoadHookConfig(dir)
 	if err != nil {
 		return fmt.Errorf("error loading hooks config: %w", err)
 	}
@@ -292,7 +291,7 @@ func runHooksRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load config
-	config, err := hooks.LoadConfig(dir)
+	config, err := service.LoadHookConfig(dir)
 	if err != nil {
 		return fmt.Errorf("error loading hooks config: %w", err)
 	}
@@ -353,7 +352,7 @@ func runHooksTest(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load config
-	config, err := hooks.LoadConfig(dir)
+	config, err := service.LoadHookConfig(dir)
 	if err != nil {
 		return fmt.Errorf("error loading hooks config: %w", err)
 	}
@@ -370,7 +369,7 @@ func runHooksTest(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(cmd.OutOrStdout())
 
 	// Create manager and test
-	manager, err := hooks.NewManager(dir)
+	manager, err := service.NewHookManager(dir)
 	if err != nil {
 		return fmt.Errorf("error creating hook manager: %w", err)
 	}

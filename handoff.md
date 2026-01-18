@@ -1,41 +1,48 @@
-# Handoff - 2026-01-18 (Session 198)
+# Handoff - 2026-01-18 (Session 199)
 
 ## What Was Accomplished This Session
 
-### Session 198 Summary: Eliminated shell package import from cmd/af
+### Session 199 Summary: Eliminated hooks package import from cmd/af
 
-Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 10 to 9 by eliminating the shell package.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 9 to 8 by eliminating the hooks package.
 
 ### Changes Made
 
 **1. Updated internal/service/exports.go:**
-- Added import for `github.com/tobias/vibefeld/internal/shell`
-- Re-exported `shell.Shell` as `service.Shell` (type alias)
-- Re-exported `shell.Option` as `service.ShellOption` (type alias)
-- Re-exported `shell.New` as `service.NewShell`
-- Re-exported `shell.WithPrompt` as `service.ShellWithPrompt`
-- Re-exported `shell.WithInput` as `service.ShellWithInput`
-- Re-exported `shell.WithOutput` as `service.ShellWithOutput`
-- Re-exported `shell.WithExecutor` as `service.ShellWithExecutor`
-- Re-exported `shell.ErrExit` as `service.ErrShellExit`
+- Added import for `github.com/tobias/vibefeld/internal/hooks`
+- Re-exported `hooks.HookType` as `service.HookType` (type alias)
+- Re-exported `hooks.HookTypeWebhook` and `hooks.HookTypeCommand` constants
+- Re-exported `hooks.EventType` as `service.HookEventType` (type alias)
+- Re-exported `hooks.EventNodeCreated`, `EventNodeValidated`, `EventChallengeRaised`, `EventChallengeResolved` as `service.HookEvent*` constants
+- Re-exported `hooks.Hook` as `service.Hook` (type alias)
+- Re-exported `hooks.Config` as `service.HookConfig` (type alias)
+- Re-exported `hooks.Manager` as `service.HookManager` (type alias)
+- Re-exported `hooks.ValidateHookType` as `service.ValidateHookType`
+- Re-exported `hooks.ValidateEventType` as `service.ValidateHookEventType`
+- Re-exported `hooks.GenerateHookID` as `service.GenerateHookID`
+- Re-exported `hooks.LoadConfig` as `service.LoadHookConfig`
+- Re-exported `hooks.NewManager` as `service.NewHookManager`
 
-**2. Updated cmd/af/shell.go:**
-- Removed `shell` import, now imports only `service`
-- Changed `shell.New` → `service.NewShell`
-- Changed `shell.WithPrompt` → `service.ShellWithPrompt`
-- Changed `shell.WithInput` → `service.ShellWithInput`
-- Changed `shell.WithOutput` → `service.ShellWithOutput`
-- Changed `shell.WithExecutor` → `service.ShellWithExecutor`
+**2. Updated cmd/af/hooks.go:**
+- Removed `hooks` import, now imports only `service`
+- Changed `hooks.LoadConfig` → `service.LoadHookConfig`
+- Changed `hooks.EventType` → `service.HookEventType`
+- Changed `hooks.ValidateEventType` → `service.ValidateHookEventType`
+- Changed `hooks.HookType` → `service.HookType`
+- Changed `hooks.ValidateHookType` → `service.ValidateHookType`
+- Changed `hooks.Hook` → `service.Hook`
+- Changed `hooks.GenerateHookID` → `service.GenerateHookID`
+- Changed `hooks.NewManager` → `service.NewHookManager`
 
 **Verification:**
 - `go build ./...` succeeds
 - `go test ./...` passes (all 27 packages)
-- Import count reduced from 10 → 9 unique internal packages
+- Import count reduced from 9 → 8 unique internal packages
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added session 198 progress note (shell package eliminated)
-- Epic remains open - still 9 packages to reduce to 2
+- **Updated vibefeld-jfbc** - Added session 199 progress note (hooks package eliminated)
+- Epic remains open - still 8 packages to reduce to 2
 
 ## Current State
 
@@ -50,18 +57,17 @@ Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal im
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Continues with 9 internal packages still imported by cmd/af:
+Continues with 8 internal packages still imported by cmd/af:
 - `node` (19 files) - node.Node type
 - `ledger` (17 files) - ledger.Event type
 - `state` (11 files) - state.ProofState type
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- `hooks` (2 files) - Hook integration
 - `jobs` (2 files) - Job detection
 
 Next candidates for elimination (fewest files):
-- `hooks` (2 files)
 - `jobs` (2 files)
+- `fs` (4 files) - only 1 production file now
 
 ### P2 Code Quality (API Design)
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -87,6 +93,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 199:** Eliminated hooks package import by re-exporting HookType, HookEventType, Hook, HookConfig, HookManager, ValidateHookType, ValidateHookEventType, GenerateHookID, LoadHookConfig, NewHookManager through service, reduced imports from 9→8
 **Session 198:** Eliminated shell package import by re-exporting Shell, ShellOption, NewShell, ShellWith* functions through service, reduced imports from 10→9
 **Session 197:** Eliminated patterns package import by re-exporting PatternType, Pattern, PatternLibrary, PatternAnalyzer, PotentialIssue, and ChallengeStatus constants through service, reduced imports from 11→10
 **Session 196:** Eliminated strategy package import by re-exporting Strategy, StrategyStep, StrategySuggestion, AllStrategies, GetStrategy, StrategyNames, SuggestStrategies through service, reduced imports from 12→11
