@@ -5,6 +5,7 @@ import (
 	"github.com/tobias/vibefeld/internal/errors"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/fuzzy"
+	"github.com/tobias/vibefeld/internal/lemma"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/scope"
@@ -235,3 +236,12 @@ var SuggestCommand = fuzzy.SuggestCommand
 // SuggestFlag suggests similar flags for a mistyped flag name.
 // Re-export of fuzzy.SuggestFlag.
 var SuggestFlag = fuzzy.SuggestFlag
+
+// Re-exported functions from internal/lemma to reduce cmd/af import count.
+// Consumers should use service.ValidateDefCitations instead of
+// importing the lemma package directly.
+
+// ValidateDefCitations validates that all def:NAME citations in the statement
+// reference definitions that exist in the current state.
+// Re-export of lemma.ValidateDefCitations.
+var ValidateDefCitations = lemma.ValidateDefCitations

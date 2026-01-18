@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/lemma"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
@@ -421,7 +420,7 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 	}
 
 	// Validate definition citations in statement
-	if err := lemma.ValidateDefCitations(statement, st); err != nil {
+	if err := service.ValidateDefCitations(statement, st); err != nil {
 		return fmt.Errorf("invalid definition citation: %w", err)
 	}
 
@@ -513,7 +512,7 @@ func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, ow
 		}
 
 		// Validate definition citations in statement
-		if err := lemma.ValidateDefCitations(child.Statement, st); err != nil {
+		if err := service.ValidateDefCitations(child.Statement, st); err != nil {
 			return fmt.Errorf("child %d: invalid definition citation: %v", i+1, err)
 		}
 
@@ -555,7 +554,7 @@ func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDSt
 		}
 
 		// Validate definition citations in statement
-		if err := lemma.ValidateDefCitations(stmt, st); err != nil {
+		if err := service.ValidateDefCitations(stmt, st); err != nil {
 			return fmt.Errorf("statement %d: invalid definition citation: %v", i+1, err)
 		}
 
