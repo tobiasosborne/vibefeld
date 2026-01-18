@@ -1,50 +1,41 @@
-# Handoff - 2026-01-18 (Session 197)
+# Handoff - 2026-01-18 (Session 198)
 
 ## What Was Accomplished This Session
 
-### Session 197 Summary: Eliminated patterns package import from cmd/af
+### Session 198 Summary: Eliminated shell package import from cmd/af
 
-Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 11 to 10 by eliminating the patterns package.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 10 to 9 by eliminating the shell package.
 
 ### Changes Made
 
 **1. Updated internal/service/exports.go:**
-- Added import for `github.com/tobias/vibefeld/internal/patterns`
-- Re-exported `patterns.PatternType` as `service.PatternType` (type alias)
-- Re-exported pattern type constants (`PatternLogicalGap`, `PatternScopeViolation`, `PatternCircularReasoning`, `PatternUndefinedTerm`)
-- Re-exported `patterns.PatternTypeInfo` as `service.PatternTypeInfo`
-- Re-exported `patterns.ValidatePatternType` as `service.ValidatePatternType`
-- Re-exported `patterns.AllPatternTypes` as `service.AllPatternTypes`
-- Re-exported `patterns.GetPatternTypeInfo` as `service.GetPatternTypeInfo`
-- Re-exported `patterns.Pattern` as `service.Pattern`
-- Re-exported `patterns.NewPattern` as `service.NewPattern`
-- Re-exported `patterns.PatternLibrary` as `service.PatternLibrary`
-- Re-exported `patterns.NewPatternLibrary` as `service.NewPatternLibrary`
-- Re-exported `patterns.PatternStats` as `service.PatternStats`
-- Re-exported `patterns.LoadPatternLibrary` as `service.LoadPatternLibrary`
-- Re-exported `patterns.Analyzer` as `service.PatternAnalyzer`
-- Re-exported `patterns.NewAnalyzer` as `service.NewPatternAnalyzer`
-- Re-exported `patterns.PotentialIssue` as `service.PotentialIssue`
-- Re-exported `state.ChallengeStatus*` constants for use in patterns code
+- Added import for `github.com/tobias/vibefeld/internal/shell`
+- Re-exported `shell.Shell` as `service.Shell` (type alias)
+- Re-exported `shell.Option` as `service.ShellOption` (type alias)
+- Re-exported `shell.New` as `service.NewShell`
+- Re-exported `shell.WithPrompt` as `service.ShellWithPrompt`
+- Re-exported `shell.WithInput` as `service.ShellWithInput`
+- Re-exported `shell.WithOutput` as `service.ShellWithOutput`
+- Re-exported `shell.WithExecutor` as `service.ShellWithExecutor`
+- Re-exported `shell.ErrExit` as `service.ErrShellExit`
 
-**2. Updated cmd/af/patterns.go:**
-- Removed `patterns` and `state` imports, now imports only `service`
-- Changed all `patterns.*` references to `service.*`
-- Changed `state.ChallengeStatusResolved` → `service.ChallengeStatusResolved`
-
-**3. Updated cmd/af/patterns_test.go:**
-- Removed `patterns` import, now imports only `service`
-- Changed all `patterns.*` references to `service.*`
+**2. Updated cmd/af/shell.go:**
+- Removed `shell` import, now imports only `service`
+- Changed `shell.New` → `service.NewShell`
+- Changed `shell.WithPrompt` → `service.ShellWithPrompt`
+- Changed `shell.WithInput` → `service.ShellWithInput`
+- Changed `shell.WithOutput` → `service.ShellWithOutput`
+- Changed `shell.WithExecutor` → `service.ShellWithExecutor`
 
 **Verification:**
 - `go build ./...` succeeds
 - `go test ./...` passes (all 27 packages)
-- Import count reduced from 11 → 10 unique internal packages
+- Import count reduced from 10 → 9 unique internal packages
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added session 197 progress note (patterns package eliminated)
-- Epic remains open - still 10 packages to reduce to 2
+- **Updated vibefeld-jfbc** - Added session 198 progress note (shell package eliminated)
+- Epic remains open - still 9 packages to reduce to 2
 
 ## Current State
 
@@ -59,18 +50,18 @@ Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal im
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Continues with 10 internal packages still imported by cmd/af:
+Continues with 9 internal packages still imported by cmd/af:
 - `node` (19 files) - node.Node type
-- `ledger` (18 files) - ledger.Event type
-- `state` (12 files) - state.ProofState type
+- `ledger` (17 files) - ledger.Event type
+- `state` (11 files) - state.ProofState type
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 3 more single-use imports (shell, jobs, hooks)
+- `hooks` (2 files) - Hook integration
+- `jobs` (2 files) - Job detection
 
 Next candidates for elimination (fewest files):
 - `hooks` (2 files)
 - `jobs` (2 files)
-- `shell` (2 files)
 
 ### P2 Code Quality (API Design)
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -96,6 +87,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 198:** Eliminated shell package import by re-exporting Shell, ShellOption, NewShell, ShellWith* functions through service, reduced imports from 10→9
 **Session 197:** Eliminated patterns package import by re-exporting PatternType, Pattern, PatternLibrary, PatternAnalyzer, PotentialIssue, and ChallengeStatus constants through service, reduced imports from 11→10
 **Session 196:** Eliminated strategy package import by re-exporting Strategy, StrategyStep, StrategySuggestion, AllStrategies, GetStrategy, StrategyNames, SuggestStrategies through service, reduced imports from 12→11
 **Session 195:** Eliminated templates package import by re-exporting Template, GetTemplate, ListTemplates, TemplateNames through service, reduced imports from 13→12

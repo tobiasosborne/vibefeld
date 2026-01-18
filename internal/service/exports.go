@@ -12,6 +12,7 @@ import (
 	"github.com/tobias/vibefeld/internal/patterns"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/scope"
+	"github.com/tobias/vibefeld/internal/shell"
 	"github.com/tobias/vibefeld/internal/state"
 	"github.com/tobias/vibefeld/internal/strategy"
 	"github.com/tobias/vibefeld/internal/templates"
@@ -420,3 +421,39 @@ const (
 	ChallengeStatusWithdrawn  = state.ChallengeStatusWithdrawn
 	ChallengeStatusSuperseded = state.ChallengeStatusSuperseded
 )
+
+// Re-exported types and functions from internal/shell to reduce cmd/af import count.
+// Consumers should use service.Shell, service.NewShell, etc. instead of
+// importing the shell package directly.
+
+// Shell represents an interactive shell session.
+// Re-export of shell.Shell.
+type Shell = shell.Shell
+
+// ShellOption is a functional option for configuring a Shell.
+// Re-export of shell.Option.
+type ShellOption = shell.Option
+
+// NewShell creates a new Shell with the given options.
+// Re-export of shell.New.
+var NewShell = shell.New
+
+// ShellWithPrompt sets a custom prompt for the shell.
+// Re-export of shell.WithPrompt.
+var ShellWithPrompt = shell.WithPrompt
+
+// ShellWithInput sets the input reader for the shell.
+// Re-export of shell.WithInput.
+var ShellWithInput = shell.WithInput
+
+// ShellWithOutput sets the output writer for the shell.
+// Re-export of shell.WithOutput.
+var ShellWithOutput = shell.WithOutput
+
+// ShellWithExecutor sets the command executor function.
+// Re-export of shell.WithExecutor.
+var ShellWithExecutor = shell.WithExecutor
+
+// ErrShellExit is returned when the user requests to exit the shell.
+// Re-export of shell.ErrExit.
+var ErrShellExit = shell.ErrExit

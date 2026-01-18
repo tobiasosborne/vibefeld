@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/shell"
+	"github.com/tobias/vibefeld/internal/service"
 )
 
 // newShellCmd creates the shell command.
@@ -51,12 +51,12 @@ func runShell(cmd *cobra.Command, root *cobra.Command) error {
 	prompt, _ := cmd.Flags().GetString("prompt")
 
 	// Create shell with executor that runs af subcommands
-	s := shell.New(
+	s := service.NewShell(
 		root,
-		shell.WithPrompt(prompt),
-		shell.WithInput(os.Stdin),
-		shell.WithOutput(cmd.OutOrStdout()),
-		shell.WithExecutor(func(args []string) error {
+		service.ShellWithPrompt(prompt),
+		service.ShellWithInput(os.Stdin),
+		service.ShellWithOutput(cmd.OutOrStdout()),
+		service.ShellWithExecutor(func(args []string) error {
 			return executeSubcommand(root, args, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		}),
 	)
