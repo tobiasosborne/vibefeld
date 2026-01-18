@@ -26,7 +26,8 @@ func main() {
 		// Sanitize error messages to prevent leaking filesystem paths
 		sanitized := errors.SanitizeError(enhanced)
 		fmt.Fprintln(os.Stderr, sanitized)
-		os.Exit(1)
+		// Use structured exit code from AFError if available, otherwise default to 1
+		os.Exit(errors.ExitCode(enhanced))
 	}
 }
 

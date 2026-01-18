@@ -1,31 +1,39 @@
-# Handoff - 2026-01-18 (Session 165)
+# Handoff - 2026-01-18 (Session 166)
 
 ## What Was Accomplished This Session
 
-### Session 165 Summary: Closed 1 issue (CLI UX - verification checklist command)
+### Session 166 Summary: Closed 1 issue (CLI UX - exit codes for machine parsing)
 
-1. **vibefeld-ital** - "CLI UX: Create verification checklist command"
-   - Investigated the issue and found it was already implemented via `af get <node-id> --checklist` in commit 46f2848
-   - Closed as "already implemented differently" - the `--checklist` flag approach is preferred as it groups related functionality together
+1. **vibefeld-8rkr** - "CLI UX: No error codes for machine parsing"
+   - Fixed `cmd/af/main.go` to use `errors.ExitCode()` instead of hardcoded `os.Exit(1)`
+   - Now AFError types return proper structured exit codes:
+     - Exit 1: Retriable (race conditions, transient failures)
+     - Exit 2: Blocked (work cannot proceed)
+     - Exit 3: Logic errors (invalid input, not found)
+     - Exit 4: Corruption (data integrity failures)
+   - Note: Service layer mostly uses plain Go errors, so most CLI errors still return exit 1
 
-### Investigation Notes
+### Code Change
 
-The issue requested adding `af checklist <node-id>` as a standalone command. However, this functionality was already implemented as `af get <node-id> --checklist` in Session 55b (commit 46f2848). The flag-based approach is preferable because:
-1. Groups related node inspection functionality in one command
-2. Avoids command proliferation
-3. Works with other `get` flags like `--format json`
+```go
+// Before (hardcoded exit 1)
+os.Exit(1)
+
+// After (structured exit codes)
+os.Exit(errors.ExitCode(enhanced))
+```
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-ital** | Closed | Already implemented via `af get <node-id> --checklist` |
+| **vibefeld-8rkr** | Closed | Exit codes now use errors.ExitCode() for AFError types |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 14 (was 15)
-- **Closed:** 535 (was 534)
+- **Open:** 13 (was 14)
+- **Closed:** 536 (was 535)
 
 ### Test Status
 - Build: PASS
@@ -39,8 +47,11 @@ The issue requested adding `af checklist <node-id>` as a standalone command. How
 # Build
 go build ./cmd/af
 
-# Test get --checklist
-./af get 1 --checklist -d examples/sqrt2-proof
+# Test exit codes work (claim error returns exit 1 for retriable)
+cd /tmp && rm -rf af-test && mkdir af-test && cd af-test
+./af init --conjecture "Test" --author "test"
+./af claim 1 --owner p1 --role prover
+./af claim 1 --owner p2 --role prover 2>&1; echo "Exit: $?"  # Shows exit 1
 
 # Run all tests
 go test ./...
@@ -69,7 +80,10 @@ go test ./...
 ### P3 CLI UX (quick wins)
 6. Boolean parameters in CLI (`vibefeld-yo5e`)
 7. Positional statement variability in refine (`vibefeld-9b6m`)
-8. No error codes for machine parsing (`vibefeld-8rkr`)
+
+### Future Improvement (Related to 8rkr)
+- Consider migrating service layer from plain Go errors to AFError types for better machine parsing
+- Add `--output json` flag for structured error output
 
 ## Quick Commands
 
@@ -86,6 +100,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 166:** Closed 1 issue (CLI UX - exit codes for machine parsing via errors.ExitCode())
 **Session 165:** Closed 1 issue (CLI UX - verification checklist already implemented via get --checklist)
 **Session 164:** Closed 1 issue (CLI UX - enhanced error recovery suggestions for missing references)
 **Session 163:** Closed 1 issue (CLI UX - failure context in error messages)
