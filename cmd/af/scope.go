@@ -18,8 +18,9 @@ func newScopeCmd() *cobra.Command {
 	var showAll bool
 
 	cmd := &cobra.Command{
-		Use:   "scope [node-id]",
-		Short: "Show scope information for a node",
+		Use:     "scope [node-id]",
+		GroupID: GroupQuery,
+		Short:   "Show scope information for a node",
 		Long: `Show assumption scope information for a proof node.
 
 When called with a node ID, shows:

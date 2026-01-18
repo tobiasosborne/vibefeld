@@ -260,8 +260,9 @@ func newRefineCmd() *cobra.Command {
 	var sibling bool
 
 	cmd := &cobra.Command{
-		Use:   "refine <parent-id> [statement]...",
-		Short: "Add a child node to a claimed parent",
+		Use:     "refine <parent-id> [statement]...",
+		GroupID: GroupProver,
+		Short:   "Add a child node to a claimed parent",
 		Long: `Add a child node to a claimed parent node.
 
 This is a prover action that develops the proof by adding child steps.

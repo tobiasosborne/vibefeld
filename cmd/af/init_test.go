@@ -28,10 +28,7 @@ func setupInitTest(t *testing.T) (string, func()) {
 // newTestInitCmd creates a fresh root command with the init subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestInitCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	initCmd := newInitCmd()
 	cmd.AddCommand(initCmd)

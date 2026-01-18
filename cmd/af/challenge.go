@@ -21,8 +21,9 @@ import (
 // newChallengeCmd creates the challenge command.
 func newChallengeCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "challenge <node-id>",
-		Short: "Raise a challenge against a proof node",
+		Use:     "challenge <node-id>",
+		GroupID: GroupVerifier,
+		Short:   "Raise a challenge against a proof node",
 		Long: `Raise a challenge (objection) against a proof node.
 
 This is a verifier action that identifies an issue with a node's

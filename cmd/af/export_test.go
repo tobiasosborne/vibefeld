@@ -17,10 +17,7 @@ import (
 // newTestExportCmd creates a fresh root command with the export subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestExportCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	exportCmd := newExportCmd()
 	cmd.AddCommand(exportCmd)

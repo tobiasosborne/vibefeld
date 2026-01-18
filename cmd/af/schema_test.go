@@ -23,10 +23,7 @@ import (
 // newTestSchemaCmd creates a fresh root command with the schema subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestSchemaCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	schemaCmd := newSchemaCmd()
 	cmd.AddCommand(schemaCmd)

@@ -13,8 +13,9 @@ import (
 
 func newAdmitCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "admit <node-id>",
-		Short: "Admit a proof node without full verification (introduces taint)",
+		Use:     "admit <node-id>",
+		GroupID: GroupEscape,
+		Short:   "Admit a proof node without full verification (introduces taint)",
 		Long: `Admit accepts a proof node without full verification.
 
 This action introduces epistemic taint, marking uncertainty about the node's

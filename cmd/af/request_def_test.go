@@ -76,10 +76,7 @@ func setupRequestDefTestWithMultipleNodes(t *testing.T) (string, func()) {
 // newRequestDefTestCmd creates a test command hierarchy with the request-def command.
 // This ensures test isolation - each test gets its own command instance.
 func newRequestDefTestCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	requestDefCmd := newRequestDefCmd()
 	cmd.AddCommand(requestDefCmd)

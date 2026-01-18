@@ -30,9 +30,7 @@ func TestPersistentFlags(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a fresh root command for each test to avoid state pollution
-			cmd := &cobra.Command{
-				Use: "af",
-			}
+			cmd := newTestRootCmd()
 			cmd.PersistentFlags().Bool("verbose", false, "Enable verbose output for debugging")
 			cmd.PersistentFlags().Bool("dry-run", false, "Preview changes without making them")
 
@@ -90,7 +88,7 @@ func TestIsDryRun(t *testing.T) {
 
 func TestFlagsInheritedBySubcommands(t *testing.T) {
 	// Create root command with persistent flags
-	root := &cobra.Command{Use: "af"}
+	root := newTestRootCmd()
 	root.PersistentFlags().BoolP("verbose", "v", false, "Enable verbose output")
 	root.PersistentFlags().Bool("dry-run", false, "Preview changes")
 

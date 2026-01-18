@@ -21,8 +21,9 @@ func newSearchCmd() *cobra.Command {
 	var jsonOutput bool
 
 	cmd := &cobra.Command{
-		Use:   "search [query]",
-		Short: "Search and filter nodes",
+		Use:     "search [query]",
+		GroupID: GroupQuery,
+		Short:   "Search and filter nodes",
 		Long: `Search for proof nodes by text content, state, or definition references.
 
 Supports multiple filter criteria that can be combined:

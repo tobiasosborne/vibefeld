@@ -71,10 +71,7 @@ func setupChallengeTestWithMultipleNodes(t *testing.T) (string, func()) {
 // newChallengeTestCmd creates a test command hierarchy with the challenge command.
 // This ensures test isolation - each test gets its own command instance.
 func newChallengeTestCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	challengeCmd := newChallengeCmd()
 	cmd.AddCommand(challengeCmd)

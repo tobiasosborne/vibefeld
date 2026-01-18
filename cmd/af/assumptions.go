@@ -16,8 +16,9 @@ import (
 // newAssumptionsCmd creates the assumptions command for listing assumptions.
 func newAssumptionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "assumptions [node-id]",
-		Short: "List assumptions in the proof",
+		Use:     "assumptions [node-id]",
+		GroupID: GroupQuery,
+		Short:   "List assumptions in the proof",
 		Long: `List all assumptions in the proof, or assumptions in scope for a specific node.
 
 When called without arguments, lists all global assumptions in the proof.
@@ -40,8 +41,9 @@ Examples:
 // newAssumptionCmd creates the assumption command for showing a single assumption.
 func newAssumptionCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "assumption <id>",
-		Short: "Show a specific assumption by ID",
+		Use:     "assumption <id>",
+		GroupID: GroupQuery,
+		Short:   "Show a specific assumption by ID",
 		Long: `Show detailed information about a specific assumption.
 
 The assumption can be identified by its full ID or a unique prefix.

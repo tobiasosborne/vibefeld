@@ -114,10 +114,7 @@ func setupAssumptionsTestWithNodes(t *testing.T) (string, func()) {
 // newTestAssumptionsCmd creates a fresh root command with the assumptions subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestAssumptionsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	assumptionsCmd := newAssumptionsCmd()
 	cmd.AddCommand(assumptionsCmd)
@@ -129,10 +126,7 @@ func newTestAssumptionsCmd() *cobra.Command {
 // newTestAssumptionCmd creates a fresh root command with the assumption subcommand for testing.
 // This command is for showing a single assumption by name/ID.
 func newTestAssumptionCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	assumptionCmd := newAssumptionCmd()
 	cmd.AddCommand(assumptionCmd)

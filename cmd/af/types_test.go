@@ -17,10 +17,7 @@ import (
 // newTestTypesCmd creates a fresh root command with the types subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestTypesCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	typesCmd := newTypesCmd()
 	cmd.AddCommand(typesCmd)

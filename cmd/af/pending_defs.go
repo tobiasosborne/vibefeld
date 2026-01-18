@@ -17,8 +17,9 @@ import (
 // newPendingDefsCmd creates the pending-defs command for listing all pending definitions.
 func newPendingDefsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "pending-defs",
-		Short: "List all pending definition requests in the proof",
+		Use:     "pending-defs",
+		GroupID: GroupWorkflow,
+		Short:   "List all pending definition requests in the proof",
 		Long: `List all pending definition requests that have been made in the proof.
 
 Pending definitions are requests for terms that need to be defined.
@@ -41,8 +42,9 @@ Examples:
 // newPendingDefCmd creates the pending-def command for showing a specific pending definition.
 func newPendingDefCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "pending-def <term|node-id|id>",
-		Short: "Show a specific pending definition by term, node ID, or ID",
+		Use:     "pending-def <term|node-id|id>",
+		GroupID: GroupWorkflow,
+		Short:   "Show a specific pending definition by term, node ID, or ID",
 		Long: `Show details of a specific pending definition request.
 
 You can look up a pending definition by:

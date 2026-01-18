@@ -14,8 +14,9 @@ import (
 
 func newHooksCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "hooks",
-		Short: "Manage hooks for external integrations",
+		Use:     "hooks",
+		GroupID: GroupAdmin,
+		Short:   "Manage hooks for external integrations",
 		Long: `Manage webhook and command hooks for external integrations.
 
 Hooks are triggered asynchronously when events occur in the proof system,

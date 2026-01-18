@@ -60,10 +60,7 @@ func executeDefAddCommand(t *testing.T, args ...string) (string, error) {
 // newDefAddTestCmd creates a test command hierarchy with the def-add command.
 // This ensures test isolation - each test gets its own command instance.
 func newDefAddTestCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	defAddCmd := newDefAddCmd()
 	cmd.AddCommand(defAddCmd)

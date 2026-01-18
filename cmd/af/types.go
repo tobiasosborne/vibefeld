@@ -13,8 +13,9 @@ import (
 // newTypesCmd creates the types command.
 func newTypesCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "types",
-		Short: "List valid node types for proof refinement",
+		Use:     "types",
+		GroupID: GroupQuery,
+		Short:   "List valid node types for proof refinement",
 		Long: `List all valid node types that can be used with 'af refine -t TYPE'.
 
 Node types define the role of each step in a proof:

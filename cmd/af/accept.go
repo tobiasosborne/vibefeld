@@ -31,8 +31,9 @@ func newAcceptCmd() *cobra.Command {
 	var agent string
 
 	cmd := &cobra.Command{
-		Use:   "accept [node-id]...",
-		Short: "Accept proof nodes (verifier action)",
+		Use:     "accept [node-id]...",
+		GroupID: GroupVerifier,
+		Short:   "Accept proof nodes (verifier action)",
 		Long: `Accept validates proof nodes, marking them as verified correct.
 
 This is a verifier action that confirms the node's correctness.

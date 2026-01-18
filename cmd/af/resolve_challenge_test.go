@@ -74,10 +74,7 @@ func setupResolveChallengeTest(t *testing.T) (string, string, func()) {
 // newTestResolveChallengeCmd creates a fresh root command with the resolve-challenge subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestResolveChallengeCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	resolveChallengeCmd := newResolveChallengeCmd()
 	cmd.AddCommand(resolveChallengeCmd)

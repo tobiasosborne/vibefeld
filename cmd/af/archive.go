@@ -15,8 +15,9 @@ import (
 
 func newArchiveCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "archive <node-id>",
-		Short: "Archive a proof node (abandon the branch)",
+		Use:     "archive <node-id>",
+		GroupID: GroupEscape,
+		Short:   "Archive a proof node (abandon the branch)",
 		Long: `Archive marks a proof node as archived, abandoning the branch.
 
 This action indicates the proof branch is no longer being pursued.

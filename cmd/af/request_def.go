@@ -16,8 +16,9 @@ import (
 // newRequestDefCmd creates the request-def command.
 func newRequestDefCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "request-def",
-		Short: "Request a definition for a term",
+		Use:     "request-def",
+		GroupID: GroupProver,
+		Short:   "Request a definition for a term",
 		Long: `Request a definition for a term that is needed during proof work.
 
 This is a prover action that requests a formal definition for a term.

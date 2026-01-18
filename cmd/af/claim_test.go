@@ -96,10 +96,7 @@ func setupClaimTestWithMultipleNodes(t *testing.T) (string, func()) {
 // newTestClaimCmd creates a fresh root command with the claim subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestClaimCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	claimCmd := newClaimCmd()
 	cmd.AddCommand(claimCmd)

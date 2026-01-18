@@ -14,8 +14,9 @@ import (
 // newDepsCmd creates the deps command for showing dependency graph.
 func newDepsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "deps <node-id>",
-		Short: "Show dependency graph for a node",
+		Use:     "deps <node-id>",
+		GroupID: GroupQuery,
+		Short:   "Show dependency graph for a node",
 		Long: `Show the dependency graph for a proof node.
 
 This displays both reference dependencies (nodes this node cites) and

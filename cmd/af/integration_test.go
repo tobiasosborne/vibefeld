@@ -29,10 +29,7 @@ import (
 
 // newIntegrationTestCmd creates a root command with all subcommands needed for integration testing.
 func newIntegrationTestCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	// Add all commands needed for the tracer bullet workflow
 	cmd.AddCommand(newInitCmd())

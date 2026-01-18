@@ -15,8 +15,9 @@ import (
 
 func newHistoryCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "history <node-id>",
-		Short: "Show node evolution history",
+		Use:     "history <node-id>",
+		GroupID: GroupQuery,
+		Short:   "Show node evolution history",
 		Long: `Display the complete history of events affecting a specific node.
 
 Shows all events that have affected this node in chronological order,

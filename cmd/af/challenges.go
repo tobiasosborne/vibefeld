@@ -16,8 +16,9 @@ import (
 // newChallengesCmd creates the challenges command.
 func newChallengesCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "challenges",
-		Short: "List challenges across the proof",
+		Use:     "challenges",
+		GroupID: GroupQuery,
+		Short:   "List challenges across the proof",
 		Long: `List challenges across the proof.
 
 Challenges are verifier objections against proof nodes. A challenge

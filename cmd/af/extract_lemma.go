@@ -16,8 +16,9 @@ import (
 // newExtractLemmaCmd creates the extract-lemma command for extracting lemmas from validated nodes.
 func newExtractLemmaCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "extract-lemma <node-id>",
-		Short: "Extract a lemma from a validated node",
+		Use:     "extract-lemma <node-id>",
+		GroupID: GroupProver,
+		Short:   "Extract a lemma from a validated node",
 		Long: `Extract a reusable lemma from a validated proof node.
 
 The node must be in 'validated' epistemic state before extraction.

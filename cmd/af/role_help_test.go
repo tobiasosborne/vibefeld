@@ -211,11 +211,7 @@ func TestCommandRoles(t *testing.T) {
 // newHelpTestRootCmd creates a minimal root command for help testing.
 // This is separate from newTestRootCmd in root_test.go to add more commands.
 func newHelpTestRootCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Test root command",
-		Long:  "AF (Adversarial Proof Framework) test root command.",
-	}
+	cmd := newTestRootCmd()
 
 	// Add representative commands for each category
 	cmd.AddCommand(&cobra.Command{Use: "refine", Short: "Refine a node"})

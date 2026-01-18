@@ -17,8 +17,9 @@ import (
 // newPendingRefsCmd creates the pending-refs command for listing all pending external references.
 func newPendingRefsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "pending-refs",
-		Short: "List all pending external references in the proof",
+		Use:     "pending-refs",
+		GroupID: GroupWorkflow,
+		Short:   "List all pending external references in the proof",
 		Long: `List all pending external references that have not yet been verified.
 
 Pending external references are citations to theorems, papers, or other sources
@@ -41,8 +42,9 @@ Examples:
 // newPendingRefCmd creates the pending-ref command for showing a specific pending reference.
 func newPendingRefCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "pending-ref <name>",
-		Short: "Show a specific pending external reference by name",
+		Use:     "pending-ref <name>",
+		GroupID: GroupWorkflow,
+		Short:   "Show a specific pending external reference by name",
 		Long: `Show details of a specific pending external reference.
 
 Retrieves and displays the pending reference with the given name, including

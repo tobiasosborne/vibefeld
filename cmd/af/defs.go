@@ -18,8 +18,9 @@ import (
 // newDefsCmd creates the defs command for listing all definitions.
 func newDefsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "defs",
-		Short: "List all definitions in the proof",
+		Use:     "defs",
+		GroupID: GroupQuery,
+		Short:   "List all definitions in the proof",
 		Long: `List all definitions that have been added to the proof.
 
 Definitions provide formal terms that can be referenced in proof steps.
@@ -42,7 +43,8 @@ Examples:
 // newDefCmd creates the def command for showing a specific definition.
 func newDefCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "def <name>",
+		Use:     "def <name>",
+		GroupID: GroupQuery,
 		Short: "Show a specific definition by name",
 		Long: `Show details of a specific definition.
 

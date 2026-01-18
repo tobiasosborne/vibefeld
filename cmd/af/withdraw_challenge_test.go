@@ -106,10 +106,7 @@ func setupWithdrawChallengeTestNoChallenge(t *testing.T) (string, func()) {
 // newTestWithdrawChallengeCmd creates a fresh root command with the withdraw-challenge subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestWithdrawChallengeCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	withdrawChallengeCmd := newWithdrawChallengeCmd()
 	cmd.AddCommand(withdrawChallengeCmd)

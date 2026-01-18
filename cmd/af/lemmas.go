@@ -14,8 +14,9 @@ import (
 // newLemmasCmd creates the lemmas command for listing all lemmas.
 func newLemmasCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "lemmas",
-		Short: "List all lemmas in the proof",
+		Use:     "lemmas",
+		GroupID: GroupQuery,
+		Short:   "List all lemmas in the proof",
 		Long: `List all lemmas that have been extracted from the proof.
 
 Lemmas are reusable proof fragments extracted from validated nodes.
@@ -37,8 +38,9 @@ Examples:
 // newLemmaCmd creates the lemma command for showing a specific lemma.
 func newLemmaCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "lemma <id>",
-		Short: "Show a specific lemma by ID",
+		Use:     "lemma <id>",
+		GroupID: GroupQuery,
+		Short:   "Show a specific lemma by ID",
 		Long: `Show detailed information about a specific lemma.
 
 The lemma can be identified by its full ID or a unique prefix.

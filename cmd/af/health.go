@@ -55,8 +55,9 @@ type HealthReport struct {
 // newHealthCmd creates the health command.
 func newHealthCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "health",
-		Short: "Check proof health and detect stuck states",
+		Use:     "health",
+		GroupID: GroupSetup,
+		Short:   "Check proof health and detect stuck states",
 		Long: `Analyze the proof state to detect if the proof is stuck or making progress.
 
 The health command detects:

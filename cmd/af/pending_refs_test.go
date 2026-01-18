@@ -91,10 +91,7 @@ func setupPendingRefsTestWithExternals(t *testing.T) (string, func()) {
 // newTestPendingRefsCmd creates a fresh root command with the pending-refs subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestPendingRefsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	pendingRefsCmd := newPendingRefsCmd()
 	cmd.AddCommand(pendingRefsCmd)
@@ -106,10 +103,7 @@ func newTestPendingRefsCmd() *cobra.Command {
 // newTestPendingRefCmd creates a fresh root command with the pending-ref subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestPendingRefCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	pendingRefCmd := newPendingRefCmd()
 	cmd.AddCommand(pendingRefCmd)

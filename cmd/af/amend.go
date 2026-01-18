@@ -19,8 +19,9 @@ func newAmendCmd() *cobra.Command {
 	var format string
 
 	cmd := &cobra.Command{
-		Use:   "amend <node-id>",
-		Short: "Amend a node's statement (prover correction)",
+		Use:     "amend <node-id>",
+		GroupID: GroupProver,
+		Short:   "Amend a node's statement (prover correction)",
 		Long: `Amend a node's statement to correct mistakes.
 
 This is a prover action that corrects a node's statement text.

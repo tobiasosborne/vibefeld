@@ -131,8 +131,36 @@ Global flags:
 	Version: Version,
 }
 
+// Command group IDs for organizing help output
+const (
+	GroupSetup    = "setup"
+	GroupWorkflow = "workflow"
+	GroupProver   = "prover"
+	GroupVerifier = "verifier"
+	GroupEscape   = "escape"
+	GroupQuery    = "query"
+	GroupAdmin    = "admin"
+	GroupUtil     = "util"
+)
+
 func init() {
 	rootCmd.SetVersionTemplate("af version {{.Version}}\n")
+
+	// Add command groups for organized help output
+	rootCmd.AddGroup(
+		&cobra.Group{ID: GroupSetup, Title: "Setup & Status:"},
+		&cobra.Group{ID: GroupWorkflow, Title: "Agent Workflow:"},
+		&cobra.Group{ID: GroupProver, Title: "Prover Commands:"},
+		&cobra.Group{ID: GroupVerifier, Title: "Verifier Commands:"},
+		&cobra.Group{ID: GroupEscape, Title: "Escape Hatches:"},
+		&cobra.Group{ID: GroupQuery, Title: "Query & Reference:"},
+		&cobra.Group{ID: GroupAdmin, Title: "Administration:"},
+		&cobra.Group{ID: GroupUtil, Title: "Utilities:"},
+	)
+
+	// Set group for generated help command
+	rootCmd.SetHelpCommandGroupID(GroupUtil)
+	rootCmd.SetCompletionCommandGroupID(GroupUtil)
 
 	// Persistent flags are inherited by all subcommands
 	// Note: -v is already used by Cobra for --version, so verbose has no shorthand

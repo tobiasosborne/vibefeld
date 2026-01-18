@@ -24,10 +24,7 @@ import (
 
 // newTestAgentsCmdIntegration creates a fresh root command for integration tests.
 func newTestAgentsCmdIntegration() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	agentsCmd := newAgentsCmd()
 	cmd.AddCommand(agentsCmd)

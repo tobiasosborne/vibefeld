@@ -105,10 +105,7 @@ func setupPendingDefsTestWithPendingDefs(t *testing.T) (string, func(), []string
 // newTestPendingDefsCmd creates a fresh root command with the pending-defs subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestPendingDefsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	pendingDefsCmd := newPendingDefsCmd()
 	cmd.AddCommand(pendingDefsCmd)
@@ -120,10 +117,7 @@ func newTestPendingDefsCmd() *cobra.Command {
 // newTestPendingDefCmd creates a fresh root command with the pending-def subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestPendingDefCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	pendingDefCmd := newPendingDefCmd()
 	cmd.AddCommand(pendingDefCmd)

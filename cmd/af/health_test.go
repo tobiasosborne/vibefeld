@@ -18,10 +18,7 @@ import (
 // newTestHealthCmd creates a fresh root command with the health subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestHealthCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	healthCmd := newHealthCmd()
 	cmd.AddCommand(healthCmd)

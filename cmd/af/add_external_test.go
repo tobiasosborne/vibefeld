@@ -66,10 +66,7 @@ func executeAddExternalCommand(t *testing.T, args ...string) (string, error) {
 // newAddExternalTestCmd creates a test command hierarchy with the add-external command.
 // This ensures test isolation - each test gets its own command instance.
 func newAddExternalTestCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	addExternalCmd := newAddExternalCmd()
 	cmd.AddCommand(addExternalCmd)

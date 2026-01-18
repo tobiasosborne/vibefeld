@@ -13,8 +13,9 @@ import (
 // newStatusCmd creates the status command.
 func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show proof status and node tree",
+		Use:     "status",
+		GroupID: GroupSetup,
+		Short:   "Show proof status and node tree",
 		Long: `Show the current proof status including the node tree, statistics, and available jobs.
 
 The status command displays:

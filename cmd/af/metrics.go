@@ -14,8 +14,9 @@ import (
 // newMetricsCmd creates the metrics command.
 func newMetricsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "metrics",
-		Short: "Show proof quality metrics and reports",
+		Use:     "metrics",
+		GroupID: GroupUtil,
+		Short:   "Show proof quality metrics and reports",
 		Long: `Analyze the proof and display quality metrics.
 
 The metrics command calculates:

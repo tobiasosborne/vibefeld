@@ -18,8 +18,9 @@ import (
 
 func newWatchCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "watch",
-		Short: "Stream events in real-time",
+		Use:     "watch",
+		GroupID: GroupAdmin,
+		Short:   "Stream events in real-time",
 		Long: `Watch the event ledger for new events in real-time.
 
 Polls the ledger directory at a configurable interval and displays

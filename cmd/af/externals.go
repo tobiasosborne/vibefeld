@@ -16,8 +16,9 @@ import (
 // newExternalsCmd creates the externals command for listing all external references.
 func newExternalsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "externals",
-		Short: "List all external references in the proof",
+		Use:     "externals",
+		GroupID: GroupQuery,
+		Short:   "List all external references in the proof",
 		Long: `List all external references that have been added to the proof.
 
 External references cite theorems, papers, or other sources that can be
@@ -40,8 +41,9 @@ Examples:
 // newExternalCmd creates the external command for showing a specific external reference.
 func newExternalCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "external <name>",
-		Short: "Show a specific external reference by name",
+		Use:     "external <name>",
+		GroupID: GroupQuery,
+		Short:   "Show a specific external reference by name",
 		Long: `Show details of a specific external reference.
 
 Retrieves and displays the external reference with the given name, including

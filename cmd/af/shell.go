@@ -15,6 +15,7 @@ import (
 func newShellCmd(root *cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "shell",
+		GroupID: GroupUtil,
 		Aliases: []string{"repl"},
 		Short:   "Start an interactive shell session",
 		Long: `Start an interactive shell session for running af commands.

@@ -23,10 +23,7 @@ import (
 // newTestProgressCmd creates a fresh root command with the progress subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestProgressCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	progressCmd := newProgressCmd()
 	cmd.AddCommand(progressCmd)

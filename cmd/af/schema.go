@@ -60,8 +60,9 @@ func allTaintStates() []TaintStateInfo {
 // newSchemaCmd creates the schema command for displaying proof schema information.
 func newSchemaCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "schema",
-		Short: "Show proof schema information",
+		Use:     "schema",
+		GroupID: GroupQuery,
+		Short:   "Show proof schema information",
 		Long: `Display schema information for the AF proof framework.
 
 The schema command shows valid values for:

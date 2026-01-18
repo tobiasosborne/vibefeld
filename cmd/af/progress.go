@@ -31,8 +31,9 @@ type ProgressMetrics struct {
 // newProgressCmd creates the progress command for showing proof progress metrics.
 func newProgressCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "progress",
-		Short: "Show proof progress metrics and completion status",
+		Use:     "progress",
+		GroupID: GroupSetup,
+		Short:   "Show proof progress metrics and completion status",
 		Long: `Show the current proof progress including completion percentage, node counts by state,
 blockers, and the critical path (deepest pending branch).
 

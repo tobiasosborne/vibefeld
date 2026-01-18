@@ -144,10 +144,7 @@ func executeDefRejectCommand(t *testing.T, args ...string) (string, error) {
 // newTestDefRejectCmd creates a fresh root command with the def-reject subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestDefRejectCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	defRejectCmd := newDefRejectCmd()
 	cmd.AddCommand(defRejectCmd)

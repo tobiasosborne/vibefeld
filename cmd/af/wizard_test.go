@@ -21,10 +21,7 @@ import (
 
 // newTestWizardCmd creates a fresh root command with the wizard subcommand for testing.
 func newTestWizardCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	wizardCmd := newWizardCmd()
 	cmd.AddCommand(wizardCmd)

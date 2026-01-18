@@ -33,8 +33,9 @@ type ReplayStats struct {
 // newReplayCmd creates the replay command.
 func newReplayCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "replay",
-		Short: "Replay ledger to rebuild and verify state",
+		Use:     "replay",
+		GroupID: GroupAdmin,
+		Short:   "Replay ledger to rebuild and verify state",
 		Long: `Replay all events from the ledger to rebuild and verify the proof state.
 
 The replay command processes all events in sequence order and shows statistics

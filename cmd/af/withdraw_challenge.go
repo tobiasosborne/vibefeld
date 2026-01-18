@@ -22,8 +22,9 @@ type challengeState struct {
 // newWithdrawChallengeCmd creates the withdraw-challenge command.
 func newWithdrawChallengeCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "withdraw-challenge CHALLENGE_ID",
-		Short: "Withdraw a challenge",
+		Use:     "withdraw-challenge CHALLENGE_ID",
+		GroupID: GroupVerifier,
+		Short:   "Withdraw a challenge",
 		Long: `Withdraw a previously raised challenge.
 
 The challenge must be in an open state (not already resolved or withdrawn).
@@ -173,4 +174,8 @@ func runWithdrawChallenge(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func init() {
+	rootCmd.AddCommand(newWithdrawChallengeCmd())
 }

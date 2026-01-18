@@ -18,10 +18,7 @@ import (
 // newTestInferencesCmd creates a fresh root command with the inferences subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestInferencesCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	inferencesCmd := newInferencesCmd()
 	cmd.AddCommand(inferencesCmd)

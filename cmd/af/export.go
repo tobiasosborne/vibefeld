@@ -14,8 +14,9 @@ import (
 // newExportCmd creates the export command.
 func newExportCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "export",
-		Short: "Export proof to different formats",
+		Use:     "export",
+		GroupID: GroupSetup,
+		Short:   "Export proof to different formats",
 		Long: `Export the proof tree to various document formats.
 
 Supported formats:

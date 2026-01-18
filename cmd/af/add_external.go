@@ -13,8 +13,9 @@ import (
 // newAddExternalCmd creates the add-external command.
 func newAddExternalCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add-external [NAME SOURCE]",
-		Short: "Add an external reference to the proof",
+		Use:     "add-external [NAME SOURCE]",
+		GroupID: GroupAdmin,
+		Short:   "Add an external reference to the proof",
 		Long: `Add an external reference (axiom, theorem, paper citation) to the proof.
 
 External references allow citing established results from papers,

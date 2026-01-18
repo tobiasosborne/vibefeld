@@ -35,7 +35,7 @@ func TestNewCompletionCmd(t *testing.T) {
 // TestCompletionBash verifies bash completion script is generated.
 func TestCompletionBash(t *testing.T) {
 	// Create a minimal parent command for the completion to work
-	rootCmd := &cobra.Command{Use: "af"}
+	rootCmd := newTestRootCmd()
 	completionCmd := newCompletionCmd()
 	rootCmd.AddCommand(completionCmd)
 
@@ -58,7 +58,7 @@ func TestCompletionBash(t *testing.T) {
 
 // TestCompletionZsh verifies zsh completion script is generated.
 func TestCompletionZsh(t *testing.T) {
-	rootCmd := &cobra.Command{Use: "af"}
+	rootCmd := newTestRootCmd()
 	completionCmd := newCompletionCmd()
 	rootCmd.AddCommand(completionCmd)
 
@@ -78,7 +78,7 @@ func TestCompletionZsh(t *testing.T) {
 
 // TestCompletionFish verifies fish completion script is generated.
 func TestCompletionFish(t *testing.T) {
-	rootCmd := &cobra.Command{Use: "af"}
+	rootCmd := newTestRootCmd()
 	completionCmd := newCompletionCmd()
 	rootCmd.AddCommand(completionCmd)
 
@@ -98,7 +98,7 @@ func TestCompletionFish(t *testing.T) {
 
 // TestCompletionPowershell verifies powershell completion script is generated.
 func TestCompletionPowershell(t *testing.T) {
-	rootCmd := &cobra.Command{Use: "af"}
+	rootCmd := newTestRootCmd()
 	completionCmd := newCompletionCmd()
 	rootCmd.AddCommand(completionCmd)
 
@@ -119,7 +119,7 @@ func TestCompletionPowershell(t *testing.T) {
 
 // TestCompletionNoArgsShowsHelp verifies that running completion without args shows help.
 func TestCompletionNoArgsShowsHelp(t *testing.T) {
-	rootCmd := &cobra.Command{Use: "af"}
+	rootCmd := newTestRootCmd()
 	completionCmd := newCompletionCmd()
 	rootCmd.AddCommand(completionCmd)
 
@@ -142,7 +142,7 @@ func TestCompletionNoArgsShowsHelp(t *testing.T) {
 
 // TestCompletionInvalidShell verifies that an invalid shell name returns an error.
 func TestCompletionInvalidShell(t *testing.T) {
-	rootCmd := &cobra.Command{Use: "af"}
+	rootCmd := newTestRootCmd()
 	completionCmd := newCompletionCmd()
 	rootCmd.AddCommand(completionCmd)
 

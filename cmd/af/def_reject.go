@@ -15,8 +15,9 @@ import (
 // newDefRejectCmd creates the def-reject command for rejecting pending definitions.
 func newDefRejectCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "def-reject <term|node-id|id>",
-		Short: "Reject a pending definition request",
+		Use:     "def-reject <term|node-id|id>",
+		GroupID: GroupAdmin,
+		Short:   "Reject a pending definition request",
 		Long: `Reject a pending definition request.
 
 This command cancels a pending definition request, indicating that

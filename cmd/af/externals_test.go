@@ -85,10 +85,7 @@ func setupExternalsTestWithExternals(t *testing.T) (string, func()) {
 // newTestExternalsCmd creates a fresh root command with the externals subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestExternalsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	externalsCmd := newExternalsCmd()
 	cmd.AddCommand(externalsCmd)
@@ -100,10 +97,7 @@ func newTestExternalsCmd() *cobra.Command {
 // newTestExternalCmd creates a fresh root command with the external subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestExternalCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	externalCmd := newExternalCmd()
 	cmd.AddCommand(externalCmd)

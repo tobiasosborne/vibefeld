@@ -40,8 +40,9 @@ type AgentsOutput struct {
 
 func newAgentsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "agents",
-		Short: "Show agent activity and claimed nodes",
+		Use:     "agents",
+		GroupID: GroupWorkflow,
+		Short:   "Show agent activity and claimed nodes",
 		Long: `Display agent activity including currently claimed nodes and historical claim/release events.
 
 The agents command shows:

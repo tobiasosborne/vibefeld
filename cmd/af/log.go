@@ -15,8 +15,9 @@ import (
 
 func newLogCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "log",
-		Short: "Show event ledger history",
+		Use:     "log",
+		GroupID: GroupAdmin,
+		Short:   "Show event ledger history",
 		Long: `Display the event ledger history for the proof.
 
 Shows all events that have been recorded in the ledger, including

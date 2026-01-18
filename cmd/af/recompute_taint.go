@@ -34,8 +34,9 @@ type RecomputeTaintResult struct {
 // newRecomputeTaintCmd creates the recompute-taint command.
 func newRecomputeTaintCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "recompute-taint",
-		Short: "Recompute taint state for all nodes",
+		Use:     "recompute-taint",
+		GroupID: GroupAdmin,
+		Short:   "Recompute taint state for all nodes",
 		Long: `Recompute taint state for all nodes in the proof tree.
 
 Taint propagates through the proof tree based on epistemic states:

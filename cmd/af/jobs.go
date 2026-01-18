@@ -18,8 +18,9 @@ import (
 // newJobsCmd creates the jobs command.
 func newJobsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "jobs",
-		Short: "List available jobs",
+		Use:     "jobs",
+		GroupID: GroupWorkflow,
+		Short:   "List available jobs",
 		Long: `List available prover and verifier jobs in the proof.
 
 Verifier jobs are nodes ready for review (breadth-first model):

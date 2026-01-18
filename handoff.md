@@ -1,44 +1,57 @@
-# Handoff - 2026-01-18 (Session 169)
+# Handoff - 2026-01-18 (Session 170)
 
 ## What Was Accomplished This Session
 
-### Session 169 Summary: Closed 1 issue (CLI UX - standardized challenge rendering across commands)
+### Session 170 Summary: Closed 1 issue (CLI UX - help command grouping)
 
-1. **vibefeld-87z6** - "CLI UX: Challenge rendering inconsistent across commands"
-   - Analyzed all challenge rendering locations across the codebase
-   - Found inconsistencies: some formats showed severity, others didn't; different field orderings
-   - Updated `renderChallengesView` in `internal/render/render_views.go` to:
-     - Show severity with BLOCKING indicator for open critical/major challenges
-     - Sort by status (open first), then severity (critical > major > minor > note), then ID
-     - Show blocking count in summary header
-   - Updated `renderChallengeInfoView` in `internal/render/render_views.go` to show severity with blocking indicator
-   - Added `Severity` field to `JSONJobChallenge` struct in `internal/render/jobs.go`
-   - Updated `buildJobEntryFull` to populate the severity field
+1. **vibefeld-juts** - "CLI UX: Help command grouping by category"
+   - Added 8 command groups to organize the 50+ CLI commands:
+     - Setup & Status (init, status, progress, health, export)
+     - Agent Workflow (jobs, claim, release, extend-claim, agents, pending-defs, pending-refs)
+     - Prover Commands (refine, request-def, amend, extract-lemma, resolve-challenge)
+     - Verifier Commands (accept, challenge, withdraw-challenge)
+     - Escape Hatches (admit, refute, archive)
+     - Query & Reference (get, defs, assumptions, schema, inferences, types, challenges, deps, scope, search, history, externals, lemmas)
+     - Administration (log, replay, reap, recompute-taint, def-add, def-reject, hooks, add-external, verify-external, patterns, watch)
+     - Utilities (shell, completion, version, wizard, tutorial, strategy, metrics)
+   - Added `withdraw-challenge` command registration (was missing init function)
+   - Updated 44 test files to use `newTestRootCmd()` helper with command groups
 
 ### Code Changes
 
-**internal/render/render_views.go:**
-- `renderChallengesView`: Added blocking count tracking, severity-based sorting, severity display with BLOCKING indicator
-- `renderChallengeInfoView`: Added Severity field display with BLOCKING indicator for open critical/major challenges
+**cmd/af/main.go:**
+- Added 8 command group constants (GroupSetup, GroupWorkflow, GroupProver, GroupVerifier, GroupEscape, GroupQuery, GroupAdmin, GroupUtil)
+- Added `rootCmd.AddGroup()` calls for each group
+- Added `SetHelpCommandGroupID` and `SetCompletionCommandGroupID` for built-in commands
 
-**internal/render/jobs.go:**
-- `JSONJobChallenge`: Added `Severity string` field
-- `buildJobEntryFull`: Populates `Severity` field from challenge
+**cmd/af/*.go (all command files):**
+- Added `GroupID: GroupXxx` field to each command's cobra.Command definition
+
+**cmd/af/withdraw_challenge.go:**
+- Added missing `init()` function to register the command
+
+**cmd/af/root_test.go:**
+- Refactored `newTestRootCmd()` to return clean root with command groups only
+- Added `newTestRootCmdWithStubs()` for fuzzy matching tests
+
+**cmd/af/*_test.go (44 files):**
+- Updated test helpers to use `newTestRootCmd()` instead of inline `&cobra.Command{}`
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-87z6** | Closed | Standardized challenge rendering across commands |
+| **vibefeld-juts** | Closed | Implemented command grouping in CLI help output |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 10 (was 11)
-- **Closed:** 539 (was 538)
+- **Open:** 9 (was 10)
+- **Closed:** 540 (was 539)
 
 ### Test Status
 - Build: PASS
+- cmd/af tests: PASS
 - All tests: PASS (pre-existing lock test failures excluded)
 
 ### Known Issues (Pre-existing)
@@ -49,8 +62,11 @@
 # Build
 go build ./cmd/af
 
-# Run render tests
-go test ./internal/render/...
+# Check grouped help output
+./af --help
+
+# Run cmd/af tests
+go test ./cmd/af/...
 
 # Run all tests
 go test ./...
@@ -95,6 +111,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 170:** Closed 1 issue (CLI UX - help command grouping by category)
 **Session 169:** Closed 1 issue (CLI UX - standardized challenge rendering across commands)
 **Session 168:** Closed 1 issue (Code smell - missing comment on collectDefinitionNames redundancy)
 **Session 167:** Closed 1 issue (CLI UX - actionable jobs output with priority sorting and recommended indicators)

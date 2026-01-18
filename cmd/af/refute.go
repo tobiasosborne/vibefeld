@@ -15,8 +15,9 @@ import (
 
 func newRefuteCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "refute <node-id>",
-		Short: "Refute a proof node (mark as disproven)",
+		Use:     "refute <node-id>",
+		GroupID: GroupEscape,
+		Short:   "Refute a proof node (mark as disproven)",
 		Long: `Refute marks a proof node as disproven or incorrect.
 
 This is a verifier action that indicates the node's claim is false.

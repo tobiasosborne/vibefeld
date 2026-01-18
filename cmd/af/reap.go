@@ -24,8 +24,9 @@ type reapResult struct {
 
 func newReapCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "reap",
-		Short: "Clean up stale/expired locks",
+		Use:     "reap",
+		GroupID: GroupAdmin,
+		Short:   "Clean up stale/expired locks",
 		Long: `Reap cleans up stale or expired locks from claimed nodes.
 
 When an agent claims a node, it acquires a time-limited lock. If the agent

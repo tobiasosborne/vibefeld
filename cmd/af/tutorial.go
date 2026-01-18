@@ -10,8 +10,9 @@ import (
 // newTutorialCmd creates the tutorial command for displaying a step-by-step guide.
 func newTutorialCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "tutorial",
-		Short: "Show a step-by-step guide for proving something",
+		Use:     "tutorial",
+		GroupID: GroupUtil,
+		Short:   "Show a step-by-step guide for proving something",
 		Long: `Display a comprehensive tutorial on how to prove something from start to finish
 using the AF (Adversarial Proof Framework).
 

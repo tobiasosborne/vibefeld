@@ -23,10 +23,7 @@ import (
 
 // newIntegrationTestReplayCmd creates a fresh root command with the replay subcommand for testing.
 func newIntegrationTestReplayCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	replayCmd := newReplayCmd()
 	cmd.AddCommand(replayCmd)

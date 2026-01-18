@@ -124,10 +124,7 @@ func setupLemmasTestWithLemmas(t *testing.T) (string, func(), []string) {
 // newTestLemmasCmd creates a fresh root command with the lemmas subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestLemmasCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	lemmasCmd := newLemmasCmd()
 	cmd.AddCommand(lemmasCmd)
@@ -139,10 +136,7 @@ func newTestLemmasCmd() *cobra.Command {
 // newTestLemmaCmd creates a fresh root command with the lemma subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestLemmaCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	lemmaCmd := newLemmaCmd()
 	cmd.AddCommand(lemmaCmd)

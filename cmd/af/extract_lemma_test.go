@@ -180,10 +180,7 @@ func setupExtractLemmaTestWithExistingLemma(t *testing.T) (string, func(), strin
 // newTestExtractLemmaCmd creates a fresh root command with the extract-lemma
 // subcommand for testing. This ensures test isolation.
 func newTestExtractLemmaCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	extractLemmaCmd := newExtractLemmaCmd()
 	cmd.AddCommand(extractLemmaCmd)

@@ -16,8 +16,9 @@ import (
 // newResolveChallengeCmd creates the resolve-challenge command.
 func newResolveChallengeCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "resolve-challenge <challenge-id>",
-		Short: "Resolve a challenge with a response",
+		Use:     "resolve-challenge <challenge-id>",
+		GroupID: GroupProver,
+		Short:   "Resolve a challenge with a response",
 		Long: `Resolve a previously raised challenge by providing a response.
 
 This is a prover action that addresses a verifier's objection.

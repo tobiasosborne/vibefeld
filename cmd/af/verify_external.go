@@ -16,8 +16,9 @@ import (
 // reference as verified by a human reviewer.
 func newVerifyExternalCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "verify-external <ext-id>",
-		Short: "Verify an external reference",
+		Use:     "verify-external <ext-id>",
+		GroupID: GroupAdmin,
+		Short:   "Verify an external reference",
 		Long: `Mark an external reference as verified by a human reviewer.
 
 This command confirms that an external reference (citation, axiom, theorem)

@@ -21,10 +21,7 @@ import (
 
 // newTestStrategyCmd creates a fresh root command with the strategy subcommand for testing.
 func newTestStrategyCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	strategyCmd := newStrategyCmd()
 	cmd.AddCommand(strategyCmd)

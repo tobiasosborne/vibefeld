@@ -115,10 +115,7 @@ func setupJobsTestWithVerifierJobs(t *testing.T) (string, func()) {
 // newTestJobsCmd creates a fresh root command with the jobs subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestJobsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	jobsCmd := newJobsCmd()
 	cmd.AddCommand(jobsCmd)

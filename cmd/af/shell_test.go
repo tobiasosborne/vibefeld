@@ -16,10 +16,7 @@ import (
 
 // newTestShellCmd creates a fresh root command with the shell subcommand for testing.
 func newTestShellCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	shellCmd := newShellCmd(cmd)
 	cmd.AddCommand(shellCmd)

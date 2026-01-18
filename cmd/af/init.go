@@ -19,8 +19,9 @@ func newInitCmd() *cobra.Command {
 	var listTemplates bool
 
 	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "Initialize a new proof workspace",
+		Use:     "init",
+		GroupID: GroupSetup,
+		Short:   "Initialize a new proof workspace",
 		Long: `Initialize a new proof workspace with a conjecture to prove.
 
 This command creates the proof directory structure and initializes the

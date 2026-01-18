@@ -15,8 +15,9 @@ import (
 // newReleaseCmd creates the release command for releasing a claimed job.
 func newReleaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "release <node-id>",
-		Short: "Release a claimed job",
+		Use:     "release <node-id>",
+		GroupID: GroupWorkflow,
+		Short:   "Release a claimed job",
 		Long: `Release a claimed job, making it available for other agents.
 
 This command releases a node that you previously claimed, returning it to

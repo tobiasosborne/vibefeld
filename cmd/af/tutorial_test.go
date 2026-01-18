@@ -20,10 +20,7 @@ import (
 // newTestTutorialCmd creates a fresh root command with the tutorial subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestTutorialCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	tutorialCmd := newTutorialCmd()
 	cmd.AddCommand(tutorialCmd)

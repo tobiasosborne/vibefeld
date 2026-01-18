@@ -13,8 +13,9 @@ import (
 // newStrategyCmd creates the strategy command with subcommands.
 func newStrategyCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "strategy",
-		Short: "Proof structure and strategy guidance",
+		Use:     "strategy",
+		GroupID: GroupUtil,
+		Short:   "Proof structure and strategy guidance",
 		Long: `Provides guidance on proof strategies and structure.
 
 The strategy command helps provers plan their proofs by:

@@ -12,8 +12,9 @@ import (
 // newCompletionCmd creates the completion command for generating shell completion scripts.
 func newCompletionCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "completion [bash|zsh|fish|powershell]",
-		Short: "Generate shell completion scripts",
+		Use:     "completion [bash|zsh|fish|powershell]",
+		GroupID: GroupUtil,
+		Short:   "Generate shell completion scripts",
 		Long: `Generate shell completion scripts for af commands.
 
 This command generates shell-specific completion scripts that enable

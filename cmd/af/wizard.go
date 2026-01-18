@@ -17,8 +17,9 @@ import (
 // newWizardCmd creates the wizard command for guided workflows.
 func newWizardCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "wizard",
-		Short: "Guided workflow wizards",
+		Use:     "wizard",
+		GroupID: GroupUtil,
+		Short:   "Guided workflow wizards",
 		Long: `Interactive wizards that guide you through common AF workflows.
 
 Available wizards:

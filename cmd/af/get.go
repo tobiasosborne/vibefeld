@@ -24,8 +24,9 @@ func newGetCmd() *cobra.Command {
 	var checklist bool
 
 	cmd := &cobra.Command{
-		Use:   "get <node-id>",
-		Short: "Get node details by ID",
+		Use:     "get <node-id>",
+		GroupID: GroupQuery,
+		Short:   "Get node details by ID",
 		Long: `Get detailed information about a proof node.
 
 Retrieves node information from the proof, with optional flags to show

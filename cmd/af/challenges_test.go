@@ -24,10 +24,7 @@ import (
 // newTestChallengesCmd creates a fresh root command with the challenges subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestChallengesCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	challengesCmd := newChallengesCmd()
 	cmd.AddCommand(challengesCmd)

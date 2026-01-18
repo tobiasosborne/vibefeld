@@ -15,8 +15,9 @@ import (
 // newPatternsCmd creates the patterns command with subcommands.
 func newPatternsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "patterns",
-		Short: "Manage challenge pattern library",
+		Use:     "patterns",
+		GroupID: GroupAdmin,
+		Short:   "Manage challenge pattern library",
 		Long: `Analyze resolved challenges and extract common mistake patterns.
 
 The pattern library helps future provers avoid common mistakes by learning

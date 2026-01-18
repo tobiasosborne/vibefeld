@@ -13,8 +13,9 @@ import (
 // newInferencesCmd creates the inferences command.
 func newInferencesCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "inferences",
-		Short: "List all valid inference types",
+		Use:     "inferences",
+		GroupID: GroupQuery,
+		Short:   "List all valid inference types",
 		Long: `List all valid inference types for use with 'af refine -j TYPE'.
 
 Inference types are the logical rules used to justify proof steps. Each

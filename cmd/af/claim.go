@@ -18,8 +18,9 @@ import (
 // newClaimCmd creates the claim command for claiming a node for work.
 func newClaimCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "claim <node-id>",
-		Short: "Claim a job for work",
+		Use:     "claim <node-id>",
+		GroupID: GroupWorkflow,
+		Short:   "Claim a job for work",
 		Long: `Claim a proof node to work on as a prover or verifier.
 
 Before working on a node, agents must claim it to prevent concurrent

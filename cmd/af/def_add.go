@@ -14,8 +14,9 @@ import (
 // newDefAddCmd creates the def-add command for adding definitions.
 func newDefAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "def-add <name> [content]",
-		Short: "Add a definition to the proof",
+		Use:     "def-add <name> [content]",
+		GroupID: GroupAdmin,
+		Short:   "Add a definition to the proof",
 		Long: `Add a definition to the proof.
 
 Definitions provide formal terms that can be referenced in proof steps.

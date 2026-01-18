@@ -18,14 +18,8 @@ import (
 // newTestAgentsCmd creates a fresh root command with the agents subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestAgentsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
-
-	agentsCmd := newAgentsCmd()
-	cmd.AddCommand(agentsCmd)
-
+	cmd := newTestRootCmd()
+	cmd.AddCommand(newAgentsCmd())
 	return cmd
 }
 

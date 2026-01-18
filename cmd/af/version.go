@@ -30,8 +30,9 @@ type versionJSON struct {
 // newVersionCmd creates the version command for displaying build information.
 func newVersionCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "version",
-		Short: "Display version and build information",
+		Use:     "version",
+		GroupID: GroupUtil,
+		Short:   "Display version and build information",
 		Long: `Display version and build information for the af CLI tool.
 
 Shows:

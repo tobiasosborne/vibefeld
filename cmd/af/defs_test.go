@@ -79,10 +79,7 @@ func setupDefsTestWithDefinitions(t *testing.T) (string, func()) {
 // newTestDefsCmd creates a fresh root command with the defs subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestDefsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	defsCmd := newDefsCmd()
 	cmd.AddCommand(defsCmd)
@@ -94,10 +91,7 @@ func newTestDefsCmd() *cobra.Command {
 // newTestDefCmd creates a fresh root command with the def subcommand for testing.
 // This ensures test isolation - each test gets its own command instance.
 func newTestDefCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	defCmd := newDefCmd()
 	cmd.AddCommand(defCmd)

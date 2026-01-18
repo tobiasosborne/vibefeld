@@ -18,8 +18,9 @@ import (
 // newExtendClaimCmd creates the extend-claim command for extending an existing claim's duration.
 func newExtendClaimCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "extend-claim <node-id>",
-		Short: "Extend the duration of an existing claim",
+		Use:     "extend-claim <node-id>",
+		GroupID: GroupWorkflow,
+		Short:   "Extend the duration of an existing claim",
 		Long: `Extend the timeout of a claimed node without releasing and reclaiming.
 
 This command allows an agent to extend their claim on a node without the risky

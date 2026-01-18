@@ -63,10 +63,7 @@ func setupExtendClaimTest(t *testing.T, owner string) (string, func()) {
 
 // newTestExtendClaimCmd creates a fresh root command with the extend-claim subcommand for testing.
 func newTestExtendClaimCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	extendClaimCmd := newExtendClaimCmd()
 	cmd.AddCommand(extendClaimCmd)

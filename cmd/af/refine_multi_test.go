@@ -19,10 +19,7 @@ import (
 // newRefineMultiTestCmd creates a test command hierarchy with the refine command.
 // This ensures test isolation - each test gets its own command instance.
 func newRefineMultiTestCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "af",
-		Short: "Adversarial Proof Framework CLI",
-	}
+	cmd := newTestRootCmd()
 
 	refineCmd := newRefineCmd()
 	cmd.AddCommand(refineCmd)

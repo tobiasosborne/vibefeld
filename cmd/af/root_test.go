@@ -22,8 +22,10 @@ func executeCommand(root *cobra.Command, args ...string) (string, error) {
 	return buf.String(), err
 }
 
-// newTestRootCmd creates a fresh copy of rootCmd for testing.
+// newTestRootCmd creates a fresh root command with command groups for testing.
 // This ensures test isolation - each test gets its own command instance.
+// It includes the command groups required by subcommands that have GroupID set.
+// Use this when your test adds real command constructors like newStatusCmd().
 func newTestRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "af",
@@ -43,6 +45,26 @@ Key principles:
 		Version: Version,
 	}
 	cmd.SetVersionTemplate("af version {{.Version}}\n")
+
+	// Add command groups (required for subcommands with GroupID set)
+	cmd.AddGroup(
+		&cobra.Group{ID: GroupSetup, Title: "Setup & Status:"},
+		&cobra.Group{ID: GroupWorkflow, Title: "Agent Workflow:"},
+		&cobra.Group{ID: GroupProver, Title: "Prover Commands:"},
+		&cobra.Group{ID: GroupVerifier, Title: "Verifier Commands:"},
+		&cobra.Group{ID: GroupEscape, Title: "Escape Hatches:"},
+		&cobra.Group{ID: GroupQuery, Title: "Query & Reference:"},
+		&cobra.Group{ID: GroupAdmin, Title: "Administration:"},
+		&cobra.Group{ID: GroupUtil, Title: "Utilities:"},
+	)
+
+	return cmd
+}
+
+// newTestRootCmdWithStubs creates a root command with stub subcommands for testing
+// fuzzy matching. This is used only by root_test.go for testing fuzzy command/flag matching.
+func newTestRootCmdWithStubs() *cobra.Command {
+	cmd := newTestRootCmd()
 
 	// Add test subcommands to test fuzzy matching
 	// These simulate the commands that will exist in the full CLI
@@ -104,7 +126,7 @@ func TestRootCmd_Version(t *testing.T) {
 }
 
 func TestRootCmd_Help(t *testing.T) {
-	cmd := newTestRootCmd()
+	cmd := newTestRootCmdWithStubs()
 	output, err := executeCommand(cmd, "--help")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
@@ -126,7 +148,7 @@ func TestRootCmd_Help(t *testing.T) {
 }
 
 func TestRootCmd_NoArgs(t *testing.T) {
-	cmd := newTestRootCmd()
+	cmd := newTestRootCmdWithStubs()
 	output, err := executeCommand(cmd)
 
 	// With no args and no Run function, cobra shows help
@@ -142,7 +164,7 @@ func TestRootCmd_NoArgs(t *testing.T) {
 }
 
 func TestRootCmd_UnknownCommand(t *testing.T) {
-	cmd := newTestRootCmd()
+	cmd := newTestRootCmdWithStubs()
 	_, err := executeCommand(cmd, "notacommand")
 
 	if err == nil {
@@ -215,7 +237,7 @@ func TestRootCmd_FuzzyMatching(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := newTestRootCmd()
+			cmd := newTestRootCmdWithStubs()
 			output, err := executeCommand(cmd, tc.input)
 
 			if tc.wantErr && err == nil {
@@ -307,7 +329,7 @@ func TestRootCmd_FlagFuzzyMatching(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := newTestRootCmd()
+			cmd := newTestRootCmdWithStubs()
 			output, err := executeCommand(cmd, tc.args...)
 
 			if tc.wantErr && err == nil {
