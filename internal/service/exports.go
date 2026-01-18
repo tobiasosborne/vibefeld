@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/errors"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
@@ -196,3 +197,11 @@ var SanitizeError = errors.SanitizeError
 // ExitCode returns the appropriate exit code for an error.
 // Re-export of errors.ExitCode.
 var ExitCode = errors.ExitCode
+
+// Re-exported constants from internal/config to reduce cmd/af import count.
+// Consumers should use service.DefaultClaimTimeout instead of
+// importing the config package directly.
+
+// DefaultClaimTimeout is the default duration for claim timeouts in CLI commands.
+// Re-export of config.DefaultClaimTimeout.
+const DefaultClaimTimeout = config.DefaultClaimTimeout

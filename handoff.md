@@ -1,38 +1,40 @@
-# Handoff - 2026-01-18 (Session 188)
+# Handoff - 2026-01-18 (Session 189)
 
 ## What Was Accomplished This Session
 
-### Session 188 Summary: Eliminated errors package import from cmd/af
+### Session 189 Summary: Eliminated config package import from cmd/af
 
-Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 20 to 19 by eliminating the errors package.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 19 to 18 by eliminating the config package.
 
 ### Changes Made
 
 **1. Updated internal/service/exports.go:**
-- Added import for `github.com/tobias/vibefeld/internal/errors`
-- Re-exported `errors.SanitizeError` as `service.SanitizeError`
-- Re-exported `errors.ExitCode` as `service.ExitCode`
+- Added import for `github.com/tobias/vibefeld/internal/config`
+- Re-exported `config.DefaultClaimTimeout` as `service.DefaultClaimTimeout`
 
-**2. Updated cmd/af/main.go:**
-- Replaced `errors` import with `service` import
-- Changed `errors.SanitizeError()` → `service.SanitizeError()`
-- Changed `errors.ExitCode()` → `service.ExitCode()`
+**2. Updated cmd/af/claim.go:**
+- Removed `config` import
+- Changed `config.DefaultClaimTimeout` → `service.DefaultClaimTimeout`
+
+**3. Updated cmd/af/extend_claim.go:**
+- Removed `config` import
+- Changed `config.DefaultClaimTimeout` → `service.DefaultClaimTimeout`
 
 **Verification:**
-- `go build ./cmd/af` succeeds
+- `go build ./...` succeeds
 - `go test ./...` passes (all packages)
-- Import count reduced from 20 → 19 unique internal packages
+- Import count reduced from 19 → 18 unique internal packages
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added session 188 progress note (errors package eliminated)
-- Epic remains open - still 19 packages to reduce to 2
+- **Updated vibefeld-jfbc** - Added session 189 progress note (config package eliminated)
+- Epic remains open - still 18 packages to reduce to 2
 
 ## Current State
 
 ### Test Status
 - All tests pass (`go test ./...`)
-- Build succeeds (`go build ./cmd/af`)
+- Build succeeds (`go build ./...`)
 
 ### Issue Statistics
 - **Open:** 6
@@ -41,13 +43,13 @@ Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal im
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Continues with 19 internal packages still imported by cmd/af:
+Continues with 18 internal packages still imported by cmd/af:
 - `node` (19 files) - node.Node type
 - `ledger` (17 files) - ledger.Event type
 - `state` (12 files) - state.ProofState type
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 11 more single-use imports (strategy, shell, scope, metrics, lemma, fuzzy, export, templates, patterns, jobs, hooks, config)
+- Plus 10 more single-use imports (strategy, shell, scope, metrics, lemma, fuzzy, export, templates, patterns, jobs, hooks)
 
 ### P2 Code Quality (API Design)
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -73,6 +75,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 189:** Eliminated config package import by re-exporting DefaultClaimTimeout through service, reduced imports from 19→18
 **Session 188:** Eliminated errors package import by re-exporting SanitizeError and ExitCode through service, reduced imports from 20→19
 **Session 187:** Split ProofOperations interface into 4 role-based interfaces (Query, Prover, Verifier, Admin), closed vibefeld-hn7l
 **Session 186:** Eliminated taint package import by adding service.RecomputeAllTaint and TaintState re-exports
