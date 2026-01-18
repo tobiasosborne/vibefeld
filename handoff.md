@@ -1,48 +1,38 @@
-# Handoff - 2026-01-18 (Session 199)
+# Handoff - 2026-01-18 (Session 200)
 
 ## What Was Accomplished This Session
 
-### Session 199 Summary: Eliminated hooks package import from cmd/af
+### Session 200 Summary: Eliminated jobs package import from cmd/af
 
-Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 9 to 8 by eliminating the hooks package.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 8 to 7 by eliminating the jobs package.
 
 ### Changes Made
 
 **1. Updated internal/service/exports.go:**
-- Added import for `github.com/tobias/vibefeld/internal/hooks`
-- Re-exported `hooks.HookType` as `service.HookType` (type alias)
-- Re-exported `hooks.HookTypeWebhook` and `hooks.HookTypeCommand` constants
-- Re-exported `hooks.EventType` as `service.HookEventType` (type alias)
-- Re-exported `hooks.EventNodeCreated`, `EventNodeValidated`, `EventChallengeRaised`, `EventChallengeResolved` as `service.HookEvent*` constants
-- Re-exported `hooks.Hook` as `service.Hook` (type alias)
-- Re-exported `hooks.Config` as `service.HookConfig` (type alias)
-- Re-exported `hooks.Manager` as `service.HookManager` (type alias)
-- Re-exported `hooks.ValidateHookType` as `service.ValidateHookType`
-- Re-exported `hooks.ValidateEventType` as `service.ValidateHookEventType`
-- Re-exported `hooks.GenerateHookID` as `service.GenerateHookID`
-- Re-exported `hooks.LoadConfig` as `service.LoadHookConfig`
-- Re-exported `hooks.NewManager` as `service.NewHookManager`
+- Added import for `github.com/tobias/vibefeld/internal/jobs`
+- Re-exported `jobs.JobResult` as `service.JobResult` (type alias)
+- Re-exported `jobs.FindJobs` as `service.FindJobs`
+- Re-exported `jobs.FindProverJobs` as `service.FindProverJobs`
+- Re-exported `jobs.FindVerifierJobs` as `service.FindVerifierJobs`
 
-**2. Updated cmd/af/hooks.go:**
-- Removed `hooks` import, now imports only `service`
-- Changed `hooks.LoadConfig` → `service.LoadHookConfig`
-- Changed `hooks.EventType` → `service.HookEventType`
-- Changed `hooks.ValidateEventType` → `service.ValidateHookEventType`
-- Changed `hooks.HookType` → `service.HookType`
-- Changed `hooks.ValidateHookType` → `service.ValidateHookType`
-- Changed `hooks.Hook` → `service.Hook`
-- Changed `hooks.GenerateHookID` → `service.GenerateHookID`
-- Changed `hooks.NewManager` → `service.NewHookManager`
+**2. Updated cmd/af/jobs.go:**
+- Removed `jobs` import, now uses `service` for job detection
+- Changed `jobs.FindJobs` → `service.FindJobs`
+- Changed `jobs.JobResult` → `service.JobResult`
+
+**3. Updated cmd/af/health.go:**
+- Removed `jobs` import
+- Changed `jobs.FindJobs` → `service.FindJobs`
 
 **Verification:**
 - `go build ./...` succeeds
 - `go test ./...` passes (all 27 packages)
-- Import count reduced from 9 → 8 unique internal packages
+- Import count reduced from 8 → 7 unique internal packages (5 non-target packages remaining)
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added session 199 progress note (hooks package eliminated)
-- Epic remains open - still 8 packages to reduce to 2
+- **Updated vibefeld-jfbc** - Added session 200 progress note (jobs package eliminated)
+- Epic remains open - still 5 packages to reduce to 0 (plus 2 targets = 7 total)
 
 ## Current State
 
@@ -57,17 +47,16 @@ Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal im
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Continues with 8 internal packages still imported by cmd/af:
-- `node` (19 files) - node.Node type
-- `ledger` (17 files) - ledger.Event type
-- `state` (11 files) - state.ProofState type
-- `cli` (9 files) - CLI utilities
-- `fs` (4 files) - Direct fs operations
-- `jobs` (2 files) - Job detection
+Continues with 5 internal packages still imported by cmd/af (excluding targets render, service):
+- `node` (many files) - node.Node type
+- `ledger` (many files) - ledger.Event type
+- `state` (many files) - state.ProofState type
+- `cli` (multiple files) - CLI utilities
+- `fs` (few files) - Direct fs operations
 
-Next candidates for elimination (fewest files):
-- `jobs` (2 files)
-- `fs` (4 files) - only 1 production file now
+Next candidates for elimination (simplest):
+- `fs` - fewest usages
+- `cli` - may require substantial refactoring
 
 ### P2 Code Quality (API Design)
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -93,6 +82,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 200:** Eliminated jobs package import by re-exporting JobResult, FindJobs, FindProverJobs, FindVerifierJobs through service, reduced imports from 8→7
 **Session 199:** Eliminated hooks package import by re-exporting HookType, HookEventType, Hook, HookConfig, HookManager, ValidateHookType, ValidateHookEventType, GenerateHookID, LoadHookConfig, NewHookManager through service, reduced imports from 9→8
 **Session 198:** Eliminated shell package import by re-exporting Shell, ShellOption, NewShell, ShellWith* functions through service, reduced imports from 10→9
 **Session 197:** Eliminated patterns package import by re-exporting PatternType, Pattern, PatternLibrary, PatternAnalyzer, PotentialIssue, and ChallengeStatus constants through service, reduced imports from 11→10

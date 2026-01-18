@@ -7,6 +7,7 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/fuzzy"
 	"github.com/tobias/vibefeld/internal/hooks"
+	"github.com/tobias/vibefeld/internal/jobs"
 	"github.com/tobias/vibefeld/internal/lemma"
 	"github.com/tobias/vibefeld/internal/metrics"
 	"github.com/tobias/vibefeld/internal/node"
@@ -516,3 +517,23 @@ var LoadHookConfig = hooks.LoadConfig
 // NewHookManager creates a new hook manager.
 // Re-export of hooks.NewManager.
 var NewHookManager = hooks.NewManager
+
+// Re-exported types and functions from internal/jobs to reduce cmd/af import count.
+// Consumers should use service.JobResult, service.FindJobs, etc. instead of
+// importing the jobs package directly.
+
+// JobResult contains the results of finding all jobs.
+// Re-export of jobs.JobResult.
+type JobResult = jobs.JobResult
+
+// FindJobs finds all prover and verifier jobs from the given nodes.
+// Re-export of jobs.FindJobs.
+var FindJobs = jobs.FindJobs
+
+// FindProverJobs returns nodes available for provers to work on.
+// Re-export of jobs.FindProverJobs.
+var FindProverJobs = jobs.FindProverJobs
+
+// FindVerifierJobs returns nodes ready for verifier review.
+// Re-export of jobs.FindVerifierJobs.
+var FindVerifierJobs = jobs.FindVerifierJobs

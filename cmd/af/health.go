@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/cli"
-	"github.com/tobias/vibefeld/internal/jobs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
@@ -176,7 +175,7 @@ func analyzeHealth(st *state.State) *HealthReport {
 	openChallengeCount := len(st.OpenChallenges())
 
 	// Find jobs
-	jobResult := jobs.FindJobs(nodes, nodeMap, challengeMap)
+	jobResult := service.FindJobs(nodes, nodeMap, challengeMap)
 
 	// Calculate statistics
 	stats := HealthStatistics{

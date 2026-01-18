@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/cli"
-	"github.com/tobias/vibefeld/internal/jobs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
@@ -113,16 +112,16 @@ func runJobs(cmd *cobra.Command, args []string) error {
 	severityMap := buildSeverityMap(st.AllChallenges())
 
 	// Find jobs
-	jobResult := jobs.FindJobs(nodes, nodeMap, challengeMap)
+	jobResult := service.FindJobs(nodes, nodeMap, challengeMap)
 
 	// Apply role filter if specified
 	if roleSet && role == "prover" {
-		jobResult = &jobs.JobResult{
+		jobResult = &service.JobResult{
 			ProverJobs:   jobResult.ProverJobs,
 			VerifierJobs: nil,
 		}
 	} else if roleSet && role == "verifier" {
-		jobResult = &jobs.JobResult{
+		jobResult = &service.JobResult{
 			ProverJobs:   nil,
 			VerifierJobs: jobResult.VerifierJobs,
 		}
@@ -226,7 +225,7 @@ func formatSeverityCounts(counts *severityCounts) string {
 }
 
 // renderJobsWithSeverity renders jobs with severity counts included.
-func renderJobsWithSeverity(jobResult *jobs.JobResult, severityMap map[string]*severityCounts) string {
+func renderJobsWithSeverity(jobResult *service.JobResult, severityMap map[string]*severityCounts) string {
 	if jobResult == nil || jobResult.IsEmpty() {
 		return "No jobs available.\n\nProver jobs: 0 nodes awaiting refinement\nVerifier jobs: 0 nodes ready for review"
 	}
@@ -431,7 +430,7 @@ type jobsJSONOutput struct {
 
 // renderJobsJSONWithSeverity renders jobs as JSON with severity counts included.
 // Jobs are sorted by priority and include recommended flags.
-func renderJobsJSONWithSeverity(jobResult *jobs.JobResult, severityMap map[string]*severityCounts) string {
+func renderJobsJSONWithSeverity(jobResult *service.JobResult, severityMap map[string]*severityCounts) string {
 	if jobResult == nil {
 		return `{"prover_jobs":[],"verifier_jobs":[]}`
 	}
