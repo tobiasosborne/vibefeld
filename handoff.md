@@ -1,48 +1,43 @@
-# Handoff - 2026-01-18 (Session 163)
+# Handoff - 2026-01-18 (Session 164)
 
 ## What Was Accomplished This Session
 
-### Session 163 Summary: Closed 1 issue (CLI UX - failure context in error messages)
+### Session 164 Summary: Closed 1 issue (CLI UX - enhanced error recovery suggestions)
 
-1. **vibefeld-5321** - "CLI UX: No context about why operation failed"
-   - Improved error messages in multiple command files to include current state context and recovery hints
-   - Before: Generic errors like `"node 1 is not claimed"` with no guidance
-   - After: Context-aware errors like `"node 1 is not claimed (current state: available)\n\nHint: Only claimed nodes can be released. Use 'af status' to see node states."`
+1. **vibefeld-9l3b** - "CLI UX: Definition/external/assumption not found errors lack context"
+   - Enhanced recovery suggestions for DEF_NOT_FOUND, ASSUMPTION_NOT_FOUND, and EXTERNAL_NOT_FOUND errors
+   - Added complete workflow guidance to help users resolve missing references
+
+### Error Message Improvements
+
+| Error Type | Before (suggestions) | After (suggestions) |
+|------------|---------------------|---------------------|
+| DEF_NOT_FOUND | 1. Request with `af request-def`<br>2. List with `af defs` | 1. Request with `af request-def`<br>2. List with `af defs`<br>3. Check pending with `af pending-defs`<br>4. Operators can use `af def-add` |
+| ASSUMPTION_NOT_FOUND | 1. Check scope with `af scope`<br>2. List with `af assumptions` | 1. Check scope with `af scope`<br>2. List with `af assumptions`<br>3. Created via `af refine` with type 'assumption'<br>4. Scope boundary info via `af scope` |
+| EXTERNAL_NOT_FOUND | 1. Add reference with verification<br>2. Check `af pending-refs` | 1. Add reference with verification<br>2. Check `af pending-refs`<br>3. External refs are theorems from outside<br>4. List all with `af externals` |
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| cmd/af/release.go | Added state context to "not claimed" error, improved "owner mismatch" to show actual vs expected owner |
-| cmd/af/deps.go | Added hint about 'af status' for "node not found" errors |
-| cmd/af/extract_lemma.go | Added hint about 'af status' for "node not found" errors |
-| cmd/af/extend_claim.go | Added hint about 'af status' for "node not found" errors |
-
-### Error Message Improvements
-
-| Command | Before | After |
-|---------|--------|-------|
-| `af release` | `"node 1 is not claimed"` | `"node 1 is not claimed (current state: available)\n\nHint: Only claimed nodes can be released. Use 'af status' to see node states."` |
-| `af release` | `"owner does not match: node is claimed by another agent"` | `"owner does not match: node 1 is claimed by \"prover-A\", not \"prover-B\""` |
-| `af deps` | `"node 1.5 not found"` | `"node 1.5 not found\n\nHint: Use 'af status' to see all available nodes."` |
-| `af extract-lemma` | `"node 1 not found"` | `"node 1 not found\n\nHint: Use 'af status' to see all available nodes."` |
-| `af extend-claim` | `"node 1 not found"` | `"node 1 not found\n\nHint: Use 'af status' to see all available nodes."` |
+| internal/render/error.go | Added 4 new suggestions each for DEF_NOT_FOUND, ASSUMPTION_NOT_FOUND, and EXTERNAL_NOT_FOUND |
+| internal/render/error_test.go | Added 4 test cases for new suggestions (pending-defs, def-add, scope, externals) |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-5321** | Closed | Improved error messages in release.go, deps.go, extract_lemma.go, and extend_claim.go to include current state context and hints about next steps |
+| **vibefeld-9l3b** | Closed | Enhanced recovery suggestions for missing definitions, assumptions, and external references with complete workflow guidance |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 16 (was 17)
-- **Closed:** 533 (was 532)
+- **Open:** 15 (was 16)
+- **Closed:** 534 (was 533)
 
 ### Test Status
 - Build: PASS
-- cmd/af tests: PASS
+- internal/render tests: PASS (all 100+ tests)
 - Pre-existing failures in internal/lock (unrelated to this session)
 
 ### Known Issues (Pre-existing)
@@ -53,8 +48,8 @@
 # Build
 go build ./cmd/af
 
-# Test the cmd/af package
-go test ./cmd/af/...
+# Test the render package
+go test ./internal/render/...
 
 # Run all tests
 go test ./...
@@ -99,6 +94,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 164:** Closed 1 issue (CLI UX - enhanced error recovery suggestions for missing references)
 **Session 163:** Closed 1 issue (CLI UX - failure context in error messages)
 **Session 162:** Closed 1 issue (CLI UX - context-aware error recovery suggestions)
 **Session 161:** Closed 1 issue (CLI UX - inline valid options in error messages for search command)

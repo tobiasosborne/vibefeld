@@ -642,6 +642,30 @@ func TestContextAwareRecovery(t *testing.T) {
 			message: "node 1.2.3 has reached challenge limit",
 			want:    "af challenges 1.2.3",
 		},
+		{
+			name:    "DEF_NOT_FOUND mentions pending-defs",
+			code:    errors.DEF_NOT_FOUND,
+			message: `definition "continuity" not found`,
+			want:    "af pending-defs",
+		},
+		{
+			name:    "DEF_NOT_FOUND mentions def-add",
+			code:    errors.DEF_NOT_FOUND,
+			message: `definition "limit" not found`,
+			want:    "af def-add",
+		},
+		{
+			name:    "ASSUMPTION_NOT_FOUND mentions scope",
+			code:    errors.ASSUMPTION_NOT_FOUND,
+			message: `assumption "hyp1" not found`,
+			want:    "af scope",
+		},
+		{
+			name:    "EXTERNAL_NOT_FOUND mentions externals",
+			code:    errors.EXTERNAL_NOT_FOUND,
+			message: `external "FLT" not found`,
+			want:    "af externals",
+		},
 	}
 
 	for _, tt := range tests {

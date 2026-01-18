@@ -167,11 +167,15 @@ func getRecoverySuggestions(code errors.ErrorCode, message string) []string {
 			return []string{
 				fmt.Sprintf("Request the definition with 'af request-def %s \"<description>\"'", defName),
 				"Use 'af defs' to list available definitions",
+				"Use 'af pending-defs' to see all pending definition requests",
+				"Operators can add definitions with 'af def-add <name> \"<definition>\"'",
 			}
 		}
 		return []string{
 			"Request the definition with 'af request-def <name> \"<description>\"'",
 			"Use 'af defs' to list available definitions",
+			"Use 'af pending-defs' to see all pending definition requests",
+			"Operators can add definitions with 'af def-add <name> \"<definition>\"'",
 		}
 
 	case errors.ASSUMPTION_NOT_FOUND:
@@ -179,11 +183,15 @@ func getRecoverySuggestions(code errors.ErrorCode, message string) []string {
 			return []string{
 				fmt.Sprintf("Check if assumption %s is in scope with 'af scope'", defName),
 				"Use 'af assumptions' to list all assumptions",
+				"Assumptions are created via 'af refine' with type 'assumption'",
+				"Each assumption has a scope - check 'af scope' for boundaries",
 			}
 		}
 		return []string{
 			"Use 'af scope' to check assumption scope",
 			"Use 'af assumptions' to list all assumptions",
+			"Assumptions are created via 'af refine' with type 'assumption'",
+			"Each assumption has a scope - check 'af scope' for boundaries",
 		}
 
 	case errors.EXTERNAL_NOT_FOUND:
@@ -191,11 +199,15 @@ func getRecoverySuggestions(code errors.ErrorCode, message string) []string {
 			return []string{
 				fmt.Sprintf("Add external reference %s with proper verification", defName),
 				"Use 'af pending-refs' to see pending references",
+				"External refs are theorems/lemmas from outside this proof",
+				"Use 'af externals' to list all external references",
 			}
 		}
 		return []string{
 			"Use 'af pending-refs' to see pending references",
 			"External references must be added and verified",
+			"External refs are theorems/lemmas from outside this proof",
+			"Use 'af externals' to list all external references",
 		}
 
 	case errors.SCOPE_VIOLATION:
