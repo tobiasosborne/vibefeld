@@ -1,36 +1,38 @@
-# Handoff - 2026-01-18 (Session 192)
+# Handoff - 2026-01-18 (Session 193)
 
 ## What Was Accomplished This Session
 
-### Session 192 Summary: Eliminated lemma package import from cmd/af
+### Session 193 Summary: Eliminated export package import from cmd/af
 
-Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 16 to 15 by eliminating the lemma package.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 15 to 14 by eliminating the export package.
 
 ### Changes Made
 
 **1. Updated internal/service/exports.go:**
-- Added import for `github.com/tobias/vibefeld/internal/lemma`
-- Re-exported `lemma.ValidateDefCitations` as `service.ValidateDefCitations`
+- Added imports for `github.com/tobias/vibefeld/internal/export` and `github.com/tobias/vibefeld/internal/state`
+- Re-exported `export.ValidateFormat` as `service.ValidateExportFormat`
+- Re-exported `export.Export` as `service.ExportProof` (wrapper function taking *state.State)
 
-**2. Updated cmd/af/refine.go:**
-- Removed `lemma` import
-- Changed 3 occurrences of `lemma.ValidateDefCitations(...)` → `service.ValidateDefCitations(...)`
+**2. Updated cmd/af/export.go:**
+- Removed `export` import
+- Changed `export.ValidateFormat(format)` → `service.ValidateExportFormat(format)`
+- Changed `export.Export(st, format)` → `service.ExportProof(st, format)`
 
 **Verification:**
-- `go build ./...` succeeds
+- `go build ./cmd/af` succeeds
 - `go test ./...` passes (all packages)
-- Import count reduced from 16 → 15 unique internal packages
+- Import count reduced from 15 → 14 unique internal packages
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added session 192 progress note (lemma package eliminated)
-- Epic remains open - still 15 packages to reduce to 2
+- **Updated vibefeld-jfbc** - Added session 193 progress note (export package eliminated)
+- Epic remains open - still 14 packages to reduce to 2
 
 ## Current State
 
 ### Test Status
 - All tests pass (`go test ./...`)
-- Build succeeds (`go build ./...`)
+- Build succeeds (`go build ./cmd/af`)
 
 ### Issue Statistics
 - **Open:** 6
@@ -39,13 +41,13 @@ Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal im
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Continues with 15 internal packages still imported by cmd/af:
+Continues with 14 internal packages still imported by cmd/af:
 - `node` (19 files) - node.Node type
 - `ledger` (17 files) - ledger.Event type
 - `state` (12 files) - state.ProofState type
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 8 more single-use imports (strategy, shell, metrics, export, templates, patterns, jobs, hooks)
+- Plus 7 more single-use imports (strategy, shell, metrics, templates, patterns, jobs, hooks)
 
 ### P2 Code Quality (API Design)
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -71,6 +73,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 193:** Eliminated export package import by re-exporting ValidateExportFormat and ExportProof through service, reduced imports from 15→14
 **Session 192:** Eliminated lemma package import by re-exporting ValidateDefCitations through service, reduced imports from 16→15
 **Session 191:** Eliminated fuzzy package import by re-exporting SuggestCommand, SuggestFlag, MatchResult through service, reduced imports from 17→16
 **Session 190:** Eliminated scope package import by re-exporting ScopeEntry and ScopeInfo through service, reduced imports from 18→17
