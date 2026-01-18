@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/tobias/vibefeld/internal/errors"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
@@ -183,3 +184,15 @@ const (
 	TaintTainted      = node.TaintTainted
 	TaintUnresolved   = node.TaintUnresolved
 )
+
+// Re-exported functions from internal/errors to reduce cmd/af import count.
+// Consumers should use service.SanitizeError and service.ExitCode instead of
+// importing the errors package directly.
+
+// SanitizeError wraps an error with sanitized file paths in its message.
+// Re-export of errors.SanitizeError.
+var SanitizeError = errors.SanitizeError
+
+// ExitCode returns the appropriate exit code for an error.
+// Re-export of errors.ExitCode.
+var ExitCode = errors.ExitCode

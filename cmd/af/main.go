@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/errors"
+	"github.com/tobias/vibefeld/internal/service"
 )
 
 // Version is the current version of the af CLI tool.
@@ -24,10 +24,10 @@ func main() {
 		// Enhance error with usage examples if this is an unknown command error
 		enhanced := enhanceUnknownCommandError(rootCmd, err)
 		// Sanitize error messages to prevent leaking filesystem paths
-		sanitized := errors.SanitizeError(enhanced)
+		sanitized := service.SanitizeError(enhanced)
 		fmt.Fprintln(os.Stderr, sanitized)
 		// Use structured exit code from AFError if available, otherwise default to 1
-		os.Exit(errors.ExitCode(enhanced))
+		os.Exit(service.ExitCode(enhanced))
 	}
 }
 

@@ -1,44 +1,32 @@
-# Handoff - 2026-01-18 (Session 187)
+# Handoff - 2026-01-18 (Session 188)
 
 ## What Was Accomplished This Session
 
-### Session 187 Summary: Split ProofOperations Interface into Role-Based Interfaces
+### Session 188 Summary: Eliminated errors package import from cmd/af
 
-Completed **vibefeld-hn7l** (P2) - Split the monolithic 20-method ProofOperations interface into 4 focused, role-based interfaces.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 20 to 19 by eliminating the errors package.
 
 ### Changes Made
 
-**1. Refactored internal/service/interface.go:**
+**1. Updated internal/service/exports.go:**
+- Added import for `github.com/tobias/vibefeld/internal/errors`
+- Re-exported `errors.SanitizeError` as `service.SanitizeError`
+- Re-exported `errors.ExitCode` as `service.ExitCode`
 
-Before: Single `ProofOperations` interface with 20 methods (134 lines)
-
-After: 4 focused interfaces + 1 composite:
-- **ProofQueryOperations** (5 methods) - Read-only queries both provers and verifiers need
-  - `LoadState`, `LoadPendingNodes`, `LoadAvailableNodes`, `Status`, `Path`
-- **ProverOperations** (8 methods) - Operations for developing proof tree
-  - `ClaimNode`, `RefreshClaim`, `ReleaseNode`, `RefineNode`, `AddDefinition`, `AddAssumption`, `AddExternal`, `ExtractLemma`
-- **VerifierOperations** (5 methods) - Operations for validating/rejecting nodes
-  - `AcceptNode`, `AcceptNodeBulk`, `AdmitNode`, `RefuteNode`, `ArchiveNode`
-- **AdminOperations** (2 methods) - Proof setup operations
-  - `Init`, `CreateNode`
-- **ProofOperations** - Composite of all 4 interfaces for backwards compatibility
-
-**2. Added compile-time interface checks:**
-```go
-var _ ProofOperations = (*ProofService)(nil)
-var _ ProofQueryOperations = (*ProofService)(nil)
-var _ ProverOperations = (*ProofService)(nil)
-var _ VerifierOperations = (*ProofService)(nil)
-var _ AdminOperations = (*ProofService)(nil)
-```
+**2. Updated cmd/af/main.go:**
+- Replaced `errors` import with `service` import
+- Changed `errors.SanitizeError()` → `service.SanitizeError()`
+- Changed `errors.ExitCode()` → `service.ExitCode()`
 
 **Verification:**
-- `go build ./...` succeeds
+- `go build ./cmd/af` succeeds
 - `go test ./...` passes (all packages)
+- Import count reduced from 20 → 19 unique internal packages
 
 ### Issue Updates
 
-- **Closed vibefeld-hn7l** - API design: ProofOperations interface too large (30+ methods)
+- **Updated vibefeld-jfbc** - Added session 188 progress note (errors package eliminated)
+- Epic remains open - still 19 packages to reduce to 2
 
 ## Current State
 
@@ -53,13 +41,13 @@ var _ AdminOperations = (*ProofService)(nil)
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Continues with 20 internal packages still imported by cmd/af:
-- `node` (20 files) - node.Node type
-- `ledger` (18 files) - ledger.Event type
-- `state` (12 files) - state.ProofState/State types
+Continues with 19 internal packages still imported by cmd/af:
+- `node` (19 files) - node.Node type
+- `ledger` (17 files) - ledger.Event type
+- `state` (12 files) - state.ProofState type
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 10 more single-use imports
+- Plus 11 more single-use imports (strategy, shell, scope, metrics, lemma, fuzzy, export, templates, patterns, jobs, hooks, config)
 
 ### P2 Code Quality (API Design)
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -85,6 +73,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 188:** Eliminated errors package import by re-exporting SanitizeError and ExitCode through service, reduced imports from 20→19
 **Session 187:** Split ProofOperations interface into 4 role-based interfaces (Query, Prover, Verifier, Admin), closed vibefeld-hn7l
 **Session 186:** Eliminated taint package import by adding service.RecomputeAllTaint and TaintState re-exports
 **Session 185:** Removed 28 unused schema imports from test files, reduced imports from 21→20
