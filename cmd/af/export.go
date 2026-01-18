@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -47,9 +46,9 @@ Examples:
 // runExport executes the export command.
 func runExport(cmd *cobra.Command, args []string) error {
 	// Get flags
-	dir := cli.MustString(cmd, "dir")
-	format := cli.MustString(cmd, "format")
-	outputPath := cli.MustString(cmd, "output")
+	dir := service.MustString(cmd, "dir")
+	format := service.MustString(cmd, "format")
+	outputPath := service.MustString(cmd, "output")
 
 	// Validate format first (before checking directory)
 	format = strings.ToLower(format)

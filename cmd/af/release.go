@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -56,9 +55,9 @@ func runRelease(cmd *cobra.Command, args []string) error {
 	examples := render.GetExamples("af release")
 
 	// Get flags
-	owner := cli.MustString(cmd, "owner")
-	dir := cli.MustString(cmd, "dir")
-	format := cli.MustString(cmd, "format")
+	owner := service.MustString(cmd, "owner")
+	dir := service.MustString(cmd, "dir")
+	format := service.MustString(cmd, "format")
 
 	// Validate owner is provided and not empty
 	if owner == "" {

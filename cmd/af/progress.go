@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
@@ -59,8 +58,8 @@ Examples:
 // runProgress executes the progress command.
 func runProgress(cmd *cobra.Command, args []string) error {
 	// Get flags
-	dir := cli.MustString(cmd, "dir")
-	format := cli.MustString(cmd, "format")
+	dir := service.MustString(cmd, "dir")
+	format := service.MustString(cmd, "format")
 
 	// Validate format
 	format = strings.ToLower(format)

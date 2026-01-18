@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/errors"
 	"github.com/tobias/vibefeld/internal/export"
@@ -541,3 +543,35 @@ var FindProverJobs = jobs.FindProverJobs
 // FindVerifierJobs returns nodes ready for verifier review.
 // Re-export of jobs.FindVerifierJobs.
 var FindVerifierJobs = jobs.FindVerifierJobs
+
+// Re-exported functions from internal/cli to reduce cmd/af import count.
+// Consumers should use service.MustString, service.MustBool, etc. instead of
+// importing the cli package directly.
+
+// MustString retrieves a string flag value from a cobra command.
+// Panics if the flag was not registered, which is a programming error.
+// Re-export of cli.MustString.
+func MustString(cmd *cobra.Command, name string) string {
+	return cli.MustString(cmd, name)
+}
+
+// MustBool retrieves a boolean flag value from a cobra command.
+// Panics if the flag was not registered, which is a programming error.
+// Re-export of cli.MustBool.
+func MustBool(cmd *cobra.Command, name string) bool {
+	return cli.MustBool(cmd, name)
+}
+
+// MustInt retrieves an integer flag value from a cobra command.
+// Panics if the flag was not registered, which is a programming error.
+// Re-export of cli.MustInt.
+func MustInt(cmd *cobra.Command, name string) int {
+	return cli.MustInt(cmd, name)
+}
+
+// MustStringSlice retrieves a string slice flag value from a cobra command.
+// Panics if the flag was not registered, which is a programming error.
+// Re-export of cli.MustStringSlice.
+func MustStringSlice(cmd *cobra.Command, name string) []string {
+	return cli.MustStringSlice(cmd, name)
+}
