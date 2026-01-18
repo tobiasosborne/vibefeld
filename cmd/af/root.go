@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/tobias/vibefeld/internal/fuzzy"
+	"github.com/tobias/vibefeld/internal/service"
 )
 
 // unknownFlagPattern matches "unknown flag: --flagname" or "unknown shorthand flag: 'x' in -xyz"
@@ -70,7 +70,7 @@ func flagErrorWithSuggestions(cmd *cobra.Command, err error) error {
 	}
 
 	// Get fuzzy match suggestions
-	result := fuzzy.SuggestFlag(unknownFlag, candidates)
+	result := service.SuggestFlag(unknownFlag, candidates)
 
 	// Build enhanced error message
 	var msg strings.Builder
@@ -131,7 +131,7 @@ func unknownCommandError(cmd *cobra.Command, unknown string) error {
 	}
 
 	// Get fuzzy match suggestions
-	result := fuzzy.SuggestCommand(unknown, candidates)
+	result := service.SuggestCommand(unknown, candidates)
 
 	// Build error message
 	var msg strings.Builder

@@ -1,32 +1,34 @@
-# Handoff - 2026-01-18 (Session 190)
+# Handoff - 2026-01-18 (Session 191)
 
 ## What Was Accomplished This Session
 
-### Session 190 Summary: Eliminated scope package import from cmd/af
+### Session 191 Summary: Eliminated fuzzy package import from cmd/af
 
-Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 18 to 17 by eliminating the scope package.
+Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal imports from 17 to 16 by eliminating the fuzzy package.
 
 ### Changes Made
 
 **1. Updated internal/service/exports.go:**
-- Added import for `github.com/tobias/vibefeld/internal/scope`
-- Re-exported `scope.Entry` as `service.ScopeEntry`
-- Re-exported `scope.ScopeInfo` as `service.ScopeInfo`
+- Added import for `github.com/tobias/vibefeld/internal/fuzzy`
+- Re-exported `fuzzy.MatchResult` as `service.MatchResult`
+- Re-exported `fuzzy.SuggestCommand` as `service.SuggestCommand`
+- Re-exported `fuzzy.SuggestFlag` as `service.SuggestFlag`
 
-**2. Updated cmd/af/scope.go:**
-- Removed `scope` import
-- Changed `*scope.ScopeInfo` → `*service.ScopeInfo` (2 occurrences)
-- Changed `*scope.Entry` → `*service.ScopeEntry` (3 occurrences)
+**2. Updated cmd/af/root.go:**
+- Removed `fuzzy` import
+- Added `service` import (already present in the file, but now used for fuzzy functions)
+- Changed `fuzzy.SuggestFlag(...)` → `service.SuggestFlag(...)`
+- Changed `fuzzy.SuggestCommand(...)` → `service.SuggestCommand(...)`
 
 **Verification:**
 - `go build ./...` succeeds
 - `go test ./...` passes (all packages)
-- Import count reduced from 18 → 17 unique internal packages
+- Import count reduced from 17 → 16 unique internal packages
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added session 190 progress note (scope package eliminated)
-- Epic remains open - still 17 packages to reduce to 2
+- **Updated vibefeld-jfbc** - Added session 191 progress note (fuzzy package eliminated)
+- Epic remains open - still 16 packages to reduce to 2
 
 ## Current State
 
@@ -41,13 +43,13 @@ Incremental progress on **vibefeld-jfbc** (P1 Epic) - Reduced cmd/af internal im
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Continues with 17 internal packages still imported by cmd/af:
+Continues with 16 internal packages still imported by cmd/af:
 - `node` (19 files) - node.Node type
 - `ledger` (17 files) - ledger.Event type
 - `state` (12 files) - state.ProofState type
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 9 more single-use imports (strategy, shell, metrics, lemma, fuzzy, export, templates, patterns, jobs, hooks)
+- Plus 9 more single-use imports (strategy, shell, metrics, lemma, export, templates, patterns, jobs, hooks)
 
 ### P2 Code Quality (API Design)
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -73,6 +75,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 191:** Eliminated fuzzy package import by re-exporting SuggestCommand, SuggestFlag, MatchResult through service, reduced imports from 17→16
 **Session 190:** Eliminated scope package import by re-exporting ScopeEntry and ScopeInfo through service, reduced imports from 18→17
 **Session 189:** Eliminated config package import by re-exporting DefaultClaimTimeout through service, reduced imports from 19→18
 **Session 188:** Eliminated errors package import by re-exporting SanitizeError and ExitCode through service, reduced imports from 20→19

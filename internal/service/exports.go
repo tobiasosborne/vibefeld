@@ -4,6 +4,7 @@ import (
 	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/errors"
 	"github.com/tobias/vibefeld/internal/fs"
+	"github.com/tobias/vibefeld/internal/fuzzy"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/scope"
@@ -218,3 +219,19 @@ type ScopeEntry = scope.Entry
 // ScopeInfo contains information about a node's scope context.
 // Re-export of scope.ScopeInfo.
 type ScopeInfo = scope.ScopeInfo
+
+// Re-exported types and functions from internal/fuzzy to reduce cmd/af import count.
+// Consumers should use service.MatchResult, service.SuggestCommand, and
+// service.SuggestFlag instead of importing the fuzzy package directly.
+
+// MatchResult contains the result of fuzzy matching.
+// Re-export of fuzzy.MatchResult.
+type MatchResult = fuzzy.MatchResult
+
+// SuggestCommand finds the best match for input among command names.
+// Re-export of fuzzy.SuggestCommand.
+var SuggestCommand = fuzzy.SuggestCommand
+
+// SuggestFlag suggests similar flags for a mistyped flag name.
+// Re-export of fuzzy.SuggestFlag.
+var SuggestFlag = fuzzy.SuggestFlag
