@@ -116,7 +116,7 @@ func setupGetTestWithHierarchy(t *testing.T) (string, func()) {
 			cleanup()
 			t.Fatalf("failed to parse node ID %s: %v", n.id, err)
 		}
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, n.statement, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, n.statement, service.InferenceModusPonens)
 		if err != nil {
 			cleanup()
 			t.Fatalf("failed to create node %s: %v", n.id, err)
@@ -1069,7 +1069,7 @@ func TestGetCmd_TableDrivenNodeIDs(t *testing.T) {
 				id, err := service.ParseNodeID(tc.nodeID)
 				if err == nil {
 					svc, _ := service.NewProofService(tmpDir)
-					_ = svc.CreateNode(id, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
+					_ = svc.CreateNode(id, service.NodeTypeClaim, "Test statement", service.InferenceAssumption)
 				}
 			}
 
@@ -1144,7 +1144,7 @@ func TestGetCmd_SingleNodeShowsFullTextByDefault(t *testing.T) {
 	}
 
 	nodeID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, longStatement, schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID, service.NodeTypeClaim, longStatement, service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1380,7 +1380,7 @@ func TestGetCmd_ChallengesWithFullFlagMultipleNodes(t *testing.T) {
 	}
 
 	nodeID11, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(nodeID11, schema.NodeTypeClaim, "Child claim", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID11, service.NodeTypeClaim, "Child claim", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1546,7 +1546,7 @@ func TestGetCmd_ChecklistWithDependencies(t *testing.T) {
 	nodeID1, _ := service.ParseNodeID("1")
 
 	// First create the node
-	err = svc.CreateNode(nodeID11, schema.NodeTypeClaim, "Dependent claim", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID11, service.NodeTypeClaim, "Dependent claim", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}

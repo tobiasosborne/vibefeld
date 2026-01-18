@@ -10,7 +10,6 @@ import (
 	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/jobs"
 	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
 )
@@ -177,14 +176,14 @@ func buildSeverityMap(challenges []*state.Challenge) map[string]*severityCounts 
 			result[nodeIDStr] = counts
 		}
 
-		switch schema.ChallengeSeverity(c.Severity) {
-		case schema.SeverityCritical:
+		switch service.ChallengeSeverity(c.Severity) {
+		case service.SeverityCritical:
 			counts.Critical++
-		case schema.SeverityMajor:
+		case service.SeverityMajor:
 			counts.Major++
-		case schema.SeverityMinor:
+		case service.SeverityMinor:
 			counts.Minor++
-		case schema.SeverityNote:
+		case service.SeverityNote:
 			counts.Note++
 		}
 	}

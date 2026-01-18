@@ -80,7 +80,7 @@ func setupRecomputeTaintTestWithNodes(t *testing.T) (string, func()) {
 	nodes := []string{"1.1", "1.2", "1.1.1"}
 	for _, idStr := range nodes {
 		nodeID := mustParseRecomputeTaintNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement for "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement for "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			cleanup()
 			t.Fatalf("failed to create node %s: %v", idStr, err)
@@ -677,7 +677,7 @@ func TestRecomputeTaintCmd_ComplexTreePropagation(t *testing.T) {
 	moreNodes := []string{"1.2.1", "1.2.2"}
 	for _, idStr := range moreNodes {
 		nodeID := mustParseRecomputeTaintNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement for "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement for "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -1472,7 +1472,7 @@ func TestRecomputeTaintCmd_DeeplyNestedTree(t *testing.T) {
 	deepNodes := []string{"1.1", "1.1.1", "1.1.1.1", "1.1.1.1.1"}
 	for _, idStr := range deepNodes {
 		nodeID := mustParseRecomputeTaintNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Deep node "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Deep node "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}

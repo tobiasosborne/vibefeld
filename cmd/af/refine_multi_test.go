@@ -205,7 +205,7 @@ func TestRefineMultiCmd_JSONInput(t *testing.T) {
 	if child1 == nil {
 		t.Fatal("expected child node 1.1 to exist")
 	}
-	if child1.Type != schema.NodeTypeClaim {
+	if child1.Type != service.NodeTypeClaim {
 		t.Errorf("expected child 1.1 type to be claim, got: %s", child1.Type)
 	}
 
@@ -214,7 +214,7 @@ func TestRefineMultiCmd_JSONInput(t *testing.T) {
 	if child2 == nil {
 		t.Fatal("expected child node 1.2 to exist")
 	}
-	if child2.Type != schema.NodeTypeCase {
+	if child2.Type != service.NodeTypeCase {
 		t.Errorf("expected child 1.2 type to be case, got: %s", child2.Type)
 	}
 }
@@ -262,11 +262,11 @@ func TestRefineMultiCmd_MixedTypes(t *testing.T) {
 
 	expectedTypes := []struct {
 		id       string
-		nodeType schema.NodeType
+		nodeType service.NodeType
 	}{
-		{"1.1", schema.NodeTypeLocalAssume},
-		{"1.2", schema.NodeTypeClaim},
-		{"1.3", schema.NodeTypeQED},
+		{"1.1", service.NodeTypeLocalAssume},
+		{"1.2", service.NodeTypeClaim},
+		{"1.3", service.NodeTypeQED},
 	}
 
 	for _, exp := range expectedTypes {
@@ -666,7 +666,7 @@ func TestRefineMultiCmd_DefaultInference(t *testing.T) {
 	}
 
 	// Default inference should be assumption
-	if child.Inference != schema.InferenceAssumption {
+	if child.Inference != service.InferenceAssumption {
 		t.Errorf("expected default inference to be assumption, got: %s", child.Inference)
 	}
 }
@@ -712,7 +712,7 @@ func TestRefineMultiCmd_DefaultType(t *testing.T) {
 	}
 
 	// Default type should be claim
-	if child.Type != schema.NodeTypeClaim {
+	if child.Type != service.NodeTypeClaim {
 		t.Errorf("expected default type to be claim, got: %s", child.Type)
 	}
 }
@@ -1016,7 +1016,7 @@ func TestRefineMultiCmd_PositionalArgs_DefaultTypes(t *testing.T) {
 			t.Errorf("expected child node %s to exist", idStr)
 			continue
 		}
-		if node.Type != schema.NodeTypeClaim {
+		if node.Type != service.NodeTypeClaim {
 			t.Errorf("expected node %s type to be 'claim', got: %s", idStr, node.Type)
 		}
 	}

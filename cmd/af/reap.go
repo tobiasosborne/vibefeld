@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -107,7 +106,7 @@ func runReap(cmd *cobra.Command, args []string) error {
 	var toReap []service.NodeID
 
 	for _, n := range st.AllNodes() {
-		if n.WorkflowState != schema.WorkflowClaimed {
+		if n.WorkflowState != service.WorkflowClaimed {
 			continue
 		}
 

@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
 )
@@ -43,9 +42,9 @@ func executeProgressCommand(root *cobra.Command, args ...string) (string, error)
 }
 
 // createTestNode creates a test node with the given parameters.
-func createTestNode(id string, epistemicState schema.EpistemicState, workflowState schema.WorkflowState) *node.Node {
+func createTestNode(id string, epistemicState service.EpistemicState, workflowState service.WorkflowState) *node.Node {
 	nodeID, _ := service.ParseNodeID(id)
-	n, _ := node.NewNode(nodeID, schema.NodeTypeClaim, "Test statement for "+id, schema.InferenceAssumption)
+	n, _ := node.NewNode(nodeID, service.NodeTypeClaim, "Test statement for "+id, service.InferenceAssumption)
 	n.EpistemicState = epistemicState
 	n.WorkflowState = workflowState
 	return n
@@ -218,9 +217,9 @@ func TestComputeProgressMetrics_AllPending(t *testing.T) {
 	st := state.NewState()
 
 	// Add 3 pending nodes
-	st.AddNode(createTestNode("1", schema.EpistemicPending, schema.WorkflowAvailable))
-	st.AddNode(createTestNode("1.1", schema.EpistemicPending, schema.WorkflowAvailable))
-	st.AddNode(createTestNode("1.2", schema.EpistemicPending, schema.WorkflowAvailable))
+	st.AddNode(createTestNode("1", service.EpistemicPending, service.WorkflowAvailable))
+	st.AddNode(createTestNode("1.1", service.EpistemicPending, service.WorkflowAvailable))
+	st.AddNode(createTestNode("1.2", service.EpistemicPending, service.WorkflowAvailable))
 
 	var pendingDefs []*node.PendingDef
 
@@ -245,11 +244,11 @@ func TestComputeProgressMetrics_MixedStates(t *testing.T) {
 	st := state.NewState()
 
 	// Add nodes with different states
-	st.AddNode(createTestNode("1", schema.EpistemicValidated, schema.WorkflowAvailable))
-	st.AddNode(createTestNode("1.1", schema.EpistemicAdmitted, schema.WorkflowAvailable))
-	st.AddNode(createTestNode("1.2", schema.EpistemicPending, schema.WorkflowAvailable))
-	st.AddNode(createTestNode("1.3", schema.EpistemicRefuted, schema.WorkflowAvailable))
-	st.AddNode(createTestNode("1.4", schema.EpistemicArchived, schema.WorkflowAvailable))
+	st.AddNode(createTestNode("1", service.EpistemicValidated, service.WorkflowAvailable))
+	st.AddNode(createTestNode("1.1", service.EpistemicAdmitted, service.WorkflowAvailable))
+	st.AddNode(createTestNode("1.2", service.EpistemicPending, service.WorkflowAvailable))
+	st.AddNode(createTestNode("1.3", service.EpistemicRefuted, service.WorkflowAvailable))
+	st.AddNode(createTestNode("1.4", service.EpistemicArchived, service.WorkflowAvailable))
 
 	var pendingDefs []*node.PendingDef
 
@@ -286,10 +285,10 @@ func TestComputeProgressMetrics_BlockedNodes(t *testing.T) {
 	st := state.NewState()
 
 	// Add nodes with mixed workflow states
-	st.AddNode(createTestNode("1", schema.EpistemicPending, schema.WorkflowAvailable))
-	st.AddNode(createTestNode("1.1", schema.EpistemicPending, schema.WorkflowBlocked))
-	st.AddNode(createTestNode("1.2", schema.EpistemicPending, schema.WorkflowBlocked))
-	st.AddNode(createTestNode("1.3", schema.EpistemicPending, schema.WorkflowClaimed))
+	st.AddNode(createTestNode("1", service.EpistemicPending, service.WorkflowAvailable))
+	st.AddNode(createTestNode("1.1", service.EpistemicPending, service.WorkflowBlocked))
+	st.AddNode(createTestNode("1.2", service.EpistemicPending, service.WorkflowBlocked))
+	st.AddNode(createTestNode("1.3", service.EpistemicPending, service.WorkflowClaimed))
 
 	var pendingDefs []*node.PendingDef
 
@@ -303,7 +302,7 @@ func TestComputeProgressMetrics_BlockedNodes(t *testing.T) {
 // TestComputeProgressMetrics_WithPendingDefs tests that pending definitions are counted.
 func TestComputeProgressMetrics_WithPendingDefs(t *testing.T) {
 	st := state.NewState()
-	st.AddNode(createTestNode("1", schema.EpistemicPending, schema.WorkflowAvailable))
+	st.AddNode(createTestNode("1", service.EpistemicPending, service.WorkflowAvailable))
 
 	// Create pending definitions
 	nodeID, _ := service.ParseNodeID("1")
@@ -322,7 +321,7 @@ func TestComputeProgressMetrics_WithPendingDefs(t *testing.T) {
 // TestComputeProgressMetrics_WithOpenChallenges tests that open challenges are counted.
 func TestComputeProgressMetrics_WithOpenChallenges(t *testing.T) {
 	st := state.NewState()
-	st.AddNode(createTestNode("1", schema.EpistemicPending, schema.WorkflowAvailable))
+	st.AddNode(createTestNode("1", service.EpistemicPending, service.WorkflowAvailable))
 
 	// Add open challenges
 	nodeID, _ := service.ParseNodeID("1")
@@ -372,8 +371,8 @@ func TestFindCriticalPath_Empty(t *testing.T) {
 // TestFindCriticalPath_AllValidated tests critical path with no pending nodes.
 func TestFindCriticalPath_AllValidated(t *testing.T) {
 	nodes := []*node.Node{
-		createTestNode("1", schema.EpistemicValidated, schema.WorkflowAvailable),
-		createTestNode("1.1", schema.EpistemicValidated, schema.WorkflowAvailable),
+		createTestNode("1", service.EpistemicValidated, service.WorkflowAvailable),
+		createTestNode("1.1", service.EpistemicValidated, service.WorkflowAvailable),
 	}
 
 	path, depth := findCriticalPath(nodes)
@@ -389,7 +388,7 @@ func TestFindCriticalPath_AllValidated(t *testing.T) {
 // TestFindCriticalPath_SinglePending tests critical path with one pending node.
 func TestFindCriticalPath_SinglePending(t *testing.T) {
 	nodes := []*node.Node{
-		createTestNode("1", schema.EpistemicPending, schema.WorkflowAvailable),
+		createTestNode("1", service.EpistemicPending, service.WorkflowAvailable),
 	}
 
 	path, depth := findCriticalPath(nodes)
@@ -408,10 +407,10 @@ func TestFindCriticalPath_SinglePending(t *testing.T) {
 // TestFindCriticalPath_DeepestPending tests that deepest pending node determines the path.
 func TestFindCriticalPath_DeepestPending(t *testing.T) {
 	nodes := []*node.Node{
-		createTestNode("1", schema.EpistemicValidated, schema.WorkflowAvailable),
-		createTestNode("1.1", schema.EpistemicPending, schema.WorkflowAvailable),
-		createTestNode("1.2", schema.EpistemicValidated, schema.WorkflowAvailable),
-		createTestNode("1.2.1", schema.EpistemicPending, schema.WorkflowAvailable),
+		createTestNode("1", service.EpistemicValidated, service.WorkflowAvailable),
+		createTestNode("1.1", service.EpistemicPending, service.WorkflowAvailable),
+		createTestNode("1.2", service.EpistemicValidated, service.WorkflowAvailable),
+		createTestNode("1.2.1", service.EpistemicPending, service.WorkflowAvailable),
 	}
 
 	path, depth := findCriticalPath(nodes)
@@ -434,12 +433,12 @@ func TestFindCriticalPath_DeepestPending(t *testing.T) {
 // TestFindCriticalPath_MultipleDeepBranches tests with multiple deep pending branches.
 func TestFindCriticalPath_MultipleDeepBranches(t *testing.T) {
 	nodes := []*node.Node{
-		createTestNode("1", schema.EpistemicValidated, schema.WorkflowAvailable),
-		createTestNode("1.1", schema.EpistemicPending, schema.WorkflowAvailable),
-		createTestNode("1.1.1", schema.EpistemicPending, schema.WorkflowAvailable),
-		createTestNode("1.2", schema.EpistemicPending, schema.WorkflowAvailable),
-		createTestNode("1.2.1", schema.EpistemicPending, schema.WorkflowAvailable),
-		createTestNode("1.2.1.1", schema.EpistemicPending, schema.WorkflowAvailable), // This is the deepest
+		createTestNode("1", service.EpistemicValidated, service.WorkflowAvailable),
+		createTestNode("1.1", service.EpistemicPending, service.WorkflowAvailable),
+		createTestNode("1.1.1", service.EpistemicPending, service.WorkflowAvailable),
+		createTestNode("1.2", service.EpistemicPending, service.WorkflowAvailable),
+		createTestNode("1.2.1", service.EpistemicPending, service.WorkflowAvailable),
+		createTestNode("1.2.1.1", service.EpistemicPending, service.WorkflowAvailable), // This is the deepest
 	}
 
 	path, depth := findCriticalPath(nodes)
@@ -636,31 +635,31 @@ func TestComputeProgressMetrics_CompletionPercentage(t *testing.T) {
 			// Add validated nodes
 			for i := 0; i < tt.validated; i++ {
 				id := fmt.Sprintf("1.%d", i+1)
-				st.AddNode(createTestNode(id, schema.EpistemicValidated, schema.WorkflowAvailable))
+				st.AddNode(createTestNode(id, service.EpistemicValidated, service.WorkflowAvailable))
 			}
 
 			// Add admitted nodes
 			for i := 0; i < tt.admitted; i++ {
 				id := fmt.Sprintf("1.%d", tt.validated+i+1)
-				st.AddNode(createTestNode(id, schema.EpistemicAdmitted, schema.WorkflowAvailable))
+				st.AddNode(createTestNode(id, service.EpistemicAdmitted, service.WorkflowAvailable))
 			}
 
 			// Add pending nodes
 			for i := 0; i < tt.pending; i++ {
 				id := fmt.Sprintf("1.%d", tt.validated+tt.admitted+i+1)
-				st.AddNode(createTestNode(id, schema.EpistemicPending, schema.WorkflowAvailable))
+				st.AddNode(createTestNode(id, service.EpistemicPending, service.WorkflowAvailable))
 			}
 
 			// Add refuted nodes
 			for i := 0; i < tt.refuted; i++ {
 				id := fmt.Sprintf("1.%d", tt.validated+tt.admitted+tt.pending+i+1)
-				st.AddNode(createTestNode(id, schema.EpistemicRefuted, schema.WorkflowAvailable))
+				st.AddNode(createTestNode(id, service.EpistemicRefuted, service.WorkflowAvailable))
 			}
 
 			// Add archived nodes
 			for i := 0; i < tt.archived; i++ {
 				id := fmt.Sprintf("1.%d", tt.validated+tt.admitted+tt.pending+tt.refuted+i+1)
-				st.AddNode(createTestNode(id, schema.EpistemicArchived, schema.WorkflowAvailable))
+				st.AddNode(createTestNode(id, service.EpistemicArchived, service.WorkflowAvailable))
 			}
 
 			var pendingDefs []*node.PendingDef

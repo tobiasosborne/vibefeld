@@ -62,7 +62,7 @@ func setupRequestDefTestWithMultipleNodes(t *testing.T) (string, func()) {
 	// Create child nodes
 	for _, idStr := range []string{"1.1", "1.2"} {
 		nodeID, _ := service.ParseNodeID(idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			cleanup()
 			t.Fatal(err)

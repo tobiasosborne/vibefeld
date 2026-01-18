@@ -81,10 +81,10 @@ func setupJobsTestWithNodes(t *testing.T) (string, func()) {
 
 	// Create child nodes (node 1 already exists from Init)
 	child1ID, _ := service.ParseNodeID("1.1")
-	svc.CreateNode(child1ID, schema.NodeTypeClaim, "First child", schema.InferenceModusPonens)
+	svc.CreateNode(child1ID, service.NodeTypeClaim, "First child", service.InferenceModusPonens)
 
 	child2ID, _ := service.ParseNodeID("1.2")
-	svc.CreateNode(child2ID, schema.NodeTypeClaim, "Second child", schema.InferenceModusPonens)
+	svc.CreateNode(child2ID, service.NodeTypeClaim, "Second child", service.InferenceModusPonens)
 
 	cleanup := func() { os.RemoveAll(tmpDir) }
 	return proofDir, cleanup

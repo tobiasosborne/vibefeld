@@ -10,7 +10,6 @@ import (
 	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/render"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -99,7 +98,7 @@ func runExtendClaim(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if node is currently claimed
-	if node.WorkflowState != schema.WorkflowClaimed {
+	if node.WorkflowState != service.WorkflowClaimed {
 		return fmt.Errorf("node %s is not currently claimed (state: %s)", nodeID.String(), node.WorkflowState)
 	}
 

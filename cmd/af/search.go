@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/render"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -64,13 +63,13 @@ func runSearch(cmd *cobra.Command, dir, textQuery, stateFilter, workflowFilter, 
 
 	// Validate filters
 	if stateFilter != "" {
-		if err := schema.ValidateEpistemicState(stateFilter); err != nil {
+		if err := service.ValidateEpistemicState(stateFilter); err != nil {
 			return render.InvalidValueError("af search", "state", stateFilter, render.ValidEpistemicStates, examples)
 		}
 	}
 
 	if workflowFilter != "" {
-		if err := schema.ValidateWorkflowState(workflowFilter); err != nil {
+		if err := service.ValidateWorkflowState(workflowFilter); err != nil {
 			return render.InvalidValueError("af search", "workflow", workflowFilter, render.ValidWorkflowStates, examples)
 		}
 	}

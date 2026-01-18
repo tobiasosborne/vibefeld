@@ -133,7 +133,7 @@ func TestAcceptWithNote_NodeStillValidated(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicValidated {
+	if n.EpistemicState != service.EpistemicValidated {
 		t.Errorf("expected EpistemicState = validated, got %q", n.EpistemicState)
 	}
 }
@@ -199,7 +199,7 @@ func TestAcceptWithNote_CannotUseWithMultipleNodes(t *testing.T) {
 	}
 
 	node11, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(node11, schema.NodeTypeClaim, "Child node", schema.InferenceModusPonens)
+	err = svc.CreateNode(node11, service.NodeTypeClaim, "Child node", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}

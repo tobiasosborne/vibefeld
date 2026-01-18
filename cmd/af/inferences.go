@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/service"
 )
 
 // newInferencesCmd creates the inferences command.
@@ -45,8 +45,8 @@ func runInferences(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
 	}
 
-	// Get all inference types (already sorted by schema.AllInferences)
-	inferences := schema.AllInferences()
+	// Get all inference types (already sorted by service.AllInferences)
+	inferences := service.AllInferences()
 
 	// Output based on format
 	if format == "json" {
@@ -71,7 +71,7 @@ func runInferences(cmd *cobra.Command, args []string) error {
 }
 
 // renderInferencesText renders inferences as a text table.
-func renderInferencesText(inferences []schema.InferenceInfo) string {
+func renderInferencesText(inferences []service.InferenceInfo) string {
 	if len(inferences) == 0 {
 		return "No inference types found.\n"
 	}
@@ -105,7 +105,7 @@ type inferencesResultJSON struct {
 }
 
 // renderInferencesJSON renders inferences as JSON.
-func renderInferencesJSON(inferences []schema.InferenceInfo) string {
+func renderInferencesJSON(inferences []service.InferenceInfo) string {
 	result := inferencesResultJSON{
 		Inferences: make([]inferenceJSON, 0, len(inferences)),
 		Total:      len(inferences),

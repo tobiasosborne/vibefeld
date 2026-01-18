@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/service"
 )
 
 // validSections defines all valid section names and their aliases.
@@ -179,7 +179,7 @@ func outputSchemaJSON(cmd *cobra.Command, section string) error {
 	includeTargets := includeAll || section == "challenge-targets"
 
 	if includeInference {
-		for _, info := range schema.AllInferences() {
+		for _, info := range service.AllInferences() {
 			output.InferenceTypes = append(output.InferenceTypes, inferenceTypeJSON{
 				ID:   string(info.ID),
 				Name: info.Name,
@@ -189,7 +189,7 @@ func outputSchemaJSON(cmd *cobra.Command, section string) error {
 	}
 
 	if includeNodes {
-		for _, info := range schema.AllNodeTypes() {
+		for _, info := range service.AllNodeTypes() {
 			output.NodeTypes = append(output.NodeTypes, nodeTypeJSON{
 				ID:          string(info.ID),
 				Description: info.Description,
@@ -200,7 +200,7 @@ func outputSchemaJSON(cmd *cobra.Command, section string) error {
 	}
 
 	if includeWorkflow {
-		for _, info := range schema.AllWorkflowStates() {
+		for _, info := range service.AllWorkflowStates() {
 			output.WorkflowStates = append(output.WorkflowStates, workflowStateJSON{
 				ID:          string(info.ID),
 				Description: info.Description,
@@ -209,7 +209,7 @@ func outputSchemaJSON(cmd *cobra.Command, section string) error {
 	}
 
 	if includeEpistemic {
-		for _, info := range schema.AllEpistemicStates() {
+		for _, info := range service.AllEpistemicStates() {
 			output.EpistemicStates = append(output.EpistemicStates, epistemicStateJSON{
 				ID:              string(info.ID),
 				Description:     info.Description,
@@ -229,7 +229,7 @@ func outputSchemaJSON(cmd *cobra.Command, section string) error {
 	}
 
 	if includeTargets {
-		for _, info := range schema.AllChallengeTargets() {
+		for _, info := range service.AllChallengeTargets() {
 			output.ChallengeTargets = append(output.ChallengeTargets, challengeTargetJSON{
 				ID:          string(info.ID),
 				Description: info.Description,
@@ -267,7 +267,7 @@ func outputSchemaText(cmd *cobra.Command, section string) error {
 		}
 		fmt.Fprintln(out, "=== Inference Types ===")
 		fmt.Fprintln(out)
-		for _, info := range schema.AllInferences() {
+		for _, info := range service.AllInferences() {
 			fmt.Fprintf(out, "  %-30s %s\n", info.ID, info.Name)
 			if info.Form != "" {
 				fmt.Fprintf(out, "    %s\n", info.Form)
@@ -282,7 +282,7 @@ func outputSchemaText(cmd *cobra.Command, section string) error {
 		}
 		fmt.Fprintln(out, "=== Node Types ===")
 		fmt.Fprintln(out)
-		for _, info := range schema.AllNodeTypes() {
+		for _, info := range service.AllNodeTypes() {
 			fmt.Fprintf(out, "  %-20s %s\n", info.ID, info.Description)
 		}
 		needSeparator = true
@@ -294,7 +294,7 @@ func outputSchemaText(cmd *cobra.Command, section string) error {
 		}
 		fmt.Fprintln(out, "=== Workflow States ===")
 		fmt.Fprintln(out)
-		for _, info := range schema.AllWorkflowStates() {
+		for _, info := range service.AllWorkflowStates() {
 			fmt.Fprintf(out, "  %-15s %s\n", info.ID, info.Description)
 		}
 		needSeparator = true
@@ -306,7 +306,7 @@ func outputSchemaText(cmd *cobra.Command, section string) error {
 		}
 		fmt.Fprintln(out, "=== Epistemic States ===")
 		fmt.Fprintln(out)
-		for _, info := range schema.AllEpistemicStates() {
+		for _, info := range service.AllEpistemicStates() {
 			fmt.Fprintf(out, "  %-15s %s\n", info.ID, info.Description)
 		}
 		needSeparator = true
@@ -330,7 +330,7 @@ func outputSchemaText(cmd *cobra.Command, section string) error {
 		}
 		fmt.Fprintln(out, "=== Challenge Targets ===")
 		fmt.Fprintln(out)
-		for _, info := range schema.AllChallengeTargets() {
+		for _, info := range service.AllChallengeTargets() {
 			fmt.Fprintf(out, "  %-15s %s\n", info.ID, info.Description)
 		}
 	}

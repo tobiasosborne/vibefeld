@@ -124,8 +124,8 @@ func TestAcceptCmd_Success(t *testing.T) {
 		t.Fatal("node not found after accept")
 	}
 
-	if n.EpistemicState != schema.EpistemicValidated {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	if n.EpistemicState != service.EpistemicValidated {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicValidated)
 	}
 }
 
@@ -393,7 +393,7 @@ func TestAcceptCmd_UpdatesEpistemicState(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicPending {
+	if n.EpistemicState != service.EpistemicPending {
 		t.Fatalf("expected initial state to be pending, got: %s", n.EpistemicState)
 	}
 
@@ -414,7 +414,7 @@ func TestAcceptCmd_UpdatesEpistemicState(t *testing.T) {
 		t.Fatal("node not found after accept")
 	}
 
-	if n.EpistemicState != schema.EpistemicValidated {
+	if n.EpistemicState != service.EpistemicValidated {
 		t.Errorf("expected EpistemicState = validated, got: %s", n.EpistemicState)
 	}
 }
@@ -477,7 +477,7 @@ func TestAcceptCmd_DefaultDirectory(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicValidated {
+	if n.EpistemicState != service.EpistemicValidated {
 		t.Errorf("node not validated when using default directory")
 	}
 }
@@ -494,7 +494,7 @@ func TestAcceptCmd_ChildNode(t *testing.T) {
 	}
 
 	childID := mustParseNodeID(t, "1.1")
-	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Child node statement", schema.InferenceModusPonens)
+	err = svc.CreateNode(childID, service.NodeTypeClaim, "Child node statement", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatalf("failed to create child node: %v", err)
 	}
@@ -516,8 +516,8 @@ func TestAcceptCmd_ChildNode(t *testing.T) {
 		t.Fatal("child node not found after accept")
 	}
 
-	if n.EpistemicState != schema.EpistemicValidated {
-		t.Errorf("child node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	if n.EpistemicState != service.EpistemicValidated {
+		t.Errorf("child node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicValidated)
 	}
 }
 
@@ -535,7 +535,7 @@ func TestAcceptCmd_DeepNode(t *testing.T) {
 	nodes := []string{"1.1", "1.1.1", "1.1.1.1"}
 	for _, idStr := range nodes {
 		nodeID := mustParseNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement for "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement for "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -559,8 +559,8 @@ func TestAcceptCmd_DeepNode(t *testing.T) {
 		t.Fatal("deep node not found after accept")
 	}
 
-	if n.EpistemicState != schema.EpistemicValidated {
-		t.Errorf("deep node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	if n.EpistemicState != service.EpistemicValidated {
+		t.Errorf("deep node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicValidated)
 	}
 }
 
@@ -631,7 +631,7 @@ func TestAcceptCmd_TableDrivenNodeIDs(t *testing.T) {
 				id, err := service.ParseNodeID(tc.nodeID)
 				if err == nil {
 					svc, _ := service.NewProofService(tmpDir)
-					_ = svc.CreateNode(id, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
+					_ = svc.CreateNode(id, service.NodeTypeClaim, "Test statement", service.InferenceAssumption)
 				}
 			}
 
@@ -717,7 +717,7 @@ func TestAcceptCmd_MultipleNodesSequential(t *testing.T) {
 	// Create additional nodes
 	for _, idStr := range []string{"1.1", "1.2"} {
 		nodeID := mustParseNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -745,7 +745,7 @@ func TestAcceptCmd_MultipleNodesSequential(t *testing.T) {
 			t.Errorf("node %s not found", idStr)
 			continue
 		}
-		if n.EpistemicState != schema.EpistemicValidated {
+		if n.EpistemicState != service.EpistemicValidated {
 			t.Errorf("node %s EpistemicState = %q, want validated", idStr, n.EpistemicState)
 		}
 	}
@@ -766,7 +766,7 @@ func TestAcceptCmd_DirFlagShortForm(t *testing.T) {
 	svc, _ := service.NewProofService(tmpDir)
 	st, _ := svc.LoadState()
 	n := st.GetNode(mustParseNodeID(t, "1"))
-	if n == nil || n.EpistemicState != schema.EpistemicValidated {
+	if n == nil || n.EpistemicState != service.EpistemicValidated {
 		t.Error("node not validated with -d short flag")
 	}
 }
@@ -786,7 +786,7 @@ func TestAcceptCmd_DirFlagLongForm(t *testing.T) {
 	svc, _ := service.NewProofService(tmpDir)
 	st, _ := svc.LoadState()
 	n := st.GetNode(mustParseNodeID(t, "1"))
-	if n == nil || n.EpistemicState != schema.EpistemicValidated {
+	if n == nil || n.EpistemicState != service.EpistemicValidated {
 		t.Error("node not validated with --dir long flag")
 	}
 }
@@ -862,7 +862,7 @@ func TestAcceptCmd_RelativeDirectory(t *testing.T) {
 	// Verify acceptance
 	st, _ := svc.LoadState()
 	n := st.GetNode(nodeID)
-	if n == nil || n.EpistemicState != schema.EpistemicValidated {
+	if n == nil || n.EpistemicState != service.EpistemicValidated {
 		t.Error("node not validated with relative directory path")
 	}
 }
@@ -895,8 +895,8 @@ func TestAcceptCommand_ConfirmFlag(t *testing.T) {
 		t.Fatal("node not found after accept with --confirm")
 	}
 
-	if n.EpistemicState != schema.EpistemicValidated {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	if n.EpistemicState != service.EpistemicValidated {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicValidated)
 	}
 }
 
@@ -1370,8 +1370,8 @@ func createNodeWithDependencies(t *testing.T, proofDir string, nodeID service.No
 		t.Fatalf("failed to get ledger: %v", err)
 	}
 
-	n, err := node.NewNodeWithOptions(nodeID, schema.NodeTypeClaim, "Test statement with dependencies",
-		schema.InferenceModusPonens, node.NodeOptions{Dependencies: deps})
+	n, err := node.NewNodeWithOptions(nodeID, service.NodeTypeClaim, "Test statement with dependencies",
+		service.InferenceModusPonens, node.NodeOptions{Dependencies: deps})
 	if err != nil {
 		t.Fatalf("failed to create node: %v", err)
 	}
@@ -1553,7 +1553,7 @@ func TestAcceptCommand_RequiresConfirmIfNoChallenges(t *testing.T) {
 	st, _ := svc.LoadState()
 	nodeID := mustParseNodeID(t, "1")
 	n := st.GetNode(nodeID)
-	if n != nil && n.EpistemicState == schema.EpistemicValidated {
+	if n != nil && n.EpistemicState == service.EpistemicValidated {
 		t.Error("node should NOT be validated when acceptance is blocked")
 	}
 }
@@ -1586,8 +1586,8 @@ func TestAcceptCommand_ConfirmBypassesCheck(t *testing.T) {
 	if n == nil {
 		t.Fatal("node not found after accept")
 	}
-	if n.EpistemicState != schema.EpistemicValidated {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	if n.EpistemicState != service.EpistemicValidated {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicValidated)
 	}
 }
 
@@ -1624,8 +1624,8 @@ func TestAcceptCommand_NoConfirmNeededIfChallengeRaised(t *testing.T) {
 	if n == nil {
 		t.Fatal("node not found after accept")
 	}
-	if n.EpistemicState != schema.EpistemicValidated {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	if n.EpistemicState != service.EpistemicValidated {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicValidated)
 	}
 }
 
@@ -1672,7 +1672,7 @@ func TestAcceptCommand_NoAgentFlagMeansNoCheck(t *testing.T) {
 	if n == nil {
 		t.Fatal("node not found after accept")
 	}
-	if n.EpistemicState != schema.EpistemicValidated {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	if n.EpistemicState != service.EpistemicValidated {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicValidated)
 	}
 }

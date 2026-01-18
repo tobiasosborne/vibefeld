@@ -121,8 +121,8 @@ func TestRefuteCmd_Success(t *testing.T) {
 		t.Fatal("node not found after refute")
 	}
 
-	if n.EpistemicState != schema.EpistemicRefuted {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicRefuted)
+	if n.EpistemicState != service.EpistemicRefuted {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicRefuted)
 	}
 }
 
@@ -339,7 +339,7 @@ func TestRefuteCmd_DirFlag(t *testing.T) {
 		t.Fatalf("failed to load state: %v", err)
 	}
 	n := st.GetNode(mustParseRefuteNodeID(t, "1"))
-	if n == nil || n.EpistemicState != schema.EpistemicRefuted {
+	if n == nil || n.EpistemicState != service.EpistemicRefuted {
 		t.Error("node not refuted with -d short flag")
 	}
 }
@@ -373,8 +373,8 @@ func TestRefuteCmd_WithReason(t *testing.T) {
 		t.Fatal("node not found after refute")
 	}
 
-	if n.EpistemicState != schema.EpistemicRefuted {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicRefuted)
+	if n.EpistemicState != service.EpistemicRefuted {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicRefuted)
 	}
 
 	// Note: The reason may be stored in the ledger event or node metadata
@@ -458,7 +458,7 @@ func TestRefuteCmd_UpdatesEpistemicState(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicPending {
+	if n.EpistemicState != service.EpistemicPending {
 		t.Fatalf("expected initial state to be pending, got: %s", n.EpistemicState)
 	}
 
@@ -479,7 +479,7 @@ func TestRefuteCmd_UpdatesEpistemicState(t *testing.T) {
 		t.Fatal("node not found after refute")
 	}
 
-	if n.EpistemicState != schema.EpistemicRefuted {
+	if n.EpistemicState != service.EpistemicRefuted {
 		t.Errorf("expected EpistemicState = refuted, got: %s", n.EpistemicState)
 	}
 }
@@ -542,7 +542,7 @@ func TestRefuteCmd_DefaultDirectory(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicRefuted {
+	if n.EpistemicState != service.EpistemicRefuted {
 		t.Errorf("node not refuted when using default directory")
 	}
 }
@@ -559,7 +559,7 @@ func TestRefuteCmd_ChildNode(t *testing.T) {
 	}
 
 	childID := mustParseRefuteNodeID(t, "1.1")
-	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Child node statement", schema.InferenceModusPonens)
+	err = svc.CreateNode(childID, service.NodeTypeClaim, "Child node statement", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatalf("failed to create child node: %v", err)
 	}
@@ -581,8 +581,8 @@ func TestRefuteCmd_ChildNode(t *testing.T) {
 		t.Fatal("child node not found after refute")
 	}
 
-	if n.EpistemicState != schema.EpistemicRefuted {
-		t.Errorf("child node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicRefuted)
+	if n.EpistemicState != service.EpistemicRefuted {
+		t.Errorf("child node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicRefuted)
 	}
 }
 
@@ -600,7 +600,7 @@ func TestRefuteCmd_DeepNode(t *testing.T) {
 	nodes := []string{"1.1", "1.1.1", "1.1.1.1"}
 	for _, idStr := range nodes {
 		nodeID := mustParseRefuteNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement for "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement for "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -624,8 +624,8 @@ func TestRefuteCmd_DeepNode(t *testing.T) {
 		t.Fatal("deep node not found after refute")
 	}
 
-	if n.EpistemicState != schema.EpistemicRefuted {
-		t.Errorf("deep node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicRefuted)
+	if n.EpistemicState != service.EpistemicRefuted {
+		t.Errorf("deep node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicRefuted)
 	}
 }
 
@@ -776,7 +776,7 @@ func TestRefuteCmd_MultipleNodesSequential(t *testing.T) {
 	// Create additional nodes
 	for _, idStr := range []string{"1.1", "1.2"} {
 		nodeID := mustParseRefuteNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -804,7 +804,7 @@ func TestRefuteCmd_MultipleNodesSequential(t *testing.T) {
 			t.Errorf("node %s not found", idStr)
 			continue
 		}
-		if n.EpistemicState != schema.EpistemicRefuted {
+		if n.EpistemicState != service.EpistemicRefuted {
 			t.Errorf("node %s EpistemicState = %q, want refuted", idStr, n.EpistemicState)
 		}
 	}
@@ -831,7 +831,7 @@ func TestRefuteCmd_DirFlagShortForm(t *testing.T) {
 		t.Fatalf("failed to load state: %v", err)
 	}
 	n := st.GetNode(mustParseRefuteNodeID(t, "1"))
-	if n == nil || n.EpistemicState != schema.EpistemicRefuted {
+	if n == nil || n.EpistemicState != service.EpistemicRefuted {
 		t.Error("node not refuted with -d short flag")
 	}
 }
@@ -857,7 +857,7 @@ func TestRefuteCmd_DirFlagLongForm(t *testing.T) {
 		t.Fatalf("failed to load state: %v", err)
 	}
 	n := st.GetNode(mustParseRefuteNodeID(t, "1"))
-	if n == nil || n.EpistemicState != schema.EpistemicRefuted {
+	if n == nil || n.EpistemicState != service.EpistemicRefuted {
 		t.Error("node not refuted with --dir long flag")
 	}
 }
@@ -936,7 +936,7 @@ func TestRefuteCmd_RelativeDirectory(t *testing.T) {
 		t.Fatalf("failed to load state: %v", err)
 	}
 	n := st.GetNode(nodeID)
-	if n == nil || n.EpistemicState != schema.EpistemicRefuted {
+	if n == nil || n.EpistemicState != service.EpistemicRefuted {
 		t.Error("node not refuted with relative directory path")
 	}
 }
@@ -976,7 +976,7 @@ func TestRefuteCmd_CannotRefuteValidatedNode(t *testing.T) {
 		t.Fatalf("failed to load state: %v", err)
 	}
 	n := st.GetNode(nodeID)
-	if n != nil && n.EpistemicState == schema.EpistemicRefuted {
+	if n != nil && n.EpistemicState == service.EpistemicRefuted {
 		t.Error("node should not be refuted after being validated")
 	}
 }
@@ -1012,7 +1012,7 @@ func TestRefuteCmd_CannotRefuteAdmittedNode(t *testing.T) {
 		t.Fatalf("failed to load state: %v", err)
 	}
 	n := st.GetNode(nodeID)
-	if n != nil && n.EpistemicState == schema.EpistemicRefuted {
+	if n != nil && n.EpistemicState == service.EpistemicRefuted {
 		t.Error("node should not be refuted after being admitted")
 	}
 

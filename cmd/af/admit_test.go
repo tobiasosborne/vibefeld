@@ -122,8 +122,8 @@ func TestAdmitCmd_Success(t *testing.T) {
 		t.Fatal("node not found after admit")
 	}
 
-	if n.EpistemicState != schema.EpistemicAdmitted {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicAdmitted)
+	if n.EpistemicState != service.EpistemicAdmitted {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicAdmitted)
 	}
 }
 
@@ -339,7 +339,7 @@ func TestAdmitCmd_DirFlag(t *testing.T) {
 		svc, _ := service.NewProofService(tmpDir2)
 		st, _ := svc.LoadState()
 		n := st.GetNode(mustParseNodeIDAdmit(t, "1"))
-		if n == nil || n.EpistemicState != schema.EpistemicAdmitted {
+		if n == nil || n.EpistemicState != service.EpistemicAdmitted {
 			t.Error("node not admitted with -d short flag")
 		}
 	})
@@ -355,7 +355,7 @@ func TestAdmitCmd_DirFlag(t *testing.T) {
 		svc, _ := service.NewProofService(tmpDir)
 		st, _ := svc.LoadState()
 		n := st.GetNode(mustParseNodeIDAdmit(t, "1"))
-		if n == nil || n.EpistemicState != schema.EpistemicAdmitted {
+		if n == nil || n.EpistemicState != service.EpistemicAdmitted {
 			t.Error("node not admitted with --dir long flag")
 		}
 	})
@@ -471,7 +471,7 @@ func TestAdmitCmd_UpdatesEpistemicState(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicPending {
+	if n.EpistemicState != service.EpistemicPending {
 		t.Fatalf("expected initial state to be pending, got: %s", n.EpistemicState)
 	}
 
@@ -492,7 +492,7 @@ func TestAdmitCmd_UpdatesEpistemicState(t *testing.T) {
 		t.Fatal("node not found after admit")
 	}
 
-	if n.EpistemicState != schema.EpistemicAdmitted {
+	if n.EpistemicState != service.EpistemicAdmitted {
 		t.Errorf("expected EpistemicState = admitted, got: %s", n.EpistemicState)
 	}
 }
@@ -555,7 +555,7 @@ func TestAdmitCmd_DefaultDirectory(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicAdmitted {
+	if n.EpistemicState != service.EpistemicAdmitted {
 		t.Errorf("node not admitted when using default directory")
 	}
 }
@@ -572,7 +572,7 @@ func TestAdmitCmd_ChildNode(t *testing.T) {
 	}
 
 	childID := mustParseNodeIDAdmit(t, "1.1")
-	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Child node statement", schema.InferenceModusPonens)
+	err = svc.CreateNode(childID, service.NodeTypeClaim, "Child node statement", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatalf("failed to create child node: %v", err)
 	}
@@ -594,8 +594,8 @@ func TestAdmitCmd_ChildNode(t *testing.T) {
 		t.Fatal("child node not found after admit")
 	}
 
-	if n.EpistemicState != schema.EpistemicAdmitted {
-		t.Errorf("child node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicAdmitted)
+	if n.EpistemicState != service.EpistemicAdmitted {
+		t.Errorf("child node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicAdmitted)
 	}
 }
 
@@ -613,7 +613,7 @@ func TestAdmitCmd_DeepNode(t *testing.T) {
 	nodes := []string{"1.1", "1.1.1", "1.1.1.1"}
 	for _, idStr := range nodes {
 		nodeID := mustParseNodeIDAdmit(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement for "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement for "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -637,8 +637,8 @@ func TestAdmitCmd_DeepNode(t *testing.T) {
 		t.Fatal("deep node not found after admit")
 	}
 
-	if n.EpistemicState != schema.EpistemicAdmitted {
-		t.Errorf("deep node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicAdmitted)
+	if n.EpistemicState != service.EpistemicAdmitted {
+		t.Errorf("deep node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicAdmitted)
 	}
 }
 
@@ -708,7 +708,7 @@ func TestAdmitCmd_TableDrivenNodeIDs(t *testing.T) {
 				id, err := service.ParseNodeID(tc.nodeID)
 				if err == nil {
 					svc, _ := service.NewProofService(tmpDir)
-					_ = svc.CreateNode(id, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
+					_ = svc.CreateNode(id, service.NodeTypeClaim, "Test statement", service.InferenceAssumption)
 				}
 			}
 
@@ -794,7 +794,7 @@ func TestAdmitCmd_MultipleNodesSequential(t *testing.T) {
 	// Create additional nodes
 	for _, idStr := range []string{"1.1", "1.2"} {
 		nodeID := mustParseNodeIDAdmit(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -822,7 +822,7 @@ func TestAdmitCmd_MultipleNodesSequential(t *testing.T) {
 			t.Errorf("node %s not found", idStr)
 			continue
 		}
-		if n.EpistemicState != schema.EpistemicAdmitted {
+		if n.EpistemicState != service.EpistemicAdmitted {
 			t.Errorf("node %s EpistemicState = %q, want admitted", idStr, n.EpistemicState)
 		}
 	}
@@ -899,7 +899,7 @@ func TestAdmitCmd_RelativeDirectory(t *testing.T) {
 	// Verify admission
 	st, _ := svc.LoadState()
 	n := st.GetNode(nodeID)
-	if n == nil || n.EpistemicState != schema.EpistemicAdmitted {
+	if n == nil || n.EpistemicState != service.EpistemicAdmitted {
 		t.Error("node not admitted with relative directory path")
 	}
 }
@@ -937,7 +937,7 @@ func TestAdmitCmd_IntroducesTaint(t *testing.T) {
 	}
 
 	// Verify EpistemicAdmitted introduces taint per schema
-	if !schema.IntroducesTaint(n.EpistemicState) {
+	if !service.IntroducesTaint(n.EpistemicState) {
 		t.Errorf("admitted node should introduce taint, but IntroducesTaint(%q) = false", n.EpistemicState)
 	}
 }
@@ -971,11 +971,11 @@ func TestAdmitCmd_DifferentFromAccept(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState == schema.EpistemicValidated {
+	if n.EpistemicState == service.EpistemicValidated {
 		t.Error("admit should result in 'admitted' state, not 'validated'")
 	}
 
-	if n.EpistemicState != schema.EpistemicAdmitted {
+	if n.EpistemicState != service.EpistemicAdmitted {
 		t.Errorf("admit should result in 'admitted' state, got: %s", n.EpistemicState)
 	}
 }

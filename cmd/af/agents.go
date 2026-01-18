@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -104,7 +103,7 @@ func runAgents(cmd *cobra.Command, args []string) error {
 	// Collect currently claimed nodes
 	var claimedNodes []AgentEntry
 	for _, n := range st.AllNodes() {
-		if n.WorkflowState == schema.WorkflowClaimed && n.ClaimedBy != "" {
+		if n.WorkflowState == service.WorkflowClaimed && n.ClaimedBy != "" {
 			claimedNodes = append(claimedNodes, AgentEntry{
 				NodeID:    n.ID.String(),
 				Owner:     n.ClaimedBy,

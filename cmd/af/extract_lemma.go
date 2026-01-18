@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/render"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -120,7 +119,7 @@ func runExtractLemma(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if node is validated
-	if node.EpistemicState != schema.EpistemicValidated {
+	if node.EpistemicState != service.EpistemicValidated {
 		return fmt.Errorf("node %s is not validated (current state: %s); only validated nodes can be extracted as lemmas",
 			nodeID.String(), node.EpistemicState)
 	}

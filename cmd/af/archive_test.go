@@ -121,8 +121,8 @@ func TestArchiveCmd_Success(t *testing.T) {
 		t.Fatal("node not found after archive")
 	}
 
-	if n.EpistemicState != schema.EpistemicArchived {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicArchived)
+	if n.EpistemicState != service.EpistemicArchived {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicArchived)
 	}
 }
 
@@ -338,7 +338,7 @@ func TestArchiveCmd_DirFlag(t *testing.T) {
 	svc, _ := service.NewProofService(tmpDir)
 	st, _ := svc.LoadState()
 	n := st.GetNode(mustParseArchiveNodeID(t, "1"))
-	if n == nil || n.EpistemicState != schema.EpistemicArchived {
+	if n == nil || n.EpistemicState != service.EpistemicArchived {
 		t.Error("node not archived with --dir long flag")
 	}
 }
@@ -372,8 +372,8 @@ func TestArchiveCmd_WithReason(t *testing.T) {
 		t.Fatal("node not found after archive")
 	}
 
-	if n.EpistemicState != schema.EpistemicArchived {
-		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicArchived)
+	if n.EpistemicState != service.EpistemicArchived {
+		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicArchived)
 	}
 
 	// The reason may or may not be stored in the node/ledger - this is implementation specific
@@ -456,7 +456,7 @@ func TestArchiveCmd_UpdatesEpistemicState(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicPending {
+	if n.EpistemicState != service.EpistemicPending {
 		t.Fatalf("expected initial state to be pending, got: %s", n.EpistemicState)
 	}
 
@@ -477,7 +477,7 @@ func TestArchiveCmd_UpdatesEpistemicState(t *testing.T) {
 		t.Fatal("node not found after archive")
 	}
 
-	if n.EpistemicState != schema.EpistemicArchived {
+	if n.EpistemicState != service.EpistemicArchived {
 		t.Errorf("expected EpistemicState = archived, got: %s", n.EpistemicState)
 	}
 }
@@ -540,7 +540,7 @@ func TestArchiveCmd_DefaultDirectory(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicArchived {
+	if n.EpistemicState != service.EpistemicArchived {
 		t.Errorf("node not archived when using default directory")
 	}
 }
@@ -557,7 +557,7 @@ func TestArchiveCmd_ChildNode(t *testing.T) {
 	}
 
 	childID := mustParseArchiveNodeID(t, "1.1")
-	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Child node statement", schema.InferenceModusPonens)
+	err = svc.CreateNode(childID, service.NodeTypeClaim, "Child node statement", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatalf("failed to create child node: %v", err)
 	}
@@ -579,8 +579,8 @@ func TestArchiveCmd_ChildNode(t *testing.T) {
 		t.Fatal("child node not found after archive")
 	}
 
-	if n.EpistemicState != schema.EpistemicArchived {
-		t.Errorf("child node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicArchived)
+	if n.EpistemicState != service.EpistemicArchived {
+		t.Errorf("child node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicArchived)
 	}
 }
 
@@ -598,7 +598,7 @@ func TestArchiveCmd_DeepNode(t *testing.T) {
 	nodes := []string{"1.1", "1.1.1", "1.1.1.1"}
 	for _, idStr := range nodes {
 		nodeID := mustParseArchiveNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement for "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement for "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -622,8 +622,8 @@ func TestArchiveCmd_DeepNode(t *testing.T) {
 		t.Fatal("deep node not found after archive")
 	}
 
-	if n.EpistemicState != schema.EpistemicArchived {
-		t.Errorf("deep node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicArchived)
+	if n.EpistemicState != service.EpistemicArchived {
+		t.Errorf("deep node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicArchived)
 	}
 }
 
@@ -693,7 +693,7 @@ func TestArchiveCmd_TableDrivenNodeIDs(t *testing.T) {
 				id, err := service.ParseNodeID(tc.nodeID)
 				if err == nil {
 					svc, _ := service.NewProofService(tmpDir)
-					_ = svc.CreateNode(id, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
+					_ = svc.CreateNode(id, service.NodeTypeClaim, "Test statement", service.InferenceAssumption)
 				}
 			}
 
@@ -779,7 +779,7 @@ func TestArchiveCmd_MultipleNodesSequential(t *testing.T) {
 	// Create additional nodes
 	for _, idStr := range []string{"1.1", "1.2"} {
 		nodeID := mustParseArchiveNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -807,7 +807,7 @@ func TestArchiveCmd_MultipleNodesSequential(t *testing.T) {
 			t.Errorf("node %s not found", idStr)
 			continue
 		}
-		if n.EpistemicState != schema.EpistemicArchived {
+		if n.EpistemicState != service.EpistemicArchived {
 			t.Errorf("node %s EpistemicState = %q, want archived", idStr, n.EpistemicState)
 		}
 	}
@@ -828,7 +828,7 @@ func TestArchiveCmd_DirFlagShortForm(t *testing.T) {
 	svc, _ := service.NewProofService(tmpDir)
 	st, _ := svc.LoadState()
 	n := st.GetNode(mustParseArchiveNodeID(t, "1"))
-	if n == nil || n.EpistemicState != schema.EpistemicArchived {
+	if n == nil || n.EpistemicState != service.EpistemicArchived {
 		t.Error("node not archived with -d short flag")
 	}
 }
@@ -904,7 +904,7 @@ func TestArchiveCmd_RelativeDirectory(t *testing.T) {
 	// Verify archival
 	st, _ := svc.LoadState()
 	n := st.GetNode(nodeID)
-	if n == nil || n.EpistemicState != schema.EpistemicArchived {
+	if n == nil || n.EpistemicState != service.EpistemicArchived {
 		t.Error("node not archived with relative directory path")
 	}
 }
@@ -1066,7 +1066,7 @@ func TestArchiveCmd_ReasonFlagLongForm(t *testing.T) {
 	svc, _ := service.NewProofService(tmpDir)
 	st, _ := svc.LoadState()
 	n := st.GetNode(mustParseArchiveNodeID(t, "1"))
-	if n == nil || n.EpistemicState != schema.EpistemicArchived {
+	if n == nil || n.EpistemicState != service.EpistemicArchived {
 		t.Error("node not archived with --reason flag")
 	}
 
@@ -1088,7 +1088,7 @@ func TestArchiveCmd_EmptyReason(t *testing.T) {
 	svc, _ := service.NewProofService(tmpDir)
 	st, _ := svc.LoadState()
 	n := st.GetNode(mustParseArchiveNodeID(t, "1"))
-	if n == nil || n.EpistemicState != schema.EpistemicArchived {
+	if n == nil || n.EpistemicState != service.EpistemicArchived {
 		t.Error("node not archived with empty reason")
 	}
 

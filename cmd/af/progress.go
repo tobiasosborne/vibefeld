@@ -10,7 +10,6 @@ import (
 	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
 )
@@ -159,23 +158,23 @@ func computeProgressMetrics(st *state.State, pendingDefs []*node.PendingDef) *Pr
 	// Count nodes by state
 	for _, n := range nodes {
 		switch n.EpistemicState {
-		case schema.EpistemicPending:
+		case service.EpistemicPending:
 			metrics.ByState["pending"]++
-		case schema.EpistemicValidated:
+		case service.EpistemicValidated:
 			metrics.ByState["validated"]++
 			metrics.CompletedNodes++
-		case schema.EpistemicAdmitted:
+		case service.EpistemicAdmitted:
 			metrics.ByState["admitted"]++
 			metrics.CompletedNodes++
-		case schema.EpistemicRefuted:
+		case service.EpistemicRefuted:
 			metrics.ByState["refuted"]++
-		case schema.EpistemicArchived:
+		case service.EpistemicArchived:
 			metrics.ByState["archived"]++
 			metrics.CompletedNodes++ // Archived nodes are resolved, don't block completion
 		}
 
 		// Count blocked nodes
-		if n.WorkflowState == schema.WorkflowBlocked {
+		if n.WorkflowState == service.WorkflowBlocked {
 			metrics.BlockedNodes++
 		}
 	}
@@ -209,7 +208,7 @@ func findCriticalPath(nodes []*node.Node) ([]string, int) {
 	maxDepth := 0
 
 	for _, n := range nodes {
-		if n.EpistemicState == schema.EpistemicPending {
+		if n.EpistemicState == service.EpistemicPending {
 			depth := n.ID.Depth()
 			if depth > maxDepth {
 				maxDepth = depth

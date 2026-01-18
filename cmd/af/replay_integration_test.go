@@ -150,7 +150,7 @@ func TestReplayIntegration_ReplayWithMultipleNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.CreateNode(childID, schema.NodeTypeClaim, "First step", schema.InferenceAssumption); err != nil {
+	if err := svc.CreateNode(childID, service.NodeTypeClaim, "First step", service.InferenceAssumption); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,7 +158,7 @@ func TestReplayIntegration_ReplayWithMultipleNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.CreateNode(childID2, schema.NodeTypeClaim, "Second step", schema.InferenceModusPonens); err != nil {
+	if err := svc.CreateNode(childID2, service.NodeTypeClaim, "Second step", service.InferenceModusPonens); err != nil {
 		t.Fatal(err)
 	}
 

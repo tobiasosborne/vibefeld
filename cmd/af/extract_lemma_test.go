@@ -117,14 +117,14 @@ func setupExtractLemmaTestWithValidatedTree(t *testing.T) (string, func()) {
 		t.Fatalf("failed to claim root: %v", err)
 	}
 
-	if err := svc.RefineNode(rootID, proverOwner, child1ID, schema.NodeTypeClaim,
-		"First child claim", schema.InferenceModusPonens); err != nil {
+	if err := svc.RefineNode(rootID, proverOwner, child1ID, service.NodeTypeClaim,
+		"First child claim", service.InferenceModusPonens); err != nil {
 		cleanup()
 		t.Fatalf("failed to create child 1.1: %v", err)
 	}
 
-	if err := svc.RefineNode(rootID, proverOwner, child2ID, schema.NodeTypeClaim,
-		"Second child claim", schema.InferenceModusPonens); err != nil {
+	if err := svc.RefineNode(rootID, proverOwner, child2ID, service.NodeTypeClaim,
+		"Second child claim", service.InferenceModusPonens); err != nil {
 		cleanup()
 		t.Fatalf("failed to create child 1.2: %v", err)
 	}
@@ -336,15 +336,15 @@ func TestExtractLemmaCmd_NotIndependent(t *testing.T) {
 
 	// Create a local_assume child node
 	localAssumeID := mustParseExtractLemmaNodeID(t, "1.1")
-	if err := svc.RefineNode(rootID, proverOwner, localAssumeID, schema.NodeTypeLocalAssume,
-		"Assume x > 0 for local reasoning", schema.InferenceAssumption); err != nil {
+	if err := svc.RefineNode(rootID, proverOwner, localAssumeID, service.NodeTypeLocalAssume,
+		"Assume x > 0 for local reasoning", service.InferenceAssumption); err != nil {
 		t.Fatalf("failed to create local_assume node: %v", err)
 	}
 
 	// Create a claim that depends on the local assumption
 	dependentClaimID := mustParseExtractLemmaNodeID(t, "1.2")
-	if err := svc.RefineNode(rootID, proverOwner, dependentClaimID, schema.NodeTypeClaim,
-		"Therefore x^2 > 0", schema.InferenceModusPonens); err != nil {
+	if err := svc.RefineNode(rootID, proverOwner, dependentClaimID, service.NodeTypeClaim,
+		"Therefore x^2 > 0", service.InferenceModusPonens); err != nil {
 		t.Fatalf("failed to create dependent claim: %v", err)
 	}
 
@@ -1407,8 +1407,8 @@ func TestExtractLemmaCmd_DeepNode(t *testing.T) {
 
 	for _, nodeStr := range nodes {
 		childID := mustParseExtractLemmaNodeID(t, nodeStr)
-		err := svc.RefineNode(parentID, proverOwner, childID, schema.NodeTypeClaim,
-			"Statement for "+nodeStr, schema.InferenceModusPonens)
+		err := svc.RefineNode(parentID, proverOwner, childID, service.NodeTypeClaim,
+			"Statement for "+nodeStr, service.InferenceModusPonens)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", nodeStr, err)
 		}

@@ -53,7 +53,7 @@ func setupBulkAcceptTest(t *testing.T) (string, func()) {
 	// Create nodes 1.1, 1.2, and 1.3
 	for i := 1; i <= 3; i++ {
 		childID, _ := service.ParseNodeID("1." + string(rune('0'+i)))
-		err := svc.CreateNode(childID, schema.NodeTypeClaim, "Child statement "+string(rune('0'+i)), schema.InferenceAssumption)
+		err := svc.CreateNode(childID, service.NodeTypeClaim, "Child statement "+string(rune('0'+i)), service.InferenceAssumption)
 		if err != nil {
 			cleanup()
 			t.Fatalf("failed to create child node 1.%d: %v", i, err)
@@ -118,7 +118,7 @@ func TestAcceptBulkCmd_MultipleNodes(t *testing.T) {
 			t.Errorf("node %s not found", idStr)
 			continue
 		}
-		if n.EpistemicState != schema.EpistemicValidated {
+		if n.EpistemicState != service.EpistemicValidated {
 			t.Errorf("node %s EpistemicState = %q, want validated", idStr, n.EpistemicState)
 		}
 	}
@@ -157,7 +157,7 @@ func TestAcceptBulkCmd_TwoNodes(t *testing.T) {
 			t.Errorf("node %s not found", idStr)
 			continue
 		}
-		if n.EpistemicState != schema.EpistemicValidated {
+		if n.EpistemicState != service.EpistemicValidated {
 			t.Errorf("node %s not validated", idStr)
 		}
 	}
@@ -165,7 +165,7 @@ func TestAcceptBulkCmd_TwoNodes(t *testing.T) {
 	// Node 1.3 should still be pending
 	node13, _ := service.ParseNodeID("1.3")
 	n := st.GetNode(node13)
-	if n != nil && n.EpistemicState == schema.EpistemicValidated {
+	if n != nil && n.EpistemicState == service.EpistemicValidated {
 		t.Error("node 1.3 should not be validated (it was not in the accept list)")
 	}
 }
@@ -197,7 +197,7 @@ func TestAcceptBulkCmd_SingleNodeStillWorks(t *testing.T) {
 
 	nodeID, _ := service.ParseNodeID("1.1")
 	n := st.GetNode(nodeID)
-	if n == nil || n.EpistemicState != schema.EpistemicValidated {
+	if n == nil || n.EpistemicState != service.EpistemicValidated {
 		t.Error("node 1.1 should be validated")
 	}
 }
@@ -350,7 +350,7 @@ func TestAcceptBulkCmd_AllFlag(t *testing.T) {
 			t.Errorf("node %s not found", idStr)
 			continue
 		}
-		if n.EpistemicState != schema.EpistemicValidated {
+		if n.EpistemicState != service.EpistemicValidated {
 			t.Errorf("node %s EpistemicState = %q, want validated", idStr, n.EpistemicState)
 		}
 	}
@@ -379,7 +379,7 @@ func TestAcceptBulkCmd_AllFlag_ShortForm(t *testing.T) {
 	for _, idStr := range []string{"1", "1.1", "1.2", "1.3"} {
 		nodeID, _ := service.ParseNodeID(idStr)
 		n := st.GetNode(nodeID)
-		if n != nil && n.EpistemicState != schema.EpistemicValidated {
+		if n != nil && n.EpistemicState != service.EpistemicValidated {
 			t.Errorf("node %s should be validated with -a flag", idStr)
 		}
 	}
@@ -502,7 +502,7 @@ func TestAcceptNodeBulk_Service(t *testing.T) {
 			t.Errorf("node %s not found", nodeID.String())
 			continue
 		}
-		if n.EpistemicState != schema.EpistemicValidated {
+		if n.EpistemicState != service.EpistemicValidated {
 			t.Errorf("node %s EpistemicState = %q, want validated", nodeID.String(), n.EpistemicState)
 		}
 	}

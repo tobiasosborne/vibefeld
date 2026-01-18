@@ -108,7 +108,7 @@ func setupAgentsTestWithHistory(t *testing.T) (string, func()) {
 
 	// Create child node 1.1
 	child1ID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(child1ID, schema.NodeTypeClaim, "First child node", schema.InferenceModusPonens)
+	err = svc.CreateNode(child1ID, service.NodeTypeClaim, "First child node", service.InferenceModusPonens)
 	if err != nil {
 		cleanup()
 		t.Fatal(err)
@@ -403,13 +403,13 @@ func TestAgentsCmd_MultipleAgents(t *testing.T) {
 
 	// Create multiple child nodes
 	child1ID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(child1ID, schema.NodeTypeClaim, "First child", schema.InferenceModusPonens)
+	err = svc.CreateNode(child1ID, service.NodeTypeClaim, "First child", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	child2ID, _ := service.ParseNodeID("1.2")
-	err = svc.CreateNode(child2ID, schema.NodeTypeClaim, "Second child", schema.InferenceModusPonens)
+	err = svc.CreateNode(child2ID, service.NodeTypeClaim, "Second child", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}

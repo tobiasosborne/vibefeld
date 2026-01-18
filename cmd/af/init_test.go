@@ -534,7 +534,7 @@ func TestInitCmd_ContradictionTemplate(t *testing.T) {
 	if node11 == nil {
 		t.Fatal("expected node 1.1 to exist")
 	}
-	if node11.Type != schema.NodeTypeLocalAssume {
+	if node11.Type != service.NodeTypeLocalAssume {
 		t.Errorf("expected node 1.1 to be local_assume, got %s", node11.Type)
 	}
 
@@ -543,7 +543,7 @@ func TestInitCmd_ContradictionTemplate(t *testing.T) {
 	if node12 == nil {
 		t.Fatal("expected node 1.2 to exist")
 	}
-	if node12.Type != schema.NodeTypeClaim {
+	if node12.Type != service.NodeTypeClaim {
 		t.Errorf("expected node 1.2 to be claim, got %s", node12.Type)
 	}
 }
@@ -638,7 +638,7 @@ func TestInitCmd_CasesTemplate(t *testing.T) {
 	if node11 == nil {
 		t.Fatal("expected node 1.1 to exist")
 	}
-	if node11.Type != schema.NodeTypeCase {
+	if node11.Type != service.NodeTypeCase {
 		t.Errorf("expected node 1.1 to be case, got %s", node11.Type)
 	}
 }

@@ -1,60 +1,78 @@
-# Handoff - 2026-01-18 (Session 178)
+# Handoff - 2026-01-18 (Session 179)
 
 ## What Was Accomplished This Session
 
-### Session 178 Summary: Wrapped fs.InitProofDir in service layer
+### Session 179 Summary: Re-exported schema constants through service package
 
-Completed **vibefeld-x5mh** - Added `service.InitProofDir` re-export and migrated 32 cmd/af test files to use it instead of importing fs directly.
+Completed **vibefeld-0zsm** - Added all schema type aliases and constant re-exports to service/exports.go, then migrated all production cmd/af files from `schema.*` to `service.*`.
 
 ### Migration Statistics
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Files importing fs for InitProofDir only | 32 | 0 |
-| Files using service.InitProofDir | 0 | 32 |
-| fs imports removed | 0 | 28 |
+| Production files importing schema | 11 | 0 |
+| Test files still importing schema | 33 | 28 |
+| Schema constants re-exported | 0 | 35 |
+| Schema types re-exported | 0 | 11 |
+| Schema functions re-exported | 0 | 27 |
 
-**Note:** 4 test files still import fs (def_reject_test.go, pending_defs_test.go, request_def_test.go) for other fs operations beyond InitProofDir.
+### What Was Re-exported
 
-### Changes Made
+**Types:**
+- `NodeType`, `InferenceType`, `EpistemicState`, `WorkflowState`, `ChallengeTarget`, `ChallengeSeverity`
+- Info types: `InferenceInfo`, `NodeTypeInfo`, `EpistemicStateInfo`, `WorkflowStateInfo`, `ChallengeTargetInfo`, `ChallengeSeverityInfo`
 
-- Added `service.InitProofDir = fs.InitProofDir` re-export in `internal/service/exports.go`
-- Added test for `service.InitProofDir` in `internal/service/exports_test.go`
-- Replaced `fs.InitProofDir` → `service.InitProofDir` in 32 test files
-- Removed unnecessary fs imports from 28 test files via goimports
+**Constants:**
+- NodeType: `NodeTypeClaim`, `NodeTypeLocalAssume`, `NodeTypeLocalDischarge`, `NodeTypeCase`, `NodeTypeQED`
+- InferenceType: All 11 inference types (`InferenceModusPonens`, `InferenceModusTollens`, etc.)
+- EpistemicState: `EpistemicPending`, `EpistemicValidated`, `EpistemicAdmitted`, `EpistemicRefuted`, `EpistemicArchived`
+- WorkflowState: `WorkflowAvailable`, `WorkflowClaimed`, `WorkflowBlocked`
+- ChallengeTarget: All 9 targets (`TargetStatement`, `TargetInference`, etc.)
+- ChallengeSeverity: `SeverityCritical`, `SeverityMajor`, `SeverityMinor`, `SeverityNote`
+
+**Functions:**
+- Validation: `ValidateNodeType`, `ValidateInference`, `ValidateEpistemicState`, `ValidateWorkflowState`, `ValidateChallengeTarget`, `ValidateChallengeTargets`, `ValidateChallengeSeverity`
+- Getters: `GetInferenceInfo`, `GetNodeTypeInfo`, `GetEpistemicStateInfo`, `GetWorkflowStateInfo`, `GetChallengeTargetInfo`, `GetChallengeSeverityInfo`
+- Lists: `AllInferences`, `AllNodeTypes`, `AllEpistemicStates`, `AllWorkflowStates`, `AllChallengeTargets`, `AllChallengeSeverities`
+- Helpers: `SuggestInference`, `ParseChallengeTargets`, `OpensScope`, `ClosesScope`, `IsFinal`, `IntroducesTaint`, `ValidateEpistemicTransition`, `ValidateWorkflowTransition`, `CanClaim`, `SeverityBlocksAcceptance`, `DefaultChallengeSeverity`
+
+### Files Changed
+
+- `internal/service/exports.go` - Added schema re-exports (types, constants, functions)
+- 11 production cmd/af files - Changed from `schema.*` to `service.*`:
+  - `agents.go`, `challenge.go`, `deps.go`, `extend_claim.go`, `extract_lemma.go`
+  - `health.go`, `inferences.go`, `jobs.go`, `progress.go`, `reap.go`
+  - `refine.go`, `schema.go`, `search.go`, `types.go`
+- 2 test files also updated (`inferences_test.go`, `progress_test.go`)
 
 ### Issue Updates
 
-1. **Closed vibefeld-x5mh** - Wrap fs.InitProofDir in service layer
+1. **Closed vibefeld-0zsm** - Re-export schema constants through service package
    - Contributes to vibefeld-jfbc (P1 epic: reduce cmd/af imports from 17 to 2)
 
 ## Current State
 
 ### Issue Statistics
-- **Closed this session:** 1 (vibefeld-x5mh)
-- **Open:** ~11
-- **Ready for work:** ~10
+- **Closed this session:** 1 (vibefeld-0zsm)
+- **Open:** ~10
+- **Ready for work:** ~9
 
 ### Test Status
 - Build succeeds
-- service package tests all pass
-- cmd/af tests have pre-existing failures (unrelated to this change):
-  - Some tests missing `--yes` flag for non-interactive mode
-  - Pre-existing fuzzy_flag_test.go failures
+- cmd/af tests pass
+- service package tests pass
+- Pre-existing test failures in internal/cli (fuzzy_flag_test.go) - unrelated
 
 ### Known Issues (Pre-existing)
 1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in internal/cli/fuzzy_flag_test.go
-2. Several archive/refute/release tests fail due to missing `--yes` flag
 
 ## Recommended Next Steps
 
 ### Continue Import Reduction (P1 Epic vibefeld-jfbc)
 
-More sub-tasks to reduce cmd/af imports:
-
+Remaining sub-tasks:
 1. **vibefeld-li8a** - Move fs assumption/external operations to service layer
 2. **vibefeld-rvzl** - Move fs pending-def operations to service layer
-3. **vibefeld-0zsm** - Re-export schema constants through service package
 
 ### P2 Code Quality (API Design)
 - `vibefeld-9maw` - Inconsistent return types for ID-returning operations
@@ -78,6 +96,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 179:** Re-exported schema constants through service, migrated 11 production files, closed vibefeld-0zsm
 **Session 178:** Added service.InitProofDir, migrated 32 test files, closed vibefeld-x5mh
 **Session 177:** Migrated 65 cmd/af files to use service.ParseNodeID, closed vibefeld-hufm
 **Session 176:** Created types re-exports in service/exports.go, closed vibefeld-3iiz

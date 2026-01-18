@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/service"
 )
 
 // =============================================================================
@@ -54,8 +54,8 @@ func TestInferencesCmd_ListAll(t *testing.T) {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	// Should list all inference types from schema.AllInferences()
-	allInferences := schema.AllInferences()
+	// Should list all inference types from service.AllInferences()
+	allInferences := service.AllInferences()
 	for _, inf := range allInferences {
 		if !strings.Contains(output, string(inf.ID)) {
 			t.Errorf("expected output to contain inference type %q, got: %q", inf.ID, output)
@@ -131,8 +131,8 @@ func TestInferencesCmd_Count(t *testing.T) {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	// Count should match schema.AllInferences()
-	allInferences := schema.AllInferences()
+	// Count should match service.AllInferences()
+	allInferences := service.AllInferences()
 	expectedCount := len(allInferences)
 
 	// The output should contain the count somewhere
@@ -191,7 +191,7 @@ func TestInferencesCmd_JSONOutputStructure(t *testing.T) {
 	}
 
 	// Check expected count
-	allInferences := schema.AllInferences()
+	allInferences := service.AllInferences()
 	if objResult.Total != len(allInferences) {
 		t.Errorf("expected total %d, got %d", len(allInferences), objResult.Total)
 	}
@@ -240,7 +240,7 @@ func TestInferencesCmd_JSONContainsAllTypes(t *testing.T) {
 	}
 
 	// Check that all inference types appear in JSON
-	allInferences := schema.AllInferences()
+	allInferences := service.AllInferences()
 	for _, inf := range allInferences {
 		if !strings.Contains(output, string(inf.ID)) {
 			t.Errorf("expected JSON to contain inference type %q", inf.ID)

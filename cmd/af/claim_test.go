@@ -82,10 +82,10 @@ func setupClaimTestWithMultipleNodes(t *testing.T) (string, func()) {
 
 	// Create child nodes
 	child1ID, _ := service.ParseNodeID("1.1")
-	svc.CreateNode(child1ID, schema.NodeTypeClaim, "First child", schema.InferenceModusPonens)
+	svc.CreateNode(child1ID, service.NodeTypeClaim, "First child", service.InferenceModusPonens)
 
 	child2ID, _ := service.ParseNodeID("1.2")
-	svc.CreateNode(child2ID, schema.NodeTypeClaim, "Second child", schema.InferenceModusPonens)
+	svc.CreateNode(child2ID, service.NodeTypeClaim, "Second child", service.InferenceModusPonens)
 
 	cleanup := func() { os.RemoveAll(tmpDir) }
 	return proofDir, cleanup
@@ -681,7 +681,7 @@ func TestClaimCmd_FullWorkflow(t *testing.T) {
 		t.Fatal("node not found in state")
 	}
 
-	if node.WorkflowState != schema.WorkflowClaimed {
+	if node.WorkflowState != service.WorkflowClaimed {
 		t.Errorf("expected node workflow state to be 'claimed', got %q", node.WorkflowState)
 	}
 

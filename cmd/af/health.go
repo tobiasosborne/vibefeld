@@ -10,7 +10,6 @@ import (
 	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/jobs"
 	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
 )
@@ -191,15 +190,15 @@ func analyzeHealth(st *state.State) *HealthReport {
 	// Count nodes by epistemic state
 	for _, n := range nodes {
 		switch n.EpistemicState {
-		case schema.EpistemicPending:
+		case service.EpistemicPending:
 			stats.PendingNodes++
-		case schema.EpistemicValidated:
+		case service.EpistemicValidated:
 			stats.ValidatedNodes++
-		case schema.EpistemicAdmitted:
+		case service.EpistemicAdmitted:
 			stats.AdmittedNodes++
-		case schema.EpistemicRefuted:
+		case service.EpistemicRefuted:
 			stats.RefutedNodes++
-		case schema.EpistemicArchived:
+		case service.EpistemicArchived:
 			stats.ArchivedNodes++
 		}
 	}
@@ -207,7 +206,7 @@ func analyzeHealth(st *state.State) *HealthReport {
 	// Count blocked leaf nodes (pending leaves with open challenges)
 	blockedLeafIDs := []string{}
 	for _, leaf := range leafNodes {
-		if leaf.EpistemicState == schema.EpistemicPending {
+		if leaf.EpistemicState == service.EpistemicPending {
 			if hasOpenChallenge(leaf, challengeMap) {
 				stats.BlockedLeaves++
 				blockedLeafIDs = append(blockedLeafIDs, leaf.ID.String())
@@ -222,7 +221,7 @@ func analyzeHealth(st *state.State) *HealthReport {
 	// Check 1: All leaf nodes have open challenges
 	pendingLeaves := 0
 	for _, leaf := range leafNodes {
-		if leaf.EpistemicState == schema.EpistemicPending {
+		if leaf.EpistemicState == service.EpistemicPending {
 			pendingLeaves++
 		}
 	}

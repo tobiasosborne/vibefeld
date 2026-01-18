@@ -95,7 +95,7 @@ func setupAssumptionsTestWithNodes(t *testing.T) (string, func()) {
 	// Create some nodes
 	for _, idStr := range []string{"1.1", "1.2", "1.1.1"} {
 		nodeID, _ := service.ParseNodeID(idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			cleanup()
 			t.Fatal(err)

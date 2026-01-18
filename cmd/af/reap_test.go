@@ -135,7 +135,7 @@ func setupReapTestWithMultipleClaims(t *testing.T) (string, func()) {
 	// Create multiple nodes
 	for _, idStr := range []string{"1.1", "1.2", "1.3"} {
 		nodeID := mustParseReapNodeID(t, idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement for "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement for "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			cleanup()
 			t.Fatal(err)
@@ -504,7 +504,7 @@ func TestReapCmd_DryRunDoesNotActuallyReap(t *testing.T) {
 	}
 
 	// Node should still be in claimed state (dry-run shouldn't change state)
-	if n.WorkflowState != schema.WorkflowClaimed {
+	if n.WorkflowState != service.WorkflowClaimed {
 		t.Errorf("dry-run should not change workflow state, expected 'claimed', got: %s", n.WorkflowState)
 	}
 }
@@ -563,7 +563,7 @@ func TestReapCmd_ReapsExpiredLock(t *testing.T) {
 		t.Fatal("node not found after reap")
 	}
 
-	if n.WorkflowState != schema.WorkflowAvailable {
+	if n.WorkflowState != service.WorkflowAvailable {
 		t.Errorf("node should be available after reap, got: %s", n.WorkflowState)
 	}
 }
@@ -598,7 +598,7 @@ func TestReapCmd_DoesNotReapActiveLock(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.WorkflowState != schema.WorkflowClaimed {
+	if n.WorkflowState != service.WorkflowClaimed {
 		t.Errorf("active lock should not be reaped, expected 'claimed', got: %s", n.WorkflowState)
 	}
 }
@@ -636,7 +636,7 @@ func TestReapCmd_AllFlagReapsRegardlessOfExpiry(t *testing.T) {
 		t.Fatal("node not found after reap --all")
 	}
 
-	if n.WorkflowState != schema.WorkflowAvailable {
+	if n.WorkflowState != service.WorkflowAvailable {
 		t.Errorf("node should be available after reap --all, got: %s", n.WorkflowState)
 	}
 }
@@ -673,21 +673,21 @@ func TestReapCmd_MultipleStaleLocks(t *testing.T) {
 	node11 := st.GetNode(mustParseReapNodeID(t, "1.1"))
 	if node11 == nil {
 		t.Error("node 1.1 not found")
-	} else if node11.WorkflowState != schema.WorkflowAvailable {
+	} else if node11.WorkflowState != service.WorkflowAvailable {
 		t.Errorf("node 1.1 should be available after reap, got: %s", node11.WorkflowState)
 	}
 
 	node12 := st.GetNode(mustParseReapNodeID(t, "1.2"))
 	if node12 == nil {
 		t.Error("node 1.2 not found")
-	} else if node12.WorkflowState != schema.WorkflowClaimed {
+	} else if node12.WorkflowState != service.WorkflowClaimed {
 		t.Errorf("node 1.2 should remain claimed (active), got: %s", node12.WorkflowState)
 	}
 
 	node13 := st.GetNode(mustParseReapNodeID(t, "1.3"))
 	if node13 == nil {
 		t.Error("node 1.3 not found")
-	} else if node13.WorkflowState != schema.WorkflowAvailable {
+	} else if node13.WorkflowState != service.WorkflowAvailable {
 		t.Errorf("node 1.3 should be available after reap, got: %s", node13.WorkflowState)
 	}
 }
@@ -963,7 +963,7 @@ func TestReapCmd_DryRunVsActual(t *testing.T) {
 				t.Fatal("node not found")
 			}
 
-			wasReaped := n.WorkflowState == schema.WorkflowAvailable
+			wasReaped := n.WorkflowState == service.WorkflowAvailable
 			if wasReaped != tc.expectedReaped {
 				t.Errorf("expected reaped=%v, got reaped=%v (state=%s)", tc.expectedReaped, wasReaped, n.WorkflowState)
 			}
@@ -1020,7 +1020,7 @@ func TestReapCmd_DryRunWithAll(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.WorkflowState != schema.WorkflowClaimed {
+	if n.WorkflowState != service.WorkflowClaimed {
 		t.Errorf("dry-run with --all should not change state, expected 'claimed', got: %s", n.WorkflowState)
 	}
 }
@@ -1062,7 +1062,7 @@ func TestReapCmd_RepeatedReap(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	if n.WorkflowState != schema.WorkflowAvailable {
+	if n.WorkflowState != service.WorkflowAvailable {
 		t.Errorf("node should remain available after repeated reap, got: %s", n.WorkflowState)
 	}
 }
@@ -1102,7 +1102,7 @@ func TestReapCmd_FullWorkflow(t *testing.T) {
 	if n == nil {
 		t.Fatal("node not found")
 	}
-	if n.WorkflowState != schema.WorkflowClaimed {
+	if n.WorkflowState != service.WorkflowClaimed {
 		t.Fatalf("expected node to be claimed, got: %s", n.WorkflowState)
 	}
 
@@ -1116,7 +1116,7 @@ func TestReapCmd_FullWorkflow(t *testing.T) {
 	// Verify still claimed after dry-run
 	st, _ = svc.LoadState()
 	n = st.GetNode(nodeID)
-	if n.WorkflowState != schema.WorkflowClaimed {
+	if n.WorkflowState != service.WorkflowClaimed {
 		t.Error("node should still be claimed after dry-run")
 	}
 
@@ -1130,7 +1130,7 @@ func TestReapCmd_FullWorkflow(t *testing.T) {
 	// Step 5: Verify node is now available
 	st, _ = svc.LoadState()
 	n = st.GetNode(nodeID)
-	if n.WorkflowState != schema.WorkflowAvailable {
+	if n.WorkflowState != service.WorkflowAvailable {
 		t.Errorf("expected node to be available after reap, got: %s", n.WorkflowState)
 	}
 }

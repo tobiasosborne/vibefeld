@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/render"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -144,13 +143,13 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 
 	// Validate target if provided and non-empty
 	if target != "" {
-		if err := schema.ValidateChallengeTarget(target); err != nil {
+		if err := service.ValidateChallengeTarget(target); err != nil {
 			return render.InvalidValueError("af challenge", "target", target, render.ValidChallengeTargets, examples)
 		}
 	}
 
 	// Validate severity
-	if err := schema.ValidateChallengeSeverity(severity); err != nil {
+	if err := service.ValidateChallengeSeverity(severity); err != nil {
 		return render.InvalidValueError("af challenge", "severity", severity, []string{"critical", "major", "minor", "note"}, examples)
 	}
 
@@ -230,7 +229,7 @@ func outputChallengeText(cmd *cobra.Command, nodeID service.NodeID, challengeID,
 	fmt.Fprintf(cmd.OutOrStdout(), "  Reason:       %s\n", reason)
 
 	// Add note about whether this blocks acceptance
-	if schema.SeverityBlocksAcceptance(schema.ChallengeSeverity(severity)) {
+	if service.SeverityBlocksAcceptance(service.ChallengeSeverity(severity)) {
 		fmt.Fprintln(cmd.OutOrStdout(), "  [This challenge blocks acceptance]")
 	} else {
 		fmt.Fprintln(cmd.OutOrStdout(), "  [This challenge does NOT block acceptance]")

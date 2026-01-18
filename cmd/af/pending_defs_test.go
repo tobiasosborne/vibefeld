@@ -66,7 +66,7 @@ func setupPendingDefsTestWithPendingDefs(t *testing.T) (string, func(), []string
 	// Create additional nodes for testing (root node "1" is already created by Init)
 	for _, idStr := range []string{"1.1", "1.2"} {
 		nodeID, _ := service.ParseNodeID(idStr)
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement "+idStr, service.InferenceModusPonens)
 		if err != nil {
 			cleanup()
 			t.Fatal(err)
@@ -1300,7 +1300,7 @@ func TestPendingDefsCmd_ManyPendingDefs(t *testing.T) {
 		}
 
 		// Create node if it doesn't exist
-		_ = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+nodeIDStr, schema.InferenceModusPonens)
+		_ = svc.CreateNode(nodeID, service.NodeTypeClaim, "Statement "+nodeIDStr, service.InferenceModusPonens)
 
 		// Add pending def
 		term := "term_" + string(rune('a'+i%26))

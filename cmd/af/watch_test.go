@@ -252,7 +252,7 @@ func TestWatchCmd_DetectsNewEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "New claim for watch test", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID, service.NodeTypeClaim, "New claim for watch test", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +445,7 @@ func TestWatchCmd_SinceFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "First child", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID, service.NodeTypeClaim, "First child", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +454,7 @@ func TestWatchCmd_SinceFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Second child", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Second child", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +504,7 @@ func TestWatchCmd_FilterAndJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Test claim", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}

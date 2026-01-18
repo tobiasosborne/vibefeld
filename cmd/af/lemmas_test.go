@@ -78,7 +78,7 @@ func setupLemmasTestWithLemmas(t *testing.T) (string, func(), []string) {
 			cleanup()
 			t.Fatalf("failed to parse node ID %q: %v", n.id, err)
 		}
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, n.statement, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, n.statement, service.InferenceModusPonens)
 		if err != nil {
 			cleanup()
 			t.Fatalf("failed to create node %q: %v", n.id, err)
@@ -1077,7 +1077,7 @@ func TestLemmasCmd_ManyLemmas(t *testing.T) {
 		}
 
 		statement := "Statement " + nodeIDStr
-		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, statement, schema.InferenceModusPonens)
+		err = svc.CreateNode(nodeID, service.NodeTypeClaim, statement, service.InferenceModusPonens)
 		if err != nil {
 			continue // Node may already exist
 		}
@@ -1116,7 +1116,7 @@ func TestLemmaCmd_LongLemmaStatement(t *testing.T) {
 
 	// Create and validate a node
 	nodeID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Test statement", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1156,7 +1156,7 @@ func TestLemmaCmd_SpecialCharactersInStatement(t *testing.T) {
 
 	// Create and validate a node
 	nodeID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Test statement", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1209,7 +1209,7 @@ func TestLemmasCmd_RelativeDirectory(t *testing.T) {
 
 	// Create and validate a node, then extract a lemma
 	nodeID, _ := service.ParseNodeID("1.1")
-	svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens)
+	svc.CreateNode(nodeID, service.NodeTypeClaim, "Test statement", service.InferenceModusPonens)
 	svc.AcceptNode(nodeID)
 	svc.ExtractLemma(nodeID, "Test lemma for relative path")
 

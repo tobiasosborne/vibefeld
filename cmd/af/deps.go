@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -117,7 +116,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 			info.Statement = truncateString(dep.Statement, 50)
 			info.State = string(dep.EpistemicState)
 			// A validation dep is blocking if not validated/admitted
-			if dep.EpistemicState != schema.EpistemicValidated && dep.EpistemicState != schema.EpistemicAdmitted {
+			if dep.EpistemicState != service.EpistemicValidated && dep.EpistemicState != service.EpistemicAdmitted {
 				info.IsBlocking = true
 			}
 		} else {

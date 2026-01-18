@@ -382,7 +382,7 @@ func TestReleaseCmd_NodeStateAfterRelease(t *testing.T) {
 		t.Fatal("node should exist after release")
 	}
 
-	if node.WorkflowState != schema.WorkflowAvailable {
+	if node.WorkflowState != service.WorkflowAvailable {
 		t.Errorf("expected node workflow state to be 'available', got: %q", node.WorkflowState)
 	}
 }

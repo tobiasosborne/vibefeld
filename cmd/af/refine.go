@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/lemma"
 	"github.com/tobias/vibefeld/internal/render"
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
 )
@@ -24,14 +23,14 @@ type childSpec struct {
 
 // validateNodeTypeAndInference validates node type and inference strings,
 // returning the parsed types or an error with proper formatting.
-func validateNodeTypeAndInference(cmdName, nodeTypeStr, inferenceStr string, examples []string) (schema.NodeType, schema.InferenceType, error) {
-	if err := schema.ValidateNodeType(nodeTypeStr); err != nil {
+func validateNodeTypeAndInference(cmdName, nodeTypeStr, inferenceStr string, examples []string) (service.NodeType, service.InferenceType, error) {
+	if err := service.ValidateNodeType(nodeTypeStr); err != nil {
 		return "", "", render.InvalidValueError(cmdName, "type", nodeTypeStr, render.ValidNodeTypes, examples)
 	}
-	if err := schema.ValidateInference(inferenceStr); err != nil {
+	if err := service.ValidateInference(inferenceStr); err != nil {
 		return "", "", render.InvalidValueError(cmdName, "justification", inferenceStr, render.ValidInferenceTypes, examples)
 	}
-	return schema.NodeType(nodeTypeStr), schema.InferenceType(inferenceStr), nil
+	return service.NodeType(nodeTypeStr), service.InferenceType(inferenceStr), nil
 }
 
 // parseDependencies parses a comma-separated list of node IDs and validates they exist.

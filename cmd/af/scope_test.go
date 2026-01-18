@@ -107,7 +107,7 @@ func TestScopeCmd_NodeInScope(t *testing.T) {
 
 	// Create local assume node
 	assumeID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(assumeID, schema.NodeTypeLocalAssume, "Assume x > 0", schema.InferenceAssumption)
+	err = svc.CreateNode(assumeID, service.NodeTypeLocalAssume, "Assume x > 0", service.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestScopeCmd_NodeInScope(t *testing.T) {
 
 	// Create child node inside scope
 	childID, _ := service.ParseNodeID("1.1.1")
-	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Therefore something", schema.InferenceModusPonens)
+	err = svc.CreateNode(childID, service.NodeTypeClaim, "Therefore something", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestScopeCmd_JSONFormat(t *testing.T) {
 
 	// Create local assume node
 	assumeID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(assumeID, schema.NodeTypeLocalAssume, "Assume x > 0", schema.InferenceAssumption)
+	err = svc.CreateNode(assumeID, service.NodeTypeLocalAssume, "Assume x > 0", service.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestScopeCmd_JSONFormat(t *testing.T) {
 
 	// Create child node
 	childID, _ := service.ParseNodeID("1.1.1")
-	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Therefore", schema.InferenceModusPonens)
+	err = svc.CreateNode(childID, service.NodeTypeClaim, "Therefore", service.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestScopeCmd_ShowAllScopes(t *testing.T) {
 
 	// First scope
 	assume1ID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(assume1ID, schema.NodeTypeLocalAssume, "Assume A", schema.InferenceAssumption)
+	err = svc.CreateNode(assume1ID, service.NodeTypeLocalAssume, "Assume A", service.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestScopeCmd_ShowAllScopes(t *testing.T) {
 
 	// Second scope
 	assume2ID, _ := service.ParseNodeID("1.2")
-	err = svc.CreateNode(assume2ID, schema.NodeTypeLocalAssume, "Assume B", schema.InferenceAssumption)
+	err = svc.CreateNode(assume2ID, service.NodeTypeLocalAssume, "Assume B", service.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func TestScopeCmd_AllScopesJSON(t *testing.T) {
 
 	// Create scope
 	assumeID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(assumeID, schema.NodeTypeLocalAssume, "Assume A", schema.InferenceAssumption)
+	err = svc.CreateNode(assumeID, service.NodeTypeLocalAssume, "Assume A", service.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestScopeCmd_ClosedScope(t *testing.T) {
 
 	// Create and open scope
 	assumeID, _ := service.ParseNodeID("1.1")
-	err = svc.CreateNode(assumeID, schema.NodeTypeLocalAssume, "Assume A", schema.InferenceAssumption)
+	err = svc.CreateNode(assumeID, service.NodeTypeLocalAssume, "Assume A", service.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
 	}

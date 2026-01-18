@@ -67,7 +67,7 @@ func setupLogTestWithEvents(t *testing.T) (string, func()) {
 		cleanup()
 		t.Fatal(err)
 	}
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "First child claim", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID, service.NodeTypeClaim, "First child claim", service.InferenceModusPonens)
 	if err != nil {
 		cleanup()
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func setupLogTestWithEvents(t *testing.T) (string, func()) {
 		cleanup()
 		t.Fatal(err)
 	}
-	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Second child claim", schema.InferenceModusPonens)
+	err = svc.CreateNode(nodeID, service.NodeTypeClaim, "Second child claim", service.InferenceModusPonens)
 	if err != nil {
 		cleanup()
 		t.Fatal(err)

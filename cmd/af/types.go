@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/service"
 )
 
 // newTypesCmd creates the types command.
@@ -48,7 +48,7 @@ func runTypes(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get all node types from schema
-	nodeTypes := schema.AllNodeTypes()
+	nodeTypes := service.AllNodeTypes()
 
 	// Output based on format
 	if format == "json" {
@@ -73,7 +73,7 @@ type typesResultJSON struct {
 }
 
 // outputTypesJSON outputs node types in JSON format.
-func outputTypesJSON(cmd *cobra.Command, nodeTypes []schema.NodeTypeInfo) error {
+func outputTypesJSON(cmd *cobra.Command, nodeTypes []service.NodeTypeInfo) error {
 	result := typesResultJSON{
 		Types: make([]typesOutputJSON, 0, len(nodeTypes)),
 		Total: len(nodeTypes),
@@ -98,7 +98,7 @@ func outputTypesJSON(cmd *cobra.Command, nodeTypes []schema.NodeTypeInfo) error 
 }
 
 // outputTypesText outputs node types in human-readable text format.
-func outputTypesText(cmd *cobra.Command, nodeTypes []schema.NodeTypeInfo) error {
+func outputTypesText(cmd *cobra.Command, nodeTypes []service.NodeTypeInfo) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "Valid Node Types (%d):\n\n", len(nodeTypes))
 
 	for _, nt := range nodeTypes {

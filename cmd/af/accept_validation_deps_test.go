@@ -36,14 +36,14 @@ func TestAcceptCmd_BlockedByUnvalidatedDep(t *testing.T) {
 
 	// Create child 1.1 (will be the validation dependency)
 	childID1, _ := service.ParseNodeID("1.1")
-	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "First step", schema.InferenceAssumption)
+	err = svc.RefineNode(rootID, "test-agent", childID1, service.NodeTypeClaim, "First step", service.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create node 1.1: %v", err)
 	}
 
 	// Create child 1.2 with validation dependency on 1.1
 	childID2, _ := service.ParseNodeID("1.2")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Second step, needs 1.1 validated", schema.InferenceAssumption, nil, []service.NodeID{childID1})
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, service.NodeTypeClaim, "Second step, needs 1.1 validated", service.InferenceAssumption, nil, []service.NodeID{childID1})
 	if err != nil {
 		t.Fatalf("failed to create node 1.2: %v", err)
 	}
@@ -81,14 +81,14 @@ func TestAcceptCmd_SucceedsWhenDepsValidated(t *testing.T) {
 
 	// Create child 1.1 (will be the validation dependency)
 	childID1, _ := service.ParseNodeID("1.1")
-	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "First step", schema.InferenceAssumption)
+	err = svc.RefineNode(rootID, "test-agent", childID1, service.NodeTypeClaim, "First step", service.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create node 1.1: %v", err)
 	}
 
 	// Create child 1.2 with validation dependency on 1.1
 	childID2, _ := service.ParseNodeID("1.2")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Second step, needs 1.1 validated", schema.InferenceAssumption, nil, []service.NodeID{childID1})
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, service.NodeTypeClaim, "Second step, needs 1.1 validated", service.InferenceAssumption, nil, []service.NodeID{childID1})
 	if err != nil {
 		t.Fatalf("failed to create node 1.2: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestAcceptCmd_SucceedsWhenDepsValidated(t *testing.T) {
 		t.Fatal("node 1.2 not found")
 	}
 
-	if n.EpistemicState != schema.EpistemicValidated {
+	if n.EpistemicState != service.EpistemicValidated {
 		t.Errorf("expected node 1.2 to be validated, got: %s", n.EpistemicState)
 	}
 }
@@ -146,7 +146,7 @@ func TestAcceptCmd_BlockedByPartialValidation(t *testing.T) {
 	for i, idStr := range idStrings {
 		childID, _ := service.ParseNodeID(idStr)
 		childIDs[i] = childID
-		err = svc.RefineNode(rootID, "test-agent", childID, schema.NodeTypeClaim, "Step", schema.InferenceAssumption)
+		err = svc.RefineNode(rootID, "test-agent", childID, service.NodeTypeClaim, "Step", service.InferenceAssumption)
 		if err != nil {
 			t.Fatalf("failed to create node %s: %v", idStr, err)
 		}
@@ -154,7 +154,7 @@ func TestAcceptCmd_BlockedByPartialValidation(t *testing.T) {
 
 	// Create 1.5 with validation deps on all four
 	childID5, _ := service.ParseNodeID("1.5")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID5, schema.NodeTypeClaim, "Final step", schema.InferenceAssumption, nil, childIDs)
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID5, service.NodeTypeClaim, "Final step", service.InferenceAssumption, nil, childIDs)
 	if err != nil {
 		t.Fatalf("failed to create node 1.5: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestAcceptCmd_NoValidationDepsAcceptsFine(t *testing.T) {
 	rootID, _ := service.ParseNodeID("1")
 	n := st.GetNode(rootID)
 
-	if n.EpistemicState != schema.EpistemicValidated {
+	if n.EpistemicState != service.EpistemicValidated {
 		t.Errorf("expected node to be validated, got: %s", n.EpistemicState)
 	}
 }
@@ -227,14 +227,14 @@ func TestAcceptCmd_BulkBlockedByUnvalidatedDeps(t *testing.T) {
 
 	// Create 1.1 (no validation deps)
 	childID1, _ := service.ParseNodeID("1.1")
-	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "First step", schema.InferenceAssumption)
+	err = svc.RefineNode(rootID, "test-agent", childID1, service.NodeTypeClaim, "First step", service.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create node 1.1: %v", err)
 	}
 
 	// Create 1.2 with validation dep on 1.1
 	childID2, _ := service.ParseNodeID("1.2")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Second step", schema.InferenceAssumption, nil, []service.NodeID{childID1})
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, service.NodeTypeClaim, "Second step", service.InferenceAssumption, nil, []service.NodeID{childID1})
 	if err != nil {
 		t.Fatalf("failed to create node 1.2: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestAcceptCmd_CrossBranchValidationDep(t *testing.T) {
 
 	// Create 1.1 (branch A)
 	childID1, _ := service.ParseNodeID("1.1")
-	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "Branch A start", schema.InferenceAssumption)
+	err = svc.RefineNode(rootID, "test-agent", childID1, service.NodeTypeClaim, "Branch A start", service.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create 1.1: %v", err)
 	}
@@ -282,14 +282,14 @@ func TestAcceptCmd_CrossBranchValidationDep(t *testing.T) {
 	}
 
 	childID11, _ := service.ParseNodeID("1.1.1")
-	err = svc.RefineNode(childID1, "test-agent", childID11, schema.NodeTypeClaim, "Branch A step 2", schema.InferenceAssumption)
+	err = svc.RefineNode(childID1, "test-agent", childID11, service.NodeTypeClaim, "Branch A step 2", service.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create 1.1.1: %v", err)
 	}
 
 	// Create 1.2 (branch B) with cross-branch validation dep on 1.1.1
 	childID2, _ := service.ParseNodeID("1.2")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Branch B, needs 1.1.1", schema.InferenceAssumption, nil, []service.NodeID{childID11})
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, service.NodeTypeClaim, "Branch B, needs 1.1.1", service.InferenceAssumption, nil, []service.NodeID{childID11})
 	if err != nil {
 		t.Fatalf("failed to create 1.2: %v", err)
 	}
@@ -334,18 +334,18 @@ func TestAcceptCmd_ShowsBlockingDepsInError(t *testing.T) {
 	// Create 1.1 and 1.2
 	childID1, _ := service.ParseNodeID("1.1")
 	childID2, _ := service.ParseNodeID("1.2")
-	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "Step 1", schema.InferenceAssumption)
+	err = svc.RefineNode(rootID, "test-agent", childID1, service.NodeTypeClaim, "Step 1", service.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create 1.1: %v", err)
 	}
-	err = svc.RefineNode(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Step 2", schema.InferenceAssumption)
+	err = svc.RefineNode(rootID, "test-agent", childID2, service.NodeTypeClaim, "Step 2", service.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create 1.2: %v", err)
 	}
 
 	// Create 1.3 with validation deps on both 1.1 and 1.2
 	childID3, _ := service.ParseNodeID("1.3")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID3, schema.NodeTypeClaim, "Combined step", schema.InferenceAssumption, nil, []service.NodeID{childID1, childID2})
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID3, service.NodeTypeClaim, "Combined step", service.InferenceAssumption, nil, []service.NodeID{childID1, childID2})
 	if err != nil {
 		t.Fatalf("failed to create 1.3: %v", err)
 	}
