@@ -94,7 +94,7 @@ func runExtendClaim(cmd *cobra.Command, args []string) error {
 	// Check if node exists
 	node := st.GetNode(nodeID)
 	if node == nil {
-		return fmt.Errorf("node %s not found", nodeID.String())
+		return fmt.Errorf("node %s not found\n\nHint: Use 'af status' to see all available nodes.", nodeID.String())
 	}
 
 	// Check if node is currently claimed

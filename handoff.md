@@ -1,50 +1,48 @@
-# Handoff - 2026-01-18 (Session 162)
+# Handoff - 2026-01-18 (Session 163)
 
 ## What Was Accomplished This Session
 
-### Session 162 Summary: Closed 1 issue (CLI UX - context-aware error recovery suggestions)
+### Session 163 Summary: Closed 1 issue (CLI UX - failure context in error messages)
 
-1. **vibefeld-gwdb** - "CLI UX: Error messages are generic"
-   - Made error recovery suggestions context-specific by extracting node IDs and definition names from error messages
-   - Before: Generic suggestions like `"Use 'af status <node>' to see blockers"`
-   - After: Context-aware suggestions like `"Check blockers with 'af get 1.3'"` when the error message mentions node 1.3
-   - Added `extractNodeID()` function to parse node IDs (e.g., "1.2.3") from error messages
-   - Added `extractQuotedValue()` function to parse quoted values (e.g., `"continuity"`) from error messages
-   - Updated all 21 error codes to provide context-specific suggestions when context is available
-   - Added comprehensive tests for the new extraction functions and context-aware recovery
-
-### Key Improvements
-
-| Error Code | Before | After (with context) |
-|------------|--------|---------------------|
-| ALREADY_CLAIMED | `"Check claim status with 'af status <node>'"` | `"Check claim status with 'af get 1.5'"` |
-| NOT_CLAIM_HOLDER | `"Claim the node first with 'af claim <node>'"` | `"Claim the node first with 'af claim 2.1'"` |
-| NODE_BLOCKED | `"Resolve blocking challenges first"` | `"Check blockers with 'af get 1.3'"` + `"View challenges with 'af challenges 1.3'"` |
-| DEF_NOT_FOUND | `"Add the required definition with 'af define'"` | `"Request the definition with 'af request-def continuity \"<description>\""` |
-| CHALLENGE_LIMIT_EXCEEDED | `"Resolve existing challenges before raising new ones"` | `"Resolve existing challenges on 1.2.3 first"` + `"View challenges with 'af challenges 1.2.3'"` |
+1. **vibefeld-5321** - "CLI UX: No context about why operation failed"
+   - Improved error messages in multiple command files to include current state context and recovery hints
+   - Before: Generic errors like `"node 1 is not claimed"` with no guidance
+   - After: Context-aware errors like `"node 1 is not claimed (current state: available)\n\nHint: Only claimed nodes can be released. Use 'af status' to see node states."`
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| internal/render/error.go | Updated `getRecoverySuggestions()` to accept message param, added `extractNodeID()`, `isNodeID()`, `extractQuotedValue()` helpers |
-| internal/render/error_test.go | Updated tests for new context-aware suggestions, added tests for extraction functions |
+| cmd/af/release.go | Added state context to "not claimed" error, improved "owner mismatch" to show actual vs expected owner |
+| cmd/af/deps.go | Added hint about 'af status' for "node not found" errors |
+| cmd/af/extract_lemma.go | Added hint about 'af status' for "node not found" errors |
+| cmd/af/extend_claim.go | Added hint about 'af status' for "node not found" errors |
+
+### Error Message Improvements
+
+| Command | Before | After |
+|---------|--------|-------|
+| `af release` | `"node 1 is not claimed"` | `"node 1 is not claimed (current state: available)\n\nHint: Only claimed nodes can be released. Use 'af status' to see node states."` |
+| `af release` | `"owner does not match: node is claimed by another agent"` | `"owner does not match: node 1 is claimed by \"prover-A\", not \"prover-B\""` |
+| `af deps` | `"node 1.5 not found"` | `"node 1.5 not found\n\nHint: Use 'af status' to see all available nodes."` |
+| `af extract-lemma` | `"node 1 not found"` | `"node 1 not found\n\nHint: Use 'af status' to see all available nodes."` |
+| `af extend-claim` | `"node 1 not found"` | `"node 1 not found\n\nHint: Use 'af status' to see all available nodes."` |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-gwdb** | Closed | Implemented context-aware error recovery suggestions |
+| **vibefeld-5321** | Closed | Improved error messages in release.go, deps.go, extract_lemma.go, and extend_claim.go to include current state context and hints about next steps |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 17 (was 18)
-- **Closed:** 532 (was 531)
+- **Open:** 16 (was 17)
+- **Closed:** 533 (was 532)
 
 ### Test Status
 - Build: PASS
-- internal/render tests: PASS (all 4 new tests pass)
+- cmd/af tests: PASS
 - Pre-existing failures in internal/lock (unrelated to this session)
 
 ### Known Issues (Pre-existing)
@@ -55,11 +53,8 @@
 # Build
 go build ./cmd/af
 
-# Test the render package
-go test ./internal/render/... -v
-
-# Run extraction function tests
-go test ./internal/render/... -run "Extract|IsNode|ContextAware"
+# Test the cmd/af package
+go test ./cmd/af/...
 
 # Run all tests
 go test ./...
@@ -104,6 +99,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 163:** Closed 1 issue (CLI UX - failure context in error messages)
 **Session 162:** Closed 1 issue (CLI UX - context-aware error recovery suggestions)
 **Session 161:** Closed 1 issue (CLI UX - inline valid options in error messages for search command)
 **Session 160:** Closed 1 issue (CLI UX - usage examples in fuzzy match error messages)

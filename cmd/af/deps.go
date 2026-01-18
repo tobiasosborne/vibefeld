@@ -75,7 +75,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 	// Get the target node
 	node := st.GetNode(nodeID)
 	if node == nil {
-		return fmt.Errorf("node %s not found", nodeIDStr)
+		return fmt.Errorf("node %s not found\n\nHint: Use 'af status' to see all available nodes.", nodeIDStr)
 	}
 
 	// Build dependency info

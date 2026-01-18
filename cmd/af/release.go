@@ -99,16 +99,18 @@ func runRelease(cmd *cobra.Command, args []string) error {
 	// Release the node
 	err = svc.ReleaseNode(nodeID, owner)
 	if err != nil {
-		// Map service errors to user-friendly messages
+		// Map service errors to user-friendly messages with context
 		errStr := err.Error()
 		if strings.Contains(errStr, "not found") {
 			return fmt.Errorf("node %s not found", nodeID.String())
 		}
 		if strings.Contains(errStr, "not claimed") {
-			return fmt.Errorf("node %s is not claimed", nodeID.String())
+			return fmt.Errorf("node %s is not claimed (current state: %s)\n\nHint: Only claimed nodes can be released. Use 'af status' to see node states.",
+				nodeID.String(), node.WorkflowState)
 		}
 		if strings.Contains(errStr, "owner") || strings.Contains(errStr, "match") {
-			return fmt.Errorf("owner does not match: node is claimed by another agent")
+			return fmt.Errorf("owner does not match: node %s is claimed by %q, not %q",
+				nodeID.String(), node.ClaimedBy, owner)
 		}
 		return err
 	}
