@@ -11,25 +11,31 @@ import (
 	"github.com/tobias/vibefeld/internal/types"
 )
 
-// ProofOperations defines the interface for proof manipulation operations.
-// This allows for mocking and alternative implementations.
-type ProofOperations interface {
-	// Init initializes a new proof with the given conjecture and author.
-	// Creates the initial proof structure and ledger event.
-	// Returns an error if the proof is already initialized or validation fails.
-	Init(conjecture, author string) error
-
+// ProofQueryOperations defines read-only query operations for proof state.
+// Both provers and verifiers need these operations to understand proof state.
+type ProofQueryOperations interface {
 	// LoadState loads and returns the current proof state by replaying ledger events.
 	// Also loads assumptions and externals from filesystem.
 	LoadState() (*state.State, error)
 
-	// CreateNode creates a new proof node with the given parameters.
-	// The node is initially in available workflow state and pending epistemic state.
-	//
-	// Returns ErrConcurrentModification if the proof was modified by another process
-	// since state was loaded. Callers should retry after reloading state.
-	CreateNode(id types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType) error
+	// LoadPendingNodes returns all nodes in the pending epistemic state.
+	// Note: This method performs I/O to load state from disk.
+	LoadPendingNodes() ([]*node.Node, error)
 
+	// LoadAvailableNodes returns all nodes in the available workflow state.
+	// Note: This method performs I/O to load state from disk.
+	LoadAvailableNodes() ([]*node.Node, error)
+
+	// Status returns the current status of the proof.
+	Status() (*ProofStatus, error)
+
+	// Path returns the proof directory path.
+	Path() string
+}
+
+// ProverOperations defines operations that prover agents perform.
+// These are operations for developing and extending the proof tree.
+type ProverOperations interface {
 	// ClaimNode claims a node for an agent with the given timeout.
 	// Returns an error if the node doesn't exist, is already claimed, or validation fails.
 	//
@@ -63,45 +69,6 @@ type ProofOperations interface {
 	// since state was loaded. Callers should retry after reloading state.
 	RefineNode(parentID types.NodeID, owner string, childID types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType) error
 
-	// AcceptNode validates a node, marking it as verified correct.
-	// Returns an error if the node doesn't exist.
-	//
-	// Returns ErrConcurrentModification if the proof was modified by another process
-	// since state was loaded. Callers should retry after reloading state.
-	AcceptNode(id types.NodeID) error
-
-	// AcceptNodeBulk validates multiple nodes atomically, marking them as verified correct.
-	// All nodes must exist and be in pending state.
-	//
-	// Returns ErrConcurrentModification if the proof was modified by another process
-	// since state was loaded. Callers should retry after reloading state.
-	AcceptNodeBulk(ids []types.NodeID) error
-
-	// LoadPendingNodes returns all nodes in the pending epistemic state.
-	// Note: This method performs I/O to load state from disk.
-	LoadPendingNodes() ([]*node.Node, error)
-
-	// AdmitNode admits a node without full verification.
-	// Returns an error if the node doesn't exist.
-	//
-	// Returns ErrConcurrentModification if the proof was modified by another process
-	// since state was loaded. Callers should retry after reloading state.
-	AdmitNode(id types.NodeID) error
-
-	// RefuteNode refutes a node, marking it as incorrect.
-	// Returns an error if the node doesn't exist.
-	//
-	// Returns ErrConcurrentModification if the proof was modified by another process
-	// since state was loaded. Callers should retry after reloading state.
-	RefuteNode(id types.NodeID) error
-
-	// ArchiveNode archives a node, abandoning the branch.
-	// Returns an error if the node doesn't exist.
-	//
-	// Returns ErrConcurrentModification if the proof was modified by another process
-	// since state was loaded. Callers should retry after reloading state.
-	ArchiveNode(id types.NodeID) error
-
 	// AddDefinition adds a new definition to the proof.
 	// Returns the definition ID and any error.
 	//
@@ -123,17 +90,76 @@ type ProofOperations interface {
 	// Returns ErrConcurrentModification if the proof was modified by another process
 	// since state was loaded. Callers should retry after reloading state.
 	ExtractLemma(sourceNodeID types.NodeID, statement string) (string, error)
-
-	// Status returns the current status of the proof.
-	Status() (*ProofStatus, error)
-
-	// LoadAvailableNodes returns all nodes in the available workflow state.
-	// Note: This method performs I/O to load state from disk.
-	LoadAvailableNodes() ([]*node.Node, error)
-
-	// Path returns the proof directory path.
-	Path() string
 }
 
-// Ensure ProofService implements ProofOperations
+// VerifierOperations defines operations that verifier agents perform.
+// These are operations for validating, rejecting, or managing proof nodes.
+type VerifierOperations interface {
+	// AcceptNode validates a node, marking it as verified correct.
+	// Returns an error if the node doesn't exist.
+	//
+	// Returns ErrConcurrentModification if the proof was modified by another process
+	// since state was loaded. Callers should retry after reloading state.
+	AcceptNode(id types.NodeID) error
+
+	// AcceptNodeBulk validates multiple nodes atomically, marking them as verified correct.
+	// All nodes must exist and be in pending state.
+	//
+	// Returns ErrConcurrentModification if the proof was modified by another process
+	// since state was loaded. Callers should retry after reloading state.
+	AcceptNodeBulk(ids []types.NodeID) error
+
+	// AdmitNode admits a node without full verification.
+	// Returns an error if the node doesn't exist.
+	//
+	// Returns ErrConcurrentModification if the proof was modified by another process
+	// since state was loaded. Callers should retry after reloading state.
+	AdmitNode(id types.NodeID) error
+
+	// RefuteNode refutes a node, marking it as incorrect.
+	// Returns an error if the node doesn't exist.
+	//
+	// Returns ErrConcurrentModification if the proof was modified by another process
+	// since state was loaded. Callers should retry after reloading state.
+	RefuteNode(id types.NodeID) error
+
+	// ArchiveNode archives a node, abandoning the branch.
+	// Returns an error if the node doesn't exist.
+	//
+	// Returns ErrConcurrentModification if the proof was modified by another process
+	// since state was loaded. Callers should retry after reloading state.
+	ArchiveNode(id types.NodeID) error
+}
+
+// AdminOperations defines administrative operations for proof setup.
+// These are typically used by the CLI for initial setup and node creation.
+type AdminOperations interface {
+	// Init initializes a new proof with the given conjecture and author.
+	// Creates the initial proof structure and ledger event.
+	// Returns an error if the proof is already initialized or validation fails.
+	Init(conjecture, author string) error
+
+	// CreateNode creates a new proof node with the given parameters.
+	// The node is initially in available workflow state and pending epistemic state.
+	//
+	// Returns ErrConcurrentModification if the proof was modified by another process
+	// since state was loaded. Callers should retry after reloading state.
+	CreateNode(id types.NodeID, nodeType schema.NodeType, statement string, inference schema.InferenceType) error
+}
+
+// ProofOperations defines the full interface for proof manipulation operations.
+// This is a composition of all role-based interfaces for convenience.
+// Prefer using the smaller, focused interfaces when possible for better testability.
+type ProofOperations interface {
+	ProofQueryOperations
+	ProverOperations
+	VerifierOperations
+	AdminOperations
+}
+
+// Ensure ProofService implements all interfaces
 var _ ProofOperations = (*ProofService)(nil)
+var _ ProofQueryOperations = (*ProofService)(nil)
+var _ ProverOperations = (*ProofService)(nil)
+var _ VerifierOperations = (*ProofService)(nil)
+var _ AdminOperations = (*ProofService)(nil)

@@ -1,47 +1,44 @@
-# Handoff - 2026-01-18 (Session 186)
+# Handoff - 2026-01-18 (Session 187)
 
 ## What Was Accomplished This Session
 
-### Session 186 Summary: Eliminated taint Package Import from cmd/af
+### Session 187 Summary: Split ProofOperations Interface into Role-Based Interfaces
 
-Made incremental progress on the P1 epic vibefeld-jfbc by eliminating the `taint` package import from `cmd/af/recompute_taint.go`.
+Completed **vibefeld-hn7l** (P2) - Split the monolithic 20-method ProofOperations interface into 4 focused, role-based interfaces.
 
 ### Changes Made
 
-**1. Added TaintState re-exports to service/exports.go:**
-- Added `node` to imports
-- Re-exported `TaintState` type alias
-- Re-exported `TaintClean`, `TaintSelfAdmitted`, `TaintTainted`, `TaintUnresolved` constants
+**1. Refactored internal/service/interface.go:**
 
-**2. Added RecomputeAllTaint method to service/proof.go:**
-- Added `TaintChange` struct (NodeID, OldTaint, NewTaint)
-- Added `RecomputeTaintResult` struct (TotalNodes, NodesChanged, Changes, DryRun)
-- Added `RecomputeAllTaint(dryRun bool) (*RecomputeTaintResult, error)` method
-- Added helper functions `sortNodesByDepthForTaint` and `getNodeAncestorsForTaint`
+Before: Single `ProofOperations` interface with 20 methods (134 lines)
 
-**3. Refactored cmd/af/recompute_taint.go:**
-- Removed direct imports of `ledger`, `node`, `taint` packages
-- Now only imports `service` (and standard library)
-- Uses `svc.RecomputeAllTaint(dryRun)` instead of manual taint computation
-- Uses `service.RecomputeTaintResult` and `service.TaintChange` types
+After: 4 focused interfaces + 1 composite:
+- **ProofQueryOperations** (5 methods) - Read-only queries both provers and verifiers need
+  - `LoadState`, `LoadPendingNodes`, `LoadAvailableNodes`, `Status`, `Path`
+- **ProverOperations** (8 methods) - Operations for developing proof tree
+  - `ClaimNode`, `RefreshClaim`, `ReleaseNode`, `RefineNode`, `AddDefinition`, `AddAssumption`, `AddExternal`, `ExtractLemma`
+- **VerifierOperations** (5 methods) - Operations for validating/rejecting nodes
+  - `AcceptNode`, `AcceptNodeBulk`, `AdmitNode`, `RefuteNode`, `ArchiveNode`
+- **AdminOperations** (2 methods) - Proof setup operations
+  - `Init`, `CreateNode`
+- **ProofOperations** - Composite of all 4 interfaces for backwards compatibility
+
+**2. Added compile-time interface checks:**
+```go
+var _ ProofOperations = (*ProofService)(nil)
+var _ ProofQueryOperations = (*ProofService)(nil)
+var _ ProverOperations = (*ProofService)(nil)
+var _ VerifierOperations = (*ProofService)(nil)
+var _ AdminOperations = (*ProofService)(nil)
+```
 
 **Verification:**
-- `go build ./cmd/af` succeeds
+- `go build ./...` succeeds
 - `go test ./...` passes (all packages)
-
-### Progress on vibefeld-jfbc
-
-- **Started at:** 22 unique internal package imports
-- **Session 181:** 21 (eliminated types package via re-exports)
-- **Session 185:** 20 (removed unused schema imports from test files)
-- **Session 186:** 20 (eliminated taint package from 1 file)
-- **Target:** 2 (service + render only)
-
-Note: Package count remains at 20 because the taint package was only used in 1 file and other packages remain.
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added Session 186 progress to description
+- **Closed vibefeld-hn7l** - API design: ProofOperations interface too large (30+ methods)
 
 ## Current State
 
@@ -50,8 +47,8 @@ Note: Package count remains at 20 because the taint package was only used in 1 f
 - Build succeeds (`go build ./cmd/af`)
 
 ### Issue Statistics
-- **Open:** 7
-- **Ready for work:** 7
+- **Open:** 6
+- **Ready for work:** 6
 
 ## Recommended Next Steps
 
@@ -62,10 +59,9 @@ Continues with 20 internal packages still imported by cmd/af:
 - `state` (12 files) - state.ProofState/State types
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 10 more single-use imports (templates, strategy, scope, shell, patterns, metrics, lemma, jobs, hooks, fuzzy, export, errors, config)
+- Plus 10 more single-use imports
 
 ### P2 Code Quality (API Design)
-- `vibefeld-hn7l` - ProofOperations interface too large (30+ methods)
 - `vibefeld-vj5y` - Service layer leaks domain types
 - `vibefeld-264n` - Module structure: service package acts as hub
 - `vibefeld-qsyt` - Missing intermediate layer for service
@@ -89,6 +85,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 187:** Split ProofOperations interface into 4 role-based interfaces (Query, Prover, Verifier, Admin), closed vibefeld-hn7l
 **Session 186:** Eliminated taint package import by adding service.RecomputeAllTaint and TaintState re-exports
 **Session 185:** Removed 28 unused schema imports from test files, reduced imports from 21→20
 **Session 184:** Investigated and closed vibefeld-9maw as "Won't Fix" - delegation pattern acceptable
