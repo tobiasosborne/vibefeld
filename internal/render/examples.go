@@ -75,6 +75,14 @@ var CommandExamples = map[string][]string{
 		"af init \"Prove theorem X\"",
 		"af init \"Statement\" --dir ./my-proof",
 	},
+
+	// Search commands
+	"af search": {
+		"af search \"convergence\"",
+		"af search --state pending",
+		"af search --workflow available",
+		"af search --state validated --json",
+	},
 }
 
 // ValidRoles contains the valid role values for commands that accept --role.
@@ -99,6 +107,12 @@ var ValidChallengeTargets = []string{
 
 // ValidFormats contains the valid output format values.
 var ValidFormats = []string{"text", "json"}
+
+// ValidEpistemicStates contains the valid epistemic state values.
+var ValidEpistemicStates = []string{"pending", "validated", "admitted", "refuted", "archived"}
+
+// ValidWorkflowStates contains the valid workflow state values.
+var ValidWorkflowStates = []string{"available", "claimed", "blocked"}
 
 // GetExamples returns example usage for a command, or nil if not found.
 func GetExamples(command string) []string {

@@ -58,8 +58,19 @@ func TestSearchCmd_InvalidState(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for invalid state filter")
 	}
-	if !strings.Contains(err.Error(), "invalid epistemic state") {
-		t.Errorf("Expected 'invalid epistemic state' error, got: %v", err)
+	errStr := err.Error()
+	// Check for new format with valid values and examples
+	if !strings.Contains(errStr, `invalid value "invalid" for --state`) {
+		t.Errorf("Expected 'invalid value for --state' error, got: %v", err)
+	}
+	if !strings.Contains(errStr, "Valid values for --state:") {
+		t.Errorf("Expected valid values section, got: %v", err)
+	}
+	if !strings.Contains(errStr, "pending") {
+		t.Errorf("Expected 'pending' in valid values, got: %v", err)
+	}
+	if !strings.Contains(errStr, "Examples:") {
+		t.Errorf("Expected examples section, got: %v", err)
 	}
 }
 
@@ -85,8 +96,19 @@ func TestSearchCmd_InvalidWorkflow(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for invalid workflow filter")
 	}
-	if !strings.Contains(err.Error(), "invalid workflow state") {
-		t.Errorf("Expected 'invalid workflow state' error, got: %v", err)
+	errStr := err.Error()
+	// Check for new format with valid values and examples
+	if !strings.Contains(errStr, `invalid value "invalid" for --workflow`) {
+		t.Errorf("Expected 'invalid value for --workflow' error, got: %v", err)
+	}
+	if !strings.Contains(errStr, "Valid values for --workflow:") {
+		t.Errorf("Expected valid values section, got: %v", err)
+	}
+	if !strings.Contains(errStr, "available") {
+		t.Errorf("Expected 'available' in valid values, got: %v", err)
+	}
+	if !strings.Contains(errStr, "Examples:") {
+		t.Errorf("Expected examples section, got: %v", err)
 	}
 }
 

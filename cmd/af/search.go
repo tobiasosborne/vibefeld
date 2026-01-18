@@ -59,16 +59,18 @@ Examples:
 }
 
 func runSearch(cmd *cobra.Command, dir, textQuery, stateFilter, workflowFilter, defFilter string, jsonOutput bool) error {
+	examples := render.GetExamples("af search")
+
 	// Validate filters
 	if stateFilter != "" {
 		if err := schema.ValidateEpistemicState(stateFilter); err != nil {
-			return fmt.Errorf("invalid epistemic state %q: valid values are pending, validated, admitted, refuted, archived", stateFilter)
+			return render.InvalidValueError("af search", "state", stateFilter, render.ValidEpistemicStates, examples)
 		}
 	}
 
 	if workflowFilter != "" {
 		if err := schema.ValidateWorkflowState(workflowFilter); err != nil {
-			return fmt.Errorf("invalid workflow state %q: valid values are available, claimed, blocked", workflowFilter)
+			return render.InvalidValueError("af search", "workflow", workflowFilter, render.ValidWorkflowStates, examples)
 		}
 	}
 

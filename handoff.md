@@ -1,51 +1,66 @@
-# Handoff - 2026-01-18 (Session 160)
+# Handoff - 2026-01-18 (Session 161)
 
 ## What Was Accomplished This Session
 
-### Session 160 Summary: Closed 1 issue (CLI UX - usage examples in fuzzy match errors)
+### Session 161 Summary: Closed 1 issue (CLI UX - inline valid options in error messages)
 
-1. **vibefeld-wdbe** - "CLI UX: No examples shown when fuzzy match fails"
-   - Added usage examples to unknown command error messages
-   - When user types typo like `af acept 1`, they now see:
+1. **vibefeld-ht9l** - "CLI UX: Invalid parameter values don't show valid options inline"
+   - Updated `search` command to show valid values and examples when invalid `--state` or `--workflow` values are provided
+   - Before: `invalid epistemic state "xyz": valid values are pending, validated, admitted, refuted, archived`
+   - After:
      ```
-     unknown command "acept" for "af"
+     invalid value "xyz" for --state
 
-     Did you mean this?
-         accept
+     Did you mean one of these?
+       pending
+       validated
+       ...
 
-     Usage:
-       af accept [node-id]...
+     Valid values for --state:
+       pending
+       validated
+       admitted
+       refuted
+       archived
+
+     Examples:
+       af search "convergence"
+       af search --state pending
+       af search --workflow available
+       af search --state validated --json
      ```
-   - Implemented in main.go by enhancing cobra's error messages post-execution
-   - Added `enhanceUnknownCommandError()` function that parses cobra's suggestions and appends usage
-   - Set `SilenceUsage: true` and `SilenceErrors: true` on rootCmd to prevent duplicate output
+   - Added `ValidEpistemicStates` and `ValidWorkflowStates` to render/examples.go
+   - Added search command examples to `CommandExamples` map
+   - Updated search.go to use `render.InvalidValueError()` instead of `fmt.Errorf()`
+   - Updated tests to verify the new error format
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| cmd/af/main.go | Added `enhanceUnknownCommandError()`, regex pattern for suggestion parsing, SilenceUsage/SilenceErrors flags |
+| cmd/af/search.go | Use `render.InvalidValueError()` for state/workflow validation |
+| cmd/af/search_test.go | Updated tests to expect new error format with valid values and examples |
+| internal/render/examples.go | Added `ValidEpistemicStates`, `ValidWorkflowStates`, and search command examples |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-wdbe** | Closed | Added usage examples to fuzzy match error messages in main.go |
+| **vibefeld-ht9l** | Closed | Implemented inline valid options in search command error messages |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 19 (was 20)
-- **Closed:** 530 (was 529)
+- **Open:** 18 (was 19)
+- **Closed:** 531 (was 530)
 
 ### Test Status
 - Build: PASS
-- cmd/af tests: PASS (all fuzzy matching tests pass)
-- Pre-existing failures in internal/cli and internal/lock (unrelated to this session)
+- cmd/af tests: PASS (all search tests pass)
+- Pre-existing failures in internal/lock (unrelated to this session)
 
 ### Known Issues (Pre-existing)
-1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in fuzzy_flag_test.go - tests expect different behavior for ambiguous short inputs
-2. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
+1. `TestPersistentManager_OversizedLockEventCausesError` and `TestPersistentManager_OversizedNonLockEventIgnored` fail in persistent_test.go - tests expect different error handling behavior after recent size limit changes
 
 ### Verification
 ```bash
@@ -53,12 +68,12 @@
 go build ./cmd/af
 
 # Test the fix manually
-./af acept 1    # Should show usage example
-./af statsu     # Should show usage example
-./af refien     # Should show usage example
+./af search --state invalid    # Should show valid values + examples
+./af search --workflow wrong   # Should show valid values + examples
+./af search --state pendin     # Should show fuzzy suggestions + valid values + examples
 
-# Run fuzzy/unknown command tests
-go test ./cmd/af/ -run "Fuzzy|Unknown"
+# Run search tests
+go test ./cmd/af/ -run Search
 
 # Run all tests
 go test ./...
@@ -103,6 +118,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 161:** Closed 1 issue (CLI UX - inline valid options in error messages for search command)
 **Session 160:** Closed 1 issue (CLI UX - usage examples in fuzzy match error messages)
 **Session 159:** Closed 1 issue (CLI UX - fuzzy matching threshold for short inputs)
 **Session 158:** Closed 1 issue (documentation - render package architectural doc.go)
