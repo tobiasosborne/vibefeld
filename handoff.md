@@ -1,61 +1,47 @@
-# Handoff - 2026-01-18 (Session 179)
+# Handoff - 2026-01-18 (Session 180)
 
 ## What Was Accomplished This Session
 
-### Session 179 Summary: Re-exported schema constants through service package
+### Session 180 Summary: Added pending-def service methods
 
-Completed **vibefeld-0zsm** - Added all schema type aliases and constant re-exports to service/exports.go, then migrated all production cmd/af files from `schema.*` to `service.*`.
+Completed **vibefeld-rvzl** - Added pending-def wrapper methods to ProofService and migrated cmd/af files to use them instead of direct fs calls.
 
 ### Migration Statistics
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Production files importing schema | 11 | 0 |
-| Test files still importing schema | 33 | 28 |
-| Schema constants re-exported | 0 | 35 |
-| Schema types re-exported | 0 | 11 |
-| Schema functions re-exported | 0 | 27 |
+| Production files importing fs for pending-defs | 4 | 0 |
+| Service pending-def methods | 0 | 5 |
 
-### What Was Re-exported
+### What Was Added to ProofService
 
-**Types:**
-- `NodeType`, `InferenceType`, `EpistemicState`, `WorkflowState`, `ChallengeTarget`, `ChallengeSeverity`
-- Info types: `InferenceInfo`, `NodeTypeInfo`, `EpistemicStateInfo`, `WorkflowStateInfo`, `ChallengeTargetInfo`, `ChallengeSeverityInfo`
-
-**Constants:**
-- NodeType: `NodeTypeClaim`, `NodeTypeLocalAssume`, `NodeTypeLocalDischarge`, `NodeTypeCase`, `NodeTypeQED`
-- InferenceType: All 11 inference types (`InferenceModusPonens`, `InferenceModusTollens`, etc.)
-- EpistemicState: `EpistemicPending`, `EpistemicValidated`, `EpistemicAdmitted`, `EpistemicRefuted`, `EpistemicArchived`
-- WorkflowState: `WorkflowAvailable`, `WorkflowClaimed`, `WorkflowBlocked`
-- ChallengeTarget: All 9 targets (`TargetStatement`, `TargetInference`, etc.)
-- ChallengeSeverity: `SeverityCritical`, `SeverityMajor`, `SeverityMinor`, `SeverityNote`
-
-**Functions:**
-- Validation: `ValidateNodeType`, `ValidateInference`, `ValidateEpistemicState`, `ValidateWorkflowState`, `ValidateChallengeTarget`, `ValidateChallengeTargets`, `ValidateChallengeSeverity`
-- Getters: `GetInferenceInfo`, `GetNodeTypeInfo`, `GetEpistemicStateInfo`, `GetWorkflowStateInfo`, `GetChallengeTargetInfo`, `GetChallengeSeverityInfo`
-- Lists: `AllInferences`, `AllNodeTypes`, `AllEpistemicStates`, `AllWorkflowStates`, `AllChallengeTargets`, `AllChallengeSeverities`
-- Helpers: `SuggestInference`, `ParseChallengeTargets`, `OpensScope`, `ClosesScope`, `IsFinal`, `IntroducesTaint`, `ValidateEpistemicTransition`, `ValidateWorkflowTransition`, `CanClaim`, `SeverityBlocksAcceptance`, `DefaultChallengeSeverity`
+**Methods:**
+- `WritePendingDef(nodeID, pd)` - writes pending definition to proof dir
+- `ReadPendingDef(nodeID)` - reads pending definition from proof dir
+- `ListPendingDefs()` - lists all pending definition node IDs
+- `DeletePendingDef(nodeID)` - removes pending definition (idempotent)
+- `LoadAllPendingDefs()` - convenience method combining list and read
 
 ### Files Changed
 
-- `internal/service/exports.go` - Added schema re-exports (types, constants, functions)
-- 11 production cmd/af files - Changed from `schema.*` to `service.*`:
-  - `agents.go`, `challenge.go`, `deps.go`, `extend_claim.go`, `extract_lemma.go`
-  - `health.go`, `inferences.go`, `jobs.go`, `progress.go`, `reap.go`
-  - `refine.go`, `schema.go`, `search.go`, `types.go`
-- 2 test files also updated (`inferences_test.go`, `progress_test.go`)
+- `internal/service/proof.go` - Added 5 pending-def wrapper methods
+- 4 production cmd/af files - Changed from `fs.*` to `svc.*`:
+  - `pending_defs.go` - Removed `getAllPendingDefs()` helper, use `svc.LoadAllPendingDefs()`
+  - `request_def.go` - Use `svc.WritePendingDef()`
+  - `def_reject.go` - Use `svc.LoadAllPendingDefs()` and `svc.WritePendingDef()`
+  - `progress.go` - Changed `loadPendingDefs()` to take service instead of path
 
 ### Issue Updates
 
-1. **Closed vibefeld-0zsm** - Re-export schema constants through service package
+1. **Closed vibefeld-rvzl** - Move fs pending-def operations to service layer
    - Contributes to vibefeld-jfbc (P1 epic: reduce cmd/af imports from 17 to 2)
 
 ## Current State
 
 ### Issue Statistics
-- **Closed this session:** 1 (vibefeld-0zsm)
-- **Open:** ~10
-- **Ready for work:** ~9
+- **Closed this session:** 1 (vibefeld-rvzl)
+- **Open:** ~9
+- **Ready for work:** ~8
 
 ### Test Status
 - Build succeeds
@@ -70,9 +56,8 @@ Completed **vibefeld-0zsm** - Added all schema type aliases and constant re-expo
 
 ### Continue Import Reduction (P1 Epic vibefeld-jfbc)
 
-Remaining sub-tasks:
+Remaining sub-task:
 1. **vibefeld-li8a** - Move fs assumption/external operations to service layer
-2. **vibefeld-rvzl** - Move fs pending-def operations to service layer
 
 ### P2 Code Quality (API Design)
 - `vibefeld-9maw` - Inconsistent return types for ID-returning operations
@@ -96,6 +81,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 180:** Added pending-def service methods, migrated 4 files, closed vibefeld-rvzl
 **Session 179:** Re-exported schema constants through service, migrated 11 production files, closed vibefeld-0zsm
 **Session 178:** Added service.InitProofDir, migrated 32 test files, closed vibefeld-x5mh
 **Session 177:** Migrated 65 cmd/af files to use service.ParseNodeID, closed vibefeld-hufm
