@@ -457,10 +457,10 @@ func runWizardReview(cmd *cobra.Command, dir string) error {
 		return fmt.Errorf("no proof initialized in %s. Run 'af wizard new-proof' first", dir)
 	}
 
-	// Get pending nodes
-	pendingNodes, err := svc.GetPendingNodes()
+	// Load pending nodes
+	pendingNodes, err := svc.LoadPendingNodes()
 	if err != nil {
-		return fmt.Errorf("error getting pending nodes: %w", err)
+		return fmt.Errorf("error loading pending nodes: %w", err)
 	}
 
 	fmt.Fprintln(out, "")

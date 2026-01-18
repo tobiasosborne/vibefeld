@@ -1674,9 +1674,9 @@ func TestProofService_Status(t *testing.T) {
 	}
 }
 
-// TestProofService_GetAvailableNodes verifies listing available nodes.
+// TestProofService_LoadAvailableNodes verifies listing available nodes.
 // Note: Node "1" is created by Init(), so only create child nodes
-func TestProofService_GetAvailableNodes(t *testing.T) {
+func TestProofService_LoadAvailableNodes(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
 	if err != nil {
@@ -1703,15 +1703,15 @@ func TestProofService_GetAvailableNodes(t *testing.T) {
 		t.Fatalf("ClaimNode() unexpected error: %v", err)
 	}
 
-	// Get available nodes - should exclude claimed node
-	available, err := svc.GetAvailableNodes()
+	// Load available nodes - should exclude claimed node
+	available, err := svc.LoadAvailableNodes()
 	if err != nil {
-		t.Fatalf("GetAvailableNodes() unexpected error: %v", err)
+		t.Fatalf("LoadAvailableNodes() unexpected error: %v", err)
 	}
 
 	// Should have 2 available nodes (1.1 and 1.2)
 	if len(available) != 2 {
-		t.Errorf("GetAvailableNodes() returned %d nodes, want 2", len(available))
+		t.Errorf("LoadAvailableNodes() returned %d nodes, want 2", len(available))
 	}
 }
 
@@ -1800,7 +1800,7 @@ var _ interface {
 	AddExternal(name, source string) (string, error)
 	ExtractLemma(sourceNodeID types.NodeID, statement string) (string, error)
 	Status() (*ProofStatus, error)
-	GetAvailableNodes() ([]*node.Node, error)
+	LoadAvailableNodes() ([]*node.Node, error)
 	Path() string
 } = (*ProofService)(nil)
 

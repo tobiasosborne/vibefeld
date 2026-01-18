@@ -862,9 +862,10 @@ func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
 	return nil
 }
 
-// GetPendingNodes returns all nodes in the pending epistemic state.
+// LoadPendingNodes returns all nodes in the pending epistemic state.
 // This is useful for the --all flag in accept command.
-func (s *ProofService) GetPendingNodes() ([]*node.Node, error) {
+// Note: This method performs I/O to load state from disk.
+func (s *ProofService) LoadPendingNodes() ([]*node.Node, error) {
 	st, err := s.LoadState()
 	if err != nil {
 		return nil, err
@@ -1215,8 +1216,9 @@ func (s *ProofService) Status() (*ProofStatus, error) {
 	return status, nil
 }
 
-// GetAvailableNodes returns all nodes in the available workflow state.
-func (s *ProofService) GetAvailableNodes() ([]*node.Node, error) {
+// LoadAvailableNodes returns all nodes in the available workflow state.
+// Note: This method performs I/O to load state from disk.
+func (s *ProofService) LoadAvailableNodes() ([]*node.Node, error) {
 	st, err := s.LoadState()
 	if err != nil {
 		return nil, err
@@ -1718,9 +1720,10 @@ func (s *ProofService) AmendNode(nodeID types.NodeID, owner, newStatement string
 	return wrapSequenceMismatch(err, "AmendNode")
 }
 
-// GetAmendmentHistory returns the amendment history for a node.
+// LoadAmendmentHistory returns the amendment history for a node.
 // Returns an empty slice if no amendments have been made.
-func (s *ProofService) GetAmendmentHistory(nodeID types.NodeID) ([]state.Amendment, error) {
+// Note: This method performs I/O to load state from disk.
+func (s *ProofService) LoadAmendmentHistory(nodeID types.NodeID) ([]state.Amendment, error) {
 	st, err := s.LoadState()
 	if err != nil {
 		return nil, err

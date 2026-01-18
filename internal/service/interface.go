@@ -77,8 +77,9 @@ type ProofOperations interface {
 	// since state was loaded. Callers should retry after reloading state.
 	AcceptNodeBulk(ids []types.NodeID) error
 
-	// GetPendingNodes returns all nodes in the pending epistemic state.
-	GetPendingNodes() ([]*node.Node, error)
+	// LoadPendingNodes returns all nodes in the pending epistemic state.
+	// Note: This method performs I/O to load state from disk.
+	LoadPendingNodes() ([]*node.Node, error)
 
 	// AdmitNode admits a node without full verification.
 	// Returns an error if the node doesn't exist.
@@ -126,8 +127,9 @@ type ProofOperations interface {
 	// Status returns the current status of the proof.
 	Status() (*ProofStatus, error)
 
-	// GetAvailableNodes returns all nodes in the available workflow state.
-	GetAvailableNodes() ([]*node.Node, error)
+	// LoadAvailableNodes returns all nodes in the available workflow state.
+	// Note: This method performs I/O to load state from disk.
+	LoadAvailableNodes() ([]*node.Node, error)
 
 	// Path returns the proof directory path.
 	Path() string

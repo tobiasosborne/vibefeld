@@ -1718,23 +1718,23 @@ func TestStatus_UninitializedProof(t *testing.T) {
 }
 
 // =============================================================================
-// GetAvailableNodes Tests
+// LoadAvailableNodes Tests
 // =============================================================================
 
-func TestGetAvailableNodes_Initial(t *testing.T) {
+func TestLoadAvailableNodes_Initial(t *testing.T) {
 	svc, _ := setupTestProof(t)
 
-	nodes, err := svc.GetAvailableNodes()
+	nodes, err := svc.LoadAvailableNodes()
 	if err != nil {
-		t.Fatalf("GetAvailableNodes() unexpected error: %v", err)
+		t.Fatalf("LoadAvailableNodes() unexpected error: %v", err)
 	}
 
 	if len(nodes) != 1 {
-		t.Errorf("GetAvailableNodes() returned %d nodes, want 1", len(nodes))
+		t.Errorf("LoadAvailableNodes() returned %d nodes, want 1", len(nodes))
 	}
 }
 
-func TestGetAvailableNodes_AfterClaim(t *testing.T) {
+func TestLoadAvailableNodes_AfterClaim(t *testing.T) {
 	svc, _ := setupTestProof(t)
 
 	rootID := parseNodeID(t, "1")
@@ -1743,34 +1743,34 @@ func TestGetAvailableNodes_AfterClaim(t *testing.T) {
 		t.Fatalf("ClaimNode() unexpected error: %v", err)
 	}
 
-	nodes, err := svc.GetAvailableNodes()
+	nodes, err := svc.LoadAvailableNodes()
 	if err != nil {
-		t.Fatalf("GetAvailableNodes() unexpected error: %v", err)
+		t.Fatalf("LoadAvailableNodes() unexpected error: %v", err)
 	}
 
 	if len(nodes) != 0 {
-		t.Errorf("GetAvailableNodes() returned %d nodes, want 0", len(nodes))
+		t.Errorf("LoadAvailableNodes() returned %d nodes, want 0", len(nodes))
 	}
 }
 
 // =============================================================================
-// GetPendingNodes Tests
+// LoadPendingNodes Tests
 // =============================================================================
 
-func TestGetPendingNodes_Initial(t *testing.T) {
+func TestLoadPendingNodes_Initial(t *testing.T) {
 	svc, _ := setupTestProof(t)
 
-	nodes, err := svc.GetPendingNodes()
+	nodes, err := svc.LoadPendingNodes()
 	if err != nil {
-		t.Fatalf("GetPendingNodes() unexpected error: %v", err)
+		t.Fatalf("LoadPendingNodes() unexpected error: %v", err)
 	}
 
 	if len(nodes) != 1 {
-		t.Errorf("GetPendingNodes() returned %d nodes, want 1", len(nodes))
+		t.Errorf("LoadPendingNodes() returned %d nodes, want 1", len(nodes))
 	}
 }
 
-func TestGetPendingNodes_AfterAccept(t *testing.T) {
+func TestLoadPendingNodes_AfterAccept(t *testing.T) {
 	svc, _ := setupTestProof(t)
 
 	rootID := parseNodeID(t, "1")
@@ -1779,13 +1779,13 @@ func TestGetPendingNodes_AfterAccept(t *testing.T) {
 		t.Fatalf("AcceptNode() unexpected error: %v", err)
 	}
 
-	nodes, err := svc.GetPendingNodes()
+	nodes, err := svc.LoadPendingNodes()
 	if err != nil {
-		t.Fatalf("GetPendingNodes() unexpected error: %v", err)
+		t.Fatalf("LoadPendingNodes() unexpected error: %v", err)
 	}
 
 	if len(nodes) != 0 {
-		t.Errorf("GetPendingNodes() returned %d nodes, want 0", len(nodes))
+		t.Errorf("LoadPendingNodes() returned %d nodes, want 0", len(nodes))
 	}
 }
 

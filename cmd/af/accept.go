@@ -127,9 +127,9 @@ func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params ac
 	examples := render.GetExamples("af accept")
 
 	if params.acceptAll {
-		pendingNodes, err := svc.GetPendingNodes()
+		pendingNodes, err := svc.LoadPendingNodes()
 		if err != nil {
-			return nil, fmt.Errorf("error getting pending nodes: %w", err)
+			return nil, fmt.Errorf("error loading pending nodes: %w", err)
 		}
 
 		if len(pendingNodes) == 0 {

@@ -1,36 +1,39 @@
-# Handoff - 2026-01-17 (Session 156)
+# Handoff - 2026-01-18 (Session 157)
 
 ## What Was Accomplished This Session
 
-### Session 156 Summary: Closed 1 issue (API documentation)
+### Session 157 Summary: Closed 1 issue (API design rename)
 
-1. **vibefeld-gvep** - "API design: Bulk operations not truly atomic"
-   - Added ATOMICITY NOTE documentation to `appendBulkIfSequence` function in internal/service/proof.go
-   - Removed misleading "atomically" comments in caller sites (AcceptNodeBulk, RefineNodeBulk)
-   - Documentation explains:
-     1. First event uses CAS, remaining events use simple Append
-     2. Partial failure is possible if disk/IO error occurs after first event
-     3. Why this is acceptable (rare in practice, events are self-contained, state replay handles it)
-     4. True atomic batch append would require WAL or 2PC
+1. **vibefeld-pkls** - "API design: Rename GetXxx to LoadXxx where I/O occurs"
+   - Renamed `GetPendingNodes()` to `LoadPendingNodes()` in interface.go and proof.go
+   - Renamed `GetAvailableNodes()` to `LoadAvailableNodes()` in interface.go and proof.go
+   - Renamed `GetAmendmentHistory()` to `LoadAmendmentHistory()` in proof.go (consistency)
+   - Added "Note: This method performs I/O to load state from disk." comments
+   - Updated all call sites: accept.go, wizard.go, proof_test.go, service_test.go
    - Build passes, service tests pass
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| internal/service/proof.go | Added ATOMICITY NOTE to appendBulkIfSequence, updated 2 caller comments |
+| internal/service/interface.go | Renamed 2 methods, added I/O notes |
+| internal/service/proof.go | Renamed 3 methods, added I/O notes |
+| cmd/af/accept.go | Updated call to LoadPendingNodes |
+| cmd/af/wizard.go | Updated call to LoadPendingNodes |
+| internal/service/proof_test.go | Renamed test and interface check |
+| internal/service/service_test.go | Renamed 4 tests |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-gvep** | Closed | Documented the non-atomicity behavior |
+| **vibefeld-pkls** | Closed | Renamed GetXxx to LoadXxx to signal I/O cost |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 23 (was 24)
-- **Closed:** 526 (was 525)
+- **Open:** 22 (was 23)
+- **Closed:** 527 (was 526)
 
 ### Test Status
 - Build: PASS
@@ -95,6 +98,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 157:** Closed 1 issue (API design - renamed GetXxx to LoadXxx to signal I/O cost)
 **Session 156:** Closed 1 issue (API design - documented appendBulkIfSequence non-atomicity in service layer)
 **Session 155:** Closed 1 issue (API design - documented taint emission non-atomicity in AcceptNodeWithNote and related methods)
 **Session 154:** Closed 1 issue (Code smell - renamed inputMethodCount to activeInputMethods in refine.go)
