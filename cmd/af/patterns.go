@@ -7,9 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/patterns"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // newPatternsCmd creates the patterns command with subcommands.
@@ -106,21 +104,21 @@ func runPatternsList(cmd *cobra.Command, dir, typeFilter string, jsonOutput bool
 
 	// Validate type filter if provided
 	if typeFilter != "" {
-		if err := patterns.ValidatePatternType(patterns.PatternType(typeFilter)); err != nil {
+		if err := service.ValidatePatternType(service.PatternType(typeFilter)); err != nil {
 			return fmt.Errorf("invalid pattern type %q: valid types are logical_gap, scope_violation, circular_reasoning, undefined_term", typeFilter)
 		}
 	}
 
 	// Load pattern library
-	lib, err := patterns.LoadPatternLibrary(dir)
+	lib, err := service.LoadPatternLibrary(dir)
 	if err != nil {
 		return fmt.Errorf("error loading pattern library: %w", err)
 	}
 
 	// Filter patterns if type specified
-	var patternList []*patterns.Pattern
+	var patternList []*service.Pattern
 	if typeFilter != "" {
-		patternList = lib.GetByType(patterns.PatternType(typeFilter))
+		patternList = lib.GetByType(service.PatternType(typeFilter))
 	} else {
 		patternList = lib.Patterns
 	}
@@ -240,13 +238,13 @@ func runPatternsAnalyze(cmd *cobra.Command, dir string, jsonOutput bool) error {
 	}
 
 	// Load pattern library
-	lib, err := patterns.LoadPatternLibrary(dir)
+	lib, err := service.LoadPatternLibrary(dir)
 	if err != nil {
 		return fmt.Errorf("error loading pattern library: %w", err)
 	}
 
 	// Create analyzer and analyze state
-	analyzer := patterns.NewAnalyzer(lib)
+	analyzer := service.NewPatternAnalyzer(lib)
 	issues := analyzer.AnalyzeState(st)
 
 	// Output
@@ -357,7 +355,7 @@ func runPatternsStats(cmd *cobra.Command, dir string, jsonOutput bool) error {
 	}
 
 	// Load pattern library
-	lib, err := patterns.LoadPatternLibrary(dir)
+	lib, err := service.LoadPatternLibrary(dir)
 	if err != nil {
 		return fmt.Errorf("error loading pattern library: %w", err)
 	}
@@ -394,7 +392,7 @@ func runPatternsStats(cmd *cobra.Command, dir string, jsonOutput bool) error {
 
 		// Sort by occurrences descending
 		type typeCount struct {
-			pt    patterns.PatternType
+			pt    service.PatternType
 			count int
 		}
 		var typeCounts []typeCount
@@ -406,7 +404,7 @@ func runPatternsStats(cmd *cobra.Command, dir string, jsonOutput bool) error {
 		})
 
 		for _, tc := range typeCounts {
-			info, _ := patterns.GetPatternTypeInfo(tc.pt)
+			info, _ := service.GetPatternTypeInfo(tc.pt)
 			fmt.Fprintf(cmd.OutOrStdout(), "  %-20s %4d  (%s)\n",
 				tc.pt, tc.count, info.Description)
 		}
@@ -481,7 +479,7 @@ func runPatternsExtract(cmd *cobra.Command, dir string, jsonOutput bool) error {
 	}
 
 	// Load existing pattern library (or create new one)
-	lib, err := patterns.LoadPatternLibrary(dir)
+	lib, err := service.LoadPatternLibrary(dir)
 	if err != nil {
 		return fmt.Errorf("error loading pattern library: %w", err)
 	}
@@ -492,13 +490,13 @@ func runPatternsExtract(cmd *cobra.Command, dir string, jsonOutput bool) error {
 	// Count resolved challenges
 	resolvedCount := 0
 	for _, c := range challenges {
-		if c.Status == state.ChallengeStatusResolved {
+		if c.Status == service.ChallengeStatusResolved {
 			resolvedCount++
 		}
 	}
 
 	// Create analyzer and extract patterns
-	analyzer := patterns.NewAnalyzer(lib)
+	analyzer := service.NewPatternAnalyzer(lib)
 	analyzer.ExtractPatterns(challenges)
 
 	// Save updated library

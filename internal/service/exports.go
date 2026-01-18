@@ -9,6 +9,7 @@ import (
 	"github.com/tobias/vibefeld/internal/lemma"
 	"github.com/tobias/vibefeld/internal/metrics"
 	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobias/vibefeld/internal/patterns"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/scope"
 	"github.com/tobias/vibefeld/internal/state"
@@ -342,3 +343,80 @@ var StrategyNames = strategy.Names
 // SuggestStrategies analyzes a conjecture and suggests appropriate proof strategies.
 // Re-export of strategy.Suggest.
 var SuggestStrategies = strategy.Suggest
+
+// Re-exported types and functions from internal/patterns to reduce cmd/af import count.
+// Consumers should use service.PatternType, service.Pattern, etc. instead of
+// importing the patterns package directly.
+
+// PatternType represents the type of mistake pattern.
+// Re-export of patterns.PatternType.
+type PatternType = patterns.PatternType
+
+// PatternType constants.
+const (
+	PatternLogicalGap        = patterns.PatternLogicalGap
+	PatternScopeViolation    = patterns.PatternScopeViolation
+	PatternCircularReasoning = patterns.PatternCircularReasoning
+	PatternUndefinedTerm     = patterns.PatternUndefinedTerm
+)
+
+// PatternTypeInfo provides metadata about a pattern type.
+// Re-export of patterns.PatternTypeInfo.
+type PatternTypeInfo = patterns.PatternTypeInfo
+
+// ValidatePatternType validates a pattern type.
+// Re-export of patterns.ValidatePatternType.
+var ValidatePatternType = patterns.ValidatePatternType
+
+// AllPatternTypes returns all valid pattern types.
+// Re-export of patterns.AllPatternTypes.
+var AllPatternTypes = patterns.AllPatternTypes
+
+// GetPatternTypeInfo returns metadata for a pattern type.
+// Re-export of patterns.GetPatternTypeInfo.
+var GetPatternTypeInfo = patterns.GetPatternTypeInfo
+
+// Pattern represents a detected mistake pattern from resolved challenges.
+// Re-export of patterns.Pattern.
+type Pattern = patterns.Pattern
+
+// NewPattern creates a new Pattern instance.
+// Re-export of patterns.NewPattern.
+var NewPattern = patterns.NewPattern
+
+// PatternLibrary stores collected patterns from resolved challenges.
+// Re-export of patterns.PatternLibrary.
+type PatternLibrary = patterns.PatternLibrary
+
+// NewPatternLibrary creates a new empty pattern library.
+// Re-export of patterns.NewPatternLibrary.
+var NewPatternLibrary = patterns.NewPatternLibrary
+
+// PatternStats contains statistics about patterns in the library.
+// Re-export of patterns.PatternStats.
+type PatternStats = patterns.PatternStats
+
+// LoadPatternLibrary loads the pattern library from the proof directory.
+// Re-export of patterns.LoadPatternLibrary.
+var LoadPatternLibrary = patterns.LoadPatternLibrary
+
+// PatternAnalyzer analyzes challenges and nodes to detect patterns.
+// Re-export of patterns.Analyzer.
+type PatternAnalyzer = patterns.Analyzer
+
+// NewPatternAnalyzer creates a new analyzer with the given pattern library.
+// Re-export of patterns.NewAnalyzer.
+var NewPatternAnalyzer = patterns.NewAnalyzer
+
+// PotentialIssue represents a potential issue detected in a node.
+// Re-export of patterns.PotentialIssue.
+type PotentialIssue = patterns.PotentialIssue
+
+// Challenge status values for state.Challenge comparisons.
+// Re-export of state.ChallengeStatus* constants.
+const (
+	ChallengeStatusOpen       = state.ChallengeStatusOpen
+	ChallengeStatusResolved   = state.ChallengeStatusResolved
+	ChallengeStatusWithdrawn  = state.ChallengeStatusWithdrawn
+	ChallengeStatusSuperseded = state.ChallengeStatusSuperseded
+)

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/patterns"
+	"github.com/tobias/vibefeld/internal/service"
 )
 
 // setupTestProofDir initializes a proof directory for testing.
@@ -53,12 +53,12 @@ func TestPatternsCmd_List(t *testing.T) {
 	tmpDir := setupTestProofDir(t)
 
 	// Create a pattern library with some patterns
-	lib := patterns.NewPatternLibrary()
-	p1 := patterns.NewPattern(patterns.PatternLogicalGap, "Missing step", "Gap in reasoning")
+	lib := service.NewPatternLibrary()
+	p1 := service.NewPattern(service.PatternLogicalGap, "Missing step", "Gap in reasoning")
 	p1.Occurrences = 5
 	lib.AddPattern(p1)
 
-	p2 := patterns.NewPattern(patterns.PatternScopeViolation, "Scope issue", "Using assumption outside scope")
+	p2 := service.NewPattern(service.PatternScopeViolation, "Scope issue", "Using assumption outside scope")
 	p2.Occurrences = 3
 	lib.AddPattern(p2)
 
@@ -116,8 +116,8 @@ func TestPatternsCmd_ListJSON(t *testing.T) {
 	tmpDir := setupTestProofDir(t)
 
 	// Create a pattern library
-	lib := patterns.NewPatternLibrary()
-	p := patterns.NewPattern(patterns.PatternLogicalGap, "Test gap", "Example")
+	lib := service.NewPatternLibrary()
+	p := service.NewPattern(service.PatternLogicalGap, "Test gap", "Example")
 	p.Occurrences = 2
 	lib.AddPattern(p)
 
@@ -155,17 +155,17 @@ func TestPatternsCmd_Stats(t *testing.T) {
 	tmpDir := setupTestProofDir(t)
 
 	// Create a pattern library with various patterns
-	lib := patterns.NewPatternLibrary()
+	lib := service.NewPatternLibrary()
 
-	p1 := patterns.NewPattern(patterns.PatternLogicalGap, "Gap 1", "Example 1")
+	p1 := service.NewPattern(service.PatternLogicalGap, "Gap 1", "Example 1")
 	p1.Occurrences = 10
 	lib.AddPattern(p1)
 
-	p2 := patterns.NewPattern(patterns.PatternScopeViolation, "Scope 1", "Example 2")
+	p2 := service.NewPattern(service.PatternScopeViolation, "Scope 1", "Example 2")
 	p2.Occurrences = 5
 	lib.AddPattern(p2)
 
-	p3 := patterns.NewPattern(patterns.PatternCircularReasoning, "Circular 1", "Example 3")
+	p3 := service.NewPattern(service.PatternCircularReasoning, "Circular 1", "Example 3")
 	p3.Occurrences = 2
 	lib.AddPattern(p3)
 
@@ -200,8 +200,8 @@ func TestPatternsCmd_StatsJSON(t *testing.T) {
 	tmpDir := setupTestProofDir(t)
 
 	// Create a pattern library
-	lib := patterns.NewPatternLibrary()
-	p := patterns.NewPattern(patterns.PatternLogicalGap, "Test", "Example")
+	lib := service.NewPatternLibrary()
+	p := service.NewPattern(service.PatternLogicalGap, "Test", "Example")
 	p.Occurrences = 5
 	lib.AddPattern(p)
 
@@ -242,8 +242,8 @@ func TestPatternsCmd_Analyze(t *testing.T) {
 	tmpDir := setupTestProofDir(t)
 
 	// Create a pattern library with known patterns
-	lib := patterns.NewPatternLibrary()
-	p := patterns.NewPattern(patterns.PatternLogicalGap, "Vague justification", "Using 'trivially' without proof")
+	lib := service.NewPatternLibrary()
+	p := service.NewPattern(service.PatternLogicalGap, "Vague justification", "Using 'trivially' without proof")
 	p.Occurrences = 10
 	lib.AddPattern(p)
 
@@ -275,8 +275,8 @@ func TestPatternsCmd_AnalyzeJSON(t *testing.T) {
 	tmpDir := setupTestProofDir(t)
 
 	// Create a pattern library
-	lib := patterns.NewPatternLibrary()
-	p := patterns.NewPattern(patterns.PatternLogicalGap, "Test pattern", "Example")
+	lib := service.NewPatternLibrary()
+	p := service.NewPattern(service.PatternLogicalGap, "Test pattern", "Example")
 	p.Occurrences = 5
 	lib.AddPattern(p)
 
@@ -314,13 +314,13 @@ func TestPatternsCmd_TypeFilter(t *testing.T) {
 	tmpDir := setupTestProofDir(t)
 
 	// Create a pattern library with multiple types
-	lib := patterns.NewPatternLibrary()
+	lib := service.NewPatternLibrary()
 
-	p1 := patterns.NewPattern(patterns.PatternLogicalGap, "Gap", "Example gap")
+	p1 := service.NewPattern(service.PatternLogicalGap, "Gap", "Example gap")
 	p1.Occurrences = 5
 	lib.AddPattern(p1)
 
-	p2 := patterns.NewPattern(patterns.PatternScopeViolation, "Scope", "Example scope")
+	p2 := service.NewPattern(service.PatternScopeViolation, "Scope", "Example scope")
 	p2.Occurrences = 3
 	lib.AddPattern(p2)
 
@@ -395,7 +395,7 @@ func TestPatternsCmd_Extract(t *testing.T) {
 	}
 
 	// Verify patterns were saved
-	lib, err := patterns.LoadPatternLibrary(tmpDir)
+	lib, err := service.LoadPatternLibrary(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to load patterns after extract: %v", err)
 	}
