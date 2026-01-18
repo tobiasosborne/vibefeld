@@ -197,9 +197,11 @@ func TestRenderAFError_NodeBlocked(t *testing.T) {
 	}
 
 	recoveryText := fmt.Sprintf("%v", result.Recovery)
+	// Context-aware suggestions should include the node ID from the error message
 	wantSuggestions := []string{
-		"Resolve blocking challenges",
-		"af status",
+		"af get 1.3",         // Context-specific command with node ID
+		"af challenges 1.3",  // Context-specific command with node ID
+		"af pending-defs",    // General suggestion
 	}
 
 	for _, want := range wantSuggestions {
@@ -238,12 +240,12 @@ func TestRenderAFError_LedgerCorrupted(t *testing.T) {
 		{
 			name: "CONTENT_HASH_MISMATCH",
 			code: errors.CONTENT_HASH_MISMATCH,
-			want: "Contact administrator",
+			want: "do not modify .af files manually",
 		},
 		{
 			name: "LEDGER_INCONSISTENT",
 			code: errors.LEDGER_INCONSISTENT,
-			want: "Check filesystem integrity",
+			want: "Contact administrator",
 		},
 	}
 
@@ -525,6 +527,136 @@ func TestRenderError_AllErrorCodes(t *testing.T) {
 			// All error codes should have at least one recovery suggestion
 			if len(result.Recovery) == 0 {
 				t.Errorf("Error code %s has no recovery suggestions", code.String())
+			}
+		})
+	}
+}
+
+// TestExtractNodeID tests node ID extraction from error messages
+func TestExtractNodeID(t *testing.T) {
+	tests := []struct {
+		message string
+		want    string
+	}{
+		{"node 1.2 is claimed", "1.2"},
+		{"node 1.2.3 is blocked", "1.2.3"},
+		{"cannot refine node 1", "1"},
+		{"node 10.20.30 exceeded limit", "10.20.30"},
+		{"no node ID here", ""},
+		{"invalid 1. ID", ""},
+		{"just a number 42 not a node", "42"},
+		{"NODE_BLOCKED: node 1.3 is blocked by challenge", "1.3"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.message, func(t *testing.T) {
+			got := extractNodeID(tt.message)
+			if got != tt.want {
+				t.Errorf("extractNodeID(%q) = %q, want %q", tt.message, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestIsNodeID tests the node ID pattern matcher
+func TestIsNodeID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"1", true},
+		{"1.2", true},
+		{"1.2.3", true},
+		{"10.20.30", true},
+		{"", false},
+		{"a.b", false},
+		{"1.", false},
+		{"1.2.", false},
+		{".1", false},
+		{"1..2", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := isNodeID(tt.input)
+			if got != tt.want {
+				t.Errorf("isNodeID(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestExtractQuotedValue tests quoted value extraction from error messages
+func TestExtractQuotedValue(t *testing.T) {
+	tests := []struct {
+		message string
+		want    string
+	}{
+		{`definition "continuity" not found`, "continuity"},
+		{`assumption "hyp1" not in scope`, "hyp1"},
+		{`external "ZFC" not found`, "ZFC"},
+		{"no quotes here", ""},
+		{`only "one quote`, ""},
+		{`empty ""`, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.message, func(t *testing.T) {
+			got := extractQuotedValue(tt.message)
+			if got != tt.want {
+				t.Errorf("extractQuotedValue(%q) = %q, want %q", tt.message, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestContextAwareRecovery tests that recovery suggestions incorporate context
+func TestContextAwareRecovery(t *testing.T) {
+	tests := []struct {
+		name    string
+		code    errors.ErrorCode
+		message string
+		want    string // Substring that should appear in suggestions
+	}{
+		{
+			name:    "ALREADY_CLAIMED with node ID",
+			code:    errors.ALREADY_CLAIMED,
+			message: "node 1.5 is claimed by agent-xyz",
+			want:    "af get 1.5",
+		},
+		{
+			name:    "NOT_CLAIM_HOLDER with node ID",
+			code:    errors.NOT_CLAIM_HOLDER,
+			message: "node 2.1 must be claimed first",
+			want:    "af claim 2.1",
+		},
+		{
+			name:    "DEF_NOT_FOUND with quoted name",
+			code:    errors.DEF_NOT_FOUND,
+			message: `definition "continuity" not found`,
+			want:    "af request-def continuity",
+		},
+		{
+			name:    "CHALLENGE_LIMIT_EXCEEDED with node ID",
+			code:    errors.CHALLENGE_LIMIT_EXCEEDED,
+			message: "node 1.2.3 has reached challenge limit",
+			want:    "af challenges 1.2.3",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			suggestions := getRecoverySuggestions(tt.code, tt.message)
+			found := false
+			for _, s := range suggestions {
+				if strings.Contains(s, tt.want) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Recovery suggestions for %s should contain %q, got: %v",
+					tt.name, tt.want, suggestions)
 			}
 		})
 	}

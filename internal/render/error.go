@@ -70,169 +70,285 @@ func RenderAFError(e *errors.AFError) RenderedError {
 	return RenderedError{
 		Code:     code.String(),
 		Message:  e.Error(),
-		Recovery: getRecoverySuggestions(code),
+		Recovery: getRecoverySuggestions(code, e.Error()),
 		ExitCode: code.ExitCode(),
 	}
 }
 
 // getRecoverySuggestions returns recovery suggestions for a given error code.
 // These suggestions guide users toward resolving the error condition.
-func getRecoverySuggestions(code errors.ErrorCode) []string {
+// The message parameter provides context for more specific suggestions.
+func getRecoverySuggestions(code errors.ErrorCode, message string) []string {
+	// Extract context from the message
+	nodeID := extractNodeID(message)
+	defName := extractQuotedValue(message)
+
 	switch code {
 	case errors.ALREADY_CLAIMED:
-		return []string{
+		suggestions := []string{
 			"Wait for current holder to release the node",
 			"Use 'af jobs' to find available nodes",
-			"Check claim status with 'af status <node>'",
 		}
+		if nodeID != "" {
+			suggestions = append(suggestions, fmt.Sprintf("Check claim status with 'af get %s'", nodeID))
+		}
+		return suggestions
 
 	case errors.NOT_CLAIM_HOLDER:
+		if nodeID != "" {
+			return []string{
+				fmt.Sprintf("Claim the node first with 'af claim %s'", nodeID),
+				fmt.Sprintf("Check who owns the claim with 'af get %s'", nodeID),
+			}
+		}
 		return []string{
 			"Claim the node first with 'af claim <node>'",
-			"Verify you are working on the correct node",
+			"Check who owns the claim with 'af get <node>'",
 		}
 
 	case errors.NODE_BLOCKED:
+		if nodeID != "" {
+			return []string{
+				fmt.Sprintf("Check blockers with 'af get %s'", nodeID),
+				fmt.Sprintf("View challenges with 'af challenges %s'", nodeID),
+				"Use 'af pending-defs' to check for pending definitions",
+			}
+		}
 		return []string{
 			"Resolve blocking challenges first",
-			"Use 'af status <node>' to see blockers",
-			"Address pending challenges or definitions",
+			"Use 'af challenges' to see open challenges",
+			"Use 'af pending-defs' to check for pending definitions",
 		}
 
 	case errors.INVALID_PARENT:
+		if nodeID != "" {
+			return []string{
+				fmt.Sprintf("Verify parent exists with 'af get %s'", nodeID),
+				"Use 'af status' to view the proof tree",
+			}
+		}
 		return []string{
-			"Check parent node exists with 'af status'",
-			"Verify the parent node ID is correct",
+			"Verify the parent node ID exists",
 			"Use 'af status' to view the proof tree",
 		}
 
 	case errors.INVALID_TYPE:
 		return []string{
-			"Review the node type requirements",
-			"Check the proof structure with 'af status'",
-			"Consult the AF documentation for valid node types",
+			"Use 'af types' to see valid node types",
+			"Check the node type spelling matches exactly",
 		}
 
 	case errors.INVALID_INFERENCE:
 		return []string{
-			"Review the inference rule requirements",
-			"Check that premises support the conclusion",
-			"Use 'af status' to verify node relationships",
+			"Use 'af inferences' to see valid inference rules",
+			"Check the inference rule spelling matches exactly",
 		}
 
 	case errors.INVALID_TARGET:
+		if nodeID != "" {
+			return []string{
+				fmt.Sprintf("Verify node %s exists with 'af get %s'", nodeID, nodeID),
+				"Use 'af status' to view available nodes",
+			}
+		}
 		return []string{
 			"Verify the target node exists",
-			"Check the target node ID is correct",
 			"Use 'af status' to view available nodes",
 		}
 
 	case errors.CHALLENGE_NOT_FOUND:
 		return []string{
-			"Verify the challenge ID is correct",
-			"Use 'af status' to list active challenges",
+			"Use 'af challenges' to list active challenges",
 			"The challenge may have been resolved or withdrawn",
 		}
 
 	case errors.DEF_NOT_FOUND:
+		if defName != "" {
+			return []string{
+				fmt.Sprintf("Request the definition with 'af request-def %s \"<description>\"'", defName),
+				"Use 'af defs' to list available definitions",
+			}
+		}
 		return []string{
-			"Add the required definition with 'af define'",
-			"Check the definition key is spelled correctly",
-			"Use 'af status' to list available definitions",
+			"Request the definition with 'af request-def <name> \"<description>\"'",
+			"Use 'af defs' to list available definitions",
 		}
 
 	case errors.ASSUMPTION_NOT_FOUND:
+		if defName != "" {
+			return []string{
+				fmt.Sprintf("Check if assumption %s is in scope with 'af scope'", defName),
+				"Use 'af assumptions' to list all assumptions",
+			}
+		}
 		return []string{
-			"Verify the assumption exists in the current scope",
-			"Check the assumption ID is correct",
-			"Use 'af status' to view assumptions in scope",
+			"Use 'af scope' to check assumption scope",
+			"Use 'af assumptions' to list all assumptions",
 		}
 
 	case errors.EXTERNAL_NOT_FOUND:
+		if defName != "" {
+			return []string{
+				fmt.Sprintf("Add external reference %s with proper verification", defName),
+				"Use 'af pending-refs' to see pending references",
+			}
+		}
 		return []string{
-			"Add the required external reference",
-			"Verify the external reference key",
-			"Use 'af status' to list external references",
+			"Use 'af pending-refs' to see pending references",
+			"External references must be added and verified",
 		}
 
 	case errors.SCOPE_VIOLATION:
 		return []string{
-			"Ensure assumptions are referenced within their scope",
-			"Check scope boundaries with 'af status'",
-			"Review the proof structure for scope violations",
+			"Use 'af scope' to check current scope boundaries",
+			"Assumptions can only be used within their scope",
 		}
 
 	case errors.SCOPE_UNCLOSED:
 		return []string{
-			"Close open assumption scopes",
-			"Verify all assumptions are properly discharged",
-			"Use 'af status' to check scope state",
+			"Use 'af scope' to see open assumption scopes",
+			"All assumption scopes must be closed before completion",
 		}
 
 	case errors.DEPENDENCY_CYCLE:
 		return []string{
-			"Review node dependencies for circular references",
-			"Restructure the proof to eliminate cycles",
-			"Use 'af status' to visualize dependencies",
+			"Use 'af deps' to visualize the dependency graph",
+			"Restructure dependencies to eliminate the cycle",
 		}
 
 	case errors.CONTENT_HASH_MISMATCH:
 		return []string{
-			"Contact administrator - data integrity issue detected",
-			"Check filesystem integrity",
-			"Do not modify ledger files manually",
+			"Data integrity issue detected - do not modify .af files manually",
+			"Contact administrator if problem persists",
 		}
 
 	case errors.VALIDATION_INVARIANT_FAILED:
 		return []string{
 			"Retry the operation - this may be a transient issue",
-			"Check for concurrent modifications",
-			"Contact administrator if problem persists",
+			"If problem persists, run 'af replay' to rebuild state",
 		}
 
 	case errors.LEDGER_INCONSISTENT:
 		return []string{
-			"Contact administrator - ledger corruption detected",
-			"Check filesystem integrity",
-			"Verify no manual ledger modifications were made",
+			"Ledger corruption detected - do not modify .af files manually",
+			"Contact administrator for recovery options",
 		}
 
 	case errors.DEPTH_EXCEEDED:
 		return []string{
-			"Simplify the proof structure",
-			"Consider breaking complex proofs into lemmas",
-			"Review depth limit configuration",
+			"Consider extracting a lemma with 'af extract-lemma'",
+			"Simplify the proof structure to reduce depth",
 		}
 
 	case errors.CHALLENGE_LIMIT_EXCEEDED:
+		if nodeID != "" {
+			return []string{
+				fmt.Sprintf("Resolve existing challenges on %s first", nodeID),
+				fmt.Sprintf("View challenges with 'af challenges %s'", nodeID),
+			}
+		}
 		return []string{
 			"Resolve existing challenges before raising new ones",
-			"Consider withdrawing resolved challenges",
-			"Review challenge limit configuration",
+			"Use 'af challenges' to see what needs resolution",
 		}
 
 	case errors.REFINEMENT_LIMIT_EXCEEDED:
+		if nodeID != "" {
+			return []string{
+				fmt.Sprintf("Accept or refute existing children of %s", nodeID),
+				fmt.Sprintf("View children with 'af get %s'", nodeID),
+			}
+		}
 		return []string{
-			"Accept or refute current refinements",
-			"Consider the proof step may need restructuring",
-			"Review refinement limit configuration",
+			"Accept or refute existing children before adding more",
+			"Use 'af status' to see the current proof structure",
 		}
 
 	case errors.EXTRACTION_INVALID:
+		if nodeID != "" {
+			return []string{
+				fmt.Sprintf("Check node %s is validated with 'af get %s'", nodeID, nodeID),
+				"Only validated nodes can be extracted as lemmas",
+			}
+		}
 		return []string{
-			"Review the lemma extraction criteria",
-			"Ensure the target node is suitable for extraction",
-			"Check the proof is complete and validated",
+			"Ensure the node is validated before extraction",
+			"Use 'af status' to check node states",
 		}
 
 	default:
-		// Fallback for unknown error codes
 		return []string{
-			"Use 'af status' to check current state",
-			"Review recent operations for issues",
-			"Consult AF documentation or contact support",
+			"Use 'af status' to check current proof state",
+			"Use 'af --help' for command reference",
 		}
 	}
+}
+
+// extractNodeID extracts a node ID (like "1.2.3" or "1") from an error message.
+func extractNodeID(message string) string {
+	// Look for patterns like "node 1.2.3" or "1.2.3 is" or just standalone IDs
+	words := strings.Fields(message)
+	for i, word := range words {
+		// Clean trailing punctuation
+		cleaned := strings.TrimRight(word, ",:;")
+
+		// Check if it looks like a node ID (digits and dots)
+		if isNodeID(cleaned) {
+			return cleaned
+		}
+
+		// Check the word after "node"
+		if strings.EqualFold(word, "node") && i+1 < len(words) {
+			next := strings.TrimRight(words[i+1], ",:;")
+			if isNodeID(next) {
+				return next
+			}
+		}
+	}
+	return ""
+}
+
+// isNodeID returns true if s looks like a node ID (e.g., "1", "1.2", "1.2.3").
+func isNodeID(s string) bool {
+	if s == "" {
+		return false
+	}
+	// Must start with a digit
+	if s[0] < '0' || s[0] > '9' {
+		return false
+	}
+	// Must only contain digits and dots, not end with dot, no consecutive dots
+	prevWasDot := false
+	for i, c := range s {
+		if c == '.' {
+			if prevWasDot {
+				return false // No consecutive dots
+			}
+			if i == len(s)-1 {
+				return false // Cannot end with dot
+			}
+			prevWasDot = true
+		} else if c >= '0' && c <= '9' {
+			prevWasDot = false
+		} else {
+			return false // Invalid character
+		}
+	}
+	return true
+}
+
+// extractQuotedValue extracts a quoted value like "foo" from an error message.
+func extractQuotedValue(message string) string {
+	// Look for "value" pattern
+	start := strings.Index(message, "\"")
+	if start == -1 {
+		return ""
+	}
+	end := strings.Index(message[start+1:], "\"")
+	if end == -1 {
+		return ""
+	}
+	return message[start+1 : start+1+end]
 }
 
 // FormatCLI formats a rendered error for CLI display.
