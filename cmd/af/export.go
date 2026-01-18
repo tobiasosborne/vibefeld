@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/cli"
-	"github.com/tobias/vibefeld/internal/export"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -54,7 +53,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 
 	// Validate format first (before checking directory)
 	format = strings.ToLower(format)
-	if err := export.ValidateFormat(format); err != nil {
+	if err := service.ValidateExportFormat(format); err != nil {
 		return err
 	}
 
@@ -80,7 +79,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 	}
 
 	// Export to the specified format
-	output, err := export.Export(st, format)
+	output, err := service.ExportProof(st, format)
 	if err != nil {
 		return fmt.Errorf("error exporting proof: %w", err)
 	}

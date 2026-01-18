@@ -3,12 +3,14 @@ package service
 import (
 	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/errors"
+	"github.com/tobias/vibefeld/internal/export"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/fuzzy"
 	"github.com/tobias/vibefeld/internal/lemma"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/scope"
+	"github.com/tobias/vibefeld/internal/state"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -245,3 +247,19 @@ var SuggestFlag = fuzzy.SuggestFlag
 // reference definitions that exist in the current state.
 // Re-export of lemma.ValidateDefCitations.
 var ValidateDefCitations = lemma.ValidateDefCitations
+
+// Re-exported functions from internal/export to reduce cmd/af import count.
+// Consumers should use service.ValidateExportFormat and service.ExportProof
+// instead of importing the export package directly.
+
+// ValidateExportFormat checks if the given format string is valid.
+// Valid formats: markdown, md, latex, tex (case-insensitive).
+// Re-export of export.ValidateFormat.
+var ValidateExportFormat = export.ValidateFormat
+
+// ExportProof exports the proof state to the specified format.
+// Returns an error if the format is invalid.
+// Re-export of export.Export.
+func ExportProof(s *state.State, format string) (string, error) {
+	return export.Export(s, format)
+}
