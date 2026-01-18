@@ -665,41 +665,68 @@ func renderExternalsView(sb *strings.Builder, externals []ExternalView) {
 }
 
 // renderChallengesView writes the challenges section from views.
+// Format matches prover_context.go for consistency across all challenge displays.
 func renderChallengesView(sb *strings.Builder, challenges []ChallengeView) {
 	if len(challenges) == 0 {
 		sb.WriteString("\nChallenges: (none)\n")
 		return
 	}
 
-	// Count open challenges
+	// Count open and blocking challenges
 	openCount := 0
+	blockingCount := 0
 	for _, c := range challenges {
 		if c.Status == ChallengeStatusOpen {
 			openCount++
+			if isBlockingSeverity(c.Severity) {
+				blockingCount++
+			}
 		}
 	}
 
 	sb.WriteString("\nChallenges (")
 	sb.WriteString(fmt.Sprintf("%d total, %d open", len(challenges), openCount))
+	if blockingCount > 0 {
+		sb.WriteString(fmt.Sprintf(", %d blocking", blockingCount))
+	}
 	sb.WriteString("):\n")
 
-	// Sort by status (open first), then by ID
+	// Sort by: status (open first), then severity (critical > major > minor > note), then ID
 	sorted := make([]ChallengeView, len(challenges))
 	copy(sorted, challenges)
 	sort.Slice(sorted, func(i, j int) bool {
+		// Open challenges come first
 		if sorted[i].Status == ChallengeStatusOpen && sorted[j].Status != ChallengeStatusOpen {
 			return true
 		}
 		if sorted[i].Status != ChallengeStatusOpen && sorted[j].Status == ChallengeStatusOpen {
 			return false
 		}
+		// Within same status, sort by severity (more severe first)
+		sevI := severityOrder(sorted[i].Severity)
+		sevJ := severityOrder(sorted[j].Severity)
+		if sevI != sevJ {
+			return sevI < sevJ
+		}
 		return sorted[i].ID < sorted[j].ID
 	})
 
 	for _, c := range sorted {
+		// Format: [ID] severity (BLOCKING) - "reason" (status)
 		sb.WriteString("  [")
 		sb.WriteString(c.ID)
 		sb.WriteString("] ")
+
+		// Show severity if set
+		if c.Severity != "" {
+			sb.WriteString(c.Severity)
+			// Mark blocking challenges clearly
+			if c.Status == ChallengeStatusOpen && isBlockingSeverity(c.Severity) {
+				sb.WriteString(" (BLOCKING)")
+			}
+			sb.WriteString(" - ")
+		}
+
 		sb.WriteString("\"")
 		sb.WriteString(c.Reason)
 		sb.WriteString("\" (")
@@ -722,8 +749,12 @@ func renderChallengesView(sb *strings.Builder, challenges []ChallengeView) {
 		}
 	}
 
+	// Add summary guidance for open challenges
 	if openCount > 0 {
-		sb.WriteString("\n  Add child nodes with 'addresses_challenges' to respond to open challenges.\n")
+		if blockingCount > 0 {
+			sb.WriteString("\n  Blocking challenges (critical/major) must be resolved before acceptance.\n")
+		}
+		sb.WriteString("  Add child nodes with 'addresses_challenges' to respond to open challenges.\n")
 		sb.WriteString("  Once addressed, the verifier can resolve them with 'af resolve-challenge'.\n")
 	}
 }
@@ -795,6 +826,18 @@ func renderChallengeInfoView(sb *strings.Builder, c ChallengeView) {
 
 	sb.WriteString("Reason: ")
 	sb.WriteString(c.Reason)
+	sb.WriteString("\n")
+
+	// Show severity with blocking indicator
+	sb.WriteString("Severity: ")
+	if c.Severity != "" {
+		sb.WriteString(c.Severity)
+		if c.Status == ChallengeStatusOpen && isBlockingSeverity(c.Severity) {
+			sb.WriteString(" (BLOCKING)")
+		}
+	} else {
+		sb.WriteString("(not set)")
+	}
 	sb.WriteString("\n")
 
 	sb.WriteString("Status: ")

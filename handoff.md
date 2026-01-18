@@ -1,35 +1,41 @@
-# Handoff - 2026-01-18 (Session 168)
+# Handoff - 2026-01-18 (Session 169)
 
 ## What Was Accomplished This Session
 
-### Session 168 Summary: Closed 1 issue (Code smell - missing comment on collectDefinitionNames redundancy)
+### Session 169 Summary: Closed 1 issue (CLI UX - standardized challenge rendering across commands)
 
-1. **vibefeld-2xg3** - "Code smell: Missing comment on collectDefinitionNames redundancy"
-   - Analyzed the `collectDefinitionNames` function in `internal/render/prover_context.go`
-   - Determined the apparent "redundancy" (processing target node in both passes) is intentional:
-     - Pass 1 collects ALL definition references from target node (including not-yet-defined ones)
-     - Pass 2 adds definitions that exist in state from any node's context
-   - Added comprehensive documentation comment explaining the two-pass design
-   - Added inline comments clarifying each pass's purpose
+1. **vibefeld-87z6** - "CLI UX: Challenge rendering inconsistent across commands"
+   - Analyzed all challenge rendering locations across the codebase
+   - Found inconsistencies: some formats showed severity, others didn't; different field orderings
+   - Updated `renderChallengesView` in `internal/render/render_views.go` to:
+     - Show severity with BLOCKING indicator for open critical/major challenges
+     - Sort by status (open first), then severity (critical > major > minor > note), then ID
+     - Show blocking count in summary header
+   - Updated `renderChallengeInfoView` in `internal/render/render_views.go` to show severity with blocking indicator
+   - Added `Severity` field to `JSONJobChallenge` struct in `internal/render/jobs.go`
+   - Updated `buildJobEntryFull` to populate the severity field
 
-### Code Changes (internal/render/prover_context.go)
+### Code Changes
 
-Added documentation comment to `collectDefinitionNames` function explaining:
-- Why two collection passes are used
-- What each pass does differently
-- Why the target node may be processed in both passes (intentional, not redundant)
+**internal/render/render_views.go:**
+- `renderChallengesView`: Added blocking count tracking, severity-based sorting, severity display with BLOCKING indicator
+- `renderChallengeInfoView`: Added Severity field display with BLOCKING indicator for open critical/major challenges
+
+**internal/render/jobs.go:**
+- `JSONJobChallenge`: Added `Severity string` field
+- `buildJobEntryFull`: Populates `Severity` field from challenge
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-2xg3** | Closed | Added clarifying documentation comment explaining intentional two-pass design |
+| **vibefeld-87z6** | Closed | Standardized challenge rendering across commands |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 11 (was 12)
-- **Closed:** 538 (was 537)
+- **Open:** 10 (was 11)
+- **Closed:** 539 (was 538)
 
 ### Test Status
 - Build: PASS
@@ -45,6 +51,9 @@ go build ./cmd/af
 
 # Run render tests
 go test ./internal/render/...
+
+# Run all tests
+go test ./...
 ```
 
 ## Remaining P1 Issues
@@ -70,7 +79,6 @@ go test ./internal/render/...
 ### P3 CLI UX (quick wins)
 6. Boolean parameters in CLI (`vibefeld-yo5e`)
 7. Positional statement variability in refine (`vibefeld-9b6m`)
-8. Challenge rendering inconsistent across commands (`vibefeld-87z6`)
 
 ## Quick Commands
 
@@ -87,6 +95,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 169:** Closed 1 issue (CLI UX - standardized challenge rendering across commands)
 **Session 168:** Closed 1 issue (Code smell - missing comment on collectDefinitionNames redundancy)
 **Session 167:** Closed 1 issue (CLI UX - actionable jobs output with priority sorting and recommended indicators)
 **Session 166:** Closed 1 issue (CLI UX - exit codes for machine parsing via errors.ExitCode())

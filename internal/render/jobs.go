@@ -102,9 +102,10 @@ type JSONJobExternal struct {
 
 // JSONJobChallenge represents an open challenge in JSON job output.
 type JSONJobChallenge struct {
-	ID     string `json:"id"`
-	Target string `json:"target"`
-	Reason string `json:"reason"`
+	ID       string `json:"id"`
+	Target   string `json:"target"`
+	Reason   string `json:"reason"`
+	Severity string `json:"severity"`
 }
 
 // JSONJobEntryFull represents a single job entry with full context in JSON format.
@@ -245,9 +246,10 @@ func buildJobEntryFull(job *node.Node, ctx *JobsContext) JSONJobEntryFull {
 				// Only include open challenges
 				if ch.Status == node.ChallengeStatusOpen {
 					chs = append(chs, JSONJobChallenge{
-						ID:     ch.ID,
-						Target: string(ch.Target),
-						Reason: ch.Reason,
+						ID:       ch.ID,
+						Target:   string(ch.Target),
+						Reason:   ch.Reason,
+						Severity: ch.Severity,
 					})
 				}
 			}
