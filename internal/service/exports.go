@@ -6,6 +6,7 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/scope"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -205,3 +206,15 @@ var ExitCode = errors.ExitCode
 // DefaultClaimTimeout is the default duration for claim timeouts in CLI commands.
 // Re-export of config.DefaultClaimTimeout.
 const DefaultClaimTimeout = config.DefaultClaimTimeout
+
+// Re-exported types from internal/scope to reduce cmd/af import count.
+// Consumers should use service.ScopeEntry and service.ScopeInfo instead of
+// importing the scope package directly.
+
+// ScopeEntry represents a scope entry for a local assumption.
+// Re-export of scope.Entry.
+type ScopeEntry = scope.Entry
+
+// ScopeInfo contains information about a node's scope context.
+// Re-export of scope.ScopeInfo.
+type ScopeInfo = scope.ScopeInfo

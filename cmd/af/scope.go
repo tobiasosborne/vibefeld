@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/scope"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -150,7 +149,7 @@ func runScopeAll(cmd *cobra.Command, dir, format string) error {
 }
 
 // outputScopeJSON outputs scope info for a node in JSON format.
-func outputScopeJSON(cmd *cobra.Command, nodeID service.NodeID, info *scope.ScopeInfo) error {
+func outputScopeJSON(cmd *cobra.Command, nodeID service.NodeID, info *service.ScopeInfo) error {
 	result := map[string]interface{}{
 		"node_id":  nodeID.String(),
 		"depth":    info.Depth,
@@ -178,7 +177,7 @@ func outputScopeJSON(cmd *cobra.Command, nodeID service.NodeID, info *scope.Scop
 }
 
 // outputScopeText outputs scope info for a node in text format.
-func outputScopeText(cmd *cobra.Command, nodeID service.NodeID, info *scope.ScopeInfo) error {
+func outputScopeText(cmd *cobra.Command, nodeID service.NodeID, info *service.ScopeInfo) error {
 	cmd.Printf("Scope information for node %s:\n", nodeID.String())
 	cmd.Printf("  Scope depth: %d\n", info.Depth)
 
@@ -200,7 +199,7 @@ func outputScopeText(cmd *cobra.Command, nodeID service.NodeID, info *scope.Scop
 }
 
 // outputAllScopesJSON outputs all scopes in JSON format.
-func outputAllScopesJSON(cmd *cobra.Command, allScopes, activeScopes []*scope.Entry) error {
+func outputAllScopesJSON(cmd *cobra.Command, allScopes, activeScopes []*service.ScopeEntry) error {
 	result := map[string]interface{}{
 		"total_count":  len(allScopes),
 		"active_count": len(activeScopes),
@@ -231,7 +230,7 @@ func outputAllScopesJSON(cmd *cobra.Command, allScopes, activeScopes []*scope.En
 }
 
 // outputAllScopesText outputs all scopes in text format.
-func outputAllScopesText(cmd *cobra.Command, allScopes, activeScopes []*scope.Entry) error {
+func outputAllScopesText(cmd *cobra.Command, allScopes, activeScopes []*service.ScopeEntry) error {
 	cmd.Printf("Assumption Scopes: %d total, %d active\n\n", len(allScopes), len(activeScopes))
 
 	if len(allScopes) == 0 {
@@ -249,7 +248,7 @@ func outputAllScopesText(cmd *cobra.Command, allScopes, activeScopes []*scope.En
 	}
 
 	// Show closed scopes
-	var closedScopes []*scope.Entry
+	var closedScopes []*service.ScopeEntry
 	for _, s := range allScopes {
 		if !s.IsActive() {
 			closedScopes = append(closedScopes, s)
