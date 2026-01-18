@@ -1,39 +1,65 @@
-# Handoff - 2026-01-18 (Session 166)
+# Handoff - 2026-01-18 (Session 167)
 
 ## What Was Accomplished This Session
 
-### Session 166 Summary: Closed 1 issue (CLI UX - exit codes for machine parsing)
+### Session 167 Summary: Closed 1 issue (CLI UX - actionable jobs output with priority indicators)
 
-1. **vibefeld-8rkr** - "CLI UX: No error codes for machine parsing"
-   - Fixed `cmd/af/main.go` to use `errors.ExitCode()` instead of hardcoded `os.Exit(1)`
-   - Now AFError types return proper structured exit codes:
-     - Exit 1: Retriable (race conditions, transient failures)
-     - Exit 2: Blocked (work cannot proceed)
-     - Exit 3: Logic errors (invalid input, not found)
-     - Exit 4: Corruption (data integrity failures)
-   - Note: Service layer mostly uses plain Go errors, so most CLI errors still return exit 1
+1. **vibefeld-3xre** - "CLI UX: Jobs output could be more actionable"
+   - Added priority sorting to jobs output:
+     - Prover jobs: sorted by urgency (critical challenges first, then major, then by depth)
+     - Verifier jobs: sorted by depth (breadth-first review, shallower nodes first)
+   - Added recommended job indicator: `*` prefix marks the suggested starting job
+   - Added explanation text: "Sorted by urgency/depth" at section start
+   - Added recommendation line: "Recommended: Start with [X] (reason)"
+   - JSON output now includes `recommended: true` and `priority_reason` fields
 
-### Code Change
+### Code Changes (cmd/af/jobs.go)
 
-```go
-// Before (hardcoded exit 1)
-os.Exit(1)
+New functions added:
+- `proverJobPriority()` - scores prover jobs (critical > major > depth)
+- `proverPriorityReason()` - explains why a prover job is prioritized
+- `verifierJobPriority()` - scores verifier jobs (by depth)
+- `verifierPriorityReason()` - explains why a verifier job is prioritized
+- `renderJobNodeWithPriority()` - renders job entries with `*` marker for recommended
 
-// After (structured exit codes)
-os.Exit(errors.ExitCode(enhanced))
+Updated functions:
+- `renderJobsWithSeverity()` - now sorts by priority and adds recommendations
+- `renderJobsJSONWithSeverity()` - now sorts and adds recommended/priority_reason fields
+- `jobsJSONJobEntry` struct - added `Recommended` and `PriorityReason` fields
+
+### Example Output
+
+```
+=== Prover Jobs (1 available) ===
+Nodes awaiting refinement. Claim one and refine the proof.
+Sorted by urgency: critical challenges first, then by depth.
+
+* [1.1] claim: "Step 1" [1 major challenge]
+
+Recommended: Start with [1.1] (has major challenge(s))
+Next: Run 'af claim <id>' to claim a prover job...
+
+=== Verifier Jobs (2 available) ===
+Nodes ready for review. Verify or challenge the proof.
+Sorted by depth: breadth-first review (shallower nodes first).
+
+* [1] claim: "Root claim"
+  [1.2] claim: "Another step"
+
+Recommended: Start with [1] (shallowest pending node)
 ```
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-8rkr** | Closed | Exit codes now use errors.ExitCode() for AFError types |
+| **vibefeld-3xre** | Closed | Priority sorting and recommended job indicators added |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 13 (was 14)
-- **Closed:** 536 (was 535)
+- **Open:** 12 (was 13)
+- **Closed:** 537 (was 536)
 
 ### Test Status
 - Build: PASS
@@ -47,14 +73,19 @@ os.Exit(errors.ExitCode(enhanced))
 # Build
 go build ./cmd/af
 
-# Test exit codes work (claim error returns exit 1 for retriable)
+# Test jobs output
 cd /tmp && rm -rf af-test && mkdir af-test && cd af-test
 ./af init --conjecture "Test" --author "test"
-./af claim 1 --owner p1 --role prover
-./af claim 1 --owner p2 --role prover 2>&1; echo "Exit: $?"  # Shows exit 1
+./af claim 1 --owner p1
+./af refine 1 --owner p1 "Step 1" "Step 2"
+./af release 1 --owner p1
+./af claim 1.1 --owner v1
+./af challenge 1.1 --reason "Needs detail"
+./af release 1.1 --owner v1
+./af jobs  # Shows prioritized output with recommendations
 
-# Run all tests
-go test ./...
+# JSON output
+./af jobs --format json | jq '.prover_jobs[0].recommended'  # true
 ```
 
 ## Remaining P1 Issues
@@ -81,10 +112,6 @@ go test ./...
 6. Boolean parameters in CLI (`vibefeld-yo5e`)
 7. Positional statement variability in refine (`vibefeld-9b6m`)
 
-### Future Improvement (Related to 8rkr)
-- Consider migrating service layer from plain Go errors to AFError types for better machine parsing
-- Add `--output json` flag for structured error output
-
 ## Quick Commands
 
 ```bash
@@ -100,6 +127,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 167:** Closed 1 issue (CLI UX - actionable jobs output with priority sorting and recommended indicators)
 **Session 166:** Closed 1 issue (CLI UX - exit codes for machine parsing via errors.ExitCode())
 **Session 165:** Closed 1 issue (CLI UX - verification checklist already implemented via get --checklist)
 **Session 164:** Closed 1 issue (CLI UX - enhanced error recovery suggestions for missing references)

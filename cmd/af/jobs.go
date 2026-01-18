@@ -233,28 +233,47 @@ func renderJobsWithSeverity(jobResult *jobs.JobResult, severityMap map[string]*s
 
 	var sb strings.Builder
 
-	// Sort prover jobs by ID for consistent output
+	// Sort prover jobs by priority (most critical first, then by depth)
 	proverJobs := make([]*node.Node, len(jobResult.ProverJobs))
 	copy(proverJobs, jobResult.ProverJobs)
 	sort.Slice(proverJobs, func(i, j int) bool {
+		pi := proverJobPriority(proverJobs[i], severityMap[proverJobs[i].ID.String()])
+		pj := proverJobPriority(proverJobs[j], severityMap[proverJobs[j].ID.String()])
+		if pi != pj {
+			return pi < pj
+		}
+		// Tiebreaker: ID for stable sort
 		return proverJobs[i].ID.String() < proverJobs[j].ID.String()
 	})
 
-	// Sort verifier jobs by ID for consistent output
+	// Sort verifier jobs by depth (breadth-first: shallower first)
 	verifierJobs := make([]*node.Node, len(jobResult.VerifierJobs))
 	copy(verifierJobs, jobResult.VerifierJobs)
 	sort.Slice(verifierJobs, func(i, j int) bool {
+		di := verifierJobPriority(verifierJobs[i])
+		dj := verifierJobPriority(verifierJobs[j])
+		if di != dj {
+			return di < dj
+		}
+		// Tiebreaker: ID for stable sort
 		return verifierJobs[i].ID.String() < verifierJobs[j].ID.String()
 	})
 
 	// Render prover jobs section
 	if len(proverJobs) > 0 {
 		sb.WriteString(fmt.Sprintf("=== Prover Jobs (%d available) ===\n", len(proverJobs)))
-		sb.WriteString("Nodes awaiting refinement. Claim one and refine the proof.\n\n")
-		for _, n := range proverJobs {
-			renderJobNodeWithSeverity(&sb, n, severityMap[n.ID.String()])
+		sb.WriteString("Nodes awaiting refinement. Claim one and refine the proof.\n")
+		sb.WriteString("Sorted by urgency: critical challenges first, then by depth.\n\n")
+		for i, n := range proverJobs {
+			isRecommended := i == 0
+			renderJobNodeWithPriority(&sb, n, severityMap[n.ID.String()], isRecommended, true)
 		}
-		sb.WriteString("\nNext: Run 'af claim <id>' to claim a prover job, then 'af refine <id>' to work on it.\n")
+		if len(proverJobs) > 0 {
+			recommended := proverJobs[0]
+			reason := proverPriorityReason(severityMap[recommended.ID.String()])
+			sb.WriteString(fmt.Sprintf("\nRecommended: Start with [%s] (%s)\n", recommended.ID.String(), reason))
+		}
+		sb.WriteString("Next: Run 'af claim <id>' to claim a prover job, then 'af refine <id>' to work on it.\n")
 	}
 
 	// Add separator between sections if both have jobs
@@ -265,11 +284,18 @@ func renderJobsWithSeverity(jobResult *jobs.JobResult, severityMap map[string]*s
 	// Render verifier jobs section
 	if len(verifierJobs) > 0 {
 		sb.WriteString(fmt.Sprintf("=== Verifier Jobs (%d available) ===\n", len(verifierJobs)))
-		sb.WriteString("Nodes ready for review. Verify or challenge the proof.\n\n")
-		for _, n := range verifierJobs {
-			renderJobNodeWithSeverity(&sb, n, severityMap[n.ID.String()])
+		sb.WriteString("Nodes ready for review. Verify or challenge the proof.\n")
+		sb.WriteString("Sorted by depth: breadth-first review (shallower nodes first).\n\n")
+		for i, n := range verifierJobs {
+			isRecommended := i == 0
+			renderJobNodeWithPriority(&sb, n, severityMap[n.ID.String()], isRecommended, false)
 		}
-		sb.WriteString("\nNext: Run 'af claim <id>' to claim a verifier job, then 'af accept <id>' to validate or 'af challenge <id>' to raise objections.\n")
+		if len(verifierJobs) > 0 {
+			recommended := verifierJobs[0]
+			reason := verifierPriorityReason(recommended)
+			sb.WriteString(fmt.Sprintf("\nRecommended: Start with [%s] (%s)\n", recommended.ID.String(), reason))
+		}
+		sb.WriteString("Next: Run 'af claim <id>' to claim a verifier job, then 'af accept <id>' to validate or 'af challenge <id>' to raise objections.\n")
 	}
 
 	return sb.String()
@@ -292,6 +318,79 @@ func renderJobNodeWithSeverity(sb *strings.Builder, n *node.Node, counts *severi
 	if n.ClaimedBy != "" {
 		sb.WriteString(fmt.Sprintf("         claimed by: %s\n", n.ClaimedBy))
 	}
+}
+
+// renderJobNodeWithPriority renders a single job node entry with priority indicator.
+// isRecommended marks the recommended starting job with a star.
+// isProver determines whether to show prover-specific or verifier-specific info.
+func renderJobNodeWithPriority(sb *strings.Builder, n *node.Node, counts *severityCounts, isRecommended bool, isProver bool) {
+	// Sanitize statement (remove control chars, normalize whitespace) but do NOT truncate
+	stmt := sanitizeJobStatement(n.Statement)
+
+	// Priority indicator
+	prefix := "  "
+	if isRecommended {
+		prefix = "* "
+	}
+
+	// Build the line with severity counts if present
+	severityStr := formatSeverityCounts(counts)
+	if severityStr != "" {
+		sb.WriteString(fmt.Sprintf("%s[%s] %s: %q %s\n", prefix, n.ID.String(), string(n.Type), stmt, severityStr))
+	} else {
+		sb.WriteString(fmt.Sprintf("%s[%s] %s: %q\n", prefix, n.ID.String(), string(n.Type), stmt))
+	}
+
+	// Show claimed-by info
+	if n.ClaimedBy != "" {
+		sb.WriteString(fmt.Sprintf("         claimed by: %s\n", n.ClaimedBy))
+	}
+}
+
+// proverJobPriority calculates a priority score for a prover job.
+// Lower score = higher priority. Factors:
+// - Critical challenges (weight 1000 per challenge)
+// - Major challenges (weight 100 per challenge)
+// - Shallower depth (weight 1 per level)
+func proverJobPriority(n *node.Node, counts *severityCounts) int {
+	score := 0
+	if counts != nil {
+		// Critical challenges are most urgent
+		score -= counts.Critical * 1000
+		// Major challenges next
+		score -= counts.Major * 100
+	}
+	// Add depth as tiebreaker (prefer shallower nodes)
+	score += n.Depth()
+	return score
+}
+
+// proverPriorityReason explains why a prover job is prioritized.
+func proverPriorityReason(counts *severityCounts) string {
+	if counts == nil {
+		return "oldest pending job"
+	}
+	if counts.Critical > 0 {
+		return "has critical challenge(s)"
+	}
+	if counts.Major > 0 {
+		return "has major challenge(s)"
+	}
+	return "shallowest depth"
+}
+
+// verifierJobPriority calculates a priority score for a verifier job.
+// Lower score = higher priority. Uses depth (breadth-first review).
+func verifierJobPriority(n *node.Node) int {
+	return n.Depth()
+}
+
+// verifierPriorityReason explains why a verifier job is prioritized.
+func verifierPriorityReason(n *node.Node) string {
+	if n.Depth() == 0 {
+		return "root node"
+	}
+	return "shallowest pending node"
 }
 
 // sanitizeJobStatement sanitizes statement text for display.
@@ -320,6 +419,8 @@ type jobsJSONJobEntry struct {
 	Type           string          `json:"type"`
 	Depth          int             `json:"depth"`
 	SeverityCounts *severityCounts `json:"severity_counts,omitempty"`
+	Recommended    bool            `json:"recommended,omitempty"`
+	PriorityReason string          `json:"priority_reason,omitempty"`
 }
 
 // jobsJSONOutput represents the JSON output for jobs command with severity info.
@@ -329,38 +430,73 @@ type jobsJSONOutput struct {
 }
 
 // renderJobsJSONWithSeverity renders jobs as JSON with severity counts included.
+// Jobs are sorted by priority and include recommended flags.
 func renderJobsJSONWithSeverity(jobResult *jobs.JobResult, severityMap map[string]*severityCounts) string {
 	if jobResult == nil {
 		return `{"prover_jobs":[],"verifier_jobs":[]}`
 	}
 
+	// Sort prover jobs by priority
+	proverJobs := make([]*node.Node, len(jobResult.ProverJobs))
+	copy(proverJobs, jobResult.ProverJobs)
+	sort.Slice(proverJobs, func(i, j int) bool {
+		pi := proverJobPriority(proverJobs[i], severityMap[proverJobs[i].ID.String()])
+		pj := proverJobPriority(proverJobs[j], severityMap[proverJobs[j].ID.String()])
+		if pi != pj {
+			return pi < pj
+		}
+		return proverJobs[i].ID.String() < proverJobs[j].ID.String()
+	})
+
+	// Sort verifier jobs by depth
+	verifierJobs := make([]*node.Node, len(jobResult.VerifierJobs))
+	copy(verifierJobs, jobResult.VerifierJobs)
+	sort.Slice(verifierJobs, func(i, j int) bool {
+		di := verifierJobPriority(verifierJobs[i])
+		dj := verifierJobPriority(verifierJobs[j])
+		if di != dj {
+			return di < dj
+		}
+		return verifierJobs[i].ID.String() < verifierJobs[j].ID.String()
+	})
+
 	output := jobsJSONOutput{
-		ProverJobs:   make([]jobsJSONJobEntry, 0, len(jobResult.ProverJobs)),
-		VerifierJobs: make([]jobsJSONJobEntry, 0, len(jobResult.VerifierJobs)),
+		ProverJobs:   make([]jobsJSONJobEntry, 0, len(proverJobs)),
+		VerifierJobs: make([]jobsJSONJobEntry, 0, len(verifierJobs)),
 	}
 
-	for _, job := range jobResult.ProverJobs {
+	for i, job := range proverJobs {
+		counts := severityMap[job.ID.String()]
 		entry := jobsJSONJobEntry{
 			NodeID:    job.ID.String(),
 			Statement: job.Statement,
 			Type:      string(job.Type),
 			Depth:     job.Depth(),
 		}
-		if counts := severityMap[job.ID.String()]; counts != nil {
+		if counts != nil {
 			entry.SeverityCounts = counts
+		}
+		if i == 0 {
+			entry.Recommended = true
+			entry.PriorityReason = proverPriorityReason(counts)
 		}
 		output.ProverJobs = append(output.ProverJobs, entry)
 	}
 
-	for _, job := range jobResult.VerifierJobs {
+	for i, job := range verifierJobs {
+		counts := severityMap[job.ID.String()]
 		entry := jobsJSONJobEntry{
 			NodeID:    job.ID.String(),
 			Statement: job.Statement,
 			Type:      string(job.Type),
 			Depth:     job.Depth(),
 		}
-		if counts := severityMap[job.ID.String()]; counts != nil {
+		if counts != nil {
 			entry.SeverityCounts = counts
+		}
+		if i == 0 {
+			entry.Recommended = true
+			entry.PriorityReason = verifierPriorityReason(job)
 		}
 		output.VerifierJobs = append(output.VerifierJobs, entry)
 	}
