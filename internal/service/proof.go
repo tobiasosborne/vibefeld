@@ -60,6 +60,22 @@ var ErrNodeNotFound = aferrors.New(aferrors.NODE_NOT_FOUND, "node not found")
 // Exit code: 3 (logic error)
 var ErrParentNotFound = aferrors.New(aferrors.PARENT_NOT_FOUND, "parent node not found")
 
+// ErrEmptyInput is returned when a required input is empty or whitespace.
+// Exit code: 3 (logic error)
+var ErrEmptyInput = aferrors.New(aferrors.EMPTY_INPUT, "required input cannot be empty")
+
+// ErrInvalidState is returned when an operation is attempted in an invalid state.
+// Exit code: 3 (logic error)
+var ErrInvalidState = aferrors.New(aferrors.INVALID_STATE, "invalid state for operation")
+
+// ErrAlreadyExists is returned when attempting to create something that already exists.
+// Exit code: 3 (logic error)
+var ErrAlreadyExists = aferrors.New(aferrors.ALREADY_EXISTS, "resource already exists")
+
+// ErrInvalidTimeout is returned when a timeout value is invalid (e.g., negative or zero).
+// Exit code: 3 (logic error)
+var ErrInvalidTimeout = aferrors.New(aferrors.INVALID_TIMEOUT, "timeout must be positive")
+
 // wrapSequenceMismatch converts ledger.ErrSequenceMismatch to ErrConcurrentModification
 // with additional context for the caller.
 func wrapSequenceMismatch(err error, operation string) error {
@@ -94,20 +110,20 @@ type ProofService struct {
 func NewProofService(path string) (*ProofService, error) {
 	// Validate path is not empty or whitespace
 	if strings.TrimSpace(path) == "" {
-		return nil, errors.New("path cannot be empty")
+		return nil, fmt.Errorf("%w: path", ErrEmptyInput)
 	}
 
 	// Check if path exists and is a directory
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, errors.New("path does not exist")
+			return nil, fmt.Errorf("%w: path does not exist", ErrInvalidState)
 		}
 		return nil, err
 	}
 
 	if !info.IsDir() {
-		return nil, errors.New("path is not a directory")
+		return nil, fmt.Errorf("%w: path is not a directory", ErrInvalidState)
 	}
 
 	return &ProofService{path: path}, nil
@@ -194,10 +210,10 @@ func (s *ProofService) validateChildCount(st *state.State, parentID types.NodeID
 func Init(proofDir, conjecture, author string) error {
 	// Validate inputs
 	if strings.TrimSpace(conjecture) == "" {
-		return errors.New("conjecture cannot be empty")
+		return fmt.Errorf("%w: conjecture", ErrEmptyInput)
 	}
 	if strings.TrimSpace(author) == "" {
-		return errors.New("author cannot be empty")
+		return fmt.Errorf("%w: author", ErrEmptyInput)
 	}
 
 	// Initialize the proof directory structure
@@ -218,7 +234,7 @@ func Init(proofDir, conjecture, author string) error {
 		return err
 	}
 	if count > 0 {
-		return errors.New("proof already initialized")
+		return fmt.Errorf("%w: proof already initialized", ErrAlreadyExists)
 	}
 
 	// Append the initialization event
@@ -351,7 +367,7 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 		return err
 	}
 	if !init {
-		return errors.New("proof not initialized")
+		return fmt.Errorf("%w: proof not initialized", ErrInvalidState)
 	}
 
 	// Validate depth against config
@@ -368,7 +384,7 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 
 	// Check if node already exists
 	if st.GetNode(id) != nil {
-		return errors.New("node already exists")
+		return fmt.Errorf("%w: node %s", ErrAlreadyExists, id.String())
 	}
 
 	// Validate child count for parent (if not root)
@@ -404,12 +420,12 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Duration) error {
 	// Validate owner
 	if strings.TrimSpace(owner) == "" {
-		return errors.New("owner cannot be empty")
+		return fmt.Errorf("%w: owner", ErrEmptyInput)
 	}
 
 	// Validate timeout
 	if timeout <= 0 {
-		return errors.New("timeout must be positive")
+		return ErrInvalidTimeout
 	}
 
 	// Load current state and capture sequence for CAS
@@ -427,7 +443,7 @@ func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Dur
 
 	// Check if node is available
 	if n.WorkflowState != schema.WorkflowAvailable {
-		return errors.New("node is not available")
+		return fmt.Errorf("%w: node %s is not available", ErrInvalidState, id.String())
 	}
 
 	// Get ledger and append claim event with CAS
@@ -456,12 +472,12 @@ func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Dur
 func (s *ProofService) RefreshClaim(id types.NodeID, owner string, timeout time.Duration) error {
 	// Validate owner
 	if strings.TrimSpace(owner) == "" {
-		return errors.New("owner cannot be empty")
+		return fmt.Errorf("%w: owner", ErrEmptyInput)
 	}
 
 	// Validate timeout
 	if timeout <= 0 {
-		return errors.New("timeout must be positive")
+		return ErrInvalidTimeout
 	}
 
 	// Load current state and capture sequence for CAS
@@ -652,7 +668,7 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 
 	// Check if child already exists
 	if st.GetNode(spec.ChildID) != nil {
-		return errors.New("child node already exists")
+		return fmt.Errorf("%w: node %s", ErrAlreadyExists, spec.ChildID.String())
 	}
 
 	// Validate child count for parent
@@ -1081,7 +1097,7 @@ func (s *ProofService) AddDefinition(name, content string) (string, error) {
 func (s *ProofService) AddAssumption(statement string) (string, error) {
 	// Validate statement
 	if strings.TrimSpace(statement) == "" {
-		return "", errors.New("assumption statement cannot be empty")
+		return "", fmt.Errorf("%w: assumption statement", ErrEmptyInput)
 	}
 
 	// Create the assumption
@@ -1103,10 +1119,10 @@ func (s *ProofService) AddAssumption(statement string) (string, error) {
 func (s *ProofService) AddExternal(name, source string) (string, error) {
 	// Validate inputs
 	if strings.TrimSpace(name) == "" {
-		return "", errors.New("external reference name cannot be empty")
+		return "", fmt.Errorf("%w: external reference name", ErrEmptyInput)
 	}
 	if strings.TrimSpace(source) == "" {
-		return "", errors.New("external reference source cannot be empty")
+		return "", fmt.Errorf("%w: external reference source", ErrEmptyInput)
 	}
 
 	// Create the external
@@ -1131,7 +1147,7 @@ func (s *ProofService) AddExternal(name, source string) (string, error) {
 func (s *ProofService) ExtractLemma(sourceNodeID types.NodeID, statement string) (string, error) {
 	// Validate statement
 	if strings.TrimSpace(statement) == "" {
-		return "", errors.New("lemma statement cannot be empty")
+		return "", fmt.Errorf("%w: lemma statement", ErrEmptyInput)
 	}
 
 	// Load state and capture sequence for CAS
@@ -1420,7 +1436,7 @@ func (s *ProofService) AllocateChildID(parentID types.NodeID) (types.NodeID, err
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, children []ChildSpec) ([]types.NodeID, error) {
 	if len(children) == 0 {
-		return nil, errors.New("at least one child specification is required")
+		return nil, fmt.Errorf("%w: at least one child specification is required", ErrEmptyInput)
 	}
 
 	// Validate depth for children (all children will have parent depth + 1)
@@ -1693,10 +1709,10 @@ func (s *ProofService) WouldCreateCycle(fromID, toID types.NodeID) (cycle.CycleR
 func (s *ProofService) AmendNode(nodeID types.NodeID, owner, newStatement string) error {
 	// Validate inputs
 	if strings.TrimSpace(owner) == "" {
-		return errors.New("owner cannot be empty")
+		return fmt.Errorf("%w: owner", ErrEmptyInput)
 	}
 	if strings.TrimSpace(newStatement) == "" {
-		return errors.New("statement cannot be empty")
+		return fmt.Errorf("%w: statement", ErrEmptyInput)
 	}
 
 	// Load current state and capture sequence for CAS

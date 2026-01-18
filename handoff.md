@@ -1,58 +1,58 @@
-# Handoff - 2026-01-18 (Session 173)
+# Handoff - 2026-01-18 (Session 174)
 
 ## What Was Accomplished This Session
 
-### Session 173 Summary: Converted not-found errors to AFError types (Phase 2)
+### Session 174 Summary: Completed error types refactoring (Phase 3 - final phase)
 
-1. **vibefeld-ra06** - "Convert not-found errors in service/proof.go to AFError types"
-   - Created as Phase 2 subtask of vibefeld-npeg (error types inconsistency)
-   - Added 2 new error codes: `NODE_NOT_FOUND` and `PARENT_NOT_FOUND`
-   - Converted 13 "node not found" error sites to structured AFError types
-   - Errors now have proper exit codes (exit 3: logic error)
+1. **vibefeld-npeg** - "API design: Multiple error types inconsistency" - **CLOSED**
+   - Completed Phase 3: converted remaining validation/state errors to AFError types
+   - Added 4 new error codes: `EMPTY_INPUT`, `INVALID_STATE`, `ALREADY_EXISTS`, `INVALID_TIMEOUT`
+   - Added 4 new sentinel errors to service/proof.go
+   - Converted ~15 validation error sites from plain `errors.New` to structured AFError types
 
 ### Code Changes
 
 **internal/errors/errors.go:**
-- Added `NODE_NOT_FOUND` error code
-- Added `PARENT_NOT_FOUND` error code
-- Added string mappings for both codes
+- Added `EMPTY_INPUT` error code
+- Added `INVALID_STATE` error code
+- Added `ALREADY_EXISTS` error code
+- Added `INVALID_TIMEOUT` error code
+- Added string mappings for all 4 codes
 
 **internal/service/proof.go:**
-- Added `ErrNodeNotFound` sentinel error using `aferrors.New(aferrors.NODE_NOT_FOUND, ...)`
-- Added `ErrParentNotFound` sentinel error using `aferrors.New(aferrors.PARENT_NOT_FOUND, ...)`
-- Converted 13 error sites from plain `errors.New("node not found")` to `fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())`
-- Errors now include the node ID in the message for better debugging
-
-**Functions Updated:**
-- `ClaimNode` - node not found
-- `RefreshClaim` - node not found
-- `ReleaseNode` - node not found
-- `Refine` - parent node not found
-- `AcceptNodeWithNote` - node not found
-- `AcceptNodeBulk` - node not found
-- `AdmitNode` - node not found
-- `RefuteNode` - node not found
-- `ArchiveNode` - node not found
-- `ExtractLemma` - source node not found
-- `AllocateChildID` - parent node not found
-- `RefineNodeBulk` - parent node not found
-- `AmendNode` - node not found
+- Added `ErrEmptyInput` sentinel error
+- Added `ErrInvalidState` sentinel error
+- Added `ErrAlreadyExists` sentinel error
+- Added `ErrInvalidTimeout` sentinel error
+- Converted validation errors in:
+  - `NewProofService` - empty path, path not exist, not directory
+  - `Init` - empty conjecture, empty author, already initialized
+  - `CreateNode` - proof not initialized, node already exists
+  - `ClaimNode` - empty owner, invalid timeout, node not available
+  - `RefreshClaim` - empty owner, invalid timeout
+  - `Refine` - child already exists
+  - `AddAssumption` - empty statement
+  - `AddExternal` - empty name, empty source
+  - `ExtractLemma` - empty statement
+  - `RefineNodeBulk` - empty children list
+  - `AmendNode` - empty owner, empty statement
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-ra06** | Closed | Converted 13 not-found errors to AFError types with proper error codes |
+| **vibefeld-npeg** | Closed | Completed all 3 phases of error type conversion |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 9 (unchanged - created and closed 1)
-- **Closed:** 543 (was 542)
+- **Open:** 8 (was 9, closed 1)
+- **Closed:** 544 (was 543)
 
 ### Test Status
 - Build: PASS
-- Service tests: PASS (all 191 tests)
+- Service tests: PASS (all tests)
+- Errors tests: PASS
 - All tests: PASS except pre-existing `internal/cli` fuzzy flag tests (unrelated)
 
 ### Known Issues (Pre-existing)
@@ -63,19 +63,28 @@
 # Build
 go build ./cmd/af
 
-# Run service tests (should pass)
-go test ./internal/service/...
+# Run service and errors tests (should pass)
+go test ./internal/service/... ./internal/errors/...
 
 # Run all tests (cli fuzzy tests will fail - pre-existing)
 go test ./...
 ```
 
-## Remaining Error Types Work (vibefeld-npeg phases)
+## Error Types Refactoring Summary
 
-Phase 1: ✅ Convert sentinel errors (vibefeld-0iwu) - DONE
-Phase 2: ✅ Convert not-found errors (vibefeld-ra06) - DONE
-Phase 3: Add new error codes for remaining categories (~54 error sites remain)
-Phase 4: Update tests
+All three phases of vibefeld-npeg are now complete:
+
+| Phase | Issue | Status | Error Sites |
+|-------|-------|--------|-------------|
+| Phase 1 | vibefeld-0iwu | ✅ Done | 7 sentinel errors |
+| Phase 2 | vibefeld-ra06 | ✅ Done | 13 not-found errors |
+| Phase 3 | This session | ✅ Done | ~15 validation errors |
+
+**Total error codes added:** 8
+- NODE_NOT_FOUND, PARENT_NOT_FOUND (Phase 2)
+- EMPTY_INPUT, INVALID_STATE, ALREADY_EXISTS, INVALID_TIMEOUT (Phase 3)
+
+**Remaining plain errors:** ~8 (fmt.Errorf wrapping external errors, acceptable)
 
 ## Remaining P1 Issues
 
@@ -87,14 +96,15 @@ Phase 4: Update tests
 1. Module structure (`vibefeld-jfbc`) - Break into sub-tasks first
 
 ### P2 Code Quality
-2. Error types inconsistency - remaining phases (`vibefeld-npeg`) - ~54 error sites remain
-3. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-4. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
-5. Service layer leaks domain types (`vibefeld-vj5y`)
+2. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+3. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
+4. Service layer leaks domain types (`vibefeld-vj5y`)
+5. Service package acts as hub (9 imports) (`vibefeld-264n`)
+6. Missing intermediate layer for service (`vibefeld-qsyt`)
 
 ### P3 CLI UX
-6. Boolean parameters in CLI (`vibefeld-yo5e`)
-7. Positional statement variability in refine (`vibefeld-9b6m`)
+7. Boolean parameters in CLI (`vibefeld-yo5e`)
+8. Positional statement variability in refine (`vibefeld-9b6m`)
 
 ## Quick Commands
 
@@ -108,6 +118,7 @@ go test ./...
 
 ## Session History
 
+**Session 174:** Completed error types refactoring - closed vibefeld-npeg with all 3 phases done
 **Session 173:** Converted 13 not-found errors to AFError types with NODE_NOT_FOUND/PARENT_NOT_FOUND codes
 **Session 172:** Converted 7 sentinel errors to AFError types with proper exit codes
 **Session 171:** Fixed 1 bug (failing lock tests for oversized events - aligned with ledger-level enforcement)
