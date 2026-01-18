@@ -1,46 +1,47 @@
-# Handoff - 2026-01-18 (Session 180)
+# Handoff - 2026-01-18 (Session 181)
 
 ## What Was Accomplished This Session
 
-### Session 180 Summary: Added pending-def service methods
+### Session 181 Summary: Added assumption/external service methods
 
-Completed **vibefeld-rvzl** - Added pending-def wrapper methods to ProofService and migrated cmd/af files to use them instead of direct fs calls.
+Completed **vibefeld-li8a** - Added ReadAssumption, ListAssumptions, ReadExternal, ListExternals wrapper methods to ProofService and migrated cmd/af files to use them instead of direct fs calls.
 
 ### Migration Statistics
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Production files importing fs for pending-defs | 4 | 0 |
-| Service pending-def methods | 0 | 5 |
+| Production files importing fs for assumptions/externals | 4 | 1* |
+| Service assumption/external methods | 0 | 4 |
+
+*Note: verify_external.go still imports fs for WriteExternal (write operation not in scope)
 
 ### What Was Added to ProofService
 
 **Methods:**
-- `WritePendingDef(nodeID, pd)` - writes pending definition to proof dir
-- `ReadPendingDef(nodeID)` - reads pending definition from proof dir
-- `ListPendingDefs()` - lists all pending definition node IDs
-- `DeletePendingDef(nodeID)` - removes pending definition (idempotent)
-- `LoadAllPendingDefs()` - convenience method combining list and read
+- `ReadAssumption(id)` - reads assumption by ID from proof dir
+- `ListAssumptions()` - lists all assumption IDs
+- `ReadExternal(id)` - reads external reference by ID from proof dir
+- `ListExternals()` - lists all external reference IDs
 
 ### Files Changed
 
-- `internal/service/proof.go` - Added 5 pending-def wrapper methods
-- 4 production cmd/af files - Changed from `fs.*` to `svc.*`:
-  - `pending_defs.go` - Removed `getAllPendingDefs()` helper, use `svc.LoadAllPendingDefs()`
-  - `request_def.go` - Use `svc.WritePendingDef()`
-  - `def_reject.go` - Use `svc.LoadAllPendingDefs()` and `svc.WritePendingDef()`
-  - `progress.go` - Changed `loadPendingDefs()` to take service instead of path
+- `internal/service/proof.go` - Added 4 assumption/external wrapper methods
+- 4 cmd/af files updated:
+  - `assumptions.go` - Removed fs import, updated `getAllAssumptions()` and `findAssumption()` helpers to use service
+  - `externals.go` - Removed fs import, updated `getAllExternals()` to use service
+  - `pending_refs.go` - Removed fs import, updated `getPendingExternals()` to use service
+  - `verify_external.go` - Updated `ReadExternal` call to use service (still imports fs for WriteExternal)
 
 ### Issue Updates
 
-1. **Closed vibefeld-rvzl** - Move fs pending-def operations to service layer
+1. **Closed vibefeld-li8a** - Move fs assumption/external operations to service layer
    - Contributes to vibefeld-jfbc (P1 epic: reduce cmd/af imports from 17 to 2)
 
 ## Current State
 
 ### Issue Statistics
-- **Closed this session:** 1 (vibefeld-rvzl)
-- **Open:** ~9
+- **Closed this session:** 1 (vibefeld-li8a)
+- **Open:** ~8
 - **Ready for work:** ~8
 
 ### Test Status
@@ -54,10 +55,9 @@ Completed **vibefeld-rvzl** - Added pending-def wrapper methods to ProofService 
 
 ## Recommended Next Steps
 
-### Continue Import Reduction (P1 Epic vibefeld-jfbc)
-
-Remaining sub-task:
-1. **vibefeld-li8a** - Move fs assumption/external operations to service layer
+### P1 Epic vibefeld-jfbc Progress
+The import reduction epic has made significant progress. Two sub-tasks remain:
+- No further sub-tasks filed - need to analyze remaining fs imports and create new sub-tasks if needed
 
 ### P2 Code Quality (API Design)
 - `vibefeld-9maw` - Inconsistent return types for ID-returning operations
@@ -81,6 +81,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 181:** Added assumption/external service methods, migrated 4 files, closed vibefeld-li8a
 **Session 180:** Added pending-def service methods, migrated 4 files, closed vibefeld-rvzl
 **Session 179:** Re-exported schema constants through service, migrated 11 production files, closed vibefeld-0zsm
 **Session 178:** Added service.InitProofDir, migrated 32 test files, closed vibefeld-x5mh

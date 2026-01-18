@@ -1810,3 +1810,29 @@ func (s *ProofService) LoadAllPendingDefs() ([]*node.PendingDef, error) {
 
 	return pendingDefs, nil
 }
+
+// ReadAssumption reads an assumption by ID from the proof directory.
+// This is a convenience wrapper around fs.ReadAssumption that uses the service's path.
+func (s *ProofService) ReadAssumption(id string) (*node.Assumption, error) {
+	return fs.ReadAssumption(s.path, id)
+}
+
+// ListAssumptions returns all assumption IDs in the proof.
+// Returns an empty slice (not an error) if no assumptions exist.
+// This is a convenience wrapper around fs.ListAssumptions that uses the service's path.
+func (s *ProofService) ListAssumptions() ([]string, error) {
+	return fs.ListAssumptions(s.path)
+}
+
+// ReadExternal reads an external reference by ID from the proof directory.
+// This is a convenience wrapper around fs.ReadExternal that uses the service's path.
+func (s *ProofService) ReadExternal(id string) (*node.External, error) {
+	return fs.ReadExternal(s.path, id)
+}
+
+// ListExternals returns all external reference IDs in the proof.
+// Returns an empty slice (not an error) if no external references exist.
+// This is a convenience wrapper around fs.ListExternals that uses the service's path.
+func (s *ProofService) ListExternals() ([]string, error) {
+	return fs.ListExternals(s.path)
+}

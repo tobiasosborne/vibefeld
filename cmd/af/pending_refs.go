@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -92,7 +91,7 @@ func runPendingRefs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get all pending refs (externals that are not verified)
-	pendingRefs, err := getPendingExternals(svc.Path())
+	pendingRefs, err := getPendingExternals(svc)
 	if err != nil {
 		return fmt.Errorf("error loading pending references: %w", err)
 	}
@@ -143,7 +142,7 @@ func runPendingRef(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get all pending refs and find by name or ID
-	pendingRefs, err := getPendingExternals(svc.Path())
+	pendingRefs, err := getPendingExternals(svc)
 	if err != nil {
 		return fmt.Errorf("error loading pending references: %w", err)
 	}
@@ -171,9 +170,9 @@ func runPendingRef(cmd *cobra.Command, args []string) error {
 
 // getPendingExternals returns all externals that are pending verification.
 // Currently, all externals are considered pending since verification is not yet implemented.
-func getPendingExternals(proofDir string) ([]*node.External, error) {
-	// List external IDs from filesystem
-	ids, err := fs.ListExternals(proofDir)
+func getPendingExternals(svc *service.ProofService) ([]*node.External, error) {
+	// List external IDs from service
+	ids, err := svc.ListExternals()
 	if err != nil {
 		// If externals directory doesn't exist, return empty list
 		if strings.Contains(err.Error(), "no such file or directory") {
@@ -185,7 +184,7 @@ func getPendingExternals(proofDir string) ([]*node.External, error) {
 	// Load each external
 	externals := make([]*node.External, 0, len(ids))
 	for _, id := range ids {
-		ext, err := fs.ReadExternal(proofDir, id)
+		ext, err := svc.ReadExternal(id)
 		if err != nil {
 			return nil, err
 		}

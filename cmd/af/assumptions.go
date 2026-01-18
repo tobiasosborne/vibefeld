@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -109,7 +108,7 @@ func runAssumptions(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get all assumptions
-	assumptions, err := getAllAssumptions(svc.Path())
+	assumptions, err := getAllAssumptions(svc)
 	if err != nil {
 		return fmt.Errorf("error loading assumptions: %w", err)
 	}
@@ -160,7 +159,7 @@ func runAssumption(cmd *cobra.Command, args []string) error {
 	}
 
 	// Try to find the assumption
-	assumption, err := findAssumption(svc.Path(), assumptionID)
+	assumption, err := findAssumption(svc, assumptionID)
 	if err != nil {
 		return err
 	}
@@ -174,9 +173,9 @@ func runAssumption(cmd *cobra.Command, args []string) error {
 }
 
 // getAllAssumptions returns all assumptions from the proof directory.
-func getAllAssumptions(proofDir string) ([]*node.Assumption, error) {
-	// List assumption IDs from filesystem
-	ids, err := fs.ListAssumptions(proofDir)
+func getAllAssumptions(svc *service.ProofService) ([]*node.Assumption, error) {
+	// List assumption IDs from service
+	ids, err := svc.ListAssumptions()
 	if err != nil {
 		// If assumptions directory doesn't exist, return empty list
 		if strings.Contains(err.Error(), "no such file or directory") {
@@ -188,7 +187,7 @@ func getAllAssumptions(proofDir string) ([]*node.Assumption, error) {
 	// Load each assumption
 	assumptions := make([]*node.Assumption, 0, len(ids))
 	for _, id := range ids {
-		asm, err := fs.ReadAssumption(proofDir, id)
+		asm, err := svc.ReadAssumption(id)
 		if err != nil {
 			return nil, err
 		}
@@ -199,15 +198,15 @@ func getAllAssumptions(proofDir string) ([]*node.Assumption, error) {
 }
 
 // findAssumption finds an assumption by ID or partial ID.
-func findAssumption(proofDir, searchID string) (*node.Assumption, error) {
+func findAssumption(svc *service.ProofService, searchID string) (*node.Assumption, error) {
 	// First try exact match
-	asm, err := fs.ReadAssumption(proofDir, searchID)
+	asm, err := svc.ReadAssumption(searchID)
 	if err == nil {
 		return asm, nil
 	}
 
 	// Try partial match
-	ids, err := fs.ListAssumptions(proofDir)
+	ids, err := svc.ListAssumptions()
 	if err != nil {
 		return nil, fmt.Errorf("assumption %q not found", searchID)
 	}
@@ -215,7 +214,7 @@ func findAssumption(proofDir, searchID string) (*node.Assumption, error) {
 	var matches []*node.Assumption
 	for _, id := range ids {
 		if strings.HasPrefix(id, searchID) {
-			asm, err := fs.ReadAssumption(proofDir, id)
+			asm, err := svc.ReadAssumption(id)
 			if err == nil {
 				matches = append(matches, asm)
 			}

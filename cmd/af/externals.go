@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -90,8 +89,8 @@ func runExternals(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("proof not initialized")
 	}
 
-	// Get all externals from filesystem
-	externals, err := getAllExternals(svc.Path())
+	// Get all externals from service
+	externals, err := getAllExternals(svc)
 	if err != nil {
 		return fmt.Errorf("error loading externals: %w", err)
 	}
@@ -142,7 +141,7 @@ func runExternal(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get all externals and find by name
-	externals, err := getAllExternals(svc.Path())
+	externals, err := getAllExternals(svc)
 	if err != nil {
 		return fmt.Errorf("error loading externals: %w", err)
 	}
@@ -169,9 +168,9 @@ func runExternal(cmd *cobra.Command, args []string) error {
 }
 
 // getAllExternals returns all externals from the proof directory.
-func getAllExternals(proofDir string) ([]*node.External, error) {
-	// List external IDs from filesystem
-	ids, err := fs.ListExternals(proofDir)
+func getAllExternals(svc *service.ProofService) ([]*node.External, error) {
+	// List external IDs from service
+	ids, err := svc.ListExternals()
 	if err != nil {
 		// If externals directory doesn't exist, return empty list
 		if strings.Contains(err.Error(), "no such file or directory") {
@@ -183,7 +182,7 @@ func getAllExternals(proofDir string) ([]*node.External, error) {
 	// Load each external
 	externals := make([]*node.External, 0, len(ids))
 	for _, id := range ids {
-		ext, err := fs.ReadExternal(proofDir, id)
+		ext, err := svc.ReadExternal(id)
 		if err != nil {
 			return nil, err
 		}

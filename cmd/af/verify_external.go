@@ -12,6 +12,10 @@ import (
 	"github.com/tobias/vibefeld/internal/service"
 )
 
+// Note: We keep the fs import for fs.WriteExternal which is used to persist the verification.
+// Only ReadExternal is moved to service layer for reading; WriteExternal is a write operation
+// that is called once after modification and doesn't need cmd/af import reduction.
+
 // newVerifyExternalCmd creates the verify-external command for marking an external
 // reference as verified by a human reviewer.
 func newVerifyExternalCmd() *cobra.Command {
@@ -73,8 +77,8 @@ func runVerifyExternal(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("proof not initialized")
 	}
 
-	// Read the external from filesystem
-	ext, err := fs.ReadExternal(svc.Path(), extID)
+	// Read the external from service
+	ext, err := svc.ReadExternal(extID)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such file") ||
 			strings.Contains(err.Error(), "does not exist") ||
