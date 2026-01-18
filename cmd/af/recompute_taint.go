@@ -4,31 +4,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/taint"
 )
-
-// TaintChange represents a change in taint state for a node.
-type TaintChange struct {
-	NodeID   string          `json:"node_id"`
-	OldTaint node.TaintState `json:"old_taint"`
-	NewTaint node.TaintState `json:"new_taint"`
-}
-
-// RecomputeTaintResult represents the result of recomputing taint.
-type RecomputeTaintResult struct {
-	TotalNodes   int           `json:"total_nodes"`
-	NodesChanged int           `json:"nodes_changed"`
-	Changes      []TaintChange `json:"changes"`
-	DryRun       bool          `json:"dry_run"`
-}
 
 // newRecomputeTaintCmd creates the recompute-taint command.
 func newRecomputeTaintCmd() *cobra.Command {
@@ -90,130 +70,18 @@ func runRecomputeTaint(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error accessing proof directory: %w", err)
 	}
 
-	// Check if proof is initialized by loading state
-	st, err := svc.LoadState()
+	// Recompute taint through service layer
+	result, err := svc.RecomputeAllTaint(dryRun)
 	if err != nil {
-		return fmt.Errorf("error loading proof state: %w", err)
-	}
-
-	// Get all nodes
-	allNodes := st.AllNodes()
-	if len(allNodes) == 0 {
-		return fmt.Errorf("proof not initialized or empty")
-	}
-
-	// Track changes
-	var changes []TaintChange
-	oldTaints := make(map[string]node.TaintState)
-
-	// Store old taint states
-	for _, n := range allNodes {
-		oldTaints[n.ID.String()] = n.TaintState
-	}
-
-	// Sort nodes by depth (shallower first) to process parents before children
-	sortNodesByDepth(allNodes)
-
-	// Build node map for ancestor lookup
-	nodeMap := make(map[string]*node.Node)
-	for _, n := range allNodes {
-		nodeMap[n.ID.String()] = n
-	}
-
-	// Recompute taint for each node
-	for _, n := range allNodes {
-		// Get ancestors
-		ancestors := getNodeAncestors(n, nodeMap)
-
-		// Compute new taint
-		newTaint := taint.ComputeTaint(n, ancestors)
-
-		// Check if changed
-		if n.TaintState != newTaint {
-			changes = append(changes, TaintChange{
-				NodeID:   n.ID.String(),
-				OldTaint: n.TaintState,
-				NewTaint: newTaint,
-			})
-			// Update node in memory (for cascade effect)
-			n.TaintState = newTaint
-		}
-	}
-
-	// Build result
-	result := RecomputeTaintResult{
-		TotalNodes:   len(allNodes),
-		NodesChanged: len(changes),
-		Changes:      changes,
-		DryRun:       dryRun,
-	}
-
-	// If not dry-run, persist changes to ledger
-	if !dryRun && len(changes) > 0 {
-		if err := persistTaintChanges(dir, changes, st.LatestSeq()); err != nil {
-			return fmt.Errorf("error persisting taint changes: %w", err)
-		}
+		return fmt.Errorf("error recomputing taint: %w", err)
 	}
 
 	// Output result
 	return outputRecomputeTaintResult(cmd, result, verbose, format)
 }
 
-// sortNodesByDepth sorts nodes by their depth (shallower first).
-func sortNodesByDepth(nodes []*node.Node) {
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].ID.Depth() < nodes[j].ID.Depth()
-	})
-}
-
-// getNodeAncestors returns the ancestor nodes for a given node.
-func getNodeAncestors(n *node.Node, nodeMap map[string]*node.Node) []*node.Node {
-	var ancestors []*node.Node
-	parentID, hasParent := n.ID.Parent()
-	for hasParent {
-		if parent, ok := nodeMap[parentID.String()]; ok {
-			ancestors = append(ancestors, parent)
-		}
-		parentID, hasParent = parentID.Parent()
-	}
-	return ancestors
-}
-
-// persistTaintChanges writes TaintRecomputed events to the ledger.
-func persistTaintChanges(dir string, changes []TaintChange, expectedSeq int) error {
-	ledgerDir := filepath.Join(dir, "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
-	if err != nil {
-		return err
-	}
-
-	// Append events for each change
-	seq := expectedSeq
-	for _, change := range changes {
-		// Parse the node ID
-		nodeID, err := parseNodeID(change.NodeID)
-		if err != nil {
-			return fmt.Errorf("invalid node ID %q: %w", change.NodeID, err)
-		}
-
-		event := ledger.NewTaintRecomputed(nodeID, change.NewTaint)
-		newSeq, err := ldg.AppendIfSequence(event, seq)
-		if err != nil {
-			return err
-		}
-		seq = newSeq
-	}
-
-	return nil
-}
-
-// parseNodeID parses a node ID string and returns a service.NodeID.
-func parseNodeID(s string) (service.NodeID, error) {
-	return service.ParseNodeID(s)
-}
-
 // outputRecomputeTaintResult outputs the result based on format.
-func outputRecomputeTaintResult(cmd *cobra.Command, result RecomputeTaintResult, verbose bool, format string) error {
+func outputRecomputeTaintResult(cmd *cobra.Command, result *service.RecomputeTaintResult, verbose bool, format string) error {
 	switch strings.ToLower(format) {
 	case "json":
 		return outputRecomputeTaintJSON(cmd, result)
@@ -223,7 +91,7 @@ func outputRecomputeTaintResult(cmd *cobra.Command, result RecomputeTaintResult,
 }
 
 // outputRecomputeTaintJSON outputs the result in JSON format.
-func outputRecomputeTaintJSON(cmd *cobra.Command, result RecomputeTaintResult) error {
+func outputRecomputeTaintJSON(cmd *cobra.Command, result *service.RecomputeTaintResult) error {
 	data, err := json.Marshal(result)
 	if err != nil {
 		return fmt.Errorf("error marshaling JSON: %w", err)
@@ -233,7 +101,7 @@ func outputRecomputeTaintJSON(cmd *cobra.Command, result RecomputeTaintResult) e
 }
 
 // outputRecomputeTaintText outputs the result in text format.
-func outputRecomputeTaintText(cmd *cobra.Command, result RecomputeTaintResult, verbose bool) error {
+func outputRecomputeTaintText(cmd *cobra.Command, result *service.RecomputeTaintResult, verbose bool) error {
 	if result.DryRun {
 		fmt.Fprintln(cmd.OutOrStdout(), "[Dry run] Taint recomputation preview:")
 	} else {

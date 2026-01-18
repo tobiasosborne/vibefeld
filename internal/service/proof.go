@@ -98,6 +98,21 @@ func formatBlockingChallengesError(nodeID types.NodeID, challenges []*state.Chal
 		ErrBlockingChallenges, nodeID.String(), len(challenges), strings.Join(ids, ", "))
 }
 
+// TaintChange represents a change in taint state for a node.
+type TaintChange struct {
+	NodeID   string     `json:"node_id"`
+	OldTaint TaintState `json:"old_taint"`
+	NewTaint TaintState `json:"new_taint"`
+}
+
+// RecomputeTaintResult represents the result of recomputing taint for all nodes.
+type RecomputeTaintResult struct {
+	TotalNodes   int           `json:"total_nodes"`
+	NodesChanged int           `json:"nodes_changed"`
+	Changes      []TaintChange `json:"changes"`
+	DryRun       bool          `json:"dry_run"`
+}
+
 // ProofService orchestrates proof operations across ledger, state, locks, and filesystem.
 // It provides a high-level facade for proof manipulation operations.
 type ProofService struct {
@@ -1835,4 +1850,125 @@ func (s *ProofService) ReadExternal(id string) (*node.External, error) {
 // This is a convenience wrapper around fs.ListExternals that uses the service's path.
 func (s *ProofService) ListExternals() ([]string, error) {
 	return fs.ListExternals(s.path)
+}
+
+// RecomputeAllTaint recomputes taint state for all nodes in the proof tree.
+// If dryRun is true, returns what would change without applying changes.
+// Otherwise, persists TaintRecomputed events to the ledger for each changed node.
+//
+// Taint propagates through the proof tree based on epistemic states:
+// - Validated nodes are clean
+// - Admitted nodes are self_admitted
+// - Children of self_admitted/tainted nodes become tainted
+// - Pending nodes are unresolved
+func (s *ProofService) RecomputeAllTaint(dryRun bool) (*RecomputeTaintResult, error) {
+	// Load current state
+	st, err := s.LoadState()
+	if err != nil {
+		return nil, fmt.Errorf("error loading proof state: %w", err)
+	}
+
+	// Get all nodes
+	allNodes := st.AllNodes()
+	if len(allNodes) == 0 {
+		return nil, fmt.Errorf("proof not initialized or empty")
+	}
+
+	// Track changes
+	var changes []TaintChange
+	oldTaints := make(map[string]node.TaintState)
+
+	// Store old taint states
+	for _, n := range allNodes {
+		oldTaints[n.ID.String()] = n.TaintState
+	}
+
+	// Sort nodes by depth (shallower first) to process parents before children
+	sortNodesByDepthForTaint(allNodes)
+
+	// Build node map for ancestor lookup
+	nodeMap := make(map[string]*node.Node)
+	for _, n := range allNodes {
+		nodeMap[n.ID.String()] = n
+	}
+
+	// Recompute taint for each node
+	for _, n := range allNodes {
+		// Get ancestors
+		ancestors := getNodeAncestorsForTaint(n, nodeMap)
+
+		// Compute new taint
+		newTaint := taint.ComputeTaint(n, ancestors)
+
+		// Check if changed
+		if n.TaintState != newTaint {
+			changes = append(changes, TaintChange{
+				NodeID:   n.ID.String(),
+				OldTaint: TaintState(n.TaintState),
+				NewTaint: TaintState(newTaint),
+			})
+			// Update node in memory (for cascade effect)
+			n.TaintState = newTaint
+		}
+	}
+
+	// Build result
+	result := &RecomputeTaintResult{
+		TotalNodes:   len(allNodes),
+		NodesChanged: len(changes),
+		Changes:      changes,
+		DryRun:       dryRun,
+	}
+
+	// If not dry-run, persist changes to ledger
+	if !dryRun && len(changes) > 0 {
+		ledgerDir := filepath.Join(s.path, "ledger")
+		ldg, err := ledger.NewLedger(ledgerDir)
+		if err != nil {
+			return nil, err
+		}
+
+		// Append events for each change
+		seq := st.LatestSeq()
+		for _, change := range changes {
+			nodeID, err := types.Parse(change.NodeID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid node ID %q: %w", change.NodeID, err)
+			}
+
+			event := ledger.NewTaintRecomputed(nodeID, node.TaintState(change.NewTaint))
+			newSeq, err := ldg.AppendIfSequence(event, seq)
+			if err != nil {
+				return nil, err
+			}
+			seq = newSeq
+		}
+	}
+
+	return result, nil
+}
+
+// sortNodesByDepthForTaint sorts nodes by their depth (shallower first).
+func sortNodesByDepthForTaint(nodes []*node.Node) {
+	// Using a simple insertion sort since nodes are already mostly ordered
+	for i := 1; i < len(nodes); i++ {
+		j := i
+		for j > 0 && nodes[j].ID.Depth() < nodes[j-1].ID.Depth() {
+			nodes[j], nodes[j-1] = nodes[j-1], nodes[j]
+			j--
+		}
+	}
+}
+
+// getNodeAncestorsForTaint returns the ancestor nodes for a given node.
+func getNodeAncestorsForTaint(n *node.Node, nodeMap map[string]*node.Node) []*node.Node {
+	var ancestors []*node.Node
+	parentID, hasParent := n.ID.Parent()
+	for hasParent {
+		if parent, ok := nodeMap[parentID.String()]; ok {
+			ancestors = append(ancestors, parent)
+		}
+		parentID, hasParent = parentID.Parent()
+	}
+	return ancestors
 }

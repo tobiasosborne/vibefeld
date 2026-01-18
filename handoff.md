@@ -1,47 +1,53 @@
-# Handoff - 2026-01-18 (Session 185)
+# Handoff - 2026-01-18 (Session 186)
 
 ## What Was Accomplished This Session
 
-### Session 185 Summary: Removed 28 Unused Schema Imports
+### Session 186 Summary: Eliminated taint Package Import from cmd/af
 
-Made incremental progress on the P1 epic vibefeld-jfbc by removing unused `schema` package imports from 28 test files in `cmd/af/`.
+Made incremental progress on the P1 epic vibefeld-jfbc by eliminating the `taint` package import from `cmd/af/recompute_taint.go`.
 
 ### Changes Made
 
-**Removed unused imports from 28 test files:**
-- `accept_bulk_test.go`, `accept_note_test.go`, `accept_test.go`
-- `accept_validation_deps_test.go`, `admit_test.go`, `agents_integration_test.go`
-- `archive_test.go`, `assumptions_test.go`, `challenge_test.go`
-- `claim_test.go`, `def_reject_test.go`, `deps_test.go`
-- `extract_lemma_test.go`, `get_test.go`, `init_test.go`
-- `jobs_test.go`, `lemmas_test.go`, `log_test.go`
-- `pending_defs_test.go`, `reap_test.go`, `recompute_taint_test.go`
-- `refine_multi_test.go`, `refute_test.go`, `release_test.go`
-- `replay_integration_test.go`, `request_def_test.go`, `scope_test.go`
-- `watch_test.go`
+**1. Added TaintState re-exports to service/exports.go:**
+- Added `node` to imports
+- Re-exported `TaintState` type alias
+- Re-exported `TaintClean`, `TaintSelfAdmitted`, `TaintTainted`, `TaintUnresolved` constants
+
+**2. Added RecomputeAllTaint method to service/proof.go:**
+- Added `TaintChange` struct (NodeID, OldTaint, NewTaint)
+- Added `RecomputeTaintResult` struct (TotalNodes, NodesChanged, Changes, DryRun)
+- Added `RecomputeAllTaint(dryRun bool) (*RecomputeTaintResult, error)` method
+- Added helper functions `sortNodesByDepthForTaint` and `getNodeAncestorsForTaint`
+
+**3. Refactored cmd/af/recompute_taint.go:**
+- Removed direct imports of `ledger`, `node`, `taint` packages
+- Now only imports `service` (and standard library)
+- Uses `svc.RecomputeAllTaint(dryRun)` instead of manual taint computation
+- Uses `service.RecomputeTaintResult` and `service.TaintChange` types
 
 **Verification:**
-- `go vet -tags=integration ./cmd/af` now passes (was failing before due to unused imports)
-- `go test ./...` passes
 - `go build ./cmd/af` succeeds
+- `go test ./...` passes (all packages)
 
 ### Progress on vibefeld-jfbc
 
 - **Started at:** 22 unique internal package imports
 - **Session 181:** 21 (eliminated types package via re-exports)
 - **Session 185:** 20 (removed unused schema imports from test files)
+- **Session 186:** 20 (eliminated taint package from 1 file)
 - **Target:** 2 (service + render only)
+
+Note: Package count remains at 20 because the taint package was only used in 1 file and other packages remain.
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Added Session 182→185 progress (now at 20 imports)
+- **Updated vibefeld-jfbc** - Added Session 186 progress to description
 
 ## Current State
 
 ### Test Status
 - All tests pass (`go test ./...`)
 - Build succeeds (`go build ./cmd/af`)
-- Vet passes with integration tag
 
 ### Issue Statistics
 - **Open:** 7
@@ -51,12 +57,12 @@ Made incremental progress on the P1 epic vibefeld-jfbc by removing unused `schem
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
 Continues with 20 internal packages still imported by cmd/af:
-- `node` (20 files) - node.Node, TaintState types
+- `node` (20 files) - node.Node type
 - `ledger` (18 files) - ledger.Event type
 - `state` (12 files) - state.ProofState/State types
 - `cli` (9 files) - CLI utilities
 - `fs` (4 files) - Direct fs operations
-- Plus 10 more single-use imports
+- Plus 10 more single-use imports (templates, strategy, scope, shell, patterns, metrics, lemma, jobs, hooks, fuzzy, export, errors, config)
 
 ### P2 Code Quality (API Design)
 - `vibefeld-hn7l` - ProofOperations interface too large (30+ methods)
@@ -83,6 +89,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 186:** Eliminated taint package import by adding service.RecomputeAllTaint and TaintState re-exports
 **Session 185:** Removed 28 unused schema imports from test files, reduced imports from 21→20
 **Session 184:** Investigated and closed vibefeld-9maw as "Won't Fix" - delegation pattern acceptable
 **Session 183:** Re-exported types.Timestamp/Now/FromTime/ParseTimestamp, migrated 6 cmd/af files, types package eliminated from cmd/af

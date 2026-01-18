@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/tobias/vibefeld/internal/fs"
+	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -167,4 +168,18 @@ type (
 	WorkflowStateInfo     = schema.WorkflowStateInfo
 	ChallengeTargetInfo   = schema.ChallengeTargetInfo
 	ChallengeSeverityInfo = schema.ChallengeSeverityInfo
+)
+
+// Re-exported types from internal/node to reduce cmd/af import count.
+
+// TaintState represents the taint status of a node.
+// Re-export of node.TaintState.
+type TaintState = node.TaintState
+
+// TaintState constants.
+const (
+	TaintClean        = node.TaintClean
+	TaintSelfAdmitted = node.TaintSelfAdmitted
+	TaintTainted      = node.TaintTainted
+	TaintUnresolved   = node.TaintUnresolved
 )
