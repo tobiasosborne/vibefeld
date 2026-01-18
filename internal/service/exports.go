@@ -21,6 +21,22 @@ var ParseNodeID = types.Parse
 // Re-export of types.ToStringSlice.
 var ToStringSlice = types.ToStringSlice
 
+// Timestamp represents an ISO8601 timestamp for use in the AF ledger.
+// Re-export of types.Timestamp.
+type Timestamp = types.Timestamp
+
+// Now returns a Timestamp representing the current time in UTC.
+// Re-export of types.Now.
+var Now = types.Now
+
+// FromTime converts a time.Time to a Timestamp.
+// Re-export of types.FromTime.
+var FromTime = types.FromTime
+
+// ParseTimestamp parses an ISO8601 formatted timestamp string.
+// Re-export of types.ParseTimestamp.
+var ParseTimestamp = types.ParseTimestamp
+
 // InitProofDir initializes a proof directory structure at the given path.
 // This is a re-export of fs.InitProofDir to reduce cmd/af imports.
 // See fs.InitProofDir for full documentation.

@@ -12,7 +12,6 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newDefsCmd creates the defs command for listing all definitions.
@@ -225,7 +224,7 @@ func outputDefsJSON(cmd *cobra.Command, definitions []*node.Definition) error {
 		ID      string          `json:"id"`
 		Name    string          `json:"name"`
 		Content string          `json:"content"`
-		Created types.Timestamp `json:"created"`
+		Created service.Timestamp `json:"created"`
 	}
 
 	output := make([]defOutput, 0, len(definitions))
@@ -271,7 +270,7 @@ func outputDefJSON(cmd *cobra.Command, def *node.Definition, full bool) error {
 		Name        string          `json:"name"`
 		Content     string          `json:"content"`
 		ContentHash string          `json:"content_hash,omitempty"`
-		Created     types.Timestamp `json:"created,omitempty"`
+		Created     service.Timestamp `json:"created,omitempty"`
 	}
 
 	output := defOutput{

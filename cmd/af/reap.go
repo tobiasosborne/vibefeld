@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // reapResult holds the result of a reap operation for output.
@@ -102,7 +101,7 @@ func runReap(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find nodes to reap
-	now := types.FromTime(time.Now())
+	now := service.FromTime(time.Now())
 	var toReap []service.NodeID
 
 	for _, n := range st.AllNodes() {

@@ -11,7 +11,6 @@ import (
 	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newExtendClaimCmd creates the extend-claim command for extending an existing claim's duration.
@@ -108,7 +107,7 @@ func runExtendClaim(cmd *cobra.Command, args []string) error {
 	}
 
 	// Calculate new timeout timestamp
-	newTimeout := types.FromTime(time.Now().Add(duration))
+	newTimeout := service.FromTime(time.Now().Add(duration))
 
 	// NOTE: We don't emit an event to the ledger here because:
 	// 1. There's no ClaimExtended event type in the current ledger schema
@@ -130,7 +129,7 @@ func runExtendClaim(cmd *cobra.Command, args []string) error {
 }
 
 // outputExtendClaimJSON outputs the extend-claim result in JSON format.
-func outputExtendClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner string, duration time.Duration, newTimeout types.Timestamp) error {
+func outputExtendClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner string, duration time.Duration, newTimeout service.Timestamp) error {
 	result := map[string]interface{}{
 		"node_id":    nodeID.String(),
 		"owner":      owner,
@@ -149,7 +148,7 @@ func outputExtendClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner stri
 }
 
 // outputExtendClaimText outputs the extend-claim result in human-readable text format.
-func outputExtendClaimText(cmd *cobra.Command, nodeID service.NodeID, owner string, duration time.Duration, newTimeout types.Timestamp) error {
+func outputExtendClaimText(cmd *cobra.Command, nodeID service.NodeID, owner string, duration time.Duration, newTimeout service.Timestamp) error {
 	cmd.Printf("Extended claim on node %s\n", nodeID.String())
 	cmd.Printf("  Owner:      %s\n", owner)
 	cmd.Printf("  Duration:   %s\n", duration)

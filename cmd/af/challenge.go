@@ -14,7 +14,6 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newChallengeCmd creates the challenge command.
@@ -250,7 +249,7 @@ func generateChallengeID() string {
 	if _, err := rand.Read(b); err != nil {
 		// If crypto/rand fails, this indicates a critical system issue
 		// Use timestamp-based fallback
-		return fmt.Sprintf("ch-%v", types.Now())
+		return fmt.Sprintf("ch-%v", service.Now())
 	}
 	return "ch-" + hex.EncodeToString(b)
 }

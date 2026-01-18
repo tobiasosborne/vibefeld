@@ -1,51 +1,70 @@
-# Handoff - 2026-01-18 (Session 182)
+# Handoff - 2026-01-18 (Session 183)
 
 ## What Was Accomplished This Session
 
-### Session 182 Summary: Fixed fuzzy flag matching ambiguous prefix bug
+### Session 183 Summary: Re-exported types.Timestamp and migrated 6 cmd/af files
 
-Fixed a failing test in `internal/cli` where ambiguous prefix inputs (like `--for` matching both `force` and `format`) were incorrectly auto-correcting instead of being marked ambiguous.
+Continued work on the vibefeld-jfbc epic (reduce cmd/af imports from 22 packages to 2) by eliminating the `types` package import from cmd/af production code.
 
-### Bug Details
+### Changes Made
 
-The issue was in `internal/fuzzy/match.go`. When a short input (1-3 chars) was a prefix of multiple candidates, the fuzzy matcher would pick the closest one and auto-correct. The correct behavior is to mark such cases as ambiguous so the user can clarify.
+1. **Added Timestamp re-exports to service/exports.go:**
+   - `type Timestamp = types.Timestamp`
+   - `var Now = types.Now`
+   - `var FromTime = types.FromTime`
+   - `var ParseTimestamp = types.ParseTimestamp`
 
-**Example:**
-- Input: `--for`
-- Candidates: `force` (distance 2), `format` (distance 3)
-- Old behavior: Auto-correct to `--force`
-- New behavior: Mark as ambiguous, suggest both `force` and `format`
+2. **Migrated 6 cmd/af files to use service instead of types:**
+   - `agents.go` - Changed `types.Timestamp` to `service.Timestamp`, `types.ParseTimestamp` to `service.ParseTimestamp`
+   - `challenge.go` - Changed `types.Now` to `service.Now`
+   - `defs.go` - Changed `types.Timestamp` to `service.Timestamp`
+   - `extend_claim.go` - Changed `types.FromTime` to `service.FromTime`, `types.Timestamp` to `service.Timestamp`
+   - `history.go` - Changed `types.ParseTimestamp` to `service.ParseTimestamp`
+   - `reap.go` - Changed `types.FromTime` to `service.FromTime`
 
 ### Files Changed
 
-- `internal/fuzzy/match.go` - Added logic to detect multiple prefix matches and disable auto-correct in those cases
-- `internal/fuzzy/match_test.go` - Updated 2 tests that expected incorrect behavior:
-  - `TestMatch_Threshold_Low/ambiguous_prefix_does_not_autocorrect`
-  - `TestSuggestFlag_ShortInput/three_chars_'ver'_is_ambiguous`
+- `internal/service/exports.go` - Added Timestamp, Now, FromTime, ParseTimestamp re-exports
+- `cmd/af/agents.go` - Removed types import, use service.Timestamp
+- `cmd/af/challenge.go` - Removed types import, use service.Now
+- `cmd/af/defs.go` - Removed types import, use service.Timestamp
+- `cmd/af/extend_claim.go` - Removed types import, use service.FromTime/Timestamp
+- `cmd/af/history.go` - Removed types import, use service.ParseTimestamp
+- `cmd/af/reap.go` - Removed types import, use service.FromTime
 
 ### Issue Updates
 
-1. **Created and closed vibefeld-b51q** - Fix fuzzy flag matching ambiguous prefix autocorrect bug
+- **Updated vibefeld-jfbc** - Updated epic description to reflect progress (types package now eliminated)
 
 ## Current State
 
 ### Test Status
 - All tests pass (`go test ./...`)
 - Build succeeds (`go build ./cmd/af`)
-- The previously noted test failures in internal/cli are now fixed
+
+### Import Reduction Progress
+- Started at 22 unique internal package imports in cmd/af
+- Now at 21 (eliminated `types` package)
+- Target: 2 (`service` and `render` only)
 
 ### Issue Statistics
-- **Closed this session:** 1 (vibefeld-b51q)
+- **Closed this session:** 0 (work contributed to open epic vibefeld-jfbc)
 - **Open:** 8
 - **Ready for work:** 8
 
 ## Recommended Next Steps
 
-### P1 Epic vibefeld-jfbc Progress
-The import reduction epic sub-tasks are all closed. However, cmd/af still imports many packages beyond the target of `{service, render}`. Need to analyze remaining imports and create new sub-tasks if the epic is to continue.
+### P1 Epic vibefeld-jfbc - Import Reduction
+Remaining packages to address (by file count):
+- `schema` (28 files) - Many constants still imported directly despite some being re-exported
+- `node` (20 files) - node.Node type used widely
+- `ledger` (18 files) - ledger.Event type and ledger operations
+- `state` (12 files) - state.ProofState/State types
+- `cli` (9 files) - CLI utilities
+- `fs` (4 files) - Direct fs operations
+- Plus 11 more single-use imports
 
-Current packages still imported by cmd/af (excluding service/render):
-- node (20 files), ledger (18 files), state (12 files), cli (9 files), types (6 files), fs (4 files), and others
+Each of these would require creating and completing new sub-tasks.
 
 ### P2 Code Quality (API Design)
 - `vibefeld-9maw` - Inconsistent return types for ID-returning operations
@@ -73,6 +92,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 183:** Re-exported types.Timestamp/Now/FromTime/ParseTimestamp, migrated 6 cmd/af files, types package eliminated from cmd/af
 **Session 182:** Fixed fuzzy flag matching ambiguous prefix bug, closed vibefeld-b51q
 **Session 181:** Added assumption/external service methods, migrated 4 files, closed vibefeld-li8a
 **Session 180:** Added pending-def service methods, migrated 4 files, closed vibefeld-rvzl

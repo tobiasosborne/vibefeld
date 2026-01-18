@@ -11,7 +11,6 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 func newHistoryCmd() *cobra.Command {
@@ -165,7 +164,7 @@ func buildHistoryEntry(seq int, event map[string]interface{}) render.HistoryEntr
 
 	// Extract timestamp
 	if ts, ok := event["timestamp"].(string); ok {
-		timestamp, err := types.ParseTimestamp(ts)
+		timestamp, err := service.ParseTimestamp(ts)
 		if err == nil {
 			entry.Timestamp = timestamp
 		}

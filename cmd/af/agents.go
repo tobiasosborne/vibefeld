@@ -12,21 +12,20 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // AgentEntry represents a currently claimed node and its owner.
 type AgentEntry struct {
 	NodeID    string          `json:"node_id"`
 	Owner     string          `json:"owner"`
-	ClaimedAt types.Timestamp `json:"claimed_at,omitempty"`
+	ClaimedAt service.Timestamp `json:"claimed_at,omitempty"`
 }
 
 // ActivityEntry represents a historical claim/release activity.
 type ActivityEntry struct {
 	Seq       int             `json:"seq"`
 	Type      string          `json:"type"`
-	Timestamp types.Timestamp `json:"timestamp"`
+	Timestamp service.Timestamp `json:"timestamp"`
 	NodeIDs   []string        `json:"node_ids,omitempty"`
 	Owner     string          `json:"owner,omitempty"`
 }
@@ -145,7 +144,7 @@ func runAgents(cmd *cobra.Command, args []string) error {
 
 		// Extract timestamp
 		if ts, ok := eventData["timestamp"].(string); ok {
-			timestamp, err := types.ParseTimestamp(ts)
+			timestamp, err := service.ParseTimestamp(ts)
 			if err == nil {
 				entry.Timestamp = timestamp
 			}
@@ -277,8 +276,8 @@ func formatAgentsText(output AgentsOutput) string {
 	return sb.String()
 }
 
-// formatAgentTimestamp formats a types.Timestamp for display.
-func formatAgentTimestamp(ts types.Timestamp) string {
+// formatAgentTimestamp formats a service.Timestamp for display.
+func formatAgentTimestamp(ts service.Timestamp) string {
 	tsStr := ts.String()
 	if tsStr == "" {
 		return "                   "
