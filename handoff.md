@@ -1,54 +1,71 @@
-# Handoff - 2026-01-18 (Session 171)
+# Handoff - 2026-01-18 (Session 172)
 
 ## What Was Accomplished This Session
 
-### Session 171 Summary: Fixed 1 bug (failing lock tests for oversized events)
+### Session 172 Summary: Converted service layer sentinel errors to AFError types
 
-1. **vibefeld-00pp** - "Fix failing lock tests for oversized events"
-   - Root cause: Ledger package added size limits at read level (commit 5645630), but lock package tests (from commit 8f150fe) expected lock-level handling
-   - The ledger now correctly rejects ALL oversized events before the lock manager sees them
-   - This is proper security behavior - prevents DoS via maliciously large event files
+1. **vibefeld-0iwu** - "Convert sentinel errors to AFError types"
+   - Created this subtask from the larger vibefeld-npeg (error types inconsistency) issue
+   - Converted 7 sentinel errors in `internal/service/proof.go` to use structured AFError types
+   - Errors now have proper exit codes for CLI integration
 
 ### Code Changes
 
-**internal/lock/persistent_test.go:**
-- Renamed `TestPersistentManager_OversizedLockEventCausesError` → `TestPersistentManager_OversizedEventRejectedByLedger`
-- Updated test to use `ledger.MaxEventSize` instead of `lock.MaxEventSize`
-- Removed corruption error check (ledger errors don't need to be corruption type)
-- Kept size message assertion
-- Removed `TestPersistentManager_OversizedNonLockEventIgnored` - premise no longer valid since ledger rejects ALL oversized events
+**internal/service/proof.go:**
+- Added import for `aferrors "github.com/tobias/vibefeld/internal/errors"`
+- Converted sentinel errors to use `aferrors.New()`:
+  - `ErrConcurrentModification` → `VALIDATION_INVARIANT_FAILED` (exit 1: retriable)
+  - `ErrMaxDepthExceeded` → `DEPTH_EXCEEDED` (exit 3: logic error)
+  - `ErrMaxChildrenExceeded` → `REFINEMENT_LIMIT_EXCEEDED` (exit 3: logic error)
+  - `ErrBlockingChallenges` → `NODE_BLOCKED` (exit 2: blocked)
+  - `ErrNotClaimed` → `NOT_CLAIM_HOLDER` (exit 1: retriable)
+  - `ErrOwnerMismatch` → `NOT_CLAIM_HOLDER` (exit 1: retriable)
+  - `ErrCircularDependency` → `DEPENDENCY_CYCLE` (exit 3: logic error)
+- Added exit code documentation to each sentinel error
+
+**Issue Tracker:**
+- Updated vibefeld-npeg with investigation findings and 4-phase plan
+- Created vibefeld-0iwu as Phase 1 subtask
+- Added dependency: vibefeld-npeg depends on vibefeld-0iwu
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-00pp** | Closed | Fixed failing lock tests by aligning with ledger-level size enforcement |
+| **vibefeld-0iwu** | Closed | Converted 7 sentinel errors to AFError types with proper error codes |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 9 (unchanged)
-- **Closed:** 541 (was 540)
+- **Open:** 9 (unchanged - closed 1, but vibefeld-0iwu was created this session)
+- **Closed:** 542 (was 541)
 
 ### Test Status
 - Build: PASS
-- Lock tests: PASS (0 failures, was 2 failures)
-- All tests: PASS except pre-existing `internal/cli` fuzzy flag tests (unrelated to this fix)
+- Service tests: PASS (all 191 tests)
+- All tests: PASS except pre-existing `internal/cli` fuzzy flag tests (unrelated)
 
 ### Known Issues (Pre-existing)
-1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in fuzzy_flag_test.go - tests expect ambiguous suggestions for short inputs
+1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in fuzzy_flag_test.go
 
 ### Verification
 ```bash
 # Build
 go build ./cmd/af
 
-# Run lock tests (should pass)
-go test ./internal/lock/...
+# Run service tests (should pass)
+go test ./internal/service/...
 
 # Run all tests (cli fuzzy tests will fail - pre-existing)
 go test ./...
 ```
+
+## Remaining Error Types Work (vibefeld-npeg phases)
+
+Phase 1: ✅ Convert sentinel errors (vibefeld-0iwu) - DONE
+Phase 2: Convert not-found errors (use existing DEF_NOT_FOUND, etc.)
+Phase 3: Add new error codes for remaining categories
+Phase 4: Update tests
 
 ## Remaining P1 Issues
 
@@ -57,25 +74,17 @@ go test ./...
 ## Recommended Next Steps
 
 ### High Priority (P1) - Ready for work
-1. Module structure (`vibefeld-jfbc`) - Break into sub-tasks:
-   - Re-export types through service (types.NodeID, schema.*, etc.)
-   - Move fs.InitProofDir to service layer
-   - Move test setup utilities to test helpers
-   - Consolidate job finding into service
-   - Update 60+ command files
+1. Module structure (`vibefeld-jfbc`) - Break into sub-tasks first
 
 ### P2 Code Quality
-2. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
-3. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
-4. Multiple error types inconsistency (`vibefeld-npeg`)
+2. Error types inconsistency - remaining phases (`vibefeld-npeg`)
+3. Inconsistent return types for ID-returning operations (`vibefeld-9maw`)
+4. ProofOperations interface too large (30+ methods) (`vibefeld-hn7l`)
 5. Service layer leaks domain types (`vibefeld-vj5y`)
 
 ### P3 CLI UX
 6. Boolean parameters in CLI (`vibefeld-yo5e`)
 7. Positional statement variability in refine (`vibefeld-9b6m`)
-
-### Pre-existing Test Failures to Investigate
-- `internal/cli` fuzzy flag ambiguity tests - not related to lock changes
 
 ## Quick Commands
 
@@ -85,13 +94,11 @@ bd ready
 
 # Run tests
 go test ./...
-
-# Run integration tests
-go test -tags=integration ./... -v -timeout 10m
 ```
 
 ## Session History
 
+**Session 172:** Converted 7 sentinel errors to AFError types with proper exit codes
 **Session 171:** Fixed 1 bug (failing lock tests for oversized events - aligned with ledger-level enforcement)
 **Session 170:** Closed 1 issue (CLI UX - help command grouping by category)
 **Session 169:** Closed 1 issue (CLI UX - standardized challenge rendering across commands)

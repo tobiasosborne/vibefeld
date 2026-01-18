@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobias/vibefeld/internal/config"
 	"github.com/tobias/vibefeld/internal/cycle"
+	aferrors "github.com/tobias/vibefeld/internal/errors"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/lemma"
@@ -25,25 +26,31 @@ import (
 // ErrConcurrentModification is returned when an operation fails due to
 // concurrent modification of the proof state. Callers should retry the
 // operation after reloading the current state.
-var ErrConcurrentModification = errors.New("concurrent modification detected")
+// Exit code: 1 (retriable)
+var ErrConcurrentModification = aferrors.New(aferrors.VALIDATION_INVARIANT_FAILED, "concurrent modification detected")
 
 // ErrMaxDepthExceeded is returned when an operation would exceed the configured MaxDepth.
-var ErrMaxDepthExceeded = errors.New("maximum proof depth exceeded")
+// Exit code: 3 (logic error)
+var ErrMaxDepthExceeded = aferrors.New(aferrors.DEPTH_EXCEEDED, "maximum proof depth exceeded")
 
 // ErrMaxChildrenExceeded is returned when an operation would exceed the configured MaxChildren.
-var ErrMaxChildrenExceeded = errors.New("maximum children per node exceeded")
+// Exit code: 3 (logic error)
+var ErrMaxChildrenExceeded = aferrors.New(aferrors.REFINEMENT_LIMIT_EXCEEDED, "maximum children per node exceeded")
 
 // ErrBlockingChallenges is returned when an operation cannot proceed due to
 // unresolved blocking challenges (critical or major severity) on a node.
-var ErrBlockingChallenges = errors.New("node has unresolved blocking challenges")
+// Exit code: 2 (blocked)
+var ErrBlockingChallenges = aferrors.New(aferrors.NODE_BLOCKED, "node has unresolved blocking challenges")
 
 // ErrNotClaimed is returned when an operation requires a node to be claimed
 // but the node is not currently claimed by any owner.
-var ErrNotClaimed = errors.New("node is not claimed")
+// Exit code: 1 (retriable - caller should claim the node first)
+var ErrNotClaimed = aferrors.New(aferrors.NOT_CLAIM_HOLDER, "node is not claimed")
 
 // ErrOwnerMismatch is returned when an operation is attempted by an owner
 // that does not match the current claim owner of the node.
-var ErrOwnerMismatch = errors.New("owner does not match")
+// Exit code: 1 (retriable - caller should claim the node)
+var ErrOwnerMismatch = aferrors.New(aferrors.NOT_CLAIM_HOLDER, "owner does not match")
 
 // wrapSequenceMismatch converts ledger.ErrSequenceMismatch to ErrConcurrentModification
 // with additional context for the caller.
@@ -1584,7 +1591,8 @@ func (s *ProofService) appendBulkIfSequence(ldg *ledger.Ledger, events []ledger.
 }
 
 // ErrCircularDependency is returned when a cycle is detected in node dependencies.
-var ErrCircularDependency = errors.New("circular dependency detected")
+// Exit code: 3 (logic error)
+var ErrCircularDependency = aferrors.New(aferrors.DEPENDENCY_CYCLE, "circular dependency detected")
 
 // stateDependencyProvider adapts state.State to implement cycle.DependencyProvider.
 // This allows the cycle detection package to work with proof state without
