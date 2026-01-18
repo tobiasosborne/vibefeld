@@ -10,7 +10,6 @@ import (
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newExtractLemmaCmd creates the extract-lemma command for extracting lemmas from validated nodes.
@@ -72,7 +71,7 @@ func runExtractLemma(cmd *cobra.Command, args []string) error {
 		return render.InvalidNodeIDError("af extract-lemma", nodeIDStr, examples)
 	}
 
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return render.InvalidNodeIDError("af extract-lemma", nodeIDStr, examples)
 	}

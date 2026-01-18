@@ -13,7 +13,6 @@ import (
 
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // ===========================================================================
@@ -43,7 +42,7 @@ func setupDepsTest(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
 		os.RemoveAll(tmpDir)
@@ -51,7 +50,7 @@ func setupDepsTest(t *testing.T) (string, func()) {
 	}
 
 	// Create 1.1 (no deps)
-	child1, _ := types.Parse("1.1")
+	child1, _ := service.ParseNodeID("1.1")
 	err = svc.RefineNode(rootID, "test-agent", child1, schema.NodeTypeClaim, "First step", schema.InferenceAssumption)
 	if err != nil {
 		os.RemoveAll(tmpDir)
@@ -59,16 +58,16 @@ func setupDepsTest(t *testing.T) (string, func()) {
 	}
 
 	// Create 1.2 with validation dep on 1.1
-	child2, _ := types.Parse("1.2")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", child2, schema.NodeTypeClaim, "Second step", schema.InferenceAssumption, nil, []types.NodeID{child1})
+	child2, _ := service.ParseNodeID("1.2")
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", child2, schema.NodeTypeClaim, "Second step", schema.InferenceAssumption, nil, []service.NodeID{child1})
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatalf("failed to create 1.2: %v", err)
 	}
 
 	// Create 1.3 with validation deps on 1.1 and 1.2
-	child3, _ := types.Parse("1.3")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", child3, schema.NodeTypeClaim, "Third step", schema.InferenceAssumption, nil, []types.NodeID{child1, child2})
+	child3, _ := service.ParseNodeID("1.3")
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", child3, schema.NodeTypeClaim, "Third step", schema.InferenceAssumption, nil, []service.NodeID{child1, child2})
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatalf("failed to create 1.3: %v", err)
@@ -202,7 +201,7 @@ func TestDepsCmd_ShowsValidationStatus(t *testing.T) {
 
 	// Accept 1.1 to change its status
 	svc, _ := service.NewProofService(tmpDir)
-	child1, _ := types.Parse("1.1")
+	child1, _ := service.ParseNodeID("1.1")
 	err := svc.AcceptNode(child1)
 	if err != nil {
 		t.Fatalf("failed to accept 1.1: %v", err)
@@ -239,15 +238,15 @@ func TestDepsCmd_ShowsBothDepTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create 1.1 and 1.2
-	child1, _ := types.Parse("1.1")
-	child2, _ := types.Parse("1.2")
+	child1, _ := service.ParseNodeID("1.1")
+	child2, _ := service.ParseNodeID("1.2")
 	err = svc.RefineNode(rootID, "test-agent", child1, schema.NodeTypeClaim, "First step", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
@@ -258,8 +257,8 @@ func TestDepsCmd_ShowsBothDepTypes(t *testing.T) {
 	}
 
 	// Create 1.3 with BOTH reference dep on 1.1 AND validation dep on 1.2
-	child3, _ := types.Parse("1.3")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", child3, schema.NodeTypeClaim, "Combined step", schema.InferenceAssumption, []types.NodeID{child1}, []types.NodeID{child2})
+	child3, _ := service.ParseNodeID("1.3")
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", child3, schema.NodeTypeClaim, "Combined step", schema.InferenceAssumption, []service.NodeID{child1}, []service.NodeID{child2})
 	if err != nil {
 		t.Fatal(err)
 	}

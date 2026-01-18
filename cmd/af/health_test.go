@@ -191,13 +191,13 @@ func TestHealthCmd_JSONOutputStructure(t *testing.T) {
 		Status:   "healthy",
 		Blockers: []interface{}{},
 		Statistics: map[string]interface{}{
-			"total_nodes":      0,
-			"pending_nodes":    0,
-			"open_challenges":  0,
-			"prover_jobs":      0,
-			"verifier_jobs":    0,
-			"leaf_nodes":       0,
-			"blocked_leaves":   0,
+			"total_nodes":     0,
+			"pending_nodes":   0,
+			"open_challenges": 0,
+			"prover_jobs":     0,
+			"verifier_jobs":   0,
+			"leaf_nodes":      0,
+			"blocked_leaves":  0,
 		},
 	}
 

@@ -16,7 +16,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -62,7 +61,7 @@ func setupRequestDefTestWithMultipleNodes(t *testing.T) (string, func()) {
 
 	// Create child nodes
 	for _, idStr := range []string{"1.1", "1.2"} {
-		nodeID, _ := types.Parse(idStr)
+		nodeID, _ := service.ParseNodeID(idStr)
 		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
 		if err != nil {
 			cleanup()
@@ -134,7 +133,7 @@ func TestRequestDefCmd_CreatesFilesystemEntry(t *testing.T) {
 	}
 
 	// Verify pending def was created in filesystem
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	pd, err := fs.ReadPendingDef(tmpDir, nodeID)
 	if err != nil {
 		t.Fatalf("expected pending def to be readable: %v", err)
@@ -175,7 +174,7 @@ func TestRequestDefCmd_ChildNode(t *testing.T) {
 	}
 
 	// Verify pending def was created
-	nodeID, _ := types.Parse("1.1")
+	nodeID, _ := service.ParseNodeID("1.1")
 	pd, err := fs.ReadPendingDef(tmpDir, nodeID)
 	if err != nil {
 		t.Fatalf("expected pending def to be readable: %v", err)
@@ -471,7 +470,7 @@ func TestRequestDefCmd_MultipleRequests(t *testing.T) {
 
 	// Verify each pending def has correct term
 	for nodeIDStr, expectedTerm := range terms {
-		nodeID, _ := types.Parse(nodeIDStr)
+		nodeID, _ := service.ParseNodeID(nodeIDStr)
 		pd, err := fs.ReadPendingDef(tmpDir, nodeID)
 		if err != nil {
 			t.Errorf("failed to read pending def for node %s: %v", nodeIDStr, err)
@@ -517,7 +516,7 @@ func TestRequestDefCmd_OverwriteExisting(t *testing.T) {
 	} else {
 		t.Logf("Second request on same node succeeded")
 		// Verify the term was updated
-		nodeID, _ := types.Parse("1")
+		nodeID, _ := service.ParseNodeID("1")
 		pd, err := fs.ReadPendingDef(tmpDir, nodeID)
 		if err != nil {
 			t.Fatalf("failed to read pending def: %v", err)
@@ -598,7 +597,7 @@ func TestRequestDefCmd_ShortFlags(t *testing.T) {
 	}
 
 	// Verify filesystem entry
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	pd, err := fs.ReadPendingDef(tmpDir, nodeID)
 	if err != nil {
 		t.Fatalf("expected pending def to be readable: %v", err)
@@ -847,7 +846,7 @@ func TestRequestDefCmd_LongTerm(t *testing.T) {
 		// If there's a length limit, that's acceptable
 	} else {
 		// Verify it was saved
-		nodeID, _ := types.Parse("1")
+		nodeID, _ := service.ParseNodeID("1")
 		pd, err := fs.ReadPendingDef(tmpDir, nodeID)
 		if err != nil {
 			t.Fatalf("failed to read pending def: %v", err)
@@ -877,7 +876,7 @@ func TestRequestDefCmd_SpecialCharactersInTerm(t *testing.T) {
 	}
 
 	// Verify the term was saved correctly
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	pd, err := fs.ReadPendingDef(tmpDir, nodeID)
 	if err != nil {
 		t.Fatalf("failed to read pending def: %v", err)
@@ -907,7 +906,7 @@ func TestRequestDefCmd_UnicodeInTerm(t *testing.T) {
 	}
 
 	// Verify the term was saved correctly
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	pd, err := fs.ReadPendingDef(tmpDir, nodeID)
 	if err != nil {
 		t.Fatalf("failed to read pending def: %v", err)

@@ -17,7 +17,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -25,9 +24,9 @@ import (
 // =============================================================================
 
 // mustParseReapNodeID parses a NodeID string or fails the test.
-func mustParseReapNodeID(t *testing.T, s string) types.NodeID {
+func mustParseReapNodeID(t *testing.T, s string) service.NodeID {
 	t.Helper()
-	id, err := types.Parse(s)
+	id, err := service.ParseNodeID(s)
 	if err != nil {
 		t.Fatalf("Failed to parse NodeID %q: %v", s, err)
 	}
@@ -917,9 +916,9 @@ func TestReapCmd_OutputFormats(t *testing.T) {
 // TestReapCmd_DryRunVsActual tests difference between dry-run and actual execution.
 func TestReapCmd_DryRunVsActual(t *testing.T) {
 	tests := []struct {
-		name            string
-		dryRun          bool
-		expectedReaped  bool
+		name           string
+		dryRun         bool
+		expectedReaped bool
 	}{
 		{
 			name:           "dry-run should not reap",

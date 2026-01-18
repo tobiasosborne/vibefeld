@@ -110,7 +110,7 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 
 	// Parse node ID from positional argument
 	nodeIDStr := args[0]
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return render.InvalidNodeIDError("af challenge", nodeIDStr, examples)
 	}
@@ -202,7 +202,7 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 }
 
 // outputChallengeJSON outputs the challenge result in JSON format.
-func outputChallengeJSON(cmd *cobra.Command, nodeID types.NodeID, challengeID, target, reason, severity string) error {
+func outputChallengeJSON(cmd *cobra.Command, nodeID service.NodeID, challengeID, target, reason, severity string) error {
 	result := map[string]interface{}{
 		"node_id":      nodeID.String(),
 		"challenge_id": challengeID,
@@ -222,7 +222,7 @@ func outputChallengeJSON(cmd *cobra.Command, nodeID types.NodeID, challengeID, t
 }
 
 // outputChallengeText outputs the challenge result in human-readable text format.
-func outputChallengeText(cmd *cobra.Command, nodeID types.NodeID, challengeID, target, reason, severity string) error {
+func outputChallengeText(cmd *cobra.Command, nodeID service.NodeID, challengeID, target, reason, severity string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "Challenge raised against node %s\n", nodeID.String())
 	fmt.Fprintf(cmd.OutOrStdout(), "  Challenge ID: %s\n", challengeID)
 	fmt.Fprintf(cmd.OutOrStdout(), "  Target:       %s\n", target)

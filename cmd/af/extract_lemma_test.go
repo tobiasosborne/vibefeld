@@ -18,7 +18,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -26,9 +25,9 @@ import (
 // =============================================================================
 
 // mustParseExtractLemmaNodeID parses a NodeID string or fails the test.
-func mustParseExtractLemmaNodeID(t *testing.T, s string) types.NodeID {
+func mustParseExtractLemmaNodeID(t *testing.T, s string) service.NodeID {
 	t.Helper()
-	id, err := types.Parse(s)
+	id, err := service.ParseNodeID(s)
 	if err != nil {
 		t.Fatalf("Failed to parse NodeID %q: %v", s, err)
 	}
@@ -1001,14 +1000,14 @@ func TestExtractLemmaCmd_CommandMetadata(t *testing.T) {
 func TestExtractLemmaCmd_TableDrivenNodeStates(t *testing.T) {
 	tests := []struct {
 		name            string
-		setupFunc       func(t *testing.T, svc *service.ProofService, nodeID types.NodeID)
+		setupFunc       func(t *testing.T, svc *service.ProofService, nodeID service.NodeID)
 		wantErr         bool
 		errContains     string
 		skipIfNotExists bool
 	}{
 		{
 			name: "validated node",
-			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID types.NodeID) {
+			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID service.NodeID) {
 				if err := svc.AcceptNode(nodeID); err != nil {
 					t.Fatalf("AcceptNode failed: %v", err)
 				}
@@ -1017,7 +1016,7 @@ func TestExtractLemmaCmd_TableDrivenNodeStates(t *testing.T) {
 		},
 		{
 			name: "pending node",
-			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID types.NodeID) {
+			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID service.NodeID) {
 				// Node 1 is already pending after init
 			},
 			wantErr:     true,
@@ -1025,7 +1024,7 @@ func TestExtractLemmaCmd_TableDrivenNodeStates(t *testing.T) {
 		},
 		{
 			name: "refuted node",
-			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID types.NodeID) {
+			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID service.NodeID) {
 				if err := svc.RefuteNode(nodeID); err != nil {
 					t.Fatalf("RefuteNode failed: %v", err)
 				}
@@ -1035,7 +1034,7 @@ func TestExtractLemmaCmd_TableDrivenNodeStates(t *testing.T) {
 		},
 		{
 			name: "admitted node",
-			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID types.NodeID) {
+			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID service.NodeID) {
 				if err := svc.AdmitNode(nodeID); err != nil {
 					t.Fatalf("AdmitNode failed: %v", err)
 				}
@@ -1046,7 +1045,7 @@ func TestExtractLemmaCmd_TableDrivenNodeStates(t *testing.T) {
 		},
 		{
 			name: "archived node",
-			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID types.NodeID) {
+			setupFunc: func(t *testing.T, svc *service.ProofService, nodeID service.NodeID) {
 				if err := svc.ArchiveNode(nodeID); err != nil {
 					t.Fatalf("ArchiveNode failed: %v", err)
 				}

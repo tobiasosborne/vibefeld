@@ -10,7 +10,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newRequestDefCmd creates the request-def command.
@@ -67,7 +66,7 @@ func runRequestDef(cmd *cobra.Command, args []string) error {
 	}
 
 	// Parse node ID
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return fmt.Errorf("invalid node ID %q: %w", nodeIDStr, err)
 	}
@@ -116,7 +115,7 @@ func runRequestDef(cmd *cobra.Command, args []string) error {
 }
 
 // outputRequestDefJSON outputs the request-def result in JSON format.
-func outputRequestDefJSON(cmd *cobra.Command, nodeID types.NodeID, term string, pd *node.PendingDef) error {
+func outputRequestDefJSON(cmd *cobra.Command, nodeID service.NodeID, term string, pd *node.PendingDef) error {
 	result := map[string]interface{}{
 		"node_id": nodeID.String(),
 		"term":    term,
@@ -134,7 +133,7 @@ func outputRequestDefJSON(cmd *cobra.Command, nodeID types.NodeID, term string, 
 }
 
 // outputRequestDefText outputs the request-def result in human-readable text format.
-func outputRequestDefText(cmd *cobra.Command, nodeID types.NodeID, term string, pd *node.PendingDef) error {
+func outputRequestDefText(cmd *cobra.Command, nodeID service.NodeID, term string, pd *node.PendingDef) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "Definition request created for node %s\n", nodeID.String())
 	fmt.Fprintf(cmd.OutOrStdout(), "  Term:   %s\n", term)
 	fmt.Fprintf(cmd.OutOrStdout(), "  Status: %s\n", pd.Status)

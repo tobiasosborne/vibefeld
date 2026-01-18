@@ -10,7 +10,6 @@ import (
 
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // ===========================================================================
@@ -29,22 +28,22 @@ func TestAcceptCmd_BlockedByUnvalidatedDep(t *testing.T) {
 	}
 
 	// Claim node 1 and create two children
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
 		t.Fatalf("failed to claim node 1: %v", err)
 	}
 
 	// Create child 1.1 (will be the validation dependency)
-	childID1, _ := types.Parse("1.1")
+	childID1, _ := service.ParseNodeID("1.1")
 	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "First step", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create node 1.1: %v", err)
 	}
 
 	// Create child 1.2 with validation dependency on 1.1
-	childID2, _ := types.Parse("1.2")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Second step, needs 1.1 validated", schema.InferenceAssumption, nil, []types.NodeID{childID1})
+	childID2, _ := service.ParseNodeID("1.2")
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Second step, needs 1.1 validated", schema.InferenceAssumption, nil, []service.NodeID{childID1})
 	if err != nil {
 		t.Fatalf("failed to create node 1.2: %v", err)
 	}
@@ -74,22 +73,22 @@ func TestAcceptCmd_SucceedsWhenDepsValidated(t *testing.T) {
 	}
 
 	// Claim node 1 and create two children
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
 		t.Fatalf("failed to claim node 1: %v", err)
 	}
 
 	// Create child 1.1 (will be the validation dependency)
-	childID1, _ := types.Parse("1.1")
+	childID1, _ := service.ParseNodeID("1.1")
 	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "First step", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create node 1.1: %v", err)
 	}
 
 	// Create child 1.2 with validation dependency on 1.1
-	childID2, _ := types.Parse("1.2")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Second step, needs 1.1 validated", schema.InferenceAssumption, nil, []types.NodeID{childID1})
+	childID2, _ := service.ParseNodeID("1.2")
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Second step, needs 1.1 validated", schema.InferenceAssumption, nil, []service.NodeID{childID1})
 	if err != nil {
 		t.Fatalf("failed to create node 1.2: %v", err)
 	}
@@ -135,17 +134,17 @@ func TestAcceptCmd_BlockedByPartialValidation(t *testing.T) {
 	}
 
 	// Claim node 1 and create four children like in the issue example
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
 		t.Fatalf("failed to claim node 1: %v", err)
 	}
 
 	// Create children 1.1, 1.2, 1.3, 1.4
-	childIDs := make([]types.NodeID, 4)
+	childIDs := make([]service.NodeID, 4)
 	idStrings := []string{"1.1", "1.2", "1.3", "1.4"}
 	for i, idStr := range idStrings {
-		childID, _ := types.Parse(idStr)
+		childID, _ := service.ParseNodeID(idStr)
 		childIDs[i] = childID
 		err = svc.RefineNode(rootID, "test-agent", childID, schema.NodeTypeClaim, "Step", schema.InferenceAssumption)
 		if err != nil {
@@ -154,7 +153,7 @@ func TestAcceptCmd_BlockedByPartialValidation(t *testing.T) {
 	}
 
 	// Create 1.5 with validation deps on all four
-	childID5, _ := types.Parse("1.5")
+	childID5, _ := service.ParseNodeID("1.5")
 	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID5, schema.NodeTypeClaim, "Final step", schema.InferenceAssumption, nil, childIDs)
 	if err != nil {
 		t.Fatalf("failed to create node 1.5: %v", err)
@@ -200,7 +199,7 @@ func TestAcceptCmd_NoValidationDepsAcceptsFine(t *testing.T) {
 	// Verify node was accepted
 	svc, _ := service.NewProofService(tmpDir)
 	st, _ := svc.LoadState()
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	n := st.GetNode(rootID)
 
 	if n.EpistemicState != schema.EpistemicValidated {
@@ -220,22 +219,22 @@ func TestAcceptCmd_BulkBlockedByUnvalidatedDeps(t *testing.T) {
 	}
 
 	// Claim node 1 and create children
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
 		t.Fatalf("failed to claim node 1: %v", err)
 	}
 
 	// Create 1.1 (no validation deps)
-	childID1, _ := types.Parse("1.1")
+	childID1, _ := service.ParseNodeID("1.1")
 	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "First step", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create node 1.1: %v", err)
 	}
 
 	// Create 1.2 with validation dep on 1.1
-	childID2, _ := types.Parse("1.2")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Second step", schema.InferenceAssumption, nil, []types.NodeID{childID1})
+	childID2, _ := service.ParseNodeID("1.2")
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Second step", schema.InferenceAssumption, nil, []service.NodeID{childID1})
 	if err != nil {
 		t.Fatalf("failed to create node 1.2: %v", err)
 	}
@@ -263,14 +262,14 @@ func TestAcceptCmd_CrossBranchValidationDep(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
 		t.Fatalf("failed to claim node 1: %v", err)
 	}
 
 	// Create 1.1 (branch A)
-	childID1, _ := types.Parse("1.1")
+	childID1, _ := service.ParseNodeID("1.1")
 	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "Branch A start", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create 1.1: %v", err)
@@ -282,15 +281,15 @@ func TestAcceptCmd_CrossBranchValidationDep(t *testing.T) {
 		t.Fatalf("failed to claim 1.1: %v", err)
 	}
 
-	childID11, _ := types.Parse("1.1.1")
+	childID11, _ := service.ParseNodeID("1.1.1")
 	err = svc.RefineNode(childID1, "test-agent", childID11, schema.NodeTypeClaim, "Branch A step 2", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create 1.1.1: %v", err)
 	}
 
 	// Create 1.2 (branch B) with cross-branch validation dep on 1.1.1
-	childID2, _ := types.Parse("1.2")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Branch B, needs 1.1.1", schema.InferenceAssumption, nil, []types.NodeID{childID11})
+	childID2, _ := service.ParseNodeID("1.2")
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID2, schema.NodeTypeClaim, "Branch B, needs 1.1.1", schema.InferenceAssumption, nil, []service.NodeID{childID11})
 	if err != nil {
 		t.Fatalf("failed to create 1.2: %v", err)
 	}
@@ -326,15 +325,15 @@ func TestAcceptCmd_ShowsBlockingDepsInError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	err = svc.ClaimNode(rootID, "test-agent", time.Hour)
 	if err != nil {
 		t.Fatalf("failed to claim node 1: %v", err)
 	}
 
 	// Create 1.1 and 1.2
-	childID1, _ := types.Parse("1.1")
-	childID2, _ := types.Parse("1.2")
+	childID1, _ := service.ParseNodeID("1.1")
+	childID2, _ := service.ParseNodeID("1.2")
 	err = svc.RefineNode(rootID, "test-agent", childID1, schema.NodeTypeClaim, "Step 1", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatalf("failed to create 1.1: %v", err)
@@ -345,8 +344,8 @@ func TestAcceptCmd_ShowsBlockingDepsInError(t *testing.T) {
 	}
 
 	// Create 1.3 with validation deps on both 1.1 and 1.2
-	childID3, _ := types.Parse("1.3")
-	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID3, schema.NodeTypeClaim, "Combined step", schema.InferenceAssumption, nil, []types.NodeID{childID1, childID2})
+	childID3, _ := service.ParseNodeID("1.3")
+	err = svc.RefineNodeWithAllDeps(rootID, "test-agent", childID3, schema.NodeTypeClaim, "Combined step", schema.InferenceAssumption, nil, []service.NodeID{childID1, childID2})
 	if err != nil {
 		t.Fatalf("failed to create 1.3: %v", err)
 	}

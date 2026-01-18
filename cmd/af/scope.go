@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/scope"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newScopeCmd creates the scope command for showing scope information.
@@ -66,7 +65,7 @@ func runScope(cmd *cobra.Command, nodeIDStr, dir, format string) error {
 	}
 
 	// Parse node ID
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return fmt.Errorf("invalid node ID %q: %v", nodeIDStr, err)
 	}
@@ -151,10 +150,10 @@ func runScopeAll(cmd *cobra.Command, dir, format string) error {
 }
 
 // outputScopeJSON outputs scope info for a node in JSON format.
-func outputScopeJSON(cmd *cobra.Command, nodeID types.NodeID, info *scope.ScopeInfo) error {
+func outputScopeJSON(cmd *cobra.Command, nodeID service.NodeID, info *scope.ScopeInfo) error {
 	result := map[string]interface{}{
-		"node_id": nodeID.String(),
-		"depth":   info.Depth,
+		"node_id":  nodeID.String(),
+		"depth":    info.Depth,
 		"in_scope": info.IsInAnyScope(),
 	}
 
@@ -179,7 +178,7 @@ func outputScopeJSON(cmd *cobra.Command, nodeID types.NodeID, info *scope.ScopeI
 }
 
 // outputScopeText outputs scope info for a node in text format.
-func outputScopeText(cmd *cobra.Command, nodeID types.NodeID, info *scope.ScopeInfo) error {
+func outputScopeText(cmd *cobra.Command, nodeID service.NodeID, info *scope.ScopeInfo) error {
 	cmd.Printf("Scope information for node %s:\n", nodeID.String())
 	cmd.Printf("  Scope depth: %d\n", info.Depth)
 

@@ -14,7 +14,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -83,10 +82,10 @@ func setupClaimTestWithMultipleNodes(t *testing.T) (string, func()) {
 	}
 
 	// Create child nodes
-	child1ID, _ := types.Parse("1.1")
+	child1ID, _ := service.ParseNodeID("1.1")
 	svc.CreateNode(child1ID, schema.NodeTypeClaim, "First child", schema.InferenceModusPonens)
 
-	child2ID, _ := types.Parse("1.2")
+	child2ID, _ := service.ParseNodeID("1.2")
 	svc.CreateNode(child2ID, schema.NodeTypeClaim, "Second child", schema.InferenceModusPonens)
 
 	cleanup := func() { os.RemoveAll(tmpDir) }
@@ -232,7 +231,7 @@ func TestClaimCmd_NodeAlreadyClaimed(t *testing.T) {
 
 	// First claim the node using service directly
 	svc, _ := service.NewProofService(proofDir)
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	svc.ClaimNode(nodeID, "first-prover", 3600000000000) // 1 hour in nanoseconds
 
 	// Now try to claim via CLI
@@ -676,7 +675,7 @@ func TestClaimCmd_FullWorkflow(t *testing.T) {
 	// Step 3: Verify node state changed (via service)
 	svc, _ := service.NewProofService(proofDir)
 	st, _ := svc.LoadState()
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	node := st.GetNode(nodeID)
 
 	if node == nil {

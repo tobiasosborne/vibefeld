@@ -10,7 +10,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newAssumptionsCmd creates the assumptions command for listing assumptions.
@@ -95,9 +94,9 @@ func runAssumptions(cmd *cobra.Command, args []string) error {
 	}
 
 	// If a node ID was provided, validate it exists
-	var nodeID *types.NodeID
+	var nodeID *service.NodeID
 	if len(args) > 0 {
-		id, err := types.Parse(args[0])
+		id, err := service.ParseNodeID(args[0])
 		if err != nil {
 			return fmt.Errorf("invalid node ID %q: %v", args[0], err)
 		}

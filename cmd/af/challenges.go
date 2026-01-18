@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newChallengesCmd creates the challenges command.
@@ -66,10 +65,10 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 	}
 
 	// Parse node filter if provided
-	var nodeID types.NodeID
+	var nodeID service.NodeID
 	if nodeFilter != "" {
 		var err error
-		nodeID, err = types.Parse(nodeFilter)
+		nodeID, err = service.ParseNodeID(nodeFilter)
 		if err != nil {
 			return fmt.Errorf("invalid node ID %q: %w", nodeFilter, err)
 		}
@@ -132,7 +131,7 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 }
 
 // filterChallenges filters challenges based on node ID and status.
-func filterChallenges(challenges []*state.Challenge, nodeID types.NodeID, filterByNode bool, statusFilter string) []*state.Challenge {
+func filterChallenges(challenges []*state.Challenge, nodeID service.NodeID, filterByNode bool, statusFilter string) []*state.Challenge {
 	var result []*state.Challenge
 
 	for _, c := range challenges {

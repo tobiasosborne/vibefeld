@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 func newRefuteCmd() *cobra.Command {
@@ -48,7 +47,7 @@ Examples:
 func runRefute(cmd *cobra.Command, args []string) error {
 	// Parse node ID
 	nodeIDStr := args[0]
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return fmt.Errorf("invalid node ID %q: %w", nodeIDStr, err)
 	}

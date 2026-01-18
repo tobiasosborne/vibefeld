@@ -13,7 +13,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -46,7 +45,7 @@ func setupWithdrawChallengeTest(t *testing.T) (string, string, func()) {
 	}
 
 	// Node 1 already exists from Init, create a challenge on it
-	rootID, err := types.Parse("1")
+	rootID, err := service.ParseNodeID("1")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
@@ -505,7 +504,7 @@ func TestWithdrawChallengeCmd_VariousChallengeIDFormats(t *testing.T) {
 			// For valid formats, create the challenge in ledger
 			if !tt.wantErr && tt.challengeID != "" && strings.TrimSpace(tt.challengeID) != "" {
 				ldg, _ := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
-				rootID, _ := types.Parse("1")
+				rootID, _ := service.ParseNodeID("1")
 				event := ledger.NewChallengeRaised(tt.challengeID, rootID, "statement", "test reason")
 				ldg.Append(event)
 			}
@@ -625,7 +624,7 @@ func TestWithdrawChallengeCmd_LongChallengeID(t *testing.T) {
 
 	// Create the challenge in ledger
 	ldg, _ := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	event := ledger.NewChallengeRaised(longID, rootID, "statement", "test reason")
 	ldg.Append(event)
 

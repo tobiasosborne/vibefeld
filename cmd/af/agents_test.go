@@ -185,10 +185,10 @@ func TestAgentsCmd_JSONOutputStructure(t *testing.T) {
 		ClaimedAt string `json:"claimed_at,omitempty"`
 	}
 	type JSONAgentActivity struct {
-		Type      string `json:"type"`
-		Timestamp string `json:"timestamp"`
+		Type      string   `json:"type"`
+		Timestamp string   `json:"timestamp"`
 		NodeIDs   []string `json:"node_ids,omitempty"`
-		Owner     string `json:"owner,omitempty"`
+		Owner     string   `json:"owner,omitempty"`
 	}
 	type JSONAgentsOutput struct {
 		ClaimedNodes []JSONAgentEntry    `json:"claimed_nodes"`

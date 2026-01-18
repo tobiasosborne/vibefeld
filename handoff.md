@@ -1,63 +1,66 @@
-# Handoff - 2026-01-18 (Session 176)
+# Handoff - 2026-01-18 (Session 177)
 
 ## What Was Accomplished This Session
 
-### Session 176 Summary: Created types re-exports for service package
+### Session 177 Summary: Migrated cmd/af to use service.ParseNodeID
 
-Completed the first step of **vibefeld-3iiz** - created `internal/service/exports.go` with type aliases and function re-exports to reduce cmd/af import count.
+Completed **vibefeld-hufm** - mechanical migration of cmd/af files to use re-exported types from service package instead of importing internal/types directly.
 
-### Files Created
+### Migration Statistics
 
-| File | Purpose |
-|------|---------|
-| `internal/service/exports.go` | Re-exports NodeID, ParseNodeID, ToStringSlice from types package |
-| `internal/service/exports_test.go` | Tests for the re-exports |
+| Metric | Before | After |
+|--------|--------|-------|
+| Files importing types | 59 | 6 |
+| Files using types.Parse | 57 | 0 |
+| Files using types.NodeID | 25 | 0 |
+| Files using types.ToStringSlice | 5 | 0 |
+
+**Note:** 6 files still import types for `Timestamp` functionality (not part of this migration scope).
+
+### Changes Made
+
+- Replaced `types.Parse(` → `service.ParseNodeID(` (197 occurrences)
+- Replaced `types.NodeID` → `service.NodeID` (84 occurrences)
+- Replaced `types.ToStringSlice` → `service.ToStringSlice` (5 occurrences)
+- Removed unused types imports via goimports (53 files cleaned up)
 
 ### Issue Updates
 
-1. **Closed vibefeld-3iiz** - Re-export types through service package
-   - Created exports.go with type alias and var exports
-   - Added tests to verify the exports work correctly
-   - Migration of 58 cmd/af files tracked separately
-
-2. **Created vibefeld-hufm** - Migrate cmd/af files to use service.ParseNodeID
-   - Follow-up task for the actual file migration
-   - Blocks vibefeld-jfbc (the P1 epic)
-   - Scope: 58 files, ~280 uses to replace
+1. **Closed vibefeld-hufm** - Migrate cmd/af files to use service.ParseNodeID
+   - Unblocks vibefeld-jfbc (P1 epic: reduce cmd/af imports from 17 to 2)
 
 ## Current State
 
 ### Issue Statistics
-- **Closed this session:** 1 (vibefeld-3iiz)
-- **Created this session:** 1 (vibefeld-hufm)
-- **Open:** 13
-- **Ready for work:** 12
+- **Closed this session:** 1 (vibefeld-hufm)
+- **Open:** ~12
+- **Ready for work:** ~11
 
 ### Test Status
-- All service tests pass (including new exports_test.go)
+- All cmd/af tests pass (0.544s)
 - Build succeeds
-- Pre-existing failures in fuzzy_flag_test.go (unchanged)
+- Pre-existing failures in fuzzy_flag_test.go (unrelated to this change)
 
 ### Known Issues (Pre-existing)
-1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in fuzzy_flag_test.go
+1. `TestFuzzyMatchFlag_MultipleSuggestions` and `TestFuzzyMatchFlags_Ambiguous` fail in internal/cli/fuzzy_flag_test.go
 
 ## Recommended Next Steps
 
-### Immediate (Sub-task migration)
+### Continue Import Reduction (P1 Epic vibefeld-jfbc)
 
-The exports are ready. Pick a sub-task for import reduction:
+More sub-tasks to reduce cmd/af imports from 17 packages to ~2:
 
-1. **vibefeld-hufm** - Migrate cmd/af to use service.ParseNodeID (58 files) - mechanical refactor
-2. **vibefeld-li8a** - fs assumption/external ops (10 uses) - smallest
-3. **vibefeld-rvzl** - fs pending-def ops (33 uses) - small
-4. **vibefeld-x5mh** - fs.InitProofDir (59 uses) - medium
+1. **vibefeld-li8a** - Move fs assumption/external operations to service layer
+2. **vibefeld-rvzl** - Move fs pending-def operations to service layer
+3. **vibefeld-x5mh** - Wrap fs.InitProofDir in service layer
+4. **vibefeld-0zsm** - Re-export schema constants through service package
 
-### P2 Code Quality (unchanged)
-- Inconsistent return types (`vibefeld-9maw`)
-- ProofOperations interface too large (`vibefeld-hn7l`)
-- Service layer leaks domain types (`vibefeld-vj5y`)
-- Service package acts as hub (`vibefeld-264n`)
-- Missing intermediate layer (`vibefeld-qsyt`)
+### P2 Code Quality (API Design)
+- `vibefeld-9maw` - Inconsistent return types for ID-returning operations
+- `vibefeld-hn7l` - ProofOperations interface too large (30+ methods)
+- `vibefeld-vj5y` - Service layer leaks domain types
+- `vibefeld-264n` - Module structure: service package acts as hub
+- `vibefeld-qsyt` - Missing intermediate layer for service
 
 ## Quick Commands
 
@@ -74,6 +77,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 177:** Migrated 65 cmd/af files to use service.ParseNodeID, closed vibefeld-hufm
 **Session 176:** Created types re-exports in service/exports.go, closed vibefeld-3iiz
 **Session 175:** Analyzed cmd/af imports, created 5 sub-tasks for vibefeld-jfbc epic
 **Session 174:** Completed error types refactoring - closed vibefeld-npeg with all 3 phases done

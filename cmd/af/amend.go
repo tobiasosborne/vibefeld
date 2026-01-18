@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newAmendCmd creates the amend command for correcting node statements.
@@ -69,7 +68,7 @@ func runAmend(cmd *cobra.Command, nodeIDStr, owner, statement, dir, format strin
 	}
 
 	// Parse node ID
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return render.InvalidNodeIDError("af amend", nodeIDStr, examples)
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -148,7 +147,7 @@ func TestReplayIntegration_ReplayWithMultipleNodes(t *testing.T) {
 	}
 
 	// Create child nodes
-	childID, err := types.Parse("1.1")
+	childID, err := service.ParseNodeID("1.1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +155,7 @@ func TestReplayIntegration_ReplayWithMultipleNodes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	childID2, err := types.Parse("1.2")
+	childID2, err := service.ParseNodeID("1.2")
 	if err != nil {
 		t.Fatal(err)
 	}

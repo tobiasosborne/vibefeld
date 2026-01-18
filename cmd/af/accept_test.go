@@ -18,7 +18,6 @@ import (
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -26,9 +25,9 @@ import (
 // =============================================================================
 
 // mustParseNodeID parses a NodeID string or fails the test.
-func mustParseNodeID(t *testing.T, s string) types.NodeID {
+func mustParseNodeID(t *testing.T, s string) service.NodeID {
 	t.Helper()
-	id, err := types.Parse(s)
+	id, err := service.ParseNodeID(s)
 	if err != nil {
 		t.Fatalf("Failed to parse NodeID %q: %v", s, err)
 	}
@@ -630,7 +629,7 @@ func TestAcceptCmd_TableDrivenNodeIDs(t *testing.T) {
 			if tc.setupNode && tc.nodeID != "" && tc.nodeID != "1" {
 				// Only create node if it's a valid ID, setupNode is true, and it's not node 1
 				// (node 1 already exists from Init with statement "Test conjecture")
-				id, err := types.Parse(tc.nodeID)
+				id, err := service.ParseNodeID(tc.nodeID)
 				if err == nil {
 					svc, _ := service.NewProofService(tmpDir)
 					_ = svc.CreateNode(id, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
@@ -933,7 +932,7 @@ func TestAcceptCommand_ConfirmFlagInHelp(t *testing.T) {
 
 // addChallengeToNode is a test helper that adds a challenge to a node by directly
 // appending to the ledger. This bypasses the service layer to set up test fixtures.
-func addChallengeToNode(t *testing.T, proofDir string, nodeID types.NodeID, challengeID, target, reason, severity string) {
+func addChallengeToNode(t *testing.T, proofDir string, nodeID service.NodeID, challengeID, target, reason, severity string) {
 	t.Helper()
 	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
 	if err != nil {
@@ -1365,7 +1364,7 @@ func TestAcceptCommand_ShowsVerificationSummaryWithNoteJSON(t *testing.T) {
 
 // createNodeWithDependencies is a test helper that creates a node with dependencies
 // by directly appending to the ledger.
-func createNodeWithDependencies(t *testing.T, proofDir string, nodeID types.NodeID, deps []types.NodeID) {
+func createNodeWithDependencies(t *testing.T, proofDir string, nodeID service.NodeID, deps []service.NodeID) {
 	t.Helper()
 	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
 	if err != nil {
@@ -1405,7 +1404,7 @@ func TestAcceptCommand_ShowsVerificationSummaryWithDependencies(t *testing.T) {
 	}
 
 	// Create child node that depends on the root (using test helper)
-	createNodeWithDependencies(t, tmpDir, childID, []types.NodeID{rootID})
+	createNodeWithDependencies(t, tmpDir, childID, []service.NodeID{rootID})
 
 	// Accept the child node
 	output, err := executeAcceptCommand(t, "1.1", "-d", tmpDir)
@@ -1454,7 +1453,7 @@ func TestAcceptCommand_ShowsVerificationSummaryWithDependenciesJSON(t *testing.T
 	}
 
 	// Create child node that depends on the root (using test helper)
-	createNodeWithDependencies(t, tmpDir, childID, []types.NodeID{rootID})
+	createNodeWithDependencies(t, tmpDir, childID, []service.NodeID{rootID})
 
 	// Accept the child node with JSON format
 	output, err := executeAcceptCommand(t, "1.1", "-d", tmpDir, "-f", "json")
@@ -1508,7 +1507,7 @@ func TestAcceptCommand_ShowsVerificationSummaryWithDependenciesJSON(t *testing.T
 
 // addChallengeWithRaisedBy is a test helper that adds a challenge to a node
 // with the RaisedBy field set.
-func addChallengeWithRaisedBy(t *testing.T, proofDir string, nodeID types.NodeID, challengeID, target, reason, severity, raisedBy string) {
+func addChallengeWithRaisedBy(t *testing.T, proofDir string, nodeID service.NodeID, challengeID, target, reason, severity, raisedBy string) {
 	t.Helper()
 
 	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))

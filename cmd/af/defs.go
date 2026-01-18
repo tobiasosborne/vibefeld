@@ -45,7 +45,7 @@ func newDefCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "def <name>",
 		GroupID: GroupQuery,
-		Short: "Show a specific definition by name",
+		Short:   "Show a specific definition by name",
 		Long: `Show details of a specific definition.
 
 Retrieves and displays the definition with the given name, including

@@ -127,11 +127,11 @@ func TestMetricsCmd_Help(t *testing.T) {
 
 	// Help should include usage information
 	expectations := []string{
-		"metrics",   // Command name
-		"--format",  // Format flag
-		"--dir",     // Directory flag
-		"--node",    // Node flag
-		"quality",   // Should mention quality in description
+		"metrics",  // Command name
+		"--format", // Format flag
+		"--dir",    // Directory flag
+		"--node",   // Node flag
+		"quality",  // Should mention quality in description
 	}
 
 	for _, exp := range expectations {

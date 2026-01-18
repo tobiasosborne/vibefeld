@@ -11,7 +11,6 @@ import (
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // writeJSONOutput marshals data as indented JSON and writes to the command's output.
@@ -124,7 +123,7 @@ func validateAcceptInput(params acceptParams) error {
 
 // getNodeIDsToAccept collects the node IDs to accept, either from args or pending nodes.
 // Returns nil if --all was used but there are no pending nodes (after outputting appropriate message).
-func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params acceptParams) ([]types.NodeID, error) {
+func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params acceptParams) ([]service.NodeID, error) {
 	examples := render.GetExamples("af accept")
 
 	if params.acceptAll {
@@ -138,16 +137,16 @@ func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params ac
 			return nil, nil
 		}
 
-		nodeIDs := make([]types.NodeID, len(pendingNodes))
+		nodeIDs := make([]service.NodeID, len(pendingNodes))
 		for i, n := range pendingNodes {
 			nodeIDs[i] = n.ID
 		}
 		return nodeIDs, nil
 	}
 
-	nodeIDs := make([]types.NodeID, 0, len(params.args))
+	nodeIDs := make([]service.NodeID, 0, len(params.args))
 	for _, nodeIDStr := range params.args {
-		nodeID, err := types.Parse(nodeIDStr)
+		nodeID, err := service.ParseNodeID(nodeIDStr)
 		if err != nil {
 			return nil, render.InvalidNodeIDError("af accept", nodeIDStr, examples)
 		}
@@ -170,7 +169,7 @@ func outputNoPendingNodes(cmd *cobra.Command, format string) {
 }
 
 // verifyAgentChallenges checks that the agent has raised challenges for all nodes.
-func verifyAgentChallenges(svc *service.ProofService, nodeIDs []types.NodeID, agent string, confirm bool) error {
+func verifyAgentChallenges(svc *service.ProofService, nodeIDs []service.NodeID, agent string, confirm bool) error {
 	if agent == "" || confirm {
 		return nil
 	}
@@ -189,7 +188,7 @@ func verifyAgentChallenges(svc *service.ProofService, nodeIDs []types.NodeID, ag
 }
 
 // performSingleAcceptance handles acceptance of a single node.
-func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID types.NodeID, withNote, format string) error {
+func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format string) error {
 	var acceptErr error
 	if withNote != "" {
 		acceptErr = svc.AcceptNodeWithNote(nodeID, withNote)
@@ -213,7 +212,7 @@ func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, node
 }
 
 // outputSingleAcceptance outputs the result of a single node acceptance.
-func outputSingleAcceptance(cmd *cobra.Command, nodeID types.NodeID, withNote, format string, summary verificationSummary, hasSummary bool) error {
+func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote, format string, summary verificationSummary, hasSummary bool) error {
 	switch strings.ToLower(format) {
 	case "json":
 		result := map[string]interface{}{
@@ -256,7 +255,7 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID types.NodeID, withNote, f
 }
 
 // performBulkAcceptance handles acceptance of multiple nodes.
-func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []types.NodeID, format string) error {
+func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format string) error {
 	if err := svc.AcceptNodeBulk(nodeIDs); err != nil {
 		if errors.Is(err, service.ErrBlockingChallenges) {
 			nodeID := extractNodeIDFromBlockingError(err)
@@ -267,7 +266,7 @@ func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID
 		return fmt.Errorf("error accepting nodes: %w", err)
 	}
 
-	return outputBulkAcceptance(cmd, types.ToStringSlice(nodeIDs), format)
+	return outputBulkAcceptance(cmd, service.ToStringSlice(nodeIDs), format)
 }
 
 // outputBulkAcceptance outputs the result of a bulk node acceptance.
@@ -337,7 +336,7 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 
 // handleBlockingChallengesError displays blocking challenges that prevent acceptance.
 // It formats the error output based on the requested format (text or json).
-func handleBlockingChallengesError(cmd *cobra.Command, svc *service.ProofService, nodeID types.NodeID, format string, origErr error) error {
+func handleBlockingChallengesError(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, format string, origErr error) error {
 	// Load state to get the blocking challenges
 	st, err := svc.LoadState()
 	if err != nil {
@@ -356,7 +355,7 @@ func handleBlockingChallengesError(cmd *cobra.Command, svc *service.ProofService
 }
 
 // outputBlockingChallengesText displays blocking challenges in text format.
-func outputBlockingChallengesText(cmd *cobra.Command, nodeID types.NodeID, challenges []*state.Challenge, origErr error) error {
+func outputBlockingChallengesText(cmd *cobra.Command, nodeID service.NodeID, challenges []*state.Challenge, origErr error) error {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("Cannot accept node %s: blocking challenges must be resolved first.\n\n", nodeID.String()))
@@ -387,7 +386,7 @@ func outputBlockingChallengesText(cmd *cobra.Command, nodeID types.NodeID, chall
 }
 
 // outputBlockingChallengesJSON displays blocking challenges in JSON format.
-func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID types.NodeID, challenges []*state.Challenge, origErr error) error {
+func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID service.NodeID, challenges []*state.Challenge, origErr error) error {
 	type challengeInfo struct {
 		ID       string `json:"id"`
 		Target   string `json:"target"`
@@ -434,10 +433,10 @@ func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID types.NodeID, chall
 // verificationSummary contains information about challenges and dependencies
 // for a node that was just accepted.
 type verificationSummary struct {
-	ChallengesRaised    int
-	ChallengesResolved  int
-	Dependencies        []dependencyInfo
-	Note                string
+	ChallengesRaised   int
+	ChallengesResolved int
+	Dependencies       []dependencyInfo
+	Note               string
 }
 
 // dependencyInfo contains the ID and status of a dependency.
@@ -465,7 +464,7 @@ func lookupContextStatus(st *state.State, ctx string) string {
 }
 
 // getVerificationSummary retrieves challenge and dependency information for a node.
-func getVerificationSummary(st *state.State, nodeID types.NodeID, note string) verificationSummary {
+func getVerificationSummary(st *state.State, nodeID service.NodeID, note string) verificationSummary {
 	summary := verificationSummary{
 		Note: note,
 	}
@@ -510,7 +509,7 @@ func getVerificationSummary(st *state.State, nodeID types.NodeID, note string) v
 }
 
 // outputVerificationSummaryText outputs the verification summary in text format.
-func outputVerificationSummaryText(cmd *cobra.Command, nodeID types.NodeID, summary verificationSummary) {
+func outputVerificationSummaryText(cmd *cobra.Command, nodeID service.NodeID, summary verificationSummary) {
 	fmt.Fprintf(cmd.OutOrStdout(), "\nVerification summary:\n")
 	fmt.Fprintf(cmd.OutOrStdout(), "  Challenges: %d raised, %d resolved\n",
 		summary.ChallengesRaised, summary.ChallengesResolved)
@@ -529,7 +528,7 @@ func outputVerificationSummaryText(cmd *cobra.Command, nodeID types.NodeID, summ
 
 // extractNodeIDFromBlockingError attempts to extract the node ID from a blocking challenges error message.
 // Returns nil if the node ID cannot be extracted.
-func extractNodeIDFromBlockingError(err error) *types.NodeID {
+func extractNodeIDFromBlockingError(err error) *service.NodeID {
 	if err == nil {
 		return nil
 	}
@@ -557,7 +556,7 @@ func extractNodeIDFromBlockingError(err error) *types.NodeID {
 	}
 
 	nodeIDStr := remaining[:endIdx]
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return nil
 	}

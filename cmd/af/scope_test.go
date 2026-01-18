@@ -13,7 +13,6 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -108,7 +107,7 @@ func TestScopeCmd_NodeInScope(t *testing.T) {
 	}
 
 	// Create local assume node
-	assumeID, _ := types.Parse("1.1")
+	assumeID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(assumeID, schema.NodeTypeLocalAssume, "Assume x > 0", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +126,7 @@ func TestScopeCmd_NodeInScope(t *testing.T) {
 	}
 
 	// Create child node inside scope
-	childID, _ := types.Parse("1.1.1")
+	childID, _ := service.ParseNodeID("1.1.1")
 	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Therefore something", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +153,7 @@ func TestScopeCmd_JSONFormat(t *testing.T) {
 	}
 
 	// Create local assume node
-	assumeID, _ := types.Parse("1.1")
+	assumeID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(assumeID, schema.NodeTypeLocalAssume, "Assume x > 0", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +172,7 @@ func TestScopeCmd_JSONFormat(t *testing.T) {
 	}
 
 	// Create child node
-	childID, _ := types.Parse("1.1.1")
+	childID, _ := service.ParseNodeID("1.1.1")
 	err = svc.CreateNode(childID, schema.NodeTypeClaim, "Therefore", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
@@ -213,7 +212,7 @@ func TestScopeCmd_ShowAllScopes(t *testing.T) {
 	}
 
 	// First scope
-	assume1ID, _ := types.Parse("1.1")
+	assume1ID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(assume1ID, schema.NodeTypeLocalAssume, "Assume A", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +222,7 @@ func TestScopeCmd_ShowAllScopes(t *testing.T) {
 	}
 
 	// Second scope
-	assume2ID, _ := types.Parse("1.2")
+	assume2ID, _ := service.ParseNodeID("1.2")
 	err = svc.CreateNode(assume2ID, schema.NodeTypeLocalAssume, "Assume B", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
@@ -262,7 +261,7 @@ func TestScopeCmd_AllScopesJSON(t *testing.T) {
 	}
 
 	// Create scope
-	assumeID, _ := types.Parse("1.1")
+	assumeID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(assumeID, schema.NodeTypeLocalAssume, "Assume A", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
@@ -323,7 +322,7 @@ func TestScopeCmd_ClosedScope(t *testing.T) {
 	}
 
 	// Create and open scope
-	assumeID, _ := types.Parse("1.1")
+	assumeID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(assumeID, schema.NodeTypeLocalAssume, "Assume A", schema.InferenceAssumption)
 	if err != nil {
 		t.Fatal(err)
@@ -333,7 +332,7 @@ func TestScopeCmd_ClosedScope(t *testing.T) {
 	}
 
 	// Close the scope
-	dischargeID, _ := types.Parse("1.1.1")
+	dischargeID, _ := service.ParseNodeID("1.1.1")
 	if _, err := ldg.Append(ledger.NewScopeClosed(assumeID, dischargeID)); err != nil {
 		t.Fatal(err)
 	}

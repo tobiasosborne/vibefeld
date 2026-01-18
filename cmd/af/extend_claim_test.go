@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -51,7 +50,7 @@ func setupExtendClaimTest(t *testing.T, owner string) (string, func()) {
 		t.Fatal(err)
 	}
 
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	if err := svc.ClaimNode(nodeID, owner, time.Hour); err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)

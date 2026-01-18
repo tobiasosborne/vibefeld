@@ -104,7 +104,7 @@ func runReap(cmd *cobra.Command, args []string) error {
 
 	// Find nodes to reap
 	now := types.FromTime(time.Now())
-	var toReap []types.NodeID
+	var toReap []service.NodeID
 
 	for _, n := range st.AllNodes() {
 		if n.WorkflowState != schema.WorkflowClaimed {
@@ -127,7 +127,7 @@ func runReap(cmd *cobra.Command, args []string) error {
 	result := reapResult{
 		DryRun: dryRun,
 		Count:  len(toReap),
-		Reaped: types.ToStringSlice(toReap),
+		Reaped: service.ToStringSlice(toReap),
 	}
 
 	// If not dry run, actually release the nodes
@@ -142,7 +142,7 @@ func runReap(cmd *cobra.Command, args []string) error {
 }
 
 // releaseNodes releases the given nodes by appending NodesReleased events.
-func releaseNodes(svc *service.ProofService, nodeIDs []types.NodeID) error {
+func releaseNodes(svc *service.ProofService, nodeIDs []service.NodeID) error {
 	// Get the ledger directly
 	ldg, err := ledger.NewLedger(svc.Path() + "/ledger")
 	if err != nil {

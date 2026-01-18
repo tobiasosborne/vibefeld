@@ -14,7 +14,6 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -82,10 +81,10 @@ func setupJobsTestWithNodes(t *testing.T) (string, func()) {
 	}
 
 	// Create child nodes (node 1 already exists from Init)
-	child1ID, _ := types.Parse("1.1")
+	child1ID, _ := service.ParseNodeID("1.1")
 	svc.CreateNode(child1ID, schema.NodeTypeClaim, "First child", schema.InferenceModusPonens)
 
-	child2ID, _ := types.Parse("1.2")
+	child2ID, _ := service.ParseNodeID("1.2")
 	svc.CreateNode(child2ID, schema.NodeTypeClaim, "Second child", schema.InferenceModusPonens)
 
 	cleanup := func() { os.RemoveAll(tmpDir) }
@@ -106,7 +105,7 @@ func setupJobsTestWithVerifierJobs(t *testing.T) (string, func()) {
 	}
 
 	// Validate a child node so parent can become verifier job
-	child1ID, _ := types.Parse("1.1")
+	child1ID, _ := service.ParseNodeID("1.1")
 	svc.AcceptNode(child1ID)
 
 	return proofDir, cleanup
@@ -231,8 +230,8 @@ func TestJobsCmd_ShowsProverJobs(t *testing.T) {
 
 	// Output should show prover jobs
 	expectations := []string{
-		"prover",                // Should mention prover jobs
-		"1",                     // Should show node IDs
+		"prover", // Should mention prover jobs
+		"1",      // Should show node IDs
 	}
 
 	for _, exp := range expectations {
@@ -480,10 +479,10 @@ func TestJobsCmd_Help(t *testing.T) {
 
 	// Help should include usage information
 	expectations := []string{
-		"jobs",      // Command name
-		"--role",    // Role filter flag
-		"--format",  // Format flag
-		"--dir",     // Directory flag
+		"jobs",     // Command name
+		"--role",   // Role filter flag
+		"--format", // Format flag
+		"--dir",    // Directory flag
 	}
 
 	for _, exp := range expectations {
@@ -517,10 +516,10 @@ func TestJobsCmd_OutputFormats(t *testing.T) {
 	defer cleanup()
 
 	tests := []struct {
-		name       string
-		format     string
-		wantErr    bool
-		checkJSON  bool
+		name      string
+		format    string
+		wantErr   bool
+		checkJSON bool
 	}{
 		{"default format", "", false, false},
 		{"json format", "json", false, true},
@@ -802,7 +801,7 @@ func TestJobsCmd_ExpectedFlags(t *testing.T) {
 // =============================================================================
 
 // addChallengeToNodeWithSeverity is a test helper that adds a challenge with a specific severity.
-func addChallengeToNodeWithSeverity(t *testing.T, proofDir string, nodeID types.NodeID, challengeID, severity string) {
+func addChallengeToNodeWithSeverity(t *testing.T, proofDir string, nodeID service.NodeID, challengeID, severity string) {
 	t.Helper()
 	ldg, err := ledger.NewLedger(filepath.Join(proofDir, "ledger"))
 	if err != nil {
@@ -821,7 +820,7 @@ func TestJobsCommand_ShowsChallengeSeverityCounts(t *testing.T) {
 	defer cleanup()
 
 	// Node 1 already exists from Init, add challenges to it
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 
 	// Add multiple challenges with different severities
 	addChallengeToNodeWithSeverity(t, proofDir, nodeID, "chal-001", "critical")
@@ -862,7 +861,7 @@ func TestJobsCommand_ShowsChallengeSeverityCountsJSON(t *testing.T) {
 	defer cleanup()
 
 	// Node 1 already exists from Init, add challenges to it
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 
 	// Add challenges with different severities
 	addChallengeToNodeWithSeverity(t, proofDir, nodeID, "chal-001", "critical")
@@ -935,7 +934,7 @@ func TestJobsCommand_SeverityCountsSingularChallenge(t *testing.T) {
 	proofDir, cleanup := setupJobsTest(t)
 	defer cleanup()
 
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 
 	// Add just one challenge
 	addChallengeToNodeWithSeverity(t, proofDir, nodeID, "chal-001", "major")

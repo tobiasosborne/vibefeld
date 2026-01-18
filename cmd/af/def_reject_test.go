@@ -18,7 +18,6 @@ import (
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -61,7 +60,7 @@ func setupDefRejectTestWithPendingDef(t *testing.T) (string, func(), *node.Pendi
 	tmpDir, cleanup := setupDefRejectTest(t)
 
 	// Create a pending definition request
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	pd, err := node.NewPendingDefWithValidation("group", nodeID)
 	if err != nil {
 		cleanup()
@@ -91,7 +90,7 @@ func setupDefRejectTestWithMultiplePendingDefs(t *testing.T) (string, func(), []
 
 	// Create additional nodes for testing (root node "1" is already created by Init)
 	for _, idStr := range []string{"1.1", "1.2"} {
-		nodeID, _ := types.Parse(idStr)
+		nodeID, _ := service.ParseNodeID(idStr)
 		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
 		if err != nil {
 			cleanup()
@@ -111,7 +110,7 @@ func setupDefRejectTestWithMultiplePendingDefs(t *testing.T) (string, func(), []
 
 	var pds []*node.PendingDef
 	for _, pdInfo := range pendingDefs {
-		nodeID, _ := types.Parse(pdInfo.nodeID)
+		nodeID, _ := service.ParseNodeID(pdInfo.nodeID)
 		pd, err := node.NewPendingDefWithValidation(pdInfo.term, nodeID)
 		if err != nil {
 			cleanup()
@@ -913,7 +912,7 @@ func TestDefRejectCmd_RelativeDirectory(t *testing.T) {
 	}
 
 	// Create a pending def
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	pd, err := node.NewPendingDefWithValidation("test_term", nodeID)
 	if err != nil {
 		t.Fatal(err)
@@ -1140,7 +1139,7 @@ func TestDefRejectCmd_SpecialCharactersInTerm(t *testing.T) {
 
 	// Create a pending def with special characters in term
 	specialTerm := "epsilon-delta_continuity"
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	pd, err := node.NewPendingDefWithValidation(specialTerm, nodeID)
 	if err != nil {
 		t.Logf("Could not create special-term pending def: %v", err)
@@ -1169,7 +1168,7 @@ func TestDefRejectCmd_LongTerm(t *testing.T) {
 
 	// Create a pending def with a long term
 	longTerm := strings.Repeat("mathematical_concept_", 10)
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	pd, err := node.NewPendingDefWithValidation(longTerm, nodeID)
 	if err != nil {
 		t.Logf("Could not create long-term pending def: %v", err)

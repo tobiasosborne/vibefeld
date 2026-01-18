@@ -11,7 +11,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newPendingDefsCmd creates the pending-defs command for listing all pending definitions.
@@ -203,7 +202,7 @@ func findPendingDef(pendingDefs []*node.PendingDef, lookup string) *node.Pending
 	}
 
 	// Try node ID match
-	nodeID, err := types.Parse(lookup)
+	nodeID, err := service.ParseNodeID(lookup)
 	if err == nil {
 		for _, pd := range pendingDefs {
 			if pd.RequestedBy.String() == nodeID.String() {

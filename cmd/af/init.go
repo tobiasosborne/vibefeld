@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/templates"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newInitCmd creates the init command for initializing a new proof workspace.
@@ -156,7 +155,7 @@ func applyTemplate(dir string, tmpl templates.Template) error {
 		return err
 	}
 
-	rootID, err := types.Parse("1")
+	rootID, err := service.ParseNodeID("1")
 	if err != nil {
 		return err
 	}

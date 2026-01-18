@@ -76,11 +76,11 @@ func TestTypesCmd_ShowsDescriptions(t *testing.T) {
 
 	// Should contain descriptive text for types
 	expectations := []string{
-		"assertion",       // from claim description
-		"hypothesis",      // from local_assume description
-		"scope",           // from local_assume or local_discharge
-		"case split",      // from case description
-		"concluding",      // from qed description
+		"assertion",  // from claim description
+		"hypothesis", // from local_assume description
+		"scope",      // from local_assume or local_discharge
+		"case split", // from case description
+		"concluding", // from qed description
 	}
 
 	found := 0
@@ -221,11 +221,11 @@ func TestTypesCmd_JSONOutputContainsAllTypes(t *testing.T) {
 
 	// Check all expected types are present
 	expectedTypes := map[string]bool{
-		"claim":            false,
-		"local_assume":     false,
-		"local_discharge":  false,
-		"case":             false,
-		"qed":              false,
+		"claim":           false,
+		"local_assume":    false,
+		"local_discharge": false,
+		"case":            false,
+		"qed":             false,
 	}
 
 	for _, nt := range result.Types {

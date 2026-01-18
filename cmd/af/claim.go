@@ -12,7 +12,6 @@ import (
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newClaimCmd creates the claim command for claiming a node for work.
@@ -62,7 +61,7 @@ func runClaim(cmd *cobra.Command, args []string) error {
 	examples := render.GetExamples("af claim")
 
 	// Parse node ID from positional argument
-	nodeID, err := types.Parse(args[0])
+	nodeID, err := service.ParseNodeID(args[0])
 	if err != nil {
 		return render.InvalidNodeIDError("af claim", args[0], examples)
 	}
@@ -131,7 +130,7 @@ func runClaim(cmd *cobra.Command, args []string) error {
 }
 
 // outputClaimJSON outputs the claim result in JSON format.
-func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string, timeout time.Duration, st *state.State, refresh bool) error {
+func outputClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner, role string, timeout time.Duration, st *state.State, refresh bool) error {
 	// Render context based on role
 	var context string
 	if role == "prover" {
@@ -190,7 +189,7 @@ func outputClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner, role string
 }
 
 // outputClaimText outputs the claim result in human-readable text format.
-func outputClaimText(cmd *cobra.Command, nodeID types.NodeID, owner string, timeout time.Duration, role string, st *state.State, refresh bool) error {
+func outputClaimText(cmd *cobra.Command, nodeID service.NodeID, owner string, timeout time.Duration, role string, st *state.State, refresh bool) error {
 	// Calculate expiration time
 	expiresAt := time.Now().Add(timeout)
 

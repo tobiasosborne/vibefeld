@@ -13,7 +13,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -45,7 +44,7 @@ func setupResolveChallengeTest(t *testing.T) (string, string, func()) {
 		t.Fatal(err)
 	}
 
-	rootID, err := types.Parse("1")
+	rootID, err := service.ParseNodeID("1")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
@@ -486,7 +485,7 @@ func TestResolveChallengeCmd_VariousChallengeIDs(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			rootID, _ := types.Parse("1")
+			rootID, _ := service.ParseNodeID("1")
 
 			// Raise a challenge with this specific ID against node 1
 			ledgerDir := filepath.Join(proofDir, "ledger")

@@ -282,11 +282,11 @@ func TestVersionVariables_GoVersionRuntime(t *testing.T) {
 // TestVersionCmd_OutputFormats tests various output format scenarios.
 func TestVersionCmd_OutputFormats(t *testing.T) {
 	tests := []struct {
-		name       string
-		args       []string
-		wantErr    bool
-		checkJSON  bool
-		contains   []string
+		name      string
+		args      []string
+		wantErr   bool
+		checkJSON bool
+		contains  []string
 	}{
 		{
 			name:      "default text output",

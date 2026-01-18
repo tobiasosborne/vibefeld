@@ -18,7 +18,6 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -113,7 +112,7 @@ func setupGetTestWithHierarchy(t *testing.T) (string, func()) {
 	}
 
 	for _, n := range nodes {
-		nodeID, err := types.Parse(n.id)
+		nodeID, err := service.ParseNodeID(n.id)
 		if err != nil {
 			cleanup()
 			t.Fatalf("failed to parse node ID %s: %v", n.id, err)
@@ -1068,7 +1067,7 @@ func TestGetCmd_TableDrivenNodeIDs(t *testing.T) {
 
 			if tc.setupNode && tc.nodeID != "" {
 				// Only create node if it's a valid ID and setupNode is true
-				id, err := types.Parse(tc.nodeID)
+				id, err := service.ParseNodeID(tc.nodeID)
 				if err == nil {
 					svc, _ := service.NewProofService(tmpDir)
 					_ = svc.CreateNode(id, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)
@@ -1145,7 +1144,7 @@ func TestGetCmd_SingleNodeShowsFullTextByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodeID, _ := types.Parse("1.1")
+	nodeID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, longStatement, schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
@@ -1216,7 +1215,7 @@ func setupGetTestWithChallenges(t *testing.T) (string, func()) {
 	}
 
 	// Add an open challenge on node 1
-	nodeID1, _ := types.Parse("1")
+	nodeID1, _ := service.ParseNodeID("1")
 	event1 := ledger.NewChallengeRaised("ch-abc123", nodeID1, "gap", "Missing case for n=0")
 	if _, err := ldg.Append(event1); err != nil {
 		cleanup()
@@ -1381,7 +1380,7 @@ func TestGetCmd_ChallengesWithFullFlagMultipleNodes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodeID11, _ := types.Parse("1.1")
+	nodeID11, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(nodeID11, schema.NodeTypeClaim, "Child claim", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
@@ -1544,8 +1543,8 @@ func TestGetCmd_ChecklistWithDependencies(t *testing.T) {
 	}
 
 	// Create a child node with dependencies
-	nodeID11, _ := types.Parse("1.1")
-	nodeID1, _ := types.Parse("1")
+	nodeID11, _ := service.ParseNodeID("1.1")
+	nodeID1, _ := service.ParseNodeID("1")
 
 	// First create the node
 	err = svc.CreateNode(nodeID11, schema.NodeTypeClaim, "Dependent claim", schema.InferenceModusPonens)

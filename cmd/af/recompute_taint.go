@@ -13,7 +13,6 @@ import (
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/taint"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // TaintChange represents a change in taint state for a node.
@@ -208,9 +207,9 @@ func persistTaintChanges(dir string, changes []TaintChange, expectedSeq int) err
 	return nil
 }
 
-// parseNodeID parses a node ID string and returns a types.NodeID.
-func parseNodeID(s string) (types.NodeID, error) {
-	return types.Parse(s)
+// parseNodeID parses a node ID string and returns a service.NodeID.
+func parseNodeID(s string) (service.NodeID, error) {
+	return service.ParseNodeID(s)
 }
 
 // outputRecomputeTaintResult outputs the result based on format.

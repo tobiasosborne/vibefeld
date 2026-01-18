@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -57,7 +56,7 @@ func setupChallengeTestWithMultipleNodes(t *testing.T) (string, func()) {
 
 	// Create child nodes
 	for _, idStr := range []string{"1.1", "1.2"} {
-		nodeID, _ := types.Parse(idStr)
+		nodeID, _ := service.ParseNodeID(idStr)
 		err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Statement "+idStr, schema.InferenceModusPonens)
 		if err != nil {
 			cleanup()

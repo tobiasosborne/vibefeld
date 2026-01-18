@@ -14,9 +14,9 @@ import (
 
 // challengeState tracks the state of a challenge as we replay events.
 type challengeState struct {
-	id       string
-	exists   bool
-	status   string // "open", "resolved", "withdrawn"
+	id     string
+	exists bool
+	status string // "open", "resolved", "withdrawn"
 }
 
 // newWithdrawChallengeCmd creates the withdraw-challenge command.

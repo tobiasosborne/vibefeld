@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/metrics"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newMetricsCmd creates the metrics command.
@@ -56,9 +55,9 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	}
 
 	// Parse node ID if provided
-	var nodeID *types.NodeID
+	var nodeID *service.NodeID
 	if nodeIDStr != "" {
-		id, err := types.Parse(nodeIDStr)
+		id, err := service.ParseNodeID(nodeIDStr)
 		if err != nil {
 			return fmt.Errorf("invalid node ID %q: %w", nodeIDStr, err)
 		}

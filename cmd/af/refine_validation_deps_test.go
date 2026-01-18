@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // ===========================================================================
@@ -59,7 +58,7 @@ func TestRefineCmd_WithRequiresValidated_ValidSingleDep(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	childID, _ := types.Parse("1.2")
+	childID, _ := service.ParseNodeID("1.2")
 	child := st.GetNode(childID)
 	if child == nil {
 		t.Fatal("expected child node 1.2 to exist")
@@ -119,7 +118,7 @@ func TestRefineCmd_WithRequiresValidated_MultipleDeps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	childID, _ := types.Parse("1.5")
+	childID, _ := service.ParseNodeID("1.5")
 	child := st.GetNode(childID)
 	if child == nil {
 		t.Fatal("expected child node 1.5 to exist")
@@ -289,7 +288,7 @@ func TestRefineCmd_WithRequiresValidated_BothDependsAndRequiresValidated(t *test
 		t.Fatal(err)
 	}
 
-	childID, _ := types.Parse("1.3")
+	childID, _ := service.ParseNodeID("1.3")
 	child := st.GetNode(childID)
 	if child == nil {
 		t.Fatal("expected child node 1.3 to exist")
@@ -396,7 +395,7 @@ func TestRefineCmd_WithRequiresValidated_CrossBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	node11, _ := types.Parse("1.1")
+	node11, _ := service.ParseNodeID("1.1")
 	err = svc.ClaimNode(node11, "test-agent", time.Hour)
 	if err != nil {
 		t.Fatalf("failed to claim 1.1: %v", err)
@@ -435,7 +434,7 @@ func TestRefineCmd_WithRequiresValidated_CrossBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	childID, _ := types.Parse("1.2")
+	childID, _ := service.ParseNodeID("1.2")
 	child := st.GetNode(childID)
 	if child == nil {
 		t.Fatal("expected child node 1.2 to exist")

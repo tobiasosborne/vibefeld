@@ -14,7 +14,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -54,7 +53,7 @@ func setupBulkAcceptTest(t *testing.T) (string, func()) {
 
 	// Create nodes 1.1, 1.2, and 1.3
 	for i := 1; i <= 3; i++ {
-		childID, _ := types.Parse("1." + string(rune('0'+i)))
+		childID, _ := service.ParseNodeID("1." + string(rune('0'+i)))
 		err := svc.CreateNode(childID, schema.NodeTypeClaim, "Child statement "+string(rune('0'+i)), schema.InferenceAssumption)
 		if err != nil {
 			cleanup()
@@ -114,7 +113,7 @@ func TestAcceptBulkCmd_MultipleNodes(t *testing.T) {
 	}
 
 	for _, idStr := range []string{"1.1", "1.2", "1.3"} {
-		nodeID, _ := types.Parse(idStr)
+		nodeID, _ := service.ParseNodeID(idStr)
 		n := st.GetNode(nodeID)
 		if n == nil {
 			t.Errorf("node %s not found", idStr)
@@ -153,7 +152,7 @@ func TestAcceptBulkCmd_TwoNodes(t *testing.T) {
 	}
 
 	for _, idStr := range []string{"1.1", "1.2"} {
-		nodeID, _ := types.Parse(idStr)
+		nodeID, _ := service.ParseNodeID(idStr)
 		n := st.GetNode(nodeID)
 		if n == nil {
 			t.Errorf("node %s not found", idStr)
@@ -165,7 +164,7 @@ func TestAcceptBulkCmd_TwoNodes(t *testing.T) {
 	}
 
 	// Node 1.3 should still be pending
-	node13, _ := types.Parse("1.3")
+	node13, _ := service.ParseNodeID("1.3")
 	n := st.GetNode(node13)
 	if n != nil && n.EpistemicState == schema.EpistemicValidated {
 		t.Error("node 1.3 should not be validated (it was not in the accept list)")
@@ -197,7 +196,7 @@ func TestAcceptBulkCmd_SingleNodeStillWorks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodeID, _ := types.Parse("1.1")
+	nodeID, _ := service.ParseNodeID("1.1")
 	n := st.GetNode(nodeID)
 	if n == nil || n.EpistemicState != schema.EpistemicValidated {
 		t.Error("node 1.1 should be validated")
@@ -239,7 +238,7 @@ func TestAcceptBulkCmd_PartialFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodeID, _ := types.Parse("1.1")
+	nodeID, _ := service.ParseNodeID("1.1")
 	if err := svc.AcceptNode(nodeID); err != nil {
 		t.Fatalf("failed to pre-accept node 1.1: %v", err)
 	}
@@ -265,7 +264,7 @@ func TestAcceptBulkCmd_PartialFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	node12, _ := types.Parse("1.2")
+	node12, _ := service.ParseNodeID("1.2")
 	n12 := st.GetNode(node12)
 
 	// Behavior is implementation-dependent, just log the result
@@ -346,7 +345,7 @@ func TestAcceptBulkCmd_AllFlag(t *testing.T) {
 
 	// Check root and children
 	for _, idStr := range []string{"1", "1.1", "1.2", "1.3"} {
-		nodeID, _ := types.Parse(idStr)
+		nodeID, _ := service.ParseNodeID(idStr)
 		n := st.GetNode(nodeID)
 		if n == nil {
 			t.Errorf("node %s not found", idStr)
@@ -379,7 +378,7 @@ func TestAcceptBulkCmd_AllFlag_ShortForm(t *testing.T) {
 	st, _ := svc.LoadState()
 
 	for _, idStr := range []string{"1", "1.1", "1.2", "1.3"} {
-		nodeID, _ := types.Parse(idStr)
+		nodeID, _ := service.ParseNodeID(idStr)
 		n := st.GetNode(nodeID)
 		if n != nil && n.EpistemicState != schema.EpistemicValidated {
 			t.Errorf("node %s should be validated with -a flag", idStr)
@@ -399,7 +398,7 @@ func TestAcceptBulkCmd_AllFlag_NoPendingNodes(t *testing.T) {
 	}
 
 	for _, idStr := range []string{"1", "1.1", "1.2", "1.3"} {
-		nodeID, _ := types.Parse(idStr)
+		nodeID, _ := service.ParseNodeID(idStr)
 		if err := svc.AcceptNode(nodeID); err != nil {
 			t.Fatalf("failed to pre-accept node %s: %v", idStr, err)
 		}
@@ -481,9 +480,9 @@ func TestAcceptNodeBulk_Service(t *testing.T) {
 	}
 
 	// Accept multiple nodes via service layer
-	nodeIDs := []types.NodeID{}
+	nodeIDs := []service.NodeID{}
 	for _, idStr := range []string{"1.1", "1.2", "1.3"} {
-		nodeID, _ := types.Parse(idStr)
+		nodeID, _ := service.ParseNodeID(idStr)
 		nodeIDs = append(nodeIDs, nodeID)
 	}
 
@@ -521,7 +520,7 @@ func TestAcceptNodeBulk_Service_EmptyList(t *testing.T) {
 	}
 
 	// Accept with empty list should either succeed (no-op) or return error
-	err = svc.AcceptNodeBulk([]types.NodeID{})
+	err = svc.AcceptNodeBulk([]service.NodeID{})
 
 	// Empty list behavior is implementation-dependent
 	// Just log the result
@@ -539,15 +538,15 @@ func TestAcceptNodeBulk_Service_AtomicBehavior(t *testing.T) {
 	}
 
 	// Try to accept a mix of valid nodes and one that's already refuted
-	nodeID, _ := types.Parse("1.2")
+	nodeID, _ := service.ParseNodeID("1.2")
 	if err := svc.RefuteNode(nodeID); err != nil {
 		t.Fatalf("failed to refute node 1.2: %v", err)
 	}
 
 	// Now try bulk accept including the refuted node
-	nodeIDs := []types.NodeID{}
+	nodeIDs := []service.NodeID{}
 	for _, idStr := range []string{"1.1", "1.2", "1.3"} {
-		id, _ := types.Parse(idStr)
+		id, _ := service.ParseNodeID(idStr)
 		nodeIDs = append(nodeIDs, id)
 	}
 
@@ -561,7 +560,7 @@ func TestAcceptNodeBulk_Service_AtomicBehavior(t *testing.T) {
 	// Check final state
 	st, _ := svc.LoadState()
 	for _, idStr := range []string{"1.1", "1.3"} {
-		id, _ := types.Parse(idStr)
+		id, _ := service.ParseNodeID(idStr)
 		n := st.GetNode(id)
 		if n != nil {
 			t.Logf("Node %s final state: %s", idStr, n.EpistemicState)

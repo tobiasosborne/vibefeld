@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newTestReleaseCmd creates a fresh root command with the release subcommand for testing.
@@ -50,7 +49,7 @@ func setupReleaseTest(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	rootID, err := types.Parse("1")
+	rootID, err := service.ParseNodeID("1")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
@@ -377,7 +376,7 @@ func TestReleaseCmd_NodeStateAfterRelease(t *testing.T) {
 		t.Fatalf("failed to load state: %v", err)
 	}
 
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	node := st.GetNode(nodeID)
 	if node == nil {
 		t.Fatal("node should exist after release")

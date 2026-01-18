@@ -11,7 +11,6 @@ import (
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newGetCmd creates the get command for retrieving node information.
@@ -65,7 +64,7 @@ func runGet(cmd *cobra.Command, nodeIDStr, dir, format string, ancestors, subtre
 	}
 
 	// Parse node ID
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return fmt.Errorf("invalid node ID %q: %v", nodeIDStr, err)
 	}
@@ -138,7 +137,9 @@ func runGet(cmd *cobra.Command, nodeIDStr, dir, format string, ancestors, subtre
 }
 
 // collectAncestors collects the target node and all its ancestors.
-func collectAncestors(st interface{ GetNode(types.NodeID) *node.Node }, nodeID types.NodeID) []*node.Node {
+func collectAncestors(st interface {
+	GetNode(service.NodeID) *node.Node
+}, nodeID service.NodeID) []*node.Node {
 	var nodes []*node.Node
 
 	// Start with the target node
@@ -162,9 +163,9 @@ func collectAncestors(st interface{ GetNode(types.NodeID) *node.Node }, nodeID t
 
 // collectSubtree collects the target node and all its descendants.
 func collectSubtree(st interface {
-	GetNode(types.NodeID) *node.Node
+	GetNode(service.NodeID) *node.Node
 	AllNodes() []*node.Node
-}, nodeID types.NodeID) []*node.Node {
+}, nodeID service.NodeID) []*node.Node {
 	var nodes []*node.Node
 
 	// Get all nodes from state
@@ -230,7 +231,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 
 // getScopeInfoJSON returns scope information for a node as a JSON-friendly map.
 // Returns nil if the node is not in any scope.
-func getScopeInfoJSON(st *state.State, nodeID types.NodeID) map[string]interface{} {
+func getScopeInfoJSON(st *state.State, nodeID service.NodeID) map[string]interface{} {
 	info := st.GetScopeInfo(nodeID)
 	if info == nil || !info.IsInAnyScope() {
 		return nil
@@ -282,11 +283,11 @@ func nodeToJSONFull(n *node.Node, challenges []*state.Challenge, amendments []st
 	}
 
 	if len(n.Dependencies) > 0 {
-		result["dependencies"] = types.ToStringSlice(n.Dependencies)
+		result["dependencies"] = service.ToStringSlice(n.Dependencies)
 	}
 
 	if len(n.ValidationDeps) > 0 {
-		result["validation_deps"] = types.ToStringSlice(n.ValidationDeps)
+		result["validation_deps"] = service.ToStringSlice(n.ValidationDeps)
 	}
 
 	if len(n.Scope) > 0 {
@@ -430,7 +431,7 @@ func truncateForDisplay(s string, maxLen int) string {
 }
 
 // filterChallengesForNode returns challenges that target the given node.
-func filterChallengesForNode(challenges []*state.Challenge, nodeID types.NodeID) []*state.Challenge {
+func filterChallengesForNode(challenges []*state.Challenge, nodeID service.NodeID) []*state.Challenge {
 	var result []*state.Challenge
 	for _, c := range challenges {
 		if c.NodeID.String() == nodeID.String() {

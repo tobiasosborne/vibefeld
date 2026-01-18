@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newDepsCmd creates the deps command for showing dependency graph.
@@ -57,7 +56,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 	}
 
 	// Parse node ID
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return fmt.Errorf("invalid node ID %q: %w", nodeIDStr, err)
 	}
@@ -81,11 +80,11 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 
 	// Build dependency info
 	type depInfo struct {
-		ID            string `json:"id"`
-		Statement     string `json:"statement"`
-		State         string `json:"epistemic_state"`
-		IsBlocking    bool   `json:"is_blocking,omitempty"`
-		DepType       string `json:"type"` // "reference" or "validation"
+		ID         string `json:"id"`
+		Statement  string `json:"statement"`
+		State      string `json:"epistemic_state"`
+		IsBlocking bool   `json:"is_blocking,omitempty"`
+		DepType    string `json:"type"` // "reference" or "validation"
 	}
 
 	var deps []depInfo
@@ -147,10 +146,10 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 			"blocking_count":  blockingCount,
 		}
 		if len(node.ValidationDeps) > 0 {
-			result["validation_deps"] = types.ToStringSlice(node.ValidationDeps)
+			result["validation_deps"] = service.ToStringSlice(node.ValidationDeps)
 		}
 		if len(node.Dependencies) > 0 {
-			result["reference_deps"] = types.ToStringSlice(node.Dependencies)
+			result["reference_deps"] = service.ToStringSlice(node.Dependencies)
 		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {

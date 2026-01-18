@@ -9,7 +9,6 @@ import (
 	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newReleaseCmd creates the release command for releasing a claimed job.
@@ -71,7 +70,7 @@ func runRelease(cmd *cobra.Command, args []string) error {
 
 	// Parse node ID
 	nodeIDStr := args[0]
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return render.InvalidNodeIDError("af release", nodeIDStr, examples)
 	}

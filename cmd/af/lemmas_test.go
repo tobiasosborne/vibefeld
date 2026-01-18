@@ -17,7 +17,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -75,7 +74,7 @@ func setupLemmasTestWithLemmas(t *testing.T) (string, func(), []string) {
 	}
 
 	for _, n := range nodes {
-		nodeID, err := types.Parse(n.id)
+		nodeID, err := service.ParseNodeID(n.id)
 		if err != nil {
 			cleanup()
 			t.Fatalf("failed to parse node ID %q: %v", n.id, err)
@@ -105,7 +104,7 @@ func setupLemmasTestWithLemmas(t *testing.T) (string, func(), []string) {
 
 	var lemmaIDs []string
 	for _, lem := range lemmas {
-		sourceID, err := types.Parse(lem.sourceID)
+		sourceID, err := service.ParseNodeID(lem.sourceID)
 		if err != nil {
 			cleanup()
 			t.Fatalf("failed to parse source node ID %q: %v", lem.sourceID, err)
@@ -1073,7 +1072,7 @@ func TestLemmasCmd_ManyLemmas(t *testing.T) {
 	// Create and validate multiple nodes, then extract lemmas
 	for i := 0; i < 20; i++ {
 		nodeIDStr := "1." + string(rune('1'+i%9))
-		nodeID, err := types.Parse(nodeIDStr)
+		nodeID, err := service.ParseNodeID(nodeIDStr)
 		if err != nil {
 			continue
 		}
@@ -1117,7 +1116,7 @@ func TestLemmaCmd_LongLemmaStatement(t *testing.T) {
 	}
 
 	// Create and validate a node
-	nodeID, _ := types.Parse("1.1")
+	nodeID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
@@ -1157,7 +1156,7 @@ func TestLemmaCmd_SpecialCharactersInStatement(t *testing.T) {
 	}
 
 	// Create and validate a node
-	nodeID, _ := types.Parse("1.1")
+	nodeID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
@@ -1210,7 +1209,7 @@ func TestLemmasCmd_RelativeDirectory(t *testing.T) {
 	svc, _ := service.NewProofService(proofDir)
 
 	// Create and validate a node, then extract a lemma
-	nodeID, _ := types.Parse("1.1")
+	nodeID, _ := service.ParseNodeID("1.1")
 	svc.CreateNode(nodeID, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens)
 	svc.AcceptNode(nodeID)
 	svc.ExtractLemma(nodeID, "Test lemma for relative path")

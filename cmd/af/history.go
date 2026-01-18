@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/render"
+	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -44,7 +45,7 @@ Examples:
 
 func runHistory(cmd *cobra.Command, args []string) error {
 	// Parse node ID
-	nodeID, err := types.Parse(args[0])
+	nodeID, err := service.ParseNodeID(args[0])
 	if err != nil {
 		return fmt.Errorf("invalid node ID %q: %w", args[0], err)
 	}
@@ -103,7 +104,7 @@ func runHistory(cmd *cobra.Command, args []string) error {
 }
 
 // affectsNode determines if an event affects the specified node.
-func affectsNode(event map[string]interface{}, nodeID types.NodeID) bool {
+func affectsNode(event map[string]interface{}, nodeID service.NodeID) bool {
 	eventType, _ := event["type"].(string)
 	nodeIDStr := nodeID.String()
 

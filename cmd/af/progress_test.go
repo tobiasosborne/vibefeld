@@ -12,8 +12,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -44,7 +44,7 @@ func executeProgressCommand(root *cobra.Command, args ...string) (string, error)
 
 // createTestNode creates a test node with the given parameters.
 func createTestNode(id string, epistemicState schema.EpistemicState, workflowState schema.WorkflowState) *node.Node {
-	nodeID, _ := types.Parse(id)
+	nodeID, _ := service.ParseNodeID(id)
 	n, _ := node.NewNode(nodeID, schema.NodeTypeClaim, "Test statement for "+id, schema.InferenceAssumption)
 	n.EpistemicState = epistemicState
 	n.WorkflowState = workflowState
@@ -306,7 +306,7 @@ func TestComputeProgressMetrics_WithPendingDefs(t *testing.T) {
 	st.AddNode(createTestNode("1", schema.EpistemicPending, schema.WorkflowAvailable))
 
 	// Create pending definitions
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	pd1, _ := node.NewPendingDef("term1", nodeID)
 	pd2, _ := node.NewPendingDef("term2", nodeID)
 
@@ -325,7 +325,7 @@ func TestComputeProgressMetrics_WithOpenChallenges(t *testing.T) {
 	st.AddNode(createTestNode("1", schema.EpistemicPending, schema.WorkflowAvailable))
 
 	// Add open challenges
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	st.AddChallenge(&state.Challenge{
 		ID:     "ch1",
 		NodeID: nodeID,

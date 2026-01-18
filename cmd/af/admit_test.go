@@ -17,7 +17,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -25,9 +24,9 @@ import (
 // =============================================================================
 
 // mustParseNodeIDAdmit parses a NodeID string or fails the test.
-func mustParseNodeIDAdmit(t *testing.T, s string) types.NodeID {
+func mustParseNodeIDAdmit(t *testing.T, s string) service.NodeID {
 	t.Helper()
-	id, err := types.Parse(s)
+	id, err := service.ParseNodeID(s)
 	if err != nil {
 		t.Fatalf("Failed to parse NodeID %q: %v", s, err)
 	}
@@ -707,7 +706,7 @@ func TestAdmitCmd_TableDrivenNodeIDs(t *testing.T) {
 
 			if tc.setupNode && tc.nodeID != "" {
 				// Only create node if it's a valid ID and setupNode is true
-				id, err := types.Parse(tc.nodeID)
+				id, err := service.ParseNodeID(tc.nodeID)
 				if err == nil {
 					svc, _ := service.NewProofService(tmpDir)
 					_ = svc.CreateNode(id, schema.NodeTypeClaim, "Test statement", schema.InferenceAssumption)

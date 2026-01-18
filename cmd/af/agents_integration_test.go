@@ -15,7 +15,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -85,7 +84,7 @@ func setupAgentsTestWithClaims(t *testing.T) (string, func()) {
 	}
 
 	// Claim node 1 (root) by agent "agent-1"
-	rootID, _ := types.Parse("1")
+	rootID, _ := service.ParseNodeID("1")
 	err = svc.ClaimNode(rootID, "agent-1", 5*time.Minute)
 	if err != nil {
 		cleanup()
@@ -109,7 +108,7 @@ func setupAgentsTestWithHistory(t *testing.T) (string, func()) {
 	}
 
 	// Create child node 1.1
-	child1ID, _ := types.Parse("1.1")
+	child1ID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(child1ID, schema.NodeTypeClaim, "First child node", schema.InferenceModusPonens)
 	if err != nil {
 		cleanup()
@@ -404,13 +403,13 @@ func TestAgentsCmd_MultipleAgents(t *testing.T) {
 	}
 
 	// Create multiple child nodes
-	child1ID, _ := types.Parse("1.1")
+	child1ID, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(child1ID, schema.NodeTypeClaim, "First child", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	child2ID, _ := types.Parse("1.2")
+	child2ID, _ := service.ParseNodeID("1.2")
 	err = svc.CreateNode(child2ID, schema.NodeTypeClaim, "Second child", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)

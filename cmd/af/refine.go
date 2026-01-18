@@ -13,7 +13,6 @@ import (
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // childSpec represents a child node specification in the --children JSON input.
@@ -36,18 +35,18 @@ func validateNodeTypeAndInference(cmdName, nodeTypeStr, inferenceStr string, exa
 }
 
 // parseDependencies parses a comma-separated list of node IDs and validates they exist.
-func parseDependencies(depends string, st *state.State) ([]types.NodeID, error) {
+func parseDependencies(depends string, st *state.State) ([]service.NodeID, error) {
 	if strings.TrimSpace(depends) == "" {
 		return nil, nil
 	}
-	var dependencies []types.NodeID
+	var dependencies []service.NodeID
 	depStrings := strings.Split(depends, ",")
 	for _, depStr := range depStrings {
 		depStr = strings.TrimSpace(depStr)
 		if depStr == "" {
 			continue
 		}
-		depID, err := types.Parse(depStr)
+		depID, err := service.ParseNodeID(depStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid dependency ID %q: %v", depStr, err)
 		}
@@ -60,18 +59,18 @@ func parseDependencies(depends string, st *state.State) ([]types.NodeID, error) 
 }
 
 // parseValidationDependencies parses a comma-separated list of validation dependency node IDs.
-func parseValidationDependencies(requiresValidated string, st *state.State) ([]types.NodeID, error) {
+func parseValidationDependencies(requiresValidated string, st *state.State) ([]service.NodeID, error) {
 	if strings.TrimSpace(requiresValidated) == "" {
 		return nil, nil
 	}
-	var validationDeps []types.NodeID
+	var validationDeps []service.NodeID
 	valDepStrings := strings.Split(requiresValidated, ",")
 	for _, valDepStr := range valDepStrings {
 		valDepStr = strings.TrimSpace(valDepStr)
 		if valDepStr == "" {
 			continue
 		}
-		valDepID, err := types.Parse(valDepStr)
+		valDepID, err := service.ParseNodeID(valDepStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid validation dependency ID %q: %v", valDepStr, err)
 		}
@@ -85,13 +84,13 @@ func parseValidationDependencies(requiresValidated string, st *state.State) ([]t
 
 // findNextChildIDResult holds the result of finding the next available child ID.
 type findNextChildIDResult struct {
-	ChildID   types.NodeID
+	ChildID   service.NodeID
 	ChildNum  int
 	WarnDepth bool // true if child depth exceeds WarnDepth
 }
 
 // findNextChildID finds the next available child ID for a parent and validates depth constraints.
-func findNextChildID(parentID types.NodeID, st *state.State, svc *service.ProofService) (findNextChildIDResult, error) {
+func findNextChildID(parentID service.NodeID, st *state.State, svc *service.ProofService) (findNextChildIDResult, error) {
 	childNum := 1
 	for {
 		candidateID, err := parentID.Child(childNum)
@@ -137,7 +136,7 @@ func handleRefineError(err error, parentIDStr, owner string) error {
 }
 
 // formatMultiChildOutput formats the output for multi-child refine operations.
-func formatMultiChildOutput(cmd *cobra.Command, format, parentIDStr string, specs []service.ChildSpec, childIDs []types.NodeID) error {
+func formatMultiChildOutput(cmd *cobra.Command, format, parentIDStr string, specs []service.ChildSpec, childIDs []service.NodeID) error {
 	type createdChild struct {
 		ID        string `json:"id"`
 		Type      string `json:"type"`
@@ -176,7 +175,7 @@ func formatMultiChildOutput(cmd *cobra.Command, format, parentIDStr string, spec
 	cmd.Println("\nNext steps:")
 	if len(createdChildren) > 0 {
 		firstChildIDStr := createdChildren[0].ID
-		firstChildID, _ := types.Parse(firstChildIDStr)
+		firstChildID, _ := service.ParseNodeID(firstChildIDStr)
 		if _, hasSiblingParent := firstChildID.Parent(); hasSiblingParent {
 			cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", firstChildIDStr)
 			cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", firstChildIDStr)
@@ -191,11 +190,11 @@ func formatMultiChildOutput(cmd *cobra.Command, format, parentIDStr string, spec
 // refineOutputParams holds parameters for formatting refine command output.
 type refineOutputParams struct {
 	ParentIDStr    string
-	ChildID        types.NodeID
+	ChildID        service.NodeID
 	NodeTypeStr    string
 	Statement      string
-	Dependencies   []types.NodeID
-	ValidationDeps []types.NodeID
+	Dependencies   []service.NodeID
+	ValidationDeps []service.NodeID
 }
 
 // formatRefineOutput formats the output for a single-child refine operation.
@@ -209,10 +208,10 @@ func formatRefineOutput(cmd *cobra.Command, format string, params refineOutputPa
 			"statement": params.Statement,
 		}
 		if len(params.Dependencies) > 0 {
-			result["depends_on"] = types.ToStringSlice(params.Dependencies)
+			result["depends_on"] = service.ToStringSlice(params.Dependencies)
 		}
 		if len(params.ValidationDeps) > 0 {
-			result["requires_validated"] = types.ToStringSlice(params.ValidationDeps)
+			result["requires_validated"] = service.ToStringSlice(params.ValidationDeps)
 		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
@@ -229,10 +228,10 @@ func formatRefineOutput(cmd *cobra.Command, format string, params refineOutputPa
 	cmd.Printf("  Type:   %s\n", params.NodeTypeStr)
 	cmd.Printf("  Statement: %s\n", params.Statement)
 	if len(params.Dependencies) > 0 {
-		cmd.Printf("  Depends on: %s\n", strings.Join(types.ToStringSlice(params.Dependencies), ", "))
+		cmd.Printf("  Depends on: %s\n", strings.Join(service.ToStringSlice(params.Dependencies), ", "))
 	}
 	if len(params.ValidationDeps) > 0 {
-		cmd.Printf("  Requires validated: %s\n", strings.Join(types.ToStringSlice(params.ValidationDeps), ", "))
+		cmd.Printf("  Requires validated: %s\n", strings.Join(service.ToStringSlice(params.ValidationDeps), ", "))
 	}
 	cmd.Println("\nNext steps:")
 	if siblingParentID, hasSiblingParent := params.ChildID.Parent(); hasSiblingParent {
@@ -359,7 +358,7 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 	}
 
 	// Parse node ID
-	nodeID, err := types.Parse(nodeIDStr)
+	nodeID, err := service.ParseNodeID(nodeIDStr)
 	if err != nil {
 		return render.InvalidNodeIDError("af refine", nodeIDStr, examples)
 	}
@@ -386,7 +385,7 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 	}
 
 	// Handle --sibling flag: convert node ID to parent ID
-	var parentID types.NodeID
+	var parentID service.NodeID
 	var parentIDStr string
 	if sibling {
 		// Cannot add sibling to root node
@@ -471,7 +470,7 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 // runRefineMulti handles the --children flag for creating multiple child nodes at once.
 // This uses the atomic RefineNodeBulk method to create all children in a single operation,
 // preventing race conditions where other agents could grab the node between individual refines.
-func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owner, childrenJSON, dir, format string, svc *service.ProofService, st *state.State) error {
+func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, childrenJSON, dir, format string, svc *service.ProofService, st *state.State) error {
 	examples := render.GetExamples("af refine")
 
 	// Parse children JSON
@@ -538,7 +537,7 @@ func runRefineMulti(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owne
 // runRefinePositional handles positional arguments for creating multiple child nodes at once.
 // Example: af refine 1 "Step A" "Step B" "Step C" --owner agent1
 // This creates nodes 1.1, 1.2, 1.3 atomically using the RefineNodeBulk method.
-func runRefinePositional(cmd *cobra.Command, parentID types.NodeID, parentIDStr, owner, nodeTypeStr, inferenceStr, format string, svc *service.ProofService, st *state.State, statements []string) error {
+func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, nodeTypeStr, inferenceStr, format string, svc *service.ProofService, st *state.State, statements []string) error {
 	examples := render.GetExamples("af refine")
 
 	// Validate node type and inference type (will be used for all children)

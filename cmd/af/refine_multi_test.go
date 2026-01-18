@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // newRefineMultiTestCmd creates a test command hierarchy with the refine command.
@@ -52,7 +51,7 @@ func setupRefineMultiTest(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	rootID, err := types.Parse("1")
+	rootID, err := service.ParseNodeID("1")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatal(err)
@@ -108,8 +107,8 @@ func TestRefineMultiCmd_TwoChildren(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	child1, _ := types.Parse("1.1")
-	child2, _ := types.Parse("1.2")
+	child1, _ := service.ParseNodeID("1.1")
+	child2, _ := service.ParseNodeID("1.2")
 	if st.GetNode(child1) == nil {
 		t.Error("expected child node 1.1 to exist in state")
 	}
@@ -158,7 +157,7 @@ func TestRefineMultiCmd_ThreeChildren(t *testing.T) {
 	}
 
 	for i := 1; i <= 3; i++ {
-		childID, _ := types.Parse("1." + string(rune('0'+i)))
+		childID, _ := service.ParseNodeID("1." + string(rune('0'+i)))
 		if st.GetNode(childID) == nil {
 			t.Errorf("expected child node 1.%d to exist in state", i)
 		}
@@ -201,7 +200,7 @@ func TestRefineMultiCmd_JSONInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	child1ID, _ := types.Parse("1.1")
+	child1ID, _ := service.ParseNodeID("1.1")
 	child1 := st.GetNode(child1ID)
 	if child1 == nil {
 		t.Fatal("expected child node 1.1 to exist")
@@ -210,7 +209,7 @@ func TestRefineMultiCmd_JSONInput(t *testing.T) {
 		t.Errorf("expected child 1.1 type to be claim, got: %s", child1.Type)
 	}
 
-	child2ID, _ := types.Parse("1.2")
+	child2ID, _ := service.ParseNodeID("1.2")
 	child2 := st.GetNode(child2ID)
 	if child2 == nil {
 		t.Fatal("expected child node 1.2 to exist")
@@ -271,7 +270,7 @@ func TestRefineMultiCmd_MixedTypes(t *testing.T) {
 	}
 
 	for _, exp := range expectedTypes {
-		nodeID, _ := types.Parse(exp.id)
+		nodeID, _ := service.ParseNodeID(exp.id)
 		node := st.GetNode(nodeID)
 		if node == nil {
 			t.Errorf("expected node %s to exist", exp.id)
@@ -660,7 +659,7 @@ func TestRefineMultiCmd_DefaultInference(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	childID, _ := types.Parse("1.1")
+	childID, _ := service.ParseNodeID("1.1")
 	child := st.GetNode(childID)
 	if child == nil {
 		t.Fatal("expected child node 1.1 to exist")
@@ -706,7 +705,7 @@ func TestRefineMultiCmd_DefaultType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	childID, _ := types.Parse("1.1")
+	childID, _ := service.ParseNodeID("1.1")
 	child := st.GetNode(childID)
 	if child == nil {
 		t.Fatal("expected child node 1.1 to exist")
@@ -870,8 +869,8 @@ func TestRefineMultiCmd_PositionalArgs_TwoStatements(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	child1, _ := types.Parse("1.1")
-	child2, _ := types.Parse("1.2")
+	child1, _ := service.ParseNodeID("1.1")
+	child2, _ := service.ParseNodeID("1.2")
 	if st.GetNode(child1) == nil {
 		t.Error("expected child node 1.1 to exist in state")
 	}
@@ -928,7 +927,7 @@ func TestRefineMultiCmd_PositionalArgs_ThreeStatements(t *testing.T) {
 	expectedStatements := []string{"Case 1", "Case 2", "Case 3"}
 	for i, stmt := range expectedStatements {
 		idStr := fmt.Sprintf("1.%d", i+1)
-		childID, _ := types.Parse(idStr)
+		childID, _ := service.ParseNodeID(idStr)
 		node := st.GetNode(childID)
 		if node == nil {
 			t.Errorf("expected child node %s to exist in state", idStr)
@@ -973,7 +972,7 @@ func TestRefineMultiCmd_PositionalArgs_SingleStatement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	childID, _ := types.Parse("1.1")
+	childID, _ := service.ParseNodeID("1.1")
 	node := st.GetNode(childID)
 	if node == nil {
 		t.Error("expected child node 1.1 to exist in state")
@@ -1011,7 +1010,7 @@ func TestRefineMultiCmd_PositionalArgs_DefaultTypes(t *testing.T) {
 
 	for i := 1; i <= 2; i++ {
 		idStr := fmt.Sprintf("1.%d", i)
-		childID, _ := types.Parse(idStr)
+		childID, _ := service.ParseNodeID(idStr)
 		node := st.GetNode(childID)
 		if node == nil {
 			t.Errorf("expected child node %s to exist", idStr)

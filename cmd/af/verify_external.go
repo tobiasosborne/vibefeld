@@ -126,12 +126,12 @@ func addVerificationToNotes(notes string) string {
 func outputVerifyExternalJSON(cmd *cobra.Command, ext interface{}, alreadyVerified bool) error {
 	// Create output structure
 	type verifyOutput struct {
-		ID               string `json:"id"`
-		Name             string `json:"name"`
-		Source           string `json:"source"`
-		Verified         bool   `json:"verified"`
-		AlreadyVerified  bool   `json:"already_verified,omitempty"`
-		ContentHash      string `json:"content_hash,omitempty"`
+		ID              string `json:"id"`
+		Name            string `json:"name"`
+		Source          string `json:"source"`
+		Verified        bool   `json:"verified"`
+		AlreadyVerified bool   `json:"already_verified,omitempty"`
+		ContentHash     string `json:"content_hash,omitempty"`
 	}
 
 	// Type assert to access fields - using marshal/unmarshal for flexibility

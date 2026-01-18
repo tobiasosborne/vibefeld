@@ -53,7 +53,7 @@ func runExtendClaim(cmd *cobra.Command, args []string) error {
 	examples := render.GetExamples("af extend-claim")
 
 	// Parse node ID from positional argument
-	nodeID, err := types.Parse(args[0])
+	nodeID, err := service.ParseNodeID(args[0])
 	if err != nil {
 		return render.InvalidNodeIDError("af extend-claim", args[0], examples)
 	}
@@ -131,7 +131,7 @@ func runExtendClaim(cmd *cobra.Command, args []string) error {
 }
 
 // outputExtendClaimJSON outputs the extend-claim result in JSON format.
-func outputExtendClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner string, duration time.Duration, newTimeout types.Timestamp) error {
+func outputExtendClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner string, duration time.Duration, newTimeout types.Timestamp) error {
 	result := map[string]interface{}{
 		"node_id":    nodeID.String(),
 		"owner":      owner,
@@ -150,7 +150,7 @@ func outputExtendClaimJSON(cmd *cobra.Command, nodeID types.NodeID, owner string
 }
 
 // outputExtendClaimText outputs the extend-claim result in human-readable text format.
-func outputExtendClaimText(cmd *cobra.Command, nodeID types.NodeID, owner string, duration time.Duration, newTimeout types.Timestamp) error {
+func outputExtendClaimText(cmd *cobra.Command, nodeID service.NodeID, owner string, duration time.Duration, newTimeout types.Timestamp) error {
 	cmd.Printf("Extended claim on node %s\n", nodeID.String())
 	cmd.Printf("  Owner:      %s\n", owner)
 	cmd.Printf("  Duration:   %s\n", duration)

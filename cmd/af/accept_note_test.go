@@ -12,7 +12,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -129,7 +128,7 @@ func TestAcceptWithNote_NodeStillValidated(t *testing.T) {
 		t.Fatalf("failed to load state: %v", err)
 	}
 
-	nodeID, _ := types.Parse("1")
+	nodeID, _ := service.ParseNodeID("1")
 	n := st.GetNode(nodeID)
 	if n == nil {
 		t.Fatal("node not found")
@@ -200,7 +199,7 @@ func TestAcceptWithNote_CannotUseWithMultipleNodes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	node11, _ := types.Parse("1.1")
+	node11, _ := service.ParseNodeID("1.1")
 	err = svc.CreateNode(node11, schema.NodeTypeClaim, "Child node", schema.InferenceModusPonens)
 	if err != nil {
 		t.Fatal(err)

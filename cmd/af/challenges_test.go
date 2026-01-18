@@ -14,7 +14,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -93,7 +92,7 @@ func setupChallengesTestWithChallenges(t *testing.T) (string, func()) {
 	}
 
 	// Add an open challenge on node 1
-	nodeID1, _ := types.Parse("1")
+	nodeID1, _ := service.ParseNodeID("1")
 	event1 := ledger.NewChallengeRaised("ch-001", nodeID1, "gap", "Missing case for n=0")
 	if _, err := ldg.Append(event1); err != nil {
 		cleanup()
@@ -131,7 +130,7 @@ func setupChallengesTestWithMultipleNodes(t *testing.T) (string, func()) {
 	}
 
 	// Add challenge on node 1
-	nodeID1, _ := types.Parse("1")
+	nodeID1, _ := service.ParseNodeID("1")
 	event1 := ledger.NewChallengeRaised("ch-abc123", nodeID1, "gap", "Missing case for n=0")
 	if _, err := ldg.Append(event1); err != nil {
 		cleanup()

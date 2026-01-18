@@ -17,7 +17,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -128,8 +127,8 @@ func TestWatchCmd_FormatEventNodeCreated(t *testing.T) {
 // TestWatchCmd_FormatEventJSON tests JSON output format.
 func TestWatchCmd_FormatEventJSON(t *testing.T) {
 	eventData := map[string]interface{}{
-		"type":      "proof_initialized",
-		"timestamp": "2024-01-15T10:30:00Z",
+		"type":       "proof_initialized",
+		"timestamp":  "2024-01-15T10:30:00Z",
 		"conjecture": "Test conjecture",
 	}
 
@@ -250,7 +249,7 @@ func TestWatchCmd_DetectsNewEvents(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create a new node (this should generate an event)
-	nodeID, err := types.Parse("1.1")
+	nodeID, err := service.ParseNodeID("1.1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,7 +442,7 @@ func TestWatchCmd_SinceFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodeID, err := types.Parse("1.1")
+	nodeID, err := service.ParseNodeID("1.1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,7 +451,7 @@ func TestWatchCmd_SinceFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodeID, err = types.Parse("1.2")
+	nodeID, err = service.ParseNodeID("1.2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +501,7 @@ func TestWatchCmd_FilterAndJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodeID, err := types.Parse("1.1")
+	nodeID, err := service.ParseNodeID("1.1")
 	if err != nil {
 		t.Fatal(err)
 	}

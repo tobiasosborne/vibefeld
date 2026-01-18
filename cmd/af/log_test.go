@@ -16,7 +16,6 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
 )
 
 // =============================================================================
@@ -64,7 +63,7 @@ func setupLogTestWithEvents(t *testing.T) (string, func()) {
 	}
 
 	// Create a few nodes to generate events
-	nodeID, err := types.Parse("1.1")
+	nodeID, err := service.ParseNodeID("1.1")
 	if err != nil {
 		cleanup()
 		t.Fatal(err)
@@ -75,7 +74,7 @@ func setupLogTestWithEvents(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	nodeID, err = types.Parse("1.2")
+	nodeID, err = service.ParseNodeID("1.2")
 	if err != nil {
 		cleanup()
 		t.Fatal(err)
@@ -87,7 +86,7 @@ func setupLogTestWithEvents(t *testing.T) (string, func()) {
 	}
 
 	// Accept a node
-	nodeID, err = types.Parse("1")
+	nodeID, err = service.ParseNodeID("1")
 	if err != nil {
 		cleanup()
 		t.Fatal(err)
