@@ -1,43 +1,36 @@
-# Handoff - 2026-01-18 (Session 157)
+# Handoff - 2026-01-18 (Session 158)
 
 ## What Was Accomplished This Session
 
-### Session 157 Summary: Closed 1 issue (API design rename)
+### Session 158 Summary: Closed 1 issue (documentation)
 
-1. **vibefeld-pkls** - "API design: Rename GetXxx to LoadXxx where I/O occurs"
-   - Renamed `GetPendingNodes()` to `LoadPendingNodes()` in interface.go and proof.go
-   - Renamed `GetAvailableNodes()` to `LoadAvailableNodes()` in interface.go and proof.go
-   - Renamed `GetAmendmentHistory()` to `LoadAmendmentHistory()` in proof.go (consistency)
-   - Added "Note: This method performs I/O to load state from disk." comments
-   - Updated all call sites: accept.go, wizard.go, proof_test.go, service_test.go
-   - Build passes, service tests pass
+1. **vibefeld-0wuv** - "Module structure: Document render package intentional complexity"
+   - Created `internal/render/doc.go` with architectural explanation
+   - Documents why the render package is intentionally comprehensive (needs all domain types)
+   - Explains the view model pattern: adapters.go isolates domain imports, other files are domain-free
+   - Build passes, tests pass
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| internal/service/interface.go | Renamed 2 methods, added I/O notes |
-| internal/service/proof.go | Renamed 3 methods, added I/O notes |
-| cmd/af/accept.go | Updated call to LoadPendingNodes |
-| cmd/af/wizard.go | Updated call to LoadPendingNodes |
-| internal/service/proof_test.go | Renamed test and interface check |
-| internal/service/service_test.go | Renamed 4 tests |
+| internal/render/doc.go | Created - architectural documentation for render package |
 
 ### Issues Closed
 
 | Issue | Status | Reason |
 |-------|--------|--------|
-| **vibefeld-pkls** | Closed | Renamed GetXxx to LoadXxx to signal I/O cost |
+| **vibefeld-0wuv** | Closed | Added doc.go with architectural explanation |
 
 ## Current State
 
 ### Issue Statistics
-- **Open:** 22 (was 23)
-- **Closed:** 527 (was 526)
+- **Open:** 21 (was 22)
+- **Closed:** 528 (was 527)
 
 ### Test Status
 - Build: PASS
-- Service package tests: PASS
+- Render package tests: PASS
 - Pre-existing failures in lock package (unrelated to this session)
 
 ### Known Issues (Pre-existing)
@@ -49,7 +42,7 @@
 go build ./cmd/af
 
 # Run tests for modified package
-go test ./internal/service/...
+go test ./internal/render/...
 
 # Run all tests
 go test ./...
@@ -76,12 +69,8 @@ go test ./...
 5. Service layer leaks domain types (`vibefeld-vj5y`)
 
 ### P3 CLI UX (quick wins)
-6. Create verification checklist command (`vibefeld-ital`)
-7. Commands not grouped by category in help (`vibefeld-juts`)
-8. Challenge rendering inconsistent across commands (`vibefeld-87z6`)
-
-### P4 Code Smells
-9. Missing comment on collectDefinitionNames redundancy (`vibefeld-2xg3`)
+6. Boolean parameters in CLI (`vibefeld-yo5e`)
+7. Positional statement variability in refine (`vibefeld-9b6m`)
 
 ## Quick Commands
 
@@ -98,6 +87,7 @@ go test -tags=integration ./... -v -timeout 10m
 
 ## Session History
 
+**Session 158:** Closed 1 issue (documentation - render package architectural doc.go)
 **Session 157:** Closed 1 issue (API design - renamed GetXxx to LoadXxx to signal I/O cost)
 **Session 156:** Closed 1 issue (API design - documented appendBulkIfSequence non-atomicity in service layer)
 **Session 155:** Closed 1 issue (API design - documented taint emission non-atomicity in AcceptNodeWithNote and related methods)
