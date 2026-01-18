@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/metrics"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -91,9 +90,9 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	}
 
 	// Calculate metrics
-	var report *metrics.QualityReport
+	var report *service.QualityReport
 	if nodeID != nil {
-		report = metrics.SubtreeQuality(st, *nodeID)
+		report = service.SubtreeQuality(st, *nodeID)
 		// Check if the node exists
 		if st.GetNode(*nodeID) == nil {
 			if format == "json" {
@@ -104,7 +103,7 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 	} else {
-		report = metrics.OverallQuality(st)
+		report = service.OverallQuality(st)
 	}
 
 	// Output based on format
@@ -125,7 +124,7 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 }
 
 // renderMetricsText renders the quality report as text.
-func renderMetricsText(report *metrics.QualityReport, nodeID string) string {
+func renderMetricsText(report *service.QualityReport, nodeID string) string {
 	var sb strings.Builder
 
 	// Header
@@ -213,7 +212,7 @@ func getScoreInterpretation(score float64) string {
 }
 
 // getMetricsNextSteps returns suggested next steps based on the report.
-func getMetricsNextSteps(report *metrics.QualityReport) string {
+func getMetricsNextSteps(report *service.QualityReport) string {
 	var sb strings.Builder
 
 	if report.NodeCount == 0 {

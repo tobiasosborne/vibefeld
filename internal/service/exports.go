@@ -7,6 +7,7 @@ import (
 	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/fuzzy"
 	"github.com/tobias/vibefeld/internal/lemma"
+	"github.com/tobias/vibefeld/internal/metrics"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/scope"
@@ -262,4 +263,25 @@ var ValidateExportFormat = export.ValidateFormat
 // Re-export of export.Export.
 func ExportProof(s *state.State, format string) (string, error) {
 	return export.Export(s, format)
+}
+
+// Re-exported types and functions from internal/metrics to reduce cmd/af import count.
+// Consumers should use service.QualityReport, service.OverallQuality, and
+// service.SubtreeQuality instead of importing the metrics package directly.
+
+// QualityReport contains comprehensive quality metrics for a proof or subtree.
+// Re-export of metrics.QualityReport.
+type QualityReport = metrics.QualityReport
+
+// OverallQuality computes comprehensive quality metrics for the entire proof.
+// Re-export of metrics.OverallQuality.
+func OverallQuality(s *state.State) *QualityReport {
+	return metrics.OverallQuality(s)
+}
+
+// SubtreeQuality computes quality metrics for a specific subtree.
+// Returns an empty report if the root node doesn't exist.
+// Re-export of metrics.SubtreeQuality.
+func SubtreeQuality(s *state.State, rootID NodeID) *QualityReport {
+	return metrics.SubtreeQuality(s, rootID)
 }
