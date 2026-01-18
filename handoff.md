@@ -1,40 +1,30 @@
-# Handoff - 2026-01-18 (Session 183)
+# Handoff - 2026-01-18 (Session 184)
 
 ## What Was Accomplished This Session
 
-### Session 183 Summary: Re-exported types.Timestamp and migrated 6 cmd/af files
+### Session 184 Summary: Closed vibefeld-9maw as "Won't Fix"
 
-Continued work on the vibefeld-jfbc epic (reduce cmd/af imports from 22 packages to 2) by eliminating the `types` package import from cmd/af production code.
+Investigated the "inconsistent return types for ID-returning operations" issue (vibefeld-9maw) and determined it should be closed without code changes.
 
-### Changes Made
+### Analysis Summary
 
-1. **Added Timestamp re-exports to service/exports.go:**
-   - `type Timestamp = types.Timestamp`
-   - `var Now = types.Now`
-   - `var FromTime = types.FromTime`
-   - `var ParseTimestamp = types.ParseTimestamp`
+The issue highlighted two concerns:
+1. Some operations return bare strings for IDs (AddDefinition, AddAssumption)
+2. Both static `Init()` and instance `Init()` exist (apparent duplication)
 
-2. **Migrated 6 cmd/af files to use service instead of types:**
-   - `agents.go` - Changed `types.Timestamp` to `service.Timestamp`, `types.ParseTimestamp` to `service.ParseTimestamp`
-   - `challenge.go` - Changed `types.Now` to `service.Now`
-   - `defs.go` - Changed `types.Timestamp` to `service.Timestamp`
-   - `extend_claim.go` - Changed `types.FromTime` to `service.FromTime`, `types.Timestamp` to `service.Timestamp`
-   - `history.go` - Changed `types.ParseTimestamp` to `service.ParseTimestamp`
-   - `reap.go` - Changed `types.FromTime` to `service.FromTime`
+**Investigation findings:**
+- Static `service.Init(proofDir, conjecture, author)` - used ~100 times, mostly in test setup
+- Instance `svc.Init(conjecture, author)` - used ~70 times, satisfies ProofOperations interface
+- The instance method simply delegates to the static function
+- This delegation pattern serves different use cases well:
+  - Static: convenient for tests that need to specify proofDir explicitly
+  - Instance: required by ProofOperations interface for polymorphism
 
-### Files Changed
-
-- `internal/service/exports.go` - Added Timestamp, Now, FromTime, ParseTimestamp re-exports
-- `cmd/af/agents.go` - Removed types import, use service.Timestamp
-- `cmd/af/challenge.go` - Removed types import, use service.Now
-- `cmd/af/defs.go` - Removed types import, use service.Timestamp
-- `cmd/af/extend_claim.go` - Removed types import, use service.FromTime/Timestamp
-- `cmd/af/history.go` - Removed types import, use service.ParseTimestamp
-- `cmd/af/reap.go` - Removed types import, use service.FromTime
+**Decision:** Closed as "Won't Fix" with documented rationale. The delegation pattern (Option 2) is acceptable per the issue's own analysis. No functional issue exists; this is a code style preference that doesn't justify the migration effort of 170+ call sites.
 
 ### Issue Updates
 
-- **Updated vibefeld-jfbc** - Updated epic description to reflect progress (types package now eliminated)
+- **Closed vibefeld-9maw** - "Won't Fix" with documented rationale
 
 ## Current State
 
@@ -42,21 +32,16 @@ Continued work on the vibefeld-jfbc epic (reduce cmd/af imports from 22 packages
 - All tests pass (`go test ./...`)
 - Build succeeds (`go build ./cmd/af`)
 
-### Import Reduction Progress
-- Started at 22 unique internal package imports in cmd/af
-- Now at 21 (eliminated `types` package)
-- Target: 2 (`service` and `render` only)
-
 ### Issue Statistics
-- **Closed this session:** 0 (work contributed to open epic vibefeld-jfbc)
-- **Open:** 8
-- **Ready for work:** 8
+- **Closed this session:** 1 (vibefeld-9maw)
+- **Open:** 7
+- **Ready for work:** 7
 
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-Remaining packages to address (by file count):
-- `schema` (28 files) - Many constants still imported directly despite some being re-exported
+The main epic continues with 21 internal packages still imported by cmd/af:
+- `schema` (28 files) - Many constants still imported directly
 - `node` (20 files) - node.Node type used widely
 - `ledger` (18 files) - ledger.Event type and ledger operations
 - `state` (12 files) - state.ProofState/State types
@@ -64,10 +49,7 @@ Remaining packages to address (by file count):
 - `fs` (4 files) - Direct fs operations
 - Plus 11 more single-use imports
 
-Each of these would require creating and completing new sub-tasks.
-
 ### P2 Code Quality (API Design)
-- `vibefeld-9maw` - Inconsistent return types for ID-returning operations
 - `vibefeld-hn7l` - ProofOperations interface too large (30+ methods)
 - `vibefeld-vj5y` - Service layer leaks domain types
 - `vibefeld-264n` - Module structure: service package acts as hub
@@ -92,6 +74,7 @@ go build ./cmd/af
 
 ## Session History
 
+**Session 184:** Investigated and closed vibefeld-9maw as "Won't Fix" - delegation pattern acceptable
 **Session 183:** Re-exported types.Timestamp/Now/FromTime/ParseTimestamp, migrated 6 cmd/af files, types package eliminated from cmd/af
 **Session 182:** Fixed fuzzy flag matching ambiguous prefix bug, closed vibefeld-b51q
 **Session 181:** Added assumption/external service methods, migrated 4 files, closed vibefeld-li8a
