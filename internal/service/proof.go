@@ -1845,6 +1845,12 @@ func (s *ProofService) ReadExternal(id string) (*node.External, error) {
 	return fs.ReadExternal(s.path, id)
 }
 
+// WriteExternal writes an external reference to the proof directory.
+// This is a convenience wrapper around fs.WriteExternal that uses the service's path.
+func (s *ProofService) WriteExternal(ext *node.External) error {
+	return fs.WriteExternal(s.path, ext)
+}
+
 // ListExternals returns all external reference IDs in the proof.
 // Returns an empty slice (not an error) if no external references exist.
 // This is a convenience wrapper around fs.ListExternals that uses the service's path.

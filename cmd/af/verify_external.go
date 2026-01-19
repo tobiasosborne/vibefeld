@@ -8,13 +8,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
 	"github.com/tobias/vibefeld/internal/service"
 )
-
-// Note: We keep the fs import for fs.WriteExternal which is used to persist the verification.
-// Only ReadExternal is moved to service layer for reading; WriteExternal is a write operation
-// that is called once after modification and doesn't need cmd/af import reduction.
 
 // newVerifyExternalCmd creates the verify-external command for marking an external
 // reference as verified by a human reviewer.
@@ -96,7 +91,7 @@ func runVerifyExternal(cmd *cobra.Command, args []string) error {
 		ext.Notes = addVerificationToNotes(ext.Notes)
 
 		// Write the updated external back to filesystem
-		if err := fs.WriteExternal(svc.Path(), ext); err != nil {
+		if err := svc.WriteExternal(ext); err != nil {
 			return fmt.Errorf("error updating external: %w", err)
 		}
 	}

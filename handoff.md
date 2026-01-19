@@ -1,36 +1,24 @@
-# Handoff - 2026-01-18 (Session 203)
+# Handoff - 2026-01-19 (Session 204)
 
 ## What Was Accomplished This Session
 
-### Session 203 Summary: Health check and issue validation
+### Session 204 Summary: Eliminated fs package import from cmd/af
 
-Maintenance session - verified project health, fixed beads issues, validated open issues remain relevant.
+Continued P1 epic vibefeld-jfbc - reduced cmd/af imports from 6 to 5 by eliminating the fs package.
 
 ### Changes Made
 
-**1. Fixed bd doctor issues:**
-- Installed missing git hooks (pre-push)
-- Updated .beads/.gitignore (added .sync.lock, sync_base.jsonl patterns)
-- Resolved sync divergence via `bd sync`
+**1. Eliminated fs package import:**
+- Added `WriteExternal` method to service layer (`internal/service/proof.go:1848-1852`)
+- Updated `cmd/af/verify_external.go` to use `svc.WriteExternal(ext)` instead of `fs.WriteExternal(svc.Path(), ext)`
+- Removed fs import from verify_external.go
 
-**2. Validated all 6 open issues are still relevant:**
-- `vibefeld-jfbc` (P1): cmd/af still imports 6 packages (target: 2). 4 to eliminate.
-- `vibefeld-qsyt` (P2): No intermediate service layers created yet
-- `vibefeld-264n` (P2): service/proof.go imports 11 packages (grew from 9)
-- `vibefeld-vj5y` (P2): Service still returns bare domain types (*state.State, []*node.Node)
-- `vibefeld-9b6m` (P3): refine.go still has multiple input methods
-- `vibefeld-yo5e` (P3): Boolean --sibling flag still exists
+**2. Import reduction progress:**
+- Before: 6 packages (service, render, node, ledger, state, fs)
+- After: 5 packages (service, render, node, ledger, state)
+- Verified with `go list`
 
-**3. Ran full test suite:** All 27 packages pass
-
-**4. LOC audit:**
-| Category | Files | Code | Comments |
-|----------|------:|-----:|---------:|
-| Production | 159 | 26,157 | 5,953 |
-| Tests | 181 | 99,408 | 14,777 |
-| **Total** | 340 | **125,565** | **20,730** |
-
-Test-to-code ratio: 3.8:1
+**3. All 27 packages pass tests**
 
 ## Current State
 
@@ -38,18 +26,13 @@ Test-to-code ratio: 3.8:1
 - All tests pass (`go test ./...`)
 - Build succeeds (`go build ./cmd/af`)
 
-### bd Health
-- 59 checks passed, 3 warnings (non-critical)
-- Warnings: uncommitted lean4 plugin files, optional sync-branch, optional claude plugin
-
 ### Import Progress (vibefeld-jfbc)
-Current internal imports in cmd/af (6 total):
+Current internal imports in cmd/af (5 total):
 - `service` (target - keep)
 - `render` (target - keep)
 - `node` (to eliminate)
 - `ledger` (to eliminate)
 - `state` (to eliminate)
-- `fs` (to eliminate)
 
 ### Issue Statistics
 - **Open:** 6
@@ -58,11 +41,12 @@ Current internal imports in cmd/af (6 total):
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-4 internal packages remain (excluding targets):
-- `node` - node.Node, Assumption, Definition types
-- `ledger` - ledger.Event type
-- `state` - state.ProofState, state.Challenge types
-- `fs` - Direct fs operations
+3 internal packages remain (excluding targets):
+- `node` - node.Node, Assumption, Definition, External types (14 files)
+- `ledger` - ledger.Event type (10 files)
+- `state` - state.ProofState, state.Challenge types (10 files)
+
+Next logical step: Choose the smallest dependency to eliminate. Could start with ledger.Event since it's primarily used for display/output.
 
 ### P2 Code Quality
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -83,6 +67,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 204:** Eliminated fs package import by adding WriteExternal to service layer, reduced imports from 6→5
 **Session 203:** Health check - fixed bd doctor issues (hooks, gitignore, sync), validated all 6 open issues still relevant, all tests pass, LOC audit (125k code, 21k comments)
 **Session 202:** Eliminated cli package import by re-exporting MustString, MustBool, MustInt, MustStringSlice through service, reduced imports from 7→6
 **Session 201:** Eliminated hooks import from hooks_test.go by adding NewHookConfig re-export through service, reduced imports from 8→7
