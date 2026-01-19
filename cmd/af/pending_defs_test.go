@@ -13,8 +13,6 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
-	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -85,12 +83,12 @@ func setupPendingDefsTestWithPendingDefs(t *testing.T) (string, func(), []string
 	var pendingDefIDs []string
 	for _, pd := range pendingDefs {
 		nodeID, _ := service.ParseNodeID(pd.nodeID)
-		pendingDef, err := node.NewPendingDefWithValidation(pd.term, nodeID)
+		pendingDef, err := service.NewPendingDefWithValidation(pd.term, nodeID)
 		if err != nil {
 			cleanup()
 			t.Fatalf("failed to create pending def for %q: %v", pd.term, err)
 		}
-		if err := fs.WritePendingDef(tmpDir, nodeID, pendingDef); err != nil {
+		if err := service.WritePendingDef(tmpDir, nodeID, pendingDef); err != nil {
 			cleanup()
 			t.Fatalf("failed to write pending def for %q: %v", pd.term, err)
 		}
@@ -1303,11 +1301,11 @@ func TestPendingDefsCmd_ManyPendingDefs(t *testing.T) {
 
 		// Add pending def
 		term := "term_" + string(rune('a'+i%26))
-		pd, err := node.NewPendingDefWithValidation(term, nodeID)
+		pd, err := service.NewPendingDefWithValidation(term, nodeID)
 		if err != nil {
 			continue
 		}
-		_ = fs.WritePendingDef(tmpDir, nodeID, pd)
+		_ = service.WritePendingDef(tmpDir, nodeID, pd)
 	}
 
 	cmd := newTestPendingDefsCmd()
@@ -1328,12 +1326,12 @@ func TestPendingDefCmd_LongTerm(t *testing.T) {
 	// Create a pending def with a long term
 	longTerm := strings.Repeat("mathematical_concept_", 10)
 	nodeID, _ := service.ParseNodeID("1")
-	pd, err := node.NewPendingDefWithValidation(longTerm, nodeID)
+	pd, err := service.NewPendingDefWithValidation(longTerm, nodeID)
 	if err != nil {
 		t.Logf("Could not create long-term pending def: %v", err)
 		return
 	}
-	if err := fs.WritePendingDef(tmpDir, nodeID, pd); err != nil {
+	if err := service.WritePendingDef(tmpDir, nodeID, pd); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1357,12 +1355,12 @@ func TestPendingDefCmd_SpecialCharactersInTerm(t *testing.T) {
 	// Create a pending def with special characters in term
 	specialTerm := "epsilon-delta_continuity"
 	nodeID, _ := service.ParseNodeID("1")
-	pd, err := node.NewPendingDefWithValidation(specialTerm, nodeID)
+	pd, err := service.NewPendingDefWithValidation(specialTerm, nodeID)
 	if err != nil {
 		t.Logf("Could not create special-term pending def: %v", err)
 		return
 	}
-	if err := fs.WritePendingDef(tmpDir, nodeID, pd); err != nil {
+	if err := service.WritePendingDef(tmpDir, nodeID, pd); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1475,11 +1473,11 @@ func TestPendingDefsCmd_AfterRequestDef(t *testing.T) {
 
 	// Create a pending def using the low-level API (simulating request-def)
 	nodeID, _ := service.ParseNodeID("1")
-	pd, err := node.NewPendingDefWithValidation("test_term", nodeID)
+	pd, err := service.NewPendingDefWithValidation("test_term", nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := fs.WritePendingDef(tmpDir, nodeID, pd); err != nil {
+	if err := service.WritePendingDef(tmpDir, nodeID, pd); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1503,11 +1501,11 @@ func TestPendingDefCmd_AfterRequestDef(t *testing.T) {
 
 	// Create a pending def using the low-level API (simulating request-def)
 	nodeID, _ := service.ParseNodeID("1")
-	pd, err := node.NewPendingDefWithValidation("integration_test_term", nodeID)
+	pd, err := service.NewPendingDefWithValidation("integration_test_term", nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := fs.WritePendingDef(tmpDir, nodeID, pd); err != nil {
+	if err := service.WritePendingDef(tmpDir, nodeID, pd); err != nil {
 		t.Fatal(err)
 	}
 

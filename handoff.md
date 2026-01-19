@@ -1,22 +1,28 @@
-# Handoff - 2026-01-19 (Session 204)
+# Handoff - 2026-01-19 (Session 205)
 
 ## What Was Accomplished This Session
 
-### Session 204 Summary: Eliminated fs package import from cmd/af
+### Session 205 Summary: Eliminated fs package from cmd/af test files
 
-Continued P1 epic vibefeld-jfbc - reduced cmd/af imports from 6 to 5 by eliminating the fs package.
+Continued P1 epic vibefeld-jfbc - fully eliminated fs package import from all cmd/af files including test files.
 
 ### Changes Made
 
-**1. Eliminated fs package import:**
-- Added `WriteExternal` method to service layer (`internal/service/proof.go:1848-1852`)
-- Updated `cmd/af/verify_external.go` to use `svc.WriteExternal(ext)` instead of `fs.WriteExternal(svc.Path(), ext)`
-- Removed fs import from verify_external.go
+**1. Eliminated fs package from test files:**
+- Added re-exports to `internal/service/exports.go`:
+  - `PendingDef` type alias
+  - `PendingDefStatus*` constants (PendingDefStatusPending, PendingDefStatusResolved, PendingDefStatusCancelled)
+  - `NewPendingDefWithValidation` function
+  - `WritePendingDef`, `ReadPendingDef`, `ListPendingDefs` functions
+- Updated 3 test files to use service package instead of fs/node:
+  - `cmd/af/def_reject_test.go`
+  - `cmd/af/pending_defs_test.go`
+  - `cmd/af/request_def_test.go`
 
-**2. Import reduction progress:**
-- Before: 6 packages (service, render, node, ledger, state, fs)
-- After: 5 packages (service, render, node, ledger, state)
-- Verified with `go list`
+**2. Import status:**
+- fs package is now fully eliminated from cmd/af (both production and test code)
+- Current imports: 5 (service, render, node, ledger, state)
+- Target: 2 (service, render)
 
 **3. All 27 packages pass tests**
 
@@ -67,6 +73,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 205:** Eliminated fs package from test files by re-exporting PendingDef types and functions through service
 **Session 204:** Eliminated fs package import by adding WriteExternal to service layer, reduced imports from 6→5
 **Session 203:** Health check - fixed bd doctor issues (hooks, gitignore, sync), validated all 6 open issues still relevant, all tests pass, LOC audit (125k code, 21k comments)
 **Session 202:** Eliminated cli package import by re-exporting MustString, MustBool, MustInt, MustStringSlice through service, reduced imports from 7→6

@@ -14,8 +14,6 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/fs"
-	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -53,20 +51,20 @@ func setupDefRejectTest(t *testing.T) (string, func()) {
 // setupDefRejectTestWithPendingDef creates a test environment with an initialized proof
 // and a single pending definition request.
 // Returns the proof directory path, cleanup function, and the pending def.
-func setupDefRejectTestWithPendingDef(t *testing.T) (string, func(), *node.PendingDef) {
+func setupDefRejectTestWithPendingDef(t *testing.T) (string, func(), *service.PendingDef) {
 	t.Helper()
 
 	tmpDir, cleanup := setupDefRejectTest(t)
 
 	// Create a pending definition request
 	nodeID, _ := service.ParseNodeID("1")
-	pd, err := node.NewPendingDefWithValidation("group", nodeID)
+	pd, err := service.NewPendingDefWithValidation("group", nodeID)
 	if err != nil {
 		cleanup()
 		t.Fatalf("failed to create pending def: %v", err)
 	}
 
-	if err := fs.WritePendingDef(tmpDir, nodeID, pd); err != nil {
+	if err := service.WritePendingDef(tmpDir, nodeID, pd); err != nil {
 		cleanup()
 		t.Fatalf("failed to write pending def: %v", err)
 	}
@@ -76,7 +74,7 @@ func setupDefRejectTestWithPendingDef(t *testing.T) (string, func(), *node.Pendi
 
 // setupDefRejectTestWithMultiplePendingDefs creates a test environment with multiple pending definitions.
 // Returns the proof directory path, cleanup function, and the pending defs.
-func setupDefRejectTestWithMultiplePendingDefs(t *testing.T) (string, func(), []*node.PendingDef) {
+func setupDefRejectTestWithMultiplePendingDefs(t *testing.T) (string, func(), []*service.PendingDef) {
 	t.Helper()
 
 	tmpDir, cleanup := setupDefRejectTest(t)
@@ -107,15 +105,15 @@ func setupDefRejectTestWithMultiplePendingDefs(t *testing.T) (string, func(), []
 		{"kernel", "1.2"},
 	}
 
-	var pds []*node.PendingDef
+	var pds []*service.PendingDef
 	for _, pdInfo := range pendingDefs {
 		nodeID, _ := service.ParseNodeID(pdInfo.nodeID)
-		pd, err := node.NewPendingDefWithValidation(pdInfo.term, nodeID)
+		pd, err := service.NewPendingDefWithValidation(pdInfo.term, nodeID)
 		if err != nil {
 			cleanup()
 			t.Fatalf("failed to create pending def for %q: %v", pdInfo.term, err)
 		}
-		if err := fs.WritePendingDef(tmpDir, nodeID, pd); err != nil {
+		if err := service.WritePendingDef(tmpDir, nodeID, pd); err != nil {
 			cleanup()
 			t.Fatalf("failed to write pending def for %q: %v", pdInfo.term, err)
 		}
@@ -547,7 +545,7 @@ func TestDefRejectCmd_UpdatesStatus(t *testing.T) {
 
 	// Verify the pending def status has changed
 	nodeID := pd.RequestedBy
-	updatedPD, err := fs.ReadPendingDef(tmpDir, nodeID)
+	updatedPD, err := service.ReadPendingDef(tmpDir, nodeID)
 
 	if err != nil {
 		// If file is removed after rejection, that's also valid behavior
@@ -556,7 +554,7 @@ func TestDefRejectCmd_UpdatesStatus(t *testing.T) {
 	}
 
 	// If file exists, status should be cancelled
-	if updatedPD.Status != node.PendingDefStatusCancelled {
+	if updatedPD.Status != service.PendingDefStatusCancelled {
 		t.Errorf("expected pending def status to be 'cancelled', got: %s", updatedPD.Status)
 	}
 }
@@ -593,7 +591,7 @@ func TestDefRejectCmd_DefinitionNotPending(t *testing.T) {
 
 	// First, manually cancel the pending def
 	nodeID := pd.RequestedBy
-	loadedPD, err := fs.ReadPendingDef(tmpDir, nodeID)
+	loadedPD, err := service.ReadPendingDef(tmpDir, nodeID)
 	if err != nil {
 		t.Fatalf("failed to read pending def: %v", err)
 	}
@@ -602,7 +600,7 @@ func TestDefRejectCmd_DefinitionNotPending(t *testing.T) {
 		t.Fatalf("failed to cancel pending def: %v", err)
 	}
 
-	if err := fs.WritePendingDef(tmpDir, nodeID, loadedPD); err != nil {
+	if err := service.WritePendingDef(tmpDir, nodeID, loadedPD); err != nil {
 		t.Fatalf("failed to write cancelled pending def: %v", err)
 	}
 
@@ -631,7 +629,7 @@ func TestDefRejectCmd_DefinitionAlreadyResolved(t *testing.T) {
 
 	// First, resolve the pending def
 	nodeID := pd.RequestedBy
-	loadedPD, err := fs.ReadPendingDef(tmpDir, nodeID)
+	loadedPD, err := service.ReadPendingDef(tmpDir, nodeID)
 	if err != nil {
 		t.Fatalf("failed to read pending def: %v", err)
 	}
@@ -640,7 +638,7 @@ func TestDefRejectCmd_DefinitionAlreadyResolved(t *testing.T) {
 		t.Fatalf("failed to resolve pending def: %v", err)
 	}
 
-	if err := fs.WritePendingDef(tmpDir, nodeID, loadedPD); err != nil {
+	if err := service.WritePendingDef(tmpDir, nodeID, loadedPD); err != nil {
 		t.Fatalf("failed to write resolved pending def: %v", err)
 	}
 
@@ -912,11 +910,11 @@ func TestDefRejectCmd_RelativeDirectory(t *testing.T) {
 
 	// Create a pending def
 	nodeID, _ := service.ParseNodeID("1")
-	pd, err := node.NewPendingDefWithValidation("test_term", nodeID)
+	pd, err := service.NewPendingDefWithValidation("test_term", nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := fs.WritePendingDef(proofDir, nodeID, pd); err != nil {
+	if err := service.WritePendingDef(proofDir, nodeID, pd); err != nil {
 		t.Fatal(err)
 	}
 
@@ -957,13 +955,13 @@ func TestDefRejectCmd_RejectOne(t *testing.T) {
 			continue
 		}
 
-		loadedPD, err := fs.ReadPendingDef(tmpDir, pd.RequestedBy)
+		loadedPD, err := service.ReadPendingDef(tmpDir, pd.RequestedBy)
 		if err != nil {
 			t.Errorf("pending def %q should still exist: %v", pd.Term, err)
 			continue
 		}
 
-		if loadedPD.Status != node.PendingDefStatusPending {
+		if loadedPD.Status != service.PendingDefStatusPending {
 			t.Errorf("pending def %q should still be pending, got: %s", pd.Term, loadedPD.Status)
 		}
 	}
@@ -985,14 +983,14 @@ func TestDefRejectCmd_RejectMultiple(t *testing.T) {
 
 	// Verify all are rejected/cancelled
 	for _, pd := range pds {
-		loadedPD, err := fs.ReadPendingDef(tmpDir, pd.RequestedBy)
+		loadedPD, err := service.ReadPendingDef(tmpDir, pd.RequestedBy)
 		if err != nil {
 			// File removed after rejection is also valid
 			t.Logf("Pending def %q file not found after rejection (may be deleted)", pd.Term)
 			continue
 		}
 
-		if loadedPD.Status == node.PendingDefStatusPending {
+		if loadedPD.Status == service.PendingDefStatusPending {
 			t.Errorf("pending def %q should not be pending after rejection, got: %s", pd.Term, loadedPD.Status)
 		}
 	}
@@ -1139,12 +1137,12 @@ func TestDefRejectCmd_SpecialCharactersInTerm(t *testing.T) {
 	// Create a pending def with special characters in term
 	specialTerm := "epsilon-delta_continuity"
 	nodeID, _ := service.ParseNodeID("1")
-	pd, err := node.NewPendingDefWithValidation(specialTerm, nodeID)
+	pd, err := service.NewPendingDefWithValidation(specialTerm, nodeID)
 	if err != nil {
 		t.Logf("Could not create special-term pending def: %v", err)
 		return
 	}
-	if err := fs.WritePendingDef(tmpDir, nodeID, pd); err != nil {
+	if err := service.WritePendingDef(tmpDir, nodeID, pd); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1168,12 +1166,12 @@ func TestDefRejectCmd_LongTerm(t *testing.T) {
 	// Create a pending def with a long term
 	longTerm := strings.Repeat("mathematical_concept_", 10)
 	nodeID, _ := service.ParseNodeID("1")
-	pd, err := node.NewPendingDefWithValidation(longTerm, nodeID)
+	pd, err := service.NewPendingDefWithValidation(longTerm, nodeID)
 	if err != nil {
 		t.Logf("Could not create long-term pending def: %v", err)
 		return
 	}
-	if err := fs.WritePendingDef(tmpDir, nodeID, pd); err != nil {
+	if err := service.WritePendingDef(tmpDir, nodeID, pd); err != nil {
 		t.Fatal(err)
 	}
 

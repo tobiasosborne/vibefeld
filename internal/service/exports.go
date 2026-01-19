@@ -575,3 +575,34 @@ func MustInt(cmd *cobra.Command, name string) int {
 func MustStringSlice(cmd *cobra.Command, name string) []string {
 	return cli.MustStringSlice(cmd, name)
 }
+
+// Re-exported types and functions from internal/fs and internal/node for pending def
+// filesystem operations. Used by test code to set up test fixtures.
+
+// PendingDef represents a pending definition request.
+// Re-export of node.PendingDef.
+type PendingDef = node.PendingDef
+
+// PendingDefStatus constants.
+// Re-export of node.PendingDefStatus* constants.
+const (
+	PendingDefStatusPending   = node.PendingDefStatusPending
+	PendingDefStatusResolved  = node.PendingDefStatusResolved
+	PendingDefStatusCancelled = node.PendingDefStatusCancelled
+)
+
+// NewPendingDefWithValidation creates a new pending definition with validation.
+// Re-export of node.NewPendingDefWithValidation.
+var NewPendingDefWithValidation = node.NewPendingDefWithValidation
+
+// WritePendingDef writes a pending definition to the filesystem.
+// Re-export of fs.WritePendingDef for test fixture setup.
+var WritePendingDef = fs.WritePendingDef
+
+// ReadPendingDef reads a pending definition from the filesystem.
+// Re-export of fs.ReadPendingDef for test verification.
+var ReadPendingDef = fs.ReadPendingDef
+
+// ListPendingDefs lists all pending definitions in a proof directory.
+// Re-export of fs.ListPendingDefs for test verification.
+var ListPendingDefs = fs.ListPendingDefs
