@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // childSpec represents a child node specification in the --children JSON input.
@@ -33,7 +32,7 @@ func validateNodeTypeAndInference(cmdName, nodeTypeStr, inferenceStr string, exa
 }
 
 // parseDependencies parses a comma-separated list of node IDs and validates they exist.
-func parseDependencies(depends string, st *state.State) ([]service.NodeID, error) {
+func parseDependencies(depends string, st *service.State) ([]service.NodeID, error) {
 	if strings.TrimSpace(depends) == "" {
 		return nil, nil
 	}
@@ -57,7 +56,7 @@ func parseDependencies(depends string, st *state.State) ([]service.NodeID, error
 }
 
 // parseValidationDependencies parses a comma-separated list of validation dependency node IDs.
-func parseValidationDependencies(requiresValidated string, st *state.State) ([]service.NodeID, error) {
+func parseValidationDependencies(requiresValidated string, st *service.State) ([]service.NodeID, error) {
 	if strings.TrimSpace(requiresValidated) == "" {
 		return nil, nil
 	}
@@ -88,7 +87,7 @@ type findNextChildIDResult struct {
 }
 
 // findNextChildID finds the next available child ID for a parent and validates depth constraints.
-func findNextChildID(parentID service.NodeID, st *state.State, svc *service.ProofService) (findNextChildIDResult, error) {
+func findNextChildID(parentID service.NodeID, st *service.State, svc *service.ProofService) (findNextChildIDResult, error) {
 	childNum := 1
 	for {
 		candidateID, err := parentID.Child(childNum)
@@ -468,7 +467,7 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 // runRefineMulti handles the --children flag for creating multiple child nodes at once.
 // This uses the atomic RefineNodeBulk method to create all children in a single operation,
 // preventing race conditions where other agents could grab the node between individual refines.
-func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, childrenJSON, dir, format string, svc *service.ProofService, st *state.State) error {
+func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, childrenJSON, dir, format string, svc *service.ProofService, st *service.State) error {
 	examples := render.GetExamples("af refine")
 
 	// Parse children JSON
@@ -535,7 +534,7 @@ func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, ow
 // runRefinePositional handles positional arguments for creating multiple child nodes at once.
 // Example: af refine 1 "Step A" "Step B" "Step C" --owner agent1
 // This creates nodes 1.1, 1.2, 1.3 atomically using the RefineNodeBulk method.
-func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, nodeTypeStr, inferenceStr, format string, svc *service.ProofService, st *state.State, statements []string) error {
+func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, nodeTypeStr, inferenceStr, format string, svc *service.ProofService, st *service.State, statements []string) error {
 	examples := render.GetExamples("af refine")
 
 	// Validate node type and inference type (will be used for all children)

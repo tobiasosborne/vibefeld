@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // newJobsCmd creates the jobs command.
@@ -158,12 +157,12 @@ type severityCounts struct {
 }
 
 // buildSeverityMap builds a map of nodeID -> severity counts for open challenges.
-func buildSeverityMap(challenges []*state.Challenge) map[string]*severityCounts {
+func buildSeverityMap(challenges []*service.Challenge) map[string]*severityCounts {
 	result := make(map[string]*severityCounts)
 
 	for _, c := range challenges {
 		// Only count open challenges
-		if c.Status != state.ChallengeStatusOpen {
+		if c.Status != service.ChallengeStatusOpen {
 			continue
 		}
 

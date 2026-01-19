@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // writeJSONOutput marshals data as indented JSON and writes to the command's output.
@@ -355,7 +354,7 @@ func handleBlockingChallengesError(cmd *cobra.Command, svc *service.ProofService
 }
 
 // outputBlockingChallengesText displays blocking challenges in text format.
-func outputBlockingChallengesText(cmd *cobra.Command, nodeID service.NodeID, challenges []*state.Challenge, origErr error) error {
+func outputBlockingChallengesText(cmd *cobra.Command, nodeID service.NodeID, challenges []*service.Challenge, origErr error) error {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("Cannot accept node %s: blocking challenges must be resolved first.\n\n", nodeID.String()))
@@ -386,7 +385,7 @@ func outputBlockingChallengesText(cmd *cobra.Command, nodeID service.NodeID, cha
 }
 
 // outputBlockingChallengesJSON displays blocking challenges in JSON format.
-func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID service.NodeID, challenges []*state.Challenge, origErr error) error {
+func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID service.NodeID, challenges []*service.Challenge, origErr error) error {
 	type challengeInfo struct {
 		ID       string `json:"id"`
 		Target   string `json:"target"`
@@ -447,7 +446,7 @@ type dependencyInfo struct {
 
 // lookupContextStatus determines the status of a context item by checking
 // if it's a definition, assumption, external, or lemma.
-func lookupContextStatus(st *state.State, ctx string) string {
+func lookupContextStatus(st *service.State, ctx string) string {
 	if st.GetDefinition(ctx) != nil || st.GetDefinitionByName(ctx) != nil {
 		return "definition"
 	}
@@ -464,7 +463,7 @@ func lookupContextStatus(st *state.State, ctx string) string {
 }
 
 // getVerificationSummary retrieves challenge and dependency information for a node.
-func getVerificationSummary(st *state.State, nodeID service.NodeID, note string) verificationSummary {
+func getVerificationSummary(st *service.State, nodeID service.NodeID, note string) verificationSummary {
 	summary := verificationSummary{
 		Note: note,
 	}
@@ -474,7 +473,7 @@ func getVerificationSummary(st *state.State, nodeID service.NodeID, note string)
 	for _, c := range st.AllChallenges() {
 		if c.NodeID.String() == nodeIDStr {
 			summary.ChallengesRaised++
-			if c.Status == state.ChallengeStatusResolved {
+			if c.Status == service.ChallengeStatusResolved {
 				summary.ChallengesResolved++
 			}
 		}

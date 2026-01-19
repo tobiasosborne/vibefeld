@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // newWizardCmd creates the wizard command for guided workflows.
@@ -340,7 +339,7 @@ func runWizardRespondChallenge(cmd *cobra.Command, dir string) error {
 	}, 0)
 
 	for _, c := range challenges {
-		if c.Status == state.ChallengeStatusOpen {
+		if c.Status == service.ChallengeStatusOpen {
 			openChallenges = append(openChallenges, &struct {
 				ID       string
 				NodeID   string

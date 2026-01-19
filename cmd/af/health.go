@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // Health status constants
@@ -144,7 +143,7 @@ func runHealth(cmd *cobra.Command, args []string) error {
 }
 
 // analyzeHealth analyzes the proof state and returns a health report.
-func analyzeHealth(st *state.State) *HealthReport {
+func analyzeHealth(st *service.State) *HealthReport {
 	nodes := st.AllNodes()
 
 	// Build node map and identify leaf nodes

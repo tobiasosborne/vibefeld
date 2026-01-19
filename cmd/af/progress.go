@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // ProgressMetrics contains computed progress metrics for a proof.
@@ -130,7 +129,7 @@ func loadPendingDefs(svc *service.ProofService) ([]*node.PendingDef, error) {
 }
 
 // computeProgressMetrics calculates progress metrics from the current state.
-func computeProgressMetrics(st *state.State, pendingDefs []*node.PendingDef) *ProgressMetrics {
+func computeProgressMetrics(st *service.State, pendingDefs []*node.PendingDef) *ProgressMetrics {
 	nodes := st.AllNodes()
 	challenges := st.OpenChallenges()
 

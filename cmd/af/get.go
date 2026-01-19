@@ -10,7 +10,6 @@ import (
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // newGetCmd creates the get command for retrieving node information.
@@ -184,7 +183,7 @@ func collectSubtree(st interface {
 }
 
 // outputJSON outputs nodes in JSON format.
-func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*state.Challenge, st *state.State) error {
+func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*service.Challenge, st *service.State) error {
 	if len(nodes) == 1 {
 		// Single node: always show full output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
@@ -231,7 +230,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 
 // getScopeInfoJSON returns scope information for a node as a JSON-friendly map.
 // Returns nil if the node is not in any scope.
-func getScopeInfoJSON(st *state.State, nodeID service.NodeID) map[string]interface{} {
+func getScopeInfoJSON(st *service.State, nodeID service.NodeID) map[string]interface{} {
 	info := st.GetScopeInfo(nodeID)
 	if info == nil || !info.IsInAnyScope() {
 		return nil
@@ -265,7 +264,7 @@ func nodeToJSONBasic(n *node.Node) map[string]interface{} {
 }
 
 // nodeToJSONFull creates a full JSON representation of a node.
-func nodeToJSONFull(n *node.Node, challenges []*state.Challenge, amendments []state.Amendment, scopeInfo map[string]interface{}) map[string]interface{} {
+func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []service.Amendment, scopeInfo map[string]interface{}) map[string]interface{} {
 	result := map[string]interface{}{
 		"id":              n.ID.String(),
 		"type":            string(n.Type),
@@ -335,7 +334,7 @@ func nodeToJSONFull(n *node.Node, challenges []*state.Challenge, amendments []st
 }
 
 // outputText outputs nodes in text format.
-func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*state.Challenge, st *state.State) error {
+func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*service.Challenge, st *service.State) error {
 	if len(nodes) == 1 {
 		// Single node: always show full/verbose output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
@@ -431,8 +430,8 @@ func truncateForDisplay(s string, maxLen int) string {
 }
 
 // filterChallengesForNode returns challenges that target the given node.
-func filterChallengesForNode(challenges []*state.Challenge, nodeID service.NodeID) []*state.Challenge {
-	var result []*state.Challenge
+func filterChallengesForNode(challenges []*service.Challenge, nodeID service.NodeID) []*service.Challenge {
+	var result []*service.Challenge
 	for _, c := range challenges {
 		if c.NodeID.String() == nodeID.String() {
 			result = append(result, c)

@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // =============================================================================
@@ -193,7 +192,7 @@ func TestProgressCmd_InvalidFormat(t *testing.T) {
 
 // TestComputeProgressMetrics_EmptyState tests metrics with no nodes.
 func TestComputeProgressMetrics_EmptyState(t *testing.T) {
-	st := state.NewState()
+	st := service.NewState()
 	var pendingDefs []*node.PendingDef
 
 	metrics := computeProgressMetrics(st, pendingDefs)
@@ -214,7 +213,7 @@ func TestComputeProgressMetrics_EmptyState(t *testing.T) {
 
 // TestComputeProgressMetrics_AllPending tests metrics with all pending nodes.
 func TestComputeProgressMetrics_AllPending(t *testing.T) {
-	st := state.NewState()
+	st := service.NewState()
 
 	// Add 3 pending nodes
 	st.AddNode(createTestNode("1", service.EpistemicPending, service.WorkflowAvailable))
@@ -241,7 +240,7 @@ func TestComputeProgressMetrics_AllPending(t *testing.T) {
 
 // TestComputeProgressMetrics_MixedStates tests metrics with mixed epistemic states.
 func TestComputeProgressMetrics_MixedStates(t *testing.T) {
-	st := state.NewState()
+	st := service.NewState()
 
 	// Add nodes with different states
 	st.AddNode(createTestNode("1", service.EpistemicValidated, service.WorkflowAvailable))
@@ -282,7 +281,7 @@ func TestComputeProgressMetrics_MixedStates(t *testing.T) {
 
 // TestComputeProgressMetrics_BlockedNodes tests that blocked nodes are counted.
 func TestComputeProgressMetrics_BlockedNodes(t *testing.T) {
-	st := state.NewState()
+	st := service.NewState()
 
 	// Add nodes with mixed workflow states
 	st.AddNode(createTestNode("1", service.EpistemicPending, service.WorkflowAvailable))
@@ -301,7 +300,7 @@ func TestComputeProgressMetrics_BlockedNodes(t *testing.T) {
 
 // TestComputeProgressMetrics_WithPendingDefs tests that pending definitions are counted.
 func TestComputeProgressMetrics_WithPendingDefs(t *testing.T) {
-	st := state.NewState()
+	st := service.NewState()
 	st.AddNode(createTestNode("1", service.EpistemicPending, service.WorkflowAvailable))
 
 	// Create pending definitions
@@ -320,22 +319,22 @@ func TestComputeProgressMetrics_WithPendingDefs(t *testing.T) {
 
 // TestComputeProgressMetrics_WithOpenChallenges tests that open challenges are counted.
 func TestComputeProgressMetrics_WithOpenChallenges(t *testing.T) {
-	st := state.NewState()
+	st := service.NewState()
 	st.AddNode(createTestNode("1", service.EpistemicPending, service.WorkflowAvailable))
 
 	// Add open challenges
 	nodeID, _ := service.ParseNodeID("1")
-	st.AddChallenge(&state.Challenge{
+	st.AddChallenge(&service.Challenge{
 		ID:     "ch1",
 		NodeID: nodeID,
 		Status: "open",
 	})
-	st.AddChallenge(&state.Challenge{
+	st.AddChallenge(&service.Challenge{
 		ID:     "ch2",
 		NodeID: nodeID,
 		Status: "open",
 	})
-	st.AddChallenge(&state.Challenge{
+	st.AddChallenge(&service.Challenge{
 		ID:     "ch3",
 		NodeID: nodeID,
 		Status: "resolved", // This one should not be counted
@@ -630,7 +629,7 @@ func TestComputeProgressMetrics_CompletionPercentage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			st := state.NewState()
+			st := service.NewState()
 
 			// Add validated nodes
 			for i := 0; i < tt.validated; i++ {

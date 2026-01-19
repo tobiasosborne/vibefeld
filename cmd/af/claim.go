@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // newClaimCmd creates the claim command for claiming a node for work.
@@ -128,7 +127,7 @@ func runClaim(cmd *cobra.Command, args []string) error {
 }
 
 // outputClaimJSON outputs the claim result in JSON format.
-func outputClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner, role string, timeout time.Duration, st *state.State, refresh bool) error {
+func outputClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner, role string, timeout time.Duration, st *service.State, refresh bool) error {
 	// Render context based on role
 	var context string
 	if role == "prover" {
@@ -187,7 +186,7 @@ func outputClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner, role stri
 }
 
 // outputClaimText outputs the claim result in human-readable text format.
-func outputClaimText(cmd *cobra.Command, nodeID service.NodeID, owner string, timeout time.Duration, role string, st *state.State, refresh bool) error {
+func outputClaimText(cmd *cobra.Command, nodeID service.NodeID, owner string, timeout time.Duration, role string, st *service.State, refresh bool) error {
 	// Calculate expiration time
 	expiresAt := time.Now().Add(timeout)
 

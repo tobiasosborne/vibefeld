@@ -1,28 +1,39 @@
-# Handoff - 2026-01-19 (Session 205)
+# Handoff - 2026-01-19 (Session 206)
 
 ## What Was Accomplished This Session
 
-### Session 205 Summary: Eliminated fs package from cmd/af test files
+### Session 206 Summary: Eliminated state package from cmd/af
 
-Continued P1 epic vibefeld-jfbc - fully eliminated fs package import from all cmd/af files including test files.
+Continued P1 epic vibefeld-jfbc - fully eliminated state package import from all cmd/af files.
 
 ### Changes Made
 
-**1. Eliminated fs package from test files:**
+**1. Eliminated state package from cmd/af:**
 - Added re-exports to `internal/service/exports.go`:
-  - `PendingDef` type alias
-  - `PendingDefStatus*` constants (PendingDefStatusPending, PendingDefStatusResolved, PendingDefStatusCancelled)
-  - `NewPendingDefWithValidation` function
-  - `WritePendingDef`, `ReadPendingDef`, `ListPendingDefs` functions
-- Updated 3 test files to use service package instead of fs/node:
-  - `cmd/af/def_reject_test.go`
-  - `cmd/af/pending_defs_test.go`
-  - `cmd/af/request_def_test.go`
+  - `State` type alias (state.State)
+  - `Challenge` type alias (state.Challenge)
+  - `Amendment` type alias (state.Amendment)
+  - `NewState` function
+  - `Replay` function
+  - `ReplayWithVerify` function
+- Updated 11 files to use service package instead of state:
+  - `cmd/af/accept.go`
+  - `cmd/af/challenges.go`
+  - `cmd/af/claim.go`
+  - `cmd/af/get.go`
+  - `cmd/af/health.go`
+  - `cmd/af/jobs.go`
+  - `cmd/af/progress.go`
+  - `cmd/af/progress_test.go`
+  - `cmd/af/refine.go`
+  - `cmd/af/replay.go`
+  - `cmd/af/wizard.go`
 
 **2. Import status:**
-- fs package is now fully eliminated from cmd/af (both production and test code)
-- Current imports: 5 (service, render, node, ledger, state)
+- state package is now fully eliminated from cmd/af
+- Current imports: 4 (service, render, node, ledger)
 - Target: 2 (service, render)
+- Progress: 22 → 4 (18 packages eliminated, 2 remaining)
 
 **3. All 27 packages pass tests**
 
@@ -33,12 +44,11 @@ Continued P1 epic vibefeld-jfbc - fully eliminated fs package import from all cm
 - Build succeeds (`go build ./cmd/af`)
 
 ### Import Progress (vibefeld-jfbc)
-Current internal imports in cmd/af (5 total):
+Current internal imports in cmd/af (4 total):
 - `service` (target - keep)
 - `render` (target - keep)
-- `node` (to eliminate)
-- `ledger` (to eliminate)
-- `state` (to eliminate)
+- `node` (to eliminate - 17 files)
+- `ledger` (to eliminate - 18 files)
 
 ### Issue Statistics
 - **Open:** 6
@@ -47,12 +57,11 @@ Current internal imports in cmd/af (5 total):
 ## Recommended Next Steps
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
-3 internal packages remain (excluding targets):
-- `node` - node.Node, Assumption, Definition, External types (14 files)
-- `ledger` - ledger.Event type (10 files)
-- `state` - state.ProofState, state.Challenge types (10 files)
+2 internal packages remain (excluding targets):
+- `node` - node.Node, Assumption, Definition, External, Lemma types (17 files)
+- `ledger` - ledger.Event type and Ledger operations (18 files)
 
-Next logical step: Choose the smallest dependency to eliminate. Could start with ledger.Event since it's primarily used for display/output.
+These are the most deeply embedded packages. The node package is used extensively for domain types throughout cmd/af. The ledger package is used for event display and ledger operations.
 
 ### P2 Code Quality
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -73,6 +82,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 206:** Eliminated state package by re-exporting State, Challenge, Amendment, NewState, Replay, ReplayWithVerify through service, reduced imports from 5→4
 **Session 205:** Eliminated fs package from test files by re-exporting PendingDef types and functions through service
 **Session 204:** Eliminated fs package import by adding WriteExternal to service layer, reduced imports from 6→5
 **Session 203:** Health check - fixed bd doctor issues (hooks, gitignore, sync), validated all 6 open issues still relevant, all tests pass, LOC audit (125k code, 21k comments)

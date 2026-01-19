@@ -606,3 +606,31 @@ var ReadPendingDef = fs.ReadPendingDef
 // ListPendingDefs lists all pending definitions in a proof directory.
 // Re-export of fs.ListPendingDefs for test verification.
 var ListPendingDefs = fs.ListPendingDefs
+
+// Re-exported types and functions from internal/state to reduce cmd/af import count.
+// Consumers should use service.State, service.Challenge, etc. instead of
+// importing the state package directly.
+
+// State represents the current derived state of a proof.
+// Re-export of state.State.
+type State = state.State
+
+// Challenge represents a challenge tracked in the state.
+// Re-export of state.Challenge.
+type Challenge = state.Challenge
+
+// Amendment represents a single amendment to a node's statement.
+// Re-export of state.Amendment.
+type Amendment = state.Amendment
+
+// NewState creates a new empty State with all maps initialized.
+// Re-export of state.NewState.
+var NewState = state.NewState
+
+// Replay replays all events from the ledger to rebuild the state.
+// Re-export of state.Replay.
+var Replay = state.Replay
+
+// ReplayWithVerify replays events and verifies state consistency.
+// Re-export of state.ReplayWithVerify.
+var ReplayWithVerify = state.ReplayWithVerify

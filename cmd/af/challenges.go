@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // newChallengesCmd creates the challenges command.
@@ -131,8 +130,8 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 }
 
 // filterChallenges filters challenges based on node ID and status.
-func filterChallenges(challenges []*state.Challenge, nodeID service.NodeID, filterByNode bool, statusFilter string) []*state.Challenge {
-	var result []*state.Challenge
+func filterChallenges(challenges []*service.Challenge, nodeID service.NodeID, filterByNode bool, statusFilter string) []*service.Challenge {
+	var result []*service.Challenge
 
 	for _, c := range challenges {
 		// Apply node filter
@@ -152,7 +151,7 @@ func filterChallenges(challenges []*state.Challenge, nodeID service.NodeID, filt
 }
 
 // sortChallenges sorts challenges by node ID (string comparison) then by challenge ID.
-func sortChallenges(challenges []*state.Challenge) {
+func sortChallenges(challenges []*service.Challenge) {
 	sort.Slice(challenges, func(i, j int) bool {
 		// First compare node IDs
 		nodeI := challenges[i].NodeID.String()
@@ -166,7 +165,7 @@ func sortChallenges(challenges []*state.Challenge) {
 }
 
 // renderChallengesText renders challenges as a text table.
-func renderChallengesText(challenges []*state.Challenge) string {
+func renderChallengesText(challenges []*service.Challenge) string {
 	if len(challenges) == 0 {
 		return "No challenges found.\n"
 	}
@@ -222,7 +221,7 @@ type challengesResultJSON struct {
 }
 
 // renderChallengesJSON renders challenges as JSON.
-func renderChallengesJSON(challenges []*state.Challenge) string {
+func renderChallengesJSON(challenges []*service.Challenge) string {
 	result := challengesResultJSON{
 		Challenges: make([]challengeJSON, 0, len(challenges)),
 		Total:      len(challenges),
@@ -255,10 +254,10 @@ func renderChallengesJSON(challenges []*state.Challenge) string {
 }
 
 // countOpenChallenges counts the number of open challenges.
-func countOpenChallenges(challenges []*state.Challenge) int {
+func countOpenChallenges(challenges []*service.Challenge) int {
 	count := 0
 	for _, c := range challenges {
-		if c.Status == state.ChallengeStatusOpen {
+		if c.Status == service.ChallengeStatusOpen {
 			count++
 		}
 	}

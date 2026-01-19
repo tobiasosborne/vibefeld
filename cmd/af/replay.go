@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/state"
 )
 
 // ReplayStats holds statistics gathered during ledger replay.
@@ -89,11 +88,11 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	}
 
 	// Perform replay
-	var st *state.State
+	var st *service.State
 	if verify {
-		st, err = state.ReplayWithVerify(ldg)
+		st, err = service.ReplayWithVerify(ldg)
 	} else {
-		st, err = state.Replay(ldg)
+		st, err = service.Replay(ldg)
 	}
 
 	// Build stats
@@ -110,9 +109,9 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		challenges := st.AllChallenges()
 		stats.Challenges.Total = len(challenges)
 		for _, c := range challenges {
-			if c.Status == state.ChallengeStatusResolved {
+			if c.Status == service.ChallengeStatusResolved {
 				stats.Challenges.Resolved++
-			} else if c.Status == state.ChallengeStatusOpen {
+			} else if c.Status == service.ChallengeStatusOpen {
 				stats.Challenges.Open++
 			}
 		}
