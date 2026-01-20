@@ -696,17 +696,28 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 		return err
 	}
 
-	// Validate that all reference dependencies exist
+	// Create provider for cycle check
+	provider := &stateDependencyProvider{st: st}
+
+	// Validate that all reference dependencies exist and don't create cycles
 	for _, depID := range spec.Dependencies {
 		if st.GetNode(depID) == nil {
 			return fmt.Errorf("invalid dependency: node %s not found", depID.String())
 		}
+		
+		if res := cycle.WouldCreateCycle(provider, spec.ParentID, depID); res.HasCycle {
+			return fmt.Errorf("%w: adding dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), depID.String(), res.Path)
+		}
 	}
 
-	// Validate that all validation dependencies exist
+	// Validate that all validation dependencies exist and don't create cycles
 	for _, valDepID := range spec.ValidationDeps {
 		if st.GetNode(valDepID) == nil {
 			return fmt.Errorf("invalid validation dependency: node %s not found", valDepID.String())
+		}
+		
+		if res := cycle.WouldCreateCycle(provider, spec.ParentID, valDepID); res.HasCycle {
+			return fmt.Errorf("%w: adding validation dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), valDepID.String(), res.Path)
 		}
 	}
 
@@ -1646,7 +1657,11 @@ func (p *stateDependencyProvider) GetNodeDependencies(id types.NodeID) ([]types.
 	if n == nil {
 		return nil, false
 	}
-	return n.Dependencies, true
+	// Combine regular dependencies and validation dependencies
+	deps := make([]types.NodeID, 0, len(n.Dependencies)+len(n.ValidationDeps))
+	deps = append(deps, n.Dependencies...)
+	deps = append(deps, n.ValidationDeps...)
+	return deps, true
 }
 
 // AllNodeIDs implements cycle.DependencyProvider.
