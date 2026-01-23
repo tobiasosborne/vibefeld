@@ -14,6 +14,7 @@ func TestValidateEpistemicState_AllValid(t *testing.T) {
 		{"admitted", "admitted"},
 		{"refuted", "refuted"},
 		{"archived", "archived"},
+		{"needs_refinement", "needs_refinement"},
 	}
 
 	for _, tt := range tests {
@@ -92,6 +93,13 @@ func TestGetEpistemicStateInfo_Exists(t *testing.T) {
 			expectedFinal: true,
 			expectedTaint: false,
 		},
+		{
+			name:          "needs_refinement",
+			state:         EpistemicNeedsRefinement,
+			expectedDesc:  "Validated node reopened for refinement",
+			expectedFinal: false,
+			expectedTaint: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -138,17 +146,18 @@ func TestGetEpistemicStateInfo_NotExists(t *testing.T) {
 
 func TestAllEpistemicStates_Count(t *testing.T) {
 	states := AllEpistemicStates()
-	if len(states) != 5 {
-		t.Errorf("AllEpistemicStates() returned %d states, want 5", len(states))
+	if len(states) != 6 {
+		t.Errorf("AllEpistemicStates() returned %d states, want 6", len(states))
 	}
 
 	// Verify all expected states are present
 	expectedStates := map[EpistemicState]bool{
-		EpistemicPending:   false,
-		EpistemicValidated: false,
-		EpistemicAdmitted:  false,
-		EpistemicRefuted:   false,
-		EpistemicArchived:  false,
+		EpistemicPending:         false,
+		EpistemicValidated:       false,
+		EpistemicAdmitted:        false,
+		EpistemicRefuted:         false,
+		EpistemicArchived:        false,
+		EpistemicNeedsRefinement: false,
 	}
 
 	for _, info := range states {
@@ -192,8 +201,16 @@ func TestValidateEpistemicTransition_PendingToArchived(t *testing.T) {
 	}
 }
 
-func TestValidateEpistemicTransition_ValidatedToAny(t *testing.T) {
-	targets := []EpistemicState{
+func TestValidateEpistemicTransition_ValidatedToNeedsRefinement(t *testing.T) {
+	err := ValidateEpistemicTransition(EpistemicValidated, EpistemicNeedsRefinement)
+	if err != nil {
+		t.Errorf("ValidateEpistemicTransition(validated, needs_refinement) returned error: %v", err)
+	}
+}
+
+func TestValidateEpistemicTransition_ValidatedToOther(t *testing.T) {
+	// validated can only transition to needs_refinement
+	invalidTargets := []EpistemicState{
 		EpistemicPending,
 		EpistemicValidated,
 		EpistemicAdmitted,
@@ -201,7 +218,7 @@ func TestValidateEpistemicTransition_ValidatedToAny(t *testing.T) {
 		EpistemicArchived,
 	}
 
-	for _, target := range targets {
+	for _, target := range invalidTargets {
 		t.Run(string(target), func(t *testing.T) {
 			err := ValidateEpistemicTransition(EpistemicValidated, target)
 			if err == nil {
@@ -268,6 +285,46 @@ func TestValidateEpistemicTransition_ArchivedToAny(t *testing.T) {
 	}
 }
 
+func TestValidateEpistemicTransition_NeedsRefinementToValidated(t *testing.T) {
+	err := ValidateEpistemicTransition(EpistemicNeedsRefinement, EpistemicValidated)
+	if err != nil {
+		t.Errorf("ValidateEpistemicTransition(needs_refinement, validated) returned error: %v", err)
+	}
+}
+
+func TestValidateEpistemicTransition_NeedsRefinementToTerminal(t *testing.T) {
+	validTargets := []EpistemicState{
+		EpistemicAdmitted,
+		EpistemicRefuted,
+		EpistemicArchived,
+	}
+
+	for _, target := range validTargets {
+		t.Run(string(target), func(t *testing.T) {
+			err := ValidateEpistemicTransition(EpistemicNeedsRefinement, target)
+			if err != nil {
+				t.Errorf("ValidateEpistemicTransition(needs_refinement, %q) returned error: %v", target, err)
+			}
+		})
+	}
+}
+
+func TestValidateEpistemicTransition_NeedsRefinementToInvalid(t *testing.T) {
+	invalidTargets := []EpistemicState{
+		EpistemicPending,
+		EpistemicNeedsRefinement,
+	}
+
+	for _, target := range invalidTargets {
+		t.Run(string(target), func(t *testing.T) {
+			err := ValidateEpistemicTransition(EpistemicNeedsRefinement, target)
+			if err == nil {
+				t.Errorf("ValidateEpistemicTransition(needs_refinement, %q) expected error, got nil", target)
+			}
+		})
+	}
+}
+
 func TestValidateEpistemicTransition_PendingToPending(t *testing.T) {
 	err := ValidateEpistemicTransition(EpistemicPending, EpistemicPending)
 	if err == nil {
@@ -292,6 +349,12 @@ func TestValidateEpistemicTransition_InvalidToState(t *testing.T) {
 func TestIsFinal_Pending(t *testing.T) {
 	if IsFinal(EpistemicPending) {
 		t.Error("IsFinal(pending) returned true, want false")
+	}
+}
+
+func TestIsFinal_NeedsRefinement(t *testing.T) {
+	if IsFinal(EpistemicNeedsRefinement) {
+		t.Error("IsFinal(needs_refinement) returned true, want false")
 	}
 }
 
@@ -337,6 +400,7 @@ func TestIntroducesTaint_Others(t *testing.T) {
 		{"validated", EpistemicValidated},
 		{"refuted", EpistemicRefuted},
 		{"archived", EpistemicArchived},
+		{"needs_refinement", EpistemicNeedsRefinement},
 	}
 
 	for _, tt := range tests {

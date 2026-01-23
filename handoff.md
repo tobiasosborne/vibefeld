@@ -1,20 +1,26 @@
-# Handoff - 2026-01-23 (Session 214)
+# Handoff - 2026-01-23 (Session 215)
 
 ## What Was Accomplished This Session
 
-### Session 214 Summary: Fixed P1 bug vibefeld-si9g
+### Session 215 Summary: Implemented needs_refinement state and RefinementRequested event
 
-**Fixed `vibefeld-si9g` - Add nil checks to Challenge and Node methods**
-- `internal/node/challenge.go`: Added nil receiver checks to:
-  - `Resolve()` - returns "nil challenge" error
-  - `Withdraw()` - returns "nil challenge" error
-  - `IsOpen()` - returns false for nil
-- `internal/node/node.go`: Added nil receiver checks to:
-  - `ComputeContentHash()` - returns empty string for nil
-  - `Validate()` - returns "nil node" error
-  - `IsRoot()` - returns false for nil
-  - `Depth()` - returns 0 for nil
-  - `VerifyContentHash()` - returns false for nil
+**Closed `vibefeld-9184` - Add needs_refinement epistemic state to schema**
+- `internal/schema/epistemic.go`:
+  - Added `EpistemicNeedsRefinement` constant
+  - Added registry entry (non-final, no taint)
+  - Updated `ValidateEpistemicState` error message
+  - Updated `AllEpistemicStates()` to return 6 states
+  - Rewrote `ValidateEpistemicTransition` with map-based transitions:
+    - `validated` → `needs_refinement` (allowed)
+    - `needs_refinement` → `validated`, `admitted`, `refuted`, `archived` (allowed)
+- `internal/schema/epistemic_test.go`: Added comprehensive tests for new state and transitions
+
+**Closed `vibefeld-jkxx` - Add RefinementRequested event to ledger**
+- `internal/ledger/event.go`:
+  - Added `EventRefinementRequested` constant
+  - Added `RefinementRequested` struct with NodeID, Reason, RequestedBy fields
+  - Added `NewRefinementRequested()` constructor
+- `internal/ledger/event_test.go`: Added tests for event creation, JSON roundtrip, field validation
 
 ## Current State
 
@@ -24,23 +30,34 @@
 
 ### Issue Statistics
 - **P0 bugs:** 0 remaining
-- **P1 tasks:** 2 remaining
+- **P1 tasks:** 3 remaining
   - `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2 (large epic)
-  - `vibefeld-tk76` - Refactor proof.go god object into smaller modules (large refactoring)
-- **Ready for work:** 10
+  - `vibefeld-tk76` - Refactor proof.go god object into smaller modules
+  - `vibefeld-8q2j` - Increase service package test coverage (68.9% current)
+- **Ready for work:** 8
+
+### Blocked Issues Now Unblocked
+The following issues were blocked by the completed work:
+- `vibefeld-boar` - Implement request-refinement command (blocked by both closed issues)
+- `vibefeld-xt2o` - Handle RefinementRequested in state derivation (blocked by both)
+- `vibefeld-0hx6` - Update render package for needs_refinement state (blocked by 9184)
+- `vibefeld-cvlz` - Include needs_refinement nodes in prover jobs (blocked by 9184)
 
 ## Recommended Next Steps
 
-### P1 Tasks (both are large refactoring efforts)
+### Unblocked Work (natural continuation)
+- `vibefeld-boar` - Implement request-refinement command (now unblocked)
+- `vibefeld-xt2o` - Handle RefinementRequested in state derivation (now unblocked)
+
+### P1 Tasks
 - `vibefeld-jfbc` - Module structure epic: down from 22 to 4 packages (node and ledger remaining)
 - `vibefeld-tk76` - Refactor proof.go god object
+- `vibefeld-8q2j` - Increase service test coverage
 
 ### P2 Code Quality
 - `vibefeld-vj5y` - Service layer leaks domain types
 - `vibefeld-264n` - service package acts as hub (11 imports)
 - `vibefeld-qsyt` - Missing intermediate layer for service
-- `vibefeld-9184` - Add needs_refinement epistemic state
-- `vibefeld-jkxx` - Add RefinementRequested event
 
 ### P3 API Design
 - `vibefeld-yo5e` - Boolean parameters in CLI
@@ -56,6 +73,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 215:** Implemented needs_refinement epistemic state (vibefeld-9184) and RefinementRequested ledger event (vibefeld-jkxx)
 **Session 214:** Fixed vibefeld-si9g (nil receiver checks for Challenge and Node methods)
 **Session 213:** Fixed vibefeld-lwna (lock release-after-free semantics) and vibefeld-bs2m (External return type consistency)
 **Session 212:** Fixed P1 bug vibefeld-u3le - LoadState silent error swallowing, changed os.IsNotExist to errors.Is for proper wrapped error handling

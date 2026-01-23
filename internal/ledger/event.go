@@ -32,6 +32,7 @@ const (
 	EventScopeOpened          EventType = "scope_opened"
 	EventScopeClosed          EventType = "scope_closed"
 	EventClaimRefreshed       EventType = "claim_refreshed"
+	EventRefinementRequested  EventType = "refinement_requested"
 )
 
 // Event is the base interface for all ledger events.
@@ -471,5 +472,27 @@ func NewClaimRefreshed(nodeID types.NodeID, owner string, newTimeout types.Times
 		NodeID:     nodeID,
 		Owner:      owner,
 		NewTimeout: newTimeout,
+	}
+}
+
+// RefinementRequested is emitted when a verifier requests refinement on a validated node.
+// This reopens the node for further proof development by provers.
+type RefinementRequested struct {
+	BaseEvent
+	NodeID      types.NodeID `json:"node_id"`
+	Reason      string       `json:"reason"`
+	RequestedBy string       `json:"requested_by,omitempty"` // Agent ID of the requester
+}
+
+// NewRefinementRequested creates a RefinementRequested event.
+func NewRefinementRequested(nodeID types.NodeID, reason, requestedBy string) RefinementRequested {
+	return RefinementRequested{
+		BaseEvent: BaseEvent{
+			EventType: EventRefinementRequested,
+			EventTime: types.Now(),
+		},
+		NodeID:      nodeID,
+		Reason:      reason,
+		RequestedBy: requestedBy,
 	}
 }

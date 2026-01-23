@@ -32,6 +32,7 @@ func TestEventTypeConstants(t *testing.T) {
 		{"TaintRecomputed", EventTaintRecomputed, "taint_recomputed"},
 		{"DefAdded", EventDefAdded, "def_added"},
 		{"LemmaExtracted", EventLemmaExtracted, "lemma_extracted"},
+		{"RefinementRequested", EventRefinementRequested, "refinement_requested"},
 	}
 
 	for _, tt := range tests {
@@ -724,6 +725,7 @@ func TestBaseEventInterface(t *testing.T) {
 		NewTaintRecomputed(nodeID, node.TaintClean),
 		NewDefAdded(Definition{ID: "def", Name: "name", Definition: "def", Created: types.Now()}),
 		NewLemmaExtracted(Lemma{ID: "lemma", Statement: "stmt", NodeID: nodeID, Created: types.Now()}),
+		NewRefinementRequested(nodeID, "reason", "requester"),
 	}
 
 	for _, e := range events {
@@ -966,6 +968,87 @@ func TestClaimRefreshedEvent(t *testing.T) {
 		jsonStr := string(data)
 
 		expectedFields := []string{`"type"`, `"timestamp"`, `"node_id"`, `"owner"`, `"new_timeout"`}
+		for _, field := range expectedFields {
+			if !contains(jsonStr, field) {
+				t.Errorf("JSON missing field %s: %s", field, jsonStr)
+			}
+		}
+	})
+}
+
+// TestRefinementRequestedEvent tests RefinementRequested event creation and serialization.
+func TestRefinementRequestedEvent(t *testing.T) {
+	t.Run("creation with valid data", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.2")
+		event := NewRefinementRequested(nodeID, "Needs more detail on step 2", "verifier-42")
+
+		if event.Type() != EventRefinementRequested {
+			t.Errorf("Type() = %q, want %q", event.Type(), EventRefinementRequested)
+		}
+		if event.NodeID.String() != "1.2" {
+			t.Errorf("NodeID = %q, want %q", event.NodeID.String(), "1.2")
+		}
+		if event.Reason != "Needs more detail on step 2" {
+			t.Errorf("Reason = %q, want %q", event.Reason, "Needs more detail on step 2")
+		}
+		if event.RequestedBy != "verifier-42" {
+			t.Errorf("RequestedBy = %q, want %q", event.RequestedBy, "verifier-42")
+		}
+		if event.Timestamp().IsZero() {
+			t.Error("Timestamp should not be zero")
+		}
+	})
+
+	t.Run("creation with empty RequestedBy", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.3")
+		event := NewRefinementRequested(nodeID, "Clarification needed", "")
+
+		if event.Type() != EventRefinementRequested {
+			t.Errorf("Type() = %q, want %q", event.Type(), EventRefinementRequested)
+		}
+		if event.RequestedBy != "" {
+			t.Errorf("RequestedBy = %q, want empty string", event.RequestedBy)
+		}
+	})
+
+	t.Run("JSON roundtrip", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.4.5")
+		original := NewRefinementRequested(nodeID, "More justification required", "verifier-99")
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		var decoded RefinementRequested
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if decoded.Type() != original.Type() {
+			t.Errorf("Type mismatch: got %q, want %q", decoded.Type(), original.Type())
+		}
+		if decoded.NodeID.String() != original.NodeID.String() {
+			t.Errorf("NodeID mismatch: got %q, want %q", decoded.NodeID.String(), original.NodeID.String())
+		}
+		if decoded.Reason != original.Reason {
+			t.Errorf("Reason mismatch: got %q, want %q", decoded.Reason, original.Reason)
+		}
+		if decoded.RequestedBy != original.RequestedBy {
+			t.Errorf("RequestedBy mismatch: got %q, want %q", decoded.RequestedBy, original.RequestedBy)
+		}
+		if !decoded.Timestamp().Equal(original.Timestamp()) {
+			t.Errorf("Timestamp mismatch: got %v, want %v", decoded.Timestamp(), original.Timestamp())
+		}
+	})
+
+	t.Run("JSON fields", func(t *testing.T) {
+		nodeID, _ := types.Parse("1")
+		event := NewRefinementRequested(nodeID, "reason", "requester")
+		data, _ := json.Marshal(event)
+		jsonStr := string(data)
+
+		expectedFields := []string{`"type"`, `"timestamp"`, `"node_id"`, `"reason"`, `"requested_by"`}
 		for _, field := range expectedFields {
 			if !contains(jsonStr, field) {
 				t.Errorf("JSON missing field %s: %s", field, jsonStr)

@@ -6,11 +6,12 @@ import "fmt"
 type EpistemicState string
 
 const (
-	EpistemicPending   EpistemicState = "pending"
-	EpistemicValidated EpistemicState = "validated"
-	EpistemicAdmitted  EpistemicState = "admitted"
-	EpistemicRefuted   EpistemicState = "refuted"
-	EpistemicArchived  EpistemicState = "archived"
+	EpistemicPending         EpistemicState = "pending"
+	EpistemicValidated       EpistemicState = "validated"
+	EpistemicAdmitted        EpistemicState = "admitted"
+	EpistemicRefuted         EpistemicState = "refuted"
+	EpistemicArchived        EpistemicState = "archived"
+	EpistemicNeedsRefinement EpistemicState = "needs_refinement"
 )
 
 // EpistemicStateInfo provides metadata about an epistemic state.
@@ -52,15 +53,21 @@ var epistemicStateRegistry = map[EpistemicState]EpistemicStateInfo{
 		IsFinal:         true,
 		IntroducesTaint: false,
 	},
+	EpistemicNeedsRefinement: {
+		ID:              EpistemicNeedsRefinement,
+		Description:     "Validated node reopened for refinement",
+		IsFinal:         false,
+		IntroducesTaint: false,
+	},
 }
 
 // ValidateEpistemicState checks if the given string is a valid epistemic state.
 func ValidateEpistemicState(s string) error {
 	state := EpistemicState(s)
 	if _, ok := epistemicStateRegistry[state]; !ok {
-		return fmt.Errorf("invalid epistemic state: %q, must be one of: %s, %s, %s, %s, %s",
+		return fmt.Errorf("invalid epistemic state: %q, must be one of: %s, %s, %s, %s, %s, %s",
 			s, EpistemicPending, EpistemicValidated, EpistemicAdmitted,
-			EpistemicRefuted, EpistemicArchived)
+			EpistemicRefuted, EpistemicArchived, EpistemicNeedsRefinement)
 	}
 	return nil
 }
@@ -80,6 +87,7 @@ func AllEpistemicStates() []EpistemicStateInfo {
 		epistemicStateRegistry[EpistemicAdmitted],
 		epistemicStateRegistry[EpistemicRefuted],
 		epistemicStateRegistry[EpistemicArchived],
+		epistemicStateRegistry[EpistemicNeedsRefinement],
 	}
 	return states
 }
@@ -92,7 +100,12 @@ func AllEpistemicStates() []EpistemicStateInfo {
 // - pending → admitted (verifier admits without proof)
 // - pending → refuted (verifier rejects)
 // - pending → archived (proof path abandoned)
-// - validated/admitted/refuted/archived are terminal (no transitions out)
+// - validated → needs_refinement (refinement request)
+// - needs_refinement → validated (re-validation after children validated)
+// - needs_refinement → admitted (verifier admits without proof)
+// - needs_refinement → refuted (verifier rejects)
+// - needs_refinement → archived (proof path abandoned)
+// - admitted/refuted/archived are terminal (no transitions out)
 func ValidateEpistemicTransition(from, to EpistemicState) error {
 	// Validate both states exist
 	if err := ValidateEpistemicState(string(from)); err != nil {
@@ -102,32 +115,39 @@ func ValidateEpistemicTransition(from, to EpistemicState) error {
 		return err
 	}
 
-	// Check if from state is terminal
-	fromInfo, _ := GetEpistemicStateInfo(from)
-	if fromInfo.IsFinal {
+	// Define valid transitions per source state
+	validTransitions := map[EpistemicState][]EpistemicState{
+		EpistemicPending: {
+			EpistemicValidated,
+			EpistemicAdmitted,
+			EpistemicRefuted,
+			EpistemicArchived,
+		},
+		EpistemicValidated: {
+			EpistemicNeedsRefinement,
+		},
+		EpistemicNeedsRefinement: {
+			EpistemicValidated,
+			EpistemicAdmitted,
+			EpistemicRefuted,
+			EpistemicArchived,
+		},
+	}
+
+	// Check if any transitions are allowed from this state
+	allowedTargets, hasTransitions := validTransitions[from]
+	if !hasTransitions {
 		return fmt.Errorf("cannot transition from terminal state %q to %q: state is final", from, to)
 	}
 
-	// Only pending can transition
-	if from != EpistemicPending {
-		return fmt.Errorf("invalid transition from %q to %q: only pending state can transition", from, to)
-	}
-
-	// Pending can transition to validated, admitted, refuted, or archived
-	validTargets := []EpistemicState{
-		EpistemicValidated,
-		EpistemicAdmitted,
-		EpistemicRefuted,
-		EpistemicArchived,
-	}
-	for _, valid := range validTargets {
+	// Check if this specific transition is allowed
+	for _, valid := range allowedTargets {
 		if to == valid {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("invalid transition from %q to %q: pending can only transition to: %s, %s, %s, %s",
-		from, to, EpistemicValidated, EpistemicAdmitted, EpistemicRefuted, EpistemicArchived)
+	return fmt.Errorf("invalid transition from %q to %q", from, to)
 }
 
 // IsFinal returns true if the given epistemic state is terminal
