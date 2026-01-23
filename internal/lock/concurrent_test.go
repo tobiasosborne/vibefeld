@@ -153,7 +153,12 @@ func TestConcurrentAcquireAndRelease(t *testing.T) {
 
 // TestConcurrentExpiredLockReplacement tests that expired locks can be
 // replaced concurrently.
+// Note: This test waits for the clock skew tolerance (5 seconds) + buffer.
 func TestConcurrentExpiredLockReplacement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test in short mode")
+	}
+
 	manager := NewManager()
 
 	nodeID, err := types.Parse("1")
@@ -163,13 +168,13 @@ func TestConcurrentExpiredLockReplacement(t *testing.T) {
 
 	// Acquire with very short timeout
 	owner := "original-agent"
-	_, err = manager.Acquire(nodeID, owner, 10*time.Millisecond)
+	_, err = manager.Acquire(nodeID, owner, 1*time.Millisecond)
 	if err != nil {
 		t.Fatalf("failed to acquire initial lock: %v", err)
 	}
 
-	// Wait for expiration
-	time.Sleep(20 * time.Millisecond)
+	// Wait for expiration + clock skew tolerance (5s) + buffer
+	time.Sleep(6 * time.Second)
 
 	// Multiple workers race to acquire the expired lock
 	numWorkers := 5
@@ -199,7 +204,12 @@ func TestConcurrentExpiredLockReplacement(t *testing.T) {
 
 // TestConcurrentReapExpired tests that expired lock reaping is safe
 // under concurrent access.
+// Note: This test waits for the clock skew tolerance (5 seconds) + buffer.
 func TestConcurrentReapExpired(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test in short mode")
+	}
+
 	manager := NewManager()
 
 	// Create multiple locks with short timeouts
@@ -216,14 +226,14 @@ func TestConcurrentReapExpired(t *testing.T) {
 		}
 
 		owner := "agent"
-		_, err = manager.Acquire(childID, owner, 10*time.Millisecond)
+		_, err = manager.Acquire(childID, owner, 1*time.Millisecond)
 		if err != nil {
 			t.Fatalf("failed to acquire lock %d: %v", i, err)
 		}
 	}
 
-	// Wait for all to expire
-	time.Sleep(20 * time.Millisecond)
+	// Wait for all to expire + clock skew tolerance (5s) + buffer
+	time.Sleep(6 * time.Second)
 
 	// Multiple workers call ReapExpired concurrently
 	numWorkers := 5

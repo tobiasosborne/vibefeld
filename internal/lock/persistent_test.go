@@ -23,6 +23,19 @@ func createTestLedger(t *testing.T) (*ledger.Ledger, string) {
 	return l, dir
 }
 
+// injectExpiredLock injects a LockAcquired event into the ledger with an expiration
+// time that's already past the clock skew tolerance. This is used to test expiration
+// handling without waiting for real time to pass.
+func injectExpiredLock(t *testing.T, l *ledger.Ledger, nodeID types.NodeID, owner string) {
+	t.Helper()
+	// Expiration 10 seconds in the past (well past 5-second tolerance)
+	expiredAt := types.FromTime(time.Now().Add(-10 * time.Second))
+	evt := lock.NewLockAcquired(nodeID, owner, expiredAt)
+	if _, err := l.Append(evt); err != nil {
+		t.Fatalf("failed to inject expired lock: %v", err)
+	}
+}
+
 // TestPersistentManager_NewPersistentManager verifies manager creation with valid ledger.
 func TestPersistentManager_NewPersistentManager(t *testing.T) {
 	l, _ := createTestLedger(t)
@@ -293,23 +306,19 @@ func TestPersistentManager_Info_ReturnsNilForUnlocked(t *testing.T) {
 }
 
 // TestPersistentManager_IsLocked_ExpiredLock verifies expired locks are not considered locked.
+// Uses injected already-expired lock to avoid waiting for clock skew tolerance.
 func TestPersistentManager_IsLocked_ExpiredLock(t *testing.T) {
 	l, _ := createTestLedger(t)
+	nodeID, _ := types.Parse("1.1")
+
+	// Inject a lock that's already past the clock skew tolerance
+	injectExpiredLock(t, l, nodeID, "agent-001")
+
+	// Create manager - will replay the expired lock
 	pm, err := lock.NewPersistentManager(l)
 	if err != nil {
 		t.Fatalf("NewPersistentManager() unexpected error: %v", err)
 	}
-
-	nodeID, _ := types.Parse("1.1")
-
-	// Acquire lock with very short timeout
-	_, err = pm.Acquire(nodeID, "agent-001", 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("Acquire() unexpected error: %v", err)
-	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
 
 	// Expired lock should not be considered locked
 	if pm.IsLocked(nodeID) {
@@ -318,23 +327,19 @@ func TestPersistentManager_IsLocked_ExpiredLock(t *testing.T) {
 }
 
 // TestPersistentManager_ReapExpired_PersistsReap verifies reaping persists to ledger.
+// Uses injected already-expired lock to avoid waiting for clock skew tolerance.
 func TestPersistentManager_ReapExpired_PersistsReap(t *testing.T) {
 	l, _ := createTestLedger(t)
+	nodeID, _ := types.Parse("1.1")
+
+	// Inject a lock that's already past the clock skew tolerance
+	injectExpiredLock(t, l, nodeID, "agent-001")
+
+	// Create manager - will replay the expired lock
 	pm, err := lock.NewPersistentManager(l)
 	if err != nil {
 		t.Fatalf("NewPersistentManager() unexpected error: %v", err)
 	}
-
-	nodeID, _ := types.Parse("1.1")
-
-	// Acquire lock with very short timeout
-	_, err = pm.Acquire(nodeID, "agent-001", 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("Acquire() unexpected error: %v", err)
-	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
 
 	// Reap expired locks
 	reaped, err := pm.ReapExpired()
@@ -357,23 +362,21 @@ func TestPersistentManager_ReapExpired_PersistsReap(t *testing.T) {
 }
 
 // TestPersistentManager_ReapExpired_SurvivesRestart verifies reaped locks stay gone after restart.
+// Uses injected already-expired lock to avoid waiting for clock skew tolerance.
 func TestPersistentManager_ReapExpired_SurvivesRestart(t *testing.T) {
 	l, dir := createTestLedger(t)
+	nodeID, _ := types.Parse("1.1")
+
+	// Inject a lock that's already past the clock skew tolerance
+	injectExpiredLock(t, l, nodeID, "agent-001")
+
+	// Create manager - will replay the expired lock
 	pm1, err := lock.NewPersistentManager(l)
 	if err != nil {
 		t.Fatalf("NewPersistentManager() unexpected error: %v", err)
 	}
 
-	nodeID, _ := types.Parse("1.1")
-
-	// Acquire lock with very short timeout
-	_, err = pm1.Acquire(nodeID, "agent-001", 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("Acquire() unexpected error: %v", err)
-	}
-
-	// Wait for expiration and reap
-	time.Sleep(10 * time.Millisecond)
+	// Reap expired lock
 	_, err = pm1.ReapExpired()
 	if err != nil {
 		t.Fatalf("ReapExpired() unexpected error: %v", err)
@@ -466,28 +469,24 @@ func TestPersistentManager_MultipleLocks_Persistence(t *testing.T) {
 }
 
 // TestPersistentManager_AcquireExpiredLock verifies expired locks can be replaced.
+// Uses injected already-expired lock to avoid waiting for clock skew tolerance.
 func TestPersistentManager_AcquireExpiredLock(t *testing.T) {
 	l, _ := createTestLedger(t)
+	nodeID, _ := types.Parse("1.1")
+
+	// Inject a lock that's already past the clock skew tolerance
+	injectExpiredLock(t, l, nodeID, "agent-001")
+
+	// Create manager - will replay the expired lock
 	pm, err := lock.NewPersistentManager(l)
 	if err != nil {
 		t.Fatalf("NewPersistentManager() unexpected error: %v", err)
 	}
 
-	nodeID, _ := types.Parse("1.1")
-
-	// Acquire lock with very short timeout
-	_, err = pm.Acquire(nodeID, "agent-001", 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("First Acquire() unexpected error: %v", err)
-	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
-
 	// Acquire again should succeed (previous lock expired)
 	lk, err := pm.Acquire(nodeID, "agent-002", 1*time.Hour)
 	if err != nil {
-		t.Fatalf("Second Acquire() on expired lock unexpected error: %v", err)
+		t.Fatalf("Acquire() on expired lock unexpected error: %v", err)
 	}
 
 	if lk.Owner() != "agent-002" {

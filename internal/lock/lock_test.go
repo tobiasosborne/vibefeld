@@ -128,24 +128,77 @@ func TestIsExpired_NotExpired(t *testing.T) {
 	}
 }
 
-// TestIsExpired_Expired verifies IsExpired returns true after timeout
+// TestIsExpired_Expired verifies IsExpired returns true after timeout + clock skew tolerance.
+// Uses JSON unmarshaling to create a lock that's definitively expired (past expiry + tolerance).
 func TestIsExpired_Expired(t *testing.T) {
-	nodeID, err := types.Parse("1")
-	if err != nil {
-		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
-	}
+	// Create a lock via JSON with expiration well past the clock skew tolerance (10 seconds ago)
+	pastExpiry := time.Now().Add(-10 * time.Second).Format(time.RFC3339Nano)
+	pastAcquired := time.Now().Add(-15 * time.Second).Format(time.RFC3339Nano)
+	jsonData := []byte(`{
+		"node_id": "1",
+		"owner": "agent-001",
+		"acquired_at": "` + pastAcquired + `",
+		"expires_at": "` + pastExpiry + `"
+	}`)
 
-	// Create lock with very short timeout
-	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("NewLock() unexpected error: %v", err)
+	var lk lock.ClaimLock
+	if err := json.Unmarshal(jsonData, &lk); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
 	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
 
 	if !lk.IsExpired() {
-		t.Error("IsExpired() = false after timeout, want true")
+		t.Error("IsExpired() = false for lock expired 10s ago (past 5s tolerance), want true")
+	}
+}
+
+// TestIsExpired_WithinToleranceNotExpired verifies that a lock nominally past its
+// expiration time but within the clock skew tolerance is NOT considered expired.
+// This is the key behavior that protects against premature expiration due to clock drift.
+func TestIsExpired_WithinToleranceNotExpired(t *testing.T) {
+	// Create a lock via JSON with expiration 2 seconds in the past.
+	// Since ClockSkewTolerance is 5 seconds, this lock should NOT be expired.
+	pastExpiry := time.Now().Add(-2 * time.Second).Format(time.RFC3339Nano)
+	pastAcquired := time.Now().Add(-10 * time.Second).Format(time.RFC3339Nano)
+	jsonData := []byte(`{
+		"node_id": "1",
+		"owner": "agent-001",
+		"acquired_at": "` + pastAcquired + `",
+		"expires_at": "` + pastExpiry + `"
+	}`)
+
+	var lk lock.ClaimLock
+	if err := json.Unmarshal(jsonData, &lk); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	// Lock's nominal expiry is 2s in past, but tolerance is 5s, so NOT expired
+	if lk.IsExpired() {
+		t.Error("IsExpired() = true for lock 2s past expiry (within 5s tolerance), want false")
+	}
+}
+
+// TestIsExpired_JustPastToleranceExpired verifies that a lock that has passed
+// both its expiration time AND the clock skew tolerance IS considered expired.
+func TestIsExpired_JustPastToleranceExpired(t *testing.T) {
+	// Create a lock via JSON with expiration 6 seconds in the past.
+	// Since ClockSkewTolerance is 5 seconds, this lock SHOULD be expired.
+	pastExpiry := time.Now().Add(-6 * time.Second).Format(time.RFC3339Nano)
+	pastAcquired := time.Now().Add(-15 * time.Second).Format(time.RFC3339Nano)
+	jsonData := []byte(`{
+		"node_id": "1",
+		"owner": "agent-001",
+		"acquired_at": "` + pastAcquired + `",
+		"expires_at": "` + pastExpiry + `"
+	}`)
+
+	var lk lock.ClaimLock
+	if err := json.Unmarshal(jsonData, &lk); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	// Lock's nominal expiry is 6s in past, tolerance is 5s, so expired by 1s
+	if !lk.IsExpired() {
+		t.Error("IsExpired() = false for lock 6s past expiry (past 5s tolerance), want true")
 	}
 }
 
@@ -328,28 +381,30 @@ func TestRefresh_PreservesOtherFields(t *testing.T) {
 // unnecessary churn. Since the lock owner is preserved, refreshing an expired lock
 // is safe - no other agent could have claimed it in the meantime without the original
 // agent releasing it or the lock being reaped.
+// Uses JSON unmarshaling to create a lock that's already past the clock skew tolerance.
 func TestRefresh_ExpiredLockBehavior(t *testing.T) {
-	nodeID, err := types.Parse("1")
-	if err != nil {
-		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
-	}
+	// Create a lock via JSON with expiration 10 seconds in the past (past 5s tolerance)
+	pastExpiry := time.Now().Add(-10 * time.Second).Format(time.RFC3339Nano)
+	pastAcquired := time.Now().Add(-15 * time.Second).Format(time.RFC3339Nano)
+	jsonData := []byte(`{
+		"node_id": "1",
+		"owner": "agent-001",
+		"acquired_at": "` + pastAcquired + `",
+		"expires_at": "` + pastExpiry + `"
+	}`)
 
-	// Create lock with very short timeout
-	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	var lk lock.ClaimLock
+	if err := json.Unmarshal(jsonData, &lk); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
 	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
 
 	// Verify lock is expired
 	if !lk.IsExpired() {
-		t.Fatal("Lock should be expired after timeout")
+		t.Fatal("Lock should be expired (10s past > 5s tolerance)")
 	}
 
 	// Refresh the expired lock - this should succeed
-	err = lk.Refresh(1 * time.Hour)
+	err := lk.Refresh(1 * time.Hour)
 	if err != nil {
 		t.Fatalf("Refresh() on expired lock should succeed, got error: %v", err)
 	}
@@ -607,21 +662,19 @@ func TestConcurrentAccess(t *testing.T) {
 // TestIsExpired_ClockSkewHandling verifies lock expiration behavior under clock skew scenarios.
 // Clock skew occurs when system time jumps forward or backward (e.g., NTP synchronization).
 //
-// Current behavior (documented, not necessarily ideal):
-// - IsExpired() compares against time.Now(), so it reflects the current system time
-// - If system time jumps backward, previously expired locks may appear valid again
-// - If system time jumps forward, locks expire earlier than expected
+// The ClockSkewTolerance (5 seconds) provides a grace period that prevents premature
+// lock expiration when the reading process's clock is slightly ahead of the writing
+// process's clock. A lock is only considered expired when now > expiresAt + tolerance.
 //
 // This test verifies the comparison logic works correctly by creating locks with
 // expiration times in the past/future using JSON unmarshaling to simulate the
 // effect of clock skew on pre-existing locks.
 func TestIsExpired_ClockSkewHandling(t *testing.T) {
 	// Scenario 1: Lock created in the past (simulates clock jumping forward)
-	// If clock jumps forward significantly, a lock that should have been valid
-	// will appear expired because time.Now() is now past expiresAt
-	t.Run("clock jumps forward - lock appears expired early", func(t *testing.T) {
+	// With tolerance, lock only expires if past by more than ClockSkewTolerance
+	t.Run("clock jumps forward - lock expired well past tolerance", func(t *testing.T) {
 		// Create a lock via JSON with expiration 1 hour in the past
-		// This simulates: lock was created, then clock jumped forward
+		// This is well past the 5-second tolerance, so should be expired
 		pastExpiry := time.Now().Add(-1 * time.Hour).Format(time.RFC3339Nano)
 		pastAcquired := time.Now().Add(-2 * time.Hour).Format(time.RFC3339Nano)
 		jsonData := []byte(`{
@@ -636,9 +689,9 @@ func TestIsExpired_ClockSkewHandling(t *testing.T) {
 			t.Fatalf("json.Unmarshal() unexpected error: %v", err)
 		}
 
-		// Lock should be expired since expiresAt is in the past
+		// Lock should be expired (1 hour past > 5 second tolerance)
 		if !lk.IsExpired() {
-			t.Error("IsExpired() = false for lock with past expiration, want true")
+			t.Error("IsExpired() = false for lock 1 hour past expiration, want true")
 		}
 	})
 

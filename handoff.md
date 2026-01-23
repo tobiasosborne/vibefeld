@@ -1,36 +1,40 @@
-# Handoff - 2026-01-23 (Session 210)
+# Handoff - 2026-01-23 (Session 211)
 
 ## What Was Accomplished This Session
 
-### Session 210 Summary: Fixed two P0 bugs
+### Session 211 Summary: Fixed P1 bug - Clock skew vulnerability
 
-**1. Fixed `vibefeld-db25` - Challenge severity validation in state package**
-- `internal/state/apply.go`: Added `schema.ValidateChallengeSeverity()` call in `applyChallengeRaised`
-- Invalid severities (typos, uppercase, arbitrary strings) now return errors
-- Tests: `TestApplyChallengeRaised_InvalidSeverity`, `TestApplyChallengeRaised_ValidSeverities`
+**Fixed `vibefeld-1a4m` - Lock clock skew vulnerability in IsExpired**
+- `internal/lock/lock.go`: Added `ClockSkewTolerance` constant (5 seconds)
+- Modified `IsExpired()` to use `expiresAt.Add(ClockSkewTolerance)` as threshold
+- Prevents premature lock expiration when reading process's clock is slightly ahead
+- Updated tests to use JSON unmarshaling for creating already-expired locks
+- Concurrent tests now skip in short mode due to 6-second wait requirement
 
-**2. Fixed `vibefeld-vgqt` - AcceptNodeWithNote validation race**
-- `internal/service/proof.go`: Added children validation check in `AcceptNodeWithNote`
-- Per PRD: "All children of n have epistemic_state ∈ {validated, admitted}"
-- Parent nodes now require all children to be validated/admitted before acceptance
-- Tests: `TestAcceptNodeWithNote_BlockedByUnvalidatedChildren`, `TestAcceptNodeWithNote_SucceedsWhenChildrenValidated`, `TestAcceptNodeWithNote_SucceedsWhenChildrenAdmitted`, `TestAcceptNodeWithNote_LeafNodeSucceeds`
+**Files Changed:**
+- `internal/lock/lock.go`: Added ClockSkewTolerance, updated IsExpired()
+- `internal/lock/lock_test.go`: Updated expiration tests, added tolerance tests
+- `internal/lock/persistent_test.go`: Added injectExpiredLock helper, updated expiration tests
+- `internal/lock/concurrent_test.go`: Added skip in short mode, increased wait times
 
 ## Current State
 
 ### Test Status
-- All tests pass (`go test ./...`)
+- All tests pass (`go test ./... -short`)
+- Full tests pass in ~13 seconds (`go test ./internal/lock/...`)
 - Build succeeds (`go build ./cmd/af`)
 
 ### Issue Statistics
 - **P0 bugs:** 0 remaining
 - **P1 bugs:** 1 remaining
-  - `vibefeld-1a4m` - Fix lock clock skew vulnerability in IsExpired
+  - `vibefeld-lwna` - Fix lock release-after-free semantics
+  - `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2
 - **Ready for work:** 9
 
 ## Recommended Next Steps
 
 ### P1 Bugs
-- `vibefeld-1a4m` - Fix lock clock skew vulnerability in IsExpired
+- `vibefeld-lwna` - Fix lock release-after-free semantics
 - `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2
 
 ### P2 Code Quality
@@ -48,35 +52,36 @@
 
 ```bash
 bd ready           # See ready work
-go test ./...      # Run tests
+go test ./... -short  # Run tests (fast)
 go build ./cmd/af  # Build
 ```
 
 ## Session History
 
+**Session 211:** Fixed P1 bug vibefeld-1a4m - Lock clock skew vulnerability, added 5-second ClockSkewTolerance to IsExpired()
 **Session 210:** Fixed P0 bugs vibefeld-db25 (challenge severity validation) and vibefeld-vgqt (AcceptNodeWithNote children validation)
 **Session 209:** Fixed P0 bug vibefeld-lxoz - State challenge cache race condition, added sync.RWMutex to protect concurrent access
 **Session 208:** Fixed P0 bug vibefeld-2225 - TOCTOU race in LedgerLock.tryAcquire, added agent ID verification
 **Session 207:** Fixed P0 bug vibefeld-zsib - AppendBatch partial failure atomicity, added rollback on rename failure
-**Session 206:** Eliminated state package by re-exporting State, Challenge, Amendment, NewState, Replay, ReplayWithVerify through service, reduced imports from 5→4
+**Session 206:** Eliminated state package by re-exporting State, Challenge, Amendment, NewState, Replay, ReplayWithVerify through service, reduced imports from 5->4
 **Session 205:** Eliminated fs package from test files by re-exporting PendingDef types and functions through service
-**Session 204:** Eliminated fs package import by adding WriteExternal to service layer, reduced imports from 6→5
+**Session 204:** Eliminated fs package import by adding WriteExternal to service layer, reduced imports from 6->5
 **Session 203:** Health check - fixed bd doctor issues (hooks, gitignore, sync), validated all 6 open issues still relevant, all tests pass, LOC audit (125k code, 21k comments)
-**Session 202:** Eliminated cli package import by re-exporting MustString, MustBool, MustInt, MustStringSlice through service, reduced imports from 7→6
-**Session 201:** Eliminated hooks import from hooks_test.go by adding NewHookConfig re-export through service, reduced imports from 8→7
-**Session 200:** Eliminated jobs package import by re-exporting JobResult, FindJobs, FindProverJobs, FindVerifierJobs through service, reduced imports from 8→7 (non-test files only)
-**Session 199:** Eliminated hooks package import, reduced imports from 9→8
-**Session 198:** Eliminated shell package import, reduced imports from 10→9
-**Session 197:** Eliminated patterns package import, reduced imports from 11→10
-**Session 196:** Eliminated strategy package import, reduced imports from 12→11
-**Session 195:** Eliminated templates package import, reduced imports from 13→12
-**Session 194:** Eliminated metrics package import, reduced imports from 14→13
-**Session 193:** Eliminated export package import, reduced imports from 15→14
-**Session 192:** Eliminated lemma package import, reduced imports from 16→15
-**Session 191:** Eliminated fuzzy package import, reduced imports from 17→16
-**Session 190:** Eliminated scope package import, reduced imports from 18→17
-**Session 189:** Eliminated config package import, reduced imports from 19→18
-**Session 188:** Eliminated errors package import, reduced imports from 20→19
+**Session 202:** Eliminated cli package import by re-exporting MustString, MustBool, MustInt, MustStringSlice through service, reduced imports from 7->6
+**Session 201:** Eliminated hooks import from hooks_test.go by adding NewHookConfig re-export through service, reduced imports from 8->7
+**Session 200:** Eliminated jobs package import by re-exporting JobResult, FindJobs, FindProverJobs, FindVerifierJobs through service, reduced imports from 8->7 (non-test files only)
+**Session 199:** Eliminated hooks package import, reduced imports from 9->8
+**Session 198:** Eliminated shell package import, reduced imports from 10->9
+**Session 197:** Eliminated patterns package import, reduced imports from 11->10
+**Session 196:** Eliminated strategy package import, reduced imports from 12->11
+**Session 195:** Eliminated templates package import, reduced imports from 13->12
+**Session 194:** Eliminated metrics package import, reduced imports from 14->13
+**Session 193:** Eliminated export package import, reduced imports from 15->14
+**Session 192:** Eliminated lemma package import, reduced imports from 16->15
+**Session 191:** Eliminated fuzzy package import, reduced imports from 17->16
+**Session 190:** Eliminated scope package import, reduced imports from 18->17
+**Session 189:** Eliminated config package import, reduced imports from 19->18
+**Session 188:** Eliminated errors package import, reduced imports from 20->19
 **Session 187:** Split ProofOperations interface into 4 role-based interfaces
 **Session 186:** Eliminated taint package import
 **Session 185:** Removed 28 unused schema imports from test files

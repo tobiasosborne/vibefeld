@@ -11,6 +11,19 @@ import (
 	"github.com/tobias/vibefeld/internal/types"
 )
 
+// ClockSkewTolerance is the grace period added to lock expiration checks to handle
+// clock drift between processes. When checking if a lock is expired, we consider
+// the lock valid for an additional tolerance period beyond its nominal expiration.
+//
+// This prevents premature lock expiration when:
+// - The reading process's clock is slightly ahead of the writing process's clock
+// - NTP adjustments cause small clock jumps
+// - Multiple processes on the same machine have minor clock differences
+//
+// A tolerance of 5 seconds handles typical NTP drift scenarios while keeping
+// the window small enough that legitimate lock expiration isn't delayed significantly.
+const ClockSkewTolerance = 5 * time.Second
+
 // ClaimLock represents an agent's exclusive access to a proof node.
 // ClaimLocks are time-limited and must be refreshed to maintain ownership.
 // Note: Previously named "Lock", renamed to ClaimLock for clarity to distinguish
@@ -74,10 +87,14 @@ func (l *ClaimLock) ExpiresAt() types.Timestamp {
 }
 
 // IsExpired returns true if the lock has expired.
+// The check includes a tolerance for clock skew between processes.
+// A lock is considered expired only if the current time is past
+// expiresAt + ClockSkewTolerance, providing a grace period that
+// prevents premature expiration due to clock drift.
 func (l *ClaimLock) IsExpired() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return time.Now().UTC().After(l.expiresAt)
+	return time.Now().UTC().After(l.expiresAt.Add(ClockSkewTolerance))
 }
 
 // IsOwnedBy returns true if the lock is owned by the given owner.
