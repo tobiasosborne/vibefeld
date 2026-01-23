@@ -2055,3 +2055,118 @@ func TestStateDependencyProvider_AllNodeIDs(t *testing.T) {
 		t.Errorf("AllNodeIDs() returned %d IDs, want 1", len(ids))
 	}
 }
+
+// =============================================================================
+// AcceptNodeWithNote Children Validation Tests
+// =============================================================================
+
+// TestAcceptNodeWithNote_BlockedByUnvalidatedChildren verifies that
+// AcceptNodeWithNote fails when the node has children that are not yet validated.
+// Per PRD: "All children of n have epistemic_state ∈ {validated, admitted}"
+func TestAcceptNodeWithNote_BlockedByUnvalidatedChildren(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// Create child nodes under root node 1
+	child1ID := parseNodeID(t, "1.1")
+	child2ID := parseNodeID(t, "1.2")
+
+	err := svc.CreateNode(child1ID, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	err = svc.CreateNode(child2ID, schema.NodeTypeClaim, "Child 2", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	// Try to accept the parent node 1 - should fail because children are pending
+	rootID := parseNodeID(t, "1")
+	err = svc.AcceptNodeWithNote(rootID, "attempting to accept parent with pending children")
+	if err == nil {
+		t.Fatal("AcceptNodeWithNote() expected error when children are not validated, got nil")
+	}
+
+	// Verify error mentions unvalidated children
+	if !strings.Contains(err.Error(), "children") && !strings.Contains(err.Error(), "child") {
+		t.Errorf("AcceptNodeWithNote() error should mention unvalidated children, got: %v", err)
+	}
+}
+
+// TestAcceptNodeWithNote_SucceedsWhenChildrenValidated verifies that
+// AcceptNodeWithNote succeeds when all children are validated.
+func TestAcceptNodeWithNote_SucceedsWhenChildrenValidated(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// Create child nodes under root node 1
+	child1ID := parseNodeID(t, "1.1")
+	child2ID := parseNodeID(t, "1.2")
+
+	err := svc.CreateNode(child1ID, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	err = svc.CreateNode(child2ID, schema.NodeTypeClaim, "Child 2", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	// Validate both children first
+	err = svc.AcceptNode(child1ID)
+	if err != nil {
+		t.Fatalf("AcceptNode(child1) unexpected error: %v", err)
+	}
+
+	err = svc.AcceptNode(child2ID)
+	if err != nil {
+		t.Fatalf("AcceptNode(child2) unexpected error: %v", err)
+	}
+
+	// Now accept the parent node 1 - should succeed
+	rootID := parseNodeID(t, "1")
+	err = svc.AcceptNodeWithNote(rootID, "accepting parent after children validated")
+	if err != nil {
+		t.Fatalf("AcceptNodeWithNote() unexpected error after children validated: %v", err)
+	}
+}
+
+// TestAcceptNodeWithNote_SucceedsWhenChildrenAdmitted verifies that
+// AcceptNodeWithNote succeeds when children are admitted (not just validated).
+func TestAcceptNodeWithNote_SucceedsWhenChildrenAdmitted(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// Create a child node
+	childID := parseNodeID(t, "1.1")
+
+	err := svc.CreateNode(childID, schema.NodeTypeClaim, "Child 1", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("CreateNode() unexpected error: %v", err)
+	}
+
+	// Admit the child (not validate)
+	err = svc.AdmitNode(childID)
+	if err != nil {
+		t.Fatalf("AdmitNode() unexpected error: %v", err)
+	}
+
+	// Accept the parent node 1 - should succeed because child is admitted
+	rootID := parseNodeID(t, "1")
+	err = svc.AcceptNodeWithNote(rootID, "accepting parent after child admitted")
+	if err != nil {
+		t.Fatalf("AcceptNodeWithNote() unexpected error after child admitted: %v", err)
+	}
+}
+
+// TestAcceptNodeWithNote_LeafNodeSucceeds verifies that
+// AcceptNodeWithNote succeeds for nodes without children.
+func TestAcceptNodeWithNote_LeafNodeSucceeds(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// Accept the root node 1 directly (no children)
+	rootID := parseNodeID(t, "1")
+	err := svc.AcceptNodeWithNote(rootID, "accepting leaf node")
+	if err != nil {
+		t.Fatalf("AcceptNodeWithNote() unexpected error for leaf node: %v", err)
+	}
+}

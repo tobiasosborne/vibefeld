@@ -2,19 +2,18 @@
 
 ## What Was Accomplished This Session
 
-### Session 210 Summary: Fixed P0 challenge severity validation bug
+### Session 210 Summary: Fixed two P0 bugs
 
-Fixed `vibefeld-db25` - Added challenge severity validation in state package.
+**1. Fixed `vibefeld-db25` - Challenge severity validation in state package**
+- `internal/state/apply.go`: Added `schema.ValidateChallengeSeverity()` call in `applyChallengeRaised`
+- Invalid severities (typos, uppercase, arbitrary strings) now return errors
+- Tests: `TestApplyChallengeRaised_InvalidSeverity`, `TestApplyChallengeRaised_ValidSeverities`
 
-### Changes Made
-
-**1. Added severity validation in applyChallengeRaised:**
-- `internal/state/apply.go`: Added call to `schema.ValidateChallengeSeverity()` before storing challenge
-- Invalid severities (typos, uppercase, arbitrary strings) now return an error
-
-**2. Added comprehensive tests:**
-- `internal/state/apply_test.go`: Added `TestApplyChallengeRaised_InvalidSeverity` - tests that invalid severities are rejected
-- `internal/state/apply_test.go`: Added `TestApplyChallengeRaised_ValidSeverities` - tests that valid severities (critical, major, minor, note) are accepted
+**2. Fixed `vibefeld-vgqt` - AcceptNodeWithNote validation race**
+- `internal/service/proof.go`: Added children validation check in `AcceptNodeWithNote`
+- Per PRD: "All children of n have epistemic_state ∈ {validated, admitted}"
+- Parent nodes now require all children to be validated/admitted before acceptance
+- Tests: `TestAcceptNodeWithNote_BlockedByUnvalidatedChildren`, `TestAcceptNodeWithNote_SucceedsWhenChildrenValidated`, `TestAcceptNodeWithNote_SucceedsWhenChildrenAdmitted`, `TestAcceptNodeWithNote_LeafNodeSucceeds`
 
 ## Current State
 
@@ -23,19 +22,16 @@ Fixed `vibefeld-db25` - Added challenge severity validation in state package.
 - Build succeeds (`go build ./cmd/af`)
 
 ### Issue Statistics
-- **P0 bugs:** 1 remaining
-  - `vibefeld-vgqt` - Fix service AcceptNodeWithNote validation race
-- **Ready for work:** 18
+- **P0 bugs:** 0 remaining
+- **P1 bugs:** 1 remaining
+  - `vibefeld-1a4m` - Fix lock clock skew vulnerability in IsExpired
+- **Ready for work:** 9
 
 ## Recommended Next Steps
 
-### P0 Bugs (Fix First)
-- `vibefeld-vgqt` - Fix service AcceptNodeWithNote validation race
-
-### P1 Epic vibefeld-jfbc - Import Reduction
-2 internal packages remain (excluding targets):
-- `node` - node.Node, Assumption, Definition, External, Lemma types (17 files)
-- `ledger` - ledger.Event type and Ledger operations (18 files)
+### P1 Bugs
+- `vibefeld-1a4m` - Fix lock clock skew vulnerability in IsExpired
+- `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2
 
 ### P2 Code Quality
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -58,7 +54,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
-**Session 210:** Fixed P0 bug vibefeld-db25 - Challenge severity validation in state package, added ValidateChallengeSeverity call and tests
+**Session 210:** Fixed P0 bugs vibefeld-db25 (challenge severity validation) and vibefeld-vgqt (AcceptNodeWithNote children validation)
 **Session 209:** Fixed P0 bug vibefeld-lxoz - State challenge cache race condition, added sync.RWMutex to protect concurrent access
 **Session 208:** Fixed P0 bug vibefeld-2225 - TOCTOU race in LedgerLock.tryAcquire, added agent ID verification
 **Session 207:** Fixed P0 bug vibefeld-zsib - AppendBatch partial failure atomicity, added rollback on rename failure
