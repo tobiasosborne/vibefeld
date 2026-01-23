@@ -2,6 +2,8 @@
 package state
 
 import (
+	"sync"
+
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/scope"
@@ -63,6 +65,10 @@ type State struct {
 	// challengesByNode caches challenges grouped by node ID.
 	// This is lazily built and invalidated when challenges change.
 	challengesByNode map[string][]*Challenge
+
+	// challengeMu protects challengesByNode cache and challenges map for concurrent access.
+	// Use RLock for reading the cache, Lock for invalidation and cache building.
+	challengeMu sync.RWMutex
 
 	// amendments maps NodeID string to a slice of Amendment records.
 	// This tracks the history of all amendments made to each node.
@@ -181,19 +187,28 @@ func (s *State) AllLemmas() []*node.Lemma {
 // AddChallenge adds a challenge to the state.
 // If a challenge with the same ID already exists, it is overwritten.
 // This invalidates the challengesByNode cache.
+// This method is safe for concurrent use.
 func (s *State) AddChallenge(c *Challenge) {
+	s.challengeMu.Lock()
+	defer s.challengeMu.Unlock()
 	s.challenges[c.ID] = c
 	s.challengesByNode = nil // invalidate cache
 }
 
 // GetChallenge returns the challenge with the given ID, or nil if not found.
+// This method is safe for concurrent use.
 func (s *State) GetChallenge(id string) *Challenge {
+	s.challengeMu.RLock()
+	defer s.challengeMu.RUnlock()
 	return s.challenges[id]
 }
 
 // AllChallenges returns a slice of all challenges in the state.
 // The order of challenges is not guaranteed.
+// This method is safe for concurrent use.
 func (s *State) AllChallenges() []*Challenge {
+	s.challengeMu.RLock()
+	defer s.challengeMu.RUnlock()
 	challenges := make([]*Challenge, 0, len(s.challenges))
 	for _, c := range s.challenges {
 		challenges = append(challenges, c)
@@ -203,14 +218,32 @@ func (s *State) AllChallenges() []*Challenge {
 
 // InvalidateChallengeCache invalidates the challengesByNode cache.
 // This should be called after any operation that modifies challenge status.
+// This method is safe for concurrent use.
 func (s *State) InvalidateChallengeCache() {
+	s.challengeMu.Lock()
+	defer s.challengeMu.Unlock()
 	s.challengesByNode = nil
 }
 
 // ChallengesByNodeID returns a map of node ID strings to challenges on that node.
 // The map is cached and only rebuilt when challenges change.
 // This provides O(1) lookup for challenges by node, avoiding repeated O(n) iteration.
+// This method is safe for concurrent use.
 func (s *State) ChallengesByNodeID() map[string][]*Challenge {
+	// Fast path: check if cache exists with read lock
+	s.challengeMu.RLock()
+	if s.challengesByNode != nil {
+		cache := s.challengesByNode
+		s.challengeMu.RUnlock()
+		return cache
+	}
+	s.challengeMu.RUnlock()
+
+	// Slow path: acquire write lock and build cache
+	s.challengeMu.Lock()
+	defer s.challengeMu.Unlock()
+
+	// Double-check after acquiring write lock (another goroutine may have built it)
 	if s.challengesByNode != nil {
 		return s.challengesByNode
 	}
@@ -253,7 +286,10 @@ func (s *State) ChallengeMapForJobs() map[string][]*node.Challenge {
 
 // OpenChallenges returns a slice of all open challenges in the state.
 // The order of challenges is not guaranteed.
+// This method is safe for concurrent use.
 func (s *State) OpenChallenges() []*Challenge {
+	s.challengeMu.RLock()
+	defer s.challengeMu.RUnlock()
 	var open []*Challenge
 	for _, c := range s.challenges {
 		if c.Status == ChallengeStatusOpen {

@@ -2,6 +2,9 @@
 package state
 
 import (
+	"fmt"
+	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/tobias/vibefeld/internal/node"
@@ -1377,6 +1380,98 @@ func TestChallengesByNodeIDCacheInvalidation(t *testing.T) {
 	byNode2 := s.ChallengesByNodeID()
 	if len(byNode2[node1ID.String()]) != 2 {
 		t.Errorf("Expected 2 challenges after cache invalidation, got %d", len(byNode2[node1ID.String()]))
+	}
+}
+
+// TestChallengesByNodeIDConcurrency verifies that the challenge cache is safe for concurrent access.
+// This test should be run with -race to detect race conditions.
+func TestChallengesByNodeIDConcurrency(t *testing.T) {
+	s := NewState()
+
+	node1ID := mustParseNodeID(t, "1")
+	node2ID := mustParseNodeID(t, "1.1")
+
+	// Add initial challenges
+	for i := range 10 {
+		s.AddChallenge(&Challenge{
+			ID:       fmt.Sprintf("ch-init-%d", i),
+			NodeID:   node1ID,
+			Reason:   fmt.Sprintf("Initial issue %d", i),
+			Status:   "open",
+			Severity: "major",
+		})
+	}
+
+	// Build initial cache
+	_ = s.ChallengesByNodeID()
+
+	// Run concurrent readers and writers
+	const numReaders = 10
+	const numWriters = 5
+	const iterations = 100
+
+	var wg sync.WaitGroup
+	wg.Add(numReaders + numWriters)
+
+	// Start readers that continuously access the cache
+	for i := range numReaders {
+		go func(readerID int) {
+			defer wg.Done()
+			for j := range iterations {
+				_ = s.ChallengesByNodeID()
+				_ = s.GetChallengesForNode(node1ID)
+				_ = s.GetBlockingChallengesForNode(node1ID)
+				_ = s.ChallengeMapForJobs()
+				// Small delay to allow interleaving
+				if j%10 == 0 {
+					runtime.Gosched()
+				}
+			}
+		}(i)
+	}
+
+	// Start writers that add challenges and invalidate cache
+	for i := range numWriters {
+		go func(writerID int) {
+			defer wg.Done()
+			for j := range iterations {
+				s.AddChallenge(&Challenge{
+					ID:       fmt.Sprintf("ch-%d-%d", writerID, j),
+					NodeID:   node2ID,
+					Reason:   fmt.Sprintf("Issue %d-%d", writerID, j),
+					Status:   "open",
+					Severity: "minor",
+				})
+				// Occasionally invalidate explicitly
+				if j%5 == 0 {
+					s.InvalidateChallengeCache()
+				}
+				// Small delay to allow interleaving
+				if j%10 == 0 {
+					runtime.Gosched()
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify final state is consistent
+	byNode := s.ChallengesByNodeID()
+	if byNode == nil {
+		t.Fatal("ChallengesByNodeID returned nil after concurrent access")
+	}
+
+	// Should have initial + writer challenges
+	node1Challenges := byNode[node1ID.String()]
+	if len(node1Challenges) != 10 {
+		t.Errorf("Expected 10 challenges for node1, got %d", len(node1Challenges))
+	}
+
+	node2Challenges := byNode[node2ID.String()]
+	expectedNode2 := numWriters * iterations
+	if len(node2Challenges) != expectedNode2 {
+		t.Errorf("Expected %d challenges for node2, got %d", expectedNode2, len(node2Challenges))
 	}
 }
 

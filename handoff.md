@@ -1,36 +1,47 @@
-# Handoff - 2026-01-23 (Session 208)
+# Handoff - 2026-01-23 (Session 209)
 
 ## What Was Accomplished This Session
 
-### Session 208 Summary: Fixed P0 lock TOCTOU race
+### Session 209 Summary: Fixed P0 state challenge cache race condition
 
-Fixed `vibefeld-2225` - TOCTOU race in LedgerLock.tryAcquire.
+Fixed `vibefeld-lxoz` - race condition in State.ChallengesByNodeID cache.
 
 ### Changes Made
 
-**1. Fixed TOCTOU race in tryAcquire:**
-- `internal/ledger/lock.go`: When `l.held` was true, tryAcquire returned success without verifying the agent ID matched
-- This allowed a different agent to incorrectly believe it acquired the lock when reusing the same LedgerLock instance
-- Added `ErrLockHeldByDifferentAgent` sentinel error for this case
-- Modified `Acquire` to return immediately on this fatal error instead of retrying
+**1. Added sync.RWMutex to State struct:**
+- `internal/state/state.go`: Added `challengeMu sync.RWMutex` field to protect challenge cache and challenges map
 
-**2. Added tests:**
-- `internal/ledger/lock_test.go`: Added `TestAcquire_ReentrantSameAgent` and `TestAcquire_DifferentAgentSameInstance`
-- Tests verify same agent can re-acquire (re-entrant), but different agent fails immediately
+**2. Made challenge methods thread-safe:**
+- `AddChallenge`: Uses Lock to modify challenges map and invalidate cache
+- `GetChallenge`: Uses RLock to read from challenges map
+- `AllChallenges`: Uses RLock to iterate challenges map
+- `InvalidateChallengeCache`: Uses Lock to invalidate cache
+- `ChallengesByNodeID`: Uses double-checked locking pattern (RLock to check, Lock to build)
+- `OpenChallenges`: Uses RLock to iterate challenges map
 
-**3. Commit:** `f19bc29` pushed to `origin/main`
+**3. Added concurrency test:**
+- `internal/state/state_test.go`: Added `TestChallengesByNodeIDConcurrency`
+- 10 readers and 5 writers running 100 iterations each
+- Verified with `-race` flag
 
 ## Current State
 
 ### Test Status
 - All tests pass (`go test ./...`)
+- All tests pass with race detector (`go test -race ./internal/state/`)
 - Build succeeds (`go build ./cmd/af`)
 
 ### Issue Statistics
-- **P0 bugs:** 0 (all fixed!)
-- **Ready for work:** 9
+- **P0 bugs:** 2 remaining
+  - `vibefeld-db25` - Add challenge severity validation in state package
+  - `vibefeld-vgqt` - Fix service AcceptNodeWithNote validation race
+- **Ready for work:** 19
 
 ## Recommended Next Steps
+
+### P0 Bugs (Fix First)
+- `vibefeld-vgqt` - Fix service AcceptNodeWithNote validation race
+- `vibefeld-db25` - Add challenge severity validation in state package
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
 2 internal packages remain (excluding targets):
@@ -58,6 +69,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 209:** Fixed P0 bug vibefeld-lxoz - State challenge cache race condition, added sync.RWMutex to protect concurrent access
 **Session 208:** Fixed P0 bug vibefeld-2225 - TOCTOU race in LedgerLock.tryAcquire, added agent ID verification
 **Session 207:** Fixed P0 bug vibefeld-zsib - AppendBatch partial failure atomicity, added rollback on rename failure
 **Session 206:** Eliminated state package by re-exporting State, Challenge, Amendment, NewState, Replay, ReplayWithVerify through service, reduced imports from 5→4
