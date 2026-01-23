@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -54,18 +55,9 @@ func runDefReject(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get flags
-	dir, err := cmd.Flags().GetString("dir")
-	if err != nil {
-		return err
-	}
-	format, err := cmd.Flags().GetString("format")
-	if err != nil {
-		return err
-	}
-	reason, err := cmd.Flags().GetString("reason")
-	if err != nil {
-		return err
-	}
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
+	reason := cli.MustString(cmd, "reason")
 
 	// Validate format
 	format = strings.ToLower(format)

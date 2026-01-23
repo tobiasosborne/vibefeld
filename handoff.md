@@ -2,7 +2,7 @@
 
 ## What Was Accomplished This Session
 
-### Session 219 Summary: Extracted destructive action confirmation helper
+### Session 219 Summary: CLI code quality improvements
 
 **Closed `vibefeld-1amd` - Extract destructive action confirmation to helper**
 - `internal/cli/confirm.go` (new):
@@ -22,6 +22,22 @@
 - `cmd/af/archive.go`:
   - Refactored to use `cli.ConfirmAction()` (reduced ~30 lines to ~10)
   - Removed duplicate terminal detection and prompt logic
+
+**Closed `vibefeld-2yy5` - Standardize flag extraction patterns across CLI**
+- Converted 36 flag extractions from verbose `cmd.Flags().GetString()` pattern to `cli.MustXxx()` helpers
+- Reduced occurrences from 130 to 94 (28% reduction)
+- Files converted (13 total):
+  - `cmd/af/refute.go`, `cmd/af/archive.go` - 4 each
+  - `cmd/af/challenge.go` - 5
+  - `cmd/af/admit.go` - 2
+  - `cmd/af/resolve_challenge.go` - 3
+  - `cmd/af/withdraw_challenge.go` - 2
+  - `cmd/af/accept.go` - 2
+  - `cmd/af/request_refinement.go` - 4
+  - `cmd/af/request_def.go` - 4
+  - `cmd/af/def_add.go` - 3
+  - `cmd/af/def_reject.go` - 3
+- Remaining: 94 occurrences in 29 files (can be converted incrementally)
 
 ---
 
@@ -125,7 +141,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
-**Session 219:** Extracted destructive action confirmation helper (vibefeld-1amd)
+**Session 219:** CLI code quality: confirmation helper (vibefeld-1amd) + flag standardization (vibefeld-2yy5)
 **Session 218:** Completed request-refinement feature (vibefeld-pno3, vibefeld-na20, vibefeld-boar)
 **Session 217:** Added RequestRefinement to proof service (vibefeld-wfkj) and render support for needs_refinement (vibefeld-0hx6)
 **Session 216:** Integrated RefinementRequested into state derivation (vibefeld-xt2o) and prover jobs (vibefeld-cvlz)

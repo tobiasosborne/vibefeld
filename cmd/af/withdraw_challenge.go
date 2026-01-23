@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/ledger"
 )
 
@@ -58,14 +59,8 @@ func runWithdrawChallenge(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get flags
-	dir, err := cmd.Flags().GetString("dir")
-	if err != nil {
-		return err
-	}
-	format, err := cmd.Flags().GetString("format")
-	if err != nil {
-		return err
-	}
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
 
 	// Validate directory exists and is a directory
 	info, err := os.Stat(dir)

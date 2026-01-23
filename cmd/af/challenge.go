@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
@@ -114,26 +115,11 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get flags
-	dir, err := cmd.Flags().GetString("dir")
-	if err != nil {
-		return err
-	}
-	format, err := cmd.Flags().GetString("format")
-	if err != nil {
-		return err
-	}
-	target, err := cmd.Flags().GetString("target")
-	if err != nil {
-		return err
-	}
-	reason, err := cmd.Flags().GetString("reason")
-	if err != nil {
-		return err
-	}
-	severity, err := cmd.Flags().GetString("severity")
-	if err != nil {
-		return err
-	}
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
+	target := cli.MustString(cmd, "target")
+	reason := cli.MustString(cmd, "reason")
+	severity := cli.MustString(cmd, "severity")
 
 	// Validate reason is provided and not empty/whitespace
 	if strings.TrimSpace(reason) == "" {

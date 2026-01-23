@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/render"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -49,22 +50,10 @@ Workflow:
 }
 
 func runRequestRefinement(cmd *cobra.Command, args []string) error {
-	dir, err := cmd.Flags().GetString("dir")
-	if err != nil {
-		return err
-	}
-	format, err := cmd.Flags().GetString("format")
-	if err != nil {
-		return err
-	}
-	reason, err := cmd.Flags().GetString("reason")
-	if err != nil {
-		return err
-	}
-	agent, err := cmd.Flags().GetString("agent")
-	if err != nil {
-		return err
-	}
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
+	reason := cli.MustString(cmd, "reason")
+	agent := cli.MustString(cmd, "agent")
 
 	// Parse and validate node ID
 	nodeIDStr := args[0]

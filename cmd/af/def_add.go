@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -44,18 +45,9 @@ Examples:
 // runDefAdd executes the def-add command.
 func runDefAdd(cmd *cobra.Command, args []string) error {
 	// Get flags
-	dir, err := cmd.Flags().GetString("dir")
-	if err != nil {
-		return err
-	}
-	format, err := cmd.Flags().GetString("format")
-	if err != nil {
-		return err
-	}
-	filePath, err := cmd.Flags().GetString("file")
-	if err != nil {
-		return err
-	}
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
+	filePath := cli.MustString(cmd, "file")
 
 	// Validate we have at least a name argument
 	if len(args) < 1 {

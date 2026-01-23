@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -50,14 +51,8 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get flags
-	dir, err := cmd.Flags().GetString("dir")
-	if err != nil {
-		return err
-	}
-	format, err := cmd.Flags().GetString("format")
-	if err != nil {
-		return err
-	}
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
 
 	// Create proof service
 	svc, err := service.NewProofService(dir)

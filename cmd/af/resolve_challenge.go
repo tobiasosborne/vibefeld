@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/ledger"
 )
 
@@ -87,18 +88,9 @@ func runResolveChallenge(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get flags
-	response, err := cmd.Flags().GetString("response")
-	if err != nil {
-		return err
-	}
-	dir, err := cmd.Flags().GetString("dir")
-	if err != nil {
-		return err
-	}
-	format, err := cmd.Flags().GetString("format")
-	if err != nil {
-		return err
-	}
+	response := cli.MustString(cmd, "response")
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
 
 	// Validate response is provided and not empty/whitespace
 	if strings.TrimSpace(response) == "" {

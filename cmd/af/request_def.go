@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
 )
@@ -42,22 +43,10 @@ Examples:
 // runRequestDef executes the request-def command.
 func runRequestDef(cmd *cobra.Command, args []string) error {
 	// Get flags
-	dir, err := cmd.Flags().GetString("dir")
-	if err != nil {
-		return err
-	}
-	format, err := cmd.Flags().GetString("format")
-	if err != nil {
-		return err
-	}
-	nodeIDStr, err := cmd.Flags().GetString("node")
-	if err != nil {
-		return err
-	}
-	term, err := cmd.Flags().GetString("term")
-	if err != nil {
-		return err
-	}
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
+	nodeIDStr := cli.MustString(cmd, "node")
+	term := cli.MustString(cmd, "term")
 
 	// Validate node ID is provided
 	if strings.TrimSpace(nodeIDStr) == "" {

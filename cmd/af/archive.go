@@ -55,22 +55,10 @@ func runArchive(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get flags
-	dir, err := cmd.Flags().GetString("dir")
-	if err != nil {
-		return err
-	}
-	format, err := cmd.Flags().GetString("format")
-	if err != nil {
-		return err
-	}
-	reason, err := cmd.Flags().GetString("reason")
-	if err != nil {
-		return err
-	}
-	skipConfirm, err := cmd.Flags().GetBool("yes")
-	if err != nil {
-		return err
-	}
+	dir := cli.MustString(cmd, "dir")
+	format := cli.MustString(cmd, "format")
+	reason := cli.MustString(cmd, "reason")
+	skipConfirm := cli.MustBool(cmd, "yes")
 
 	// Handle confirmation for destructive action
 	action := fmt.Sprintf("archive node %s", nodeIDStr)
