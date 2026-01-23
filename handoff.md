@@ -1,21 +1,20 @@
-# Handoff - 2026-01-23 (Session 213)
+# Handoff - 2026-01-23 (Session 214)
 
 ## What Was Accomplished This Session
 
-### Session 213 Summary: Fixed 2 P1 issues
+### Session 214 Summary: Fixed P1 bug vibefeld-si9g
 
-**Fixed `vibefeld-lwna` - Fix lock release-after-free semantics**
-- `internal/lock/lock.go`: Added `MarkReleased()` and `IsReleased()` methods to ClaimLock
-- Modified `ExpiresAt()`, `IsExpired()`, and `Refresh()` to check released flag
-- A released lock now returns zero timestamp for ExpiresAt, true for IsExpired, and error for Refresh
-- `internal/lock/manager.go`: `Release()` now calls `MarkReleased()` before deleting from map
-- `internal/lock/lock_test.go`: Added 7 new tests for release-after-free protection
-
-**Fixed `vibefeld-bs2m` - Fix node External return type consistency**
-- `internal/node/external.go`: Changed `NewExternal` and `NewExternalWithNotes` to return `(*External, error)` instead of `(External, error)`
-- This matches the pattern used by Definition and Assumption constructors
-- Updated all callers to use pointer return directly instead of `&ext` pattern
-- Files updated: external_test.go, context_validate_test.go, prover_context_test.go, verifier_context_test.go, external_io_test.go, error_injection_test.go, proof.go, state_test.go, extcite_test.go
+**Fixed `vibefeld-si9g` - Add nil checks to Challenge and Node methods**
+- `internal/node/challenge.go`: Added nil receiver checks to:
+  - `Resolve()` - returns "nil challenge" error
+  - `Withdraw()` - returns "nil challenge" error
+  - `IsOpen()` - returns false for nil
+- `internal/node/node.go`: Added nil receiver checks to:
+  - `ComputeContentHash()` - returns empty string for nil
+  - `Validate()` - returns "nil node" error
+  - `IsRoot()` - returns false for nil
+  - `Depth()` - returns 0 for nil
+  - `VerifyContentHash()` - returns false for nil
 
 ## Current State
 
@@ -25,14 +24,16 @@
 
 ### Issue Statistics
 - **P0 bugs:** 0 remaining
-- **P1 bugs:** 1 remaining
-  - `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2
-- **Ready for work:** 8
+- **P1 tasks:** 2 remaining
+  - `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2 (large epic)
+  - `vibefeld-tk76` - Refactor proof.go god object into smaller modules (large refactoring)
+- **Ready for work:** 10
 
 ## Recommended Next Steps
 
-### P1 Tasks
-- `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2
+### P1 Tasks (both are large refactoring efforts)
+- `vibefeld-jfbc` - Module structure epic: down from 22 to 4 packages (node and ledger remaining)
+- `vibefeld-tk76` - Refactor proof.go god object
 
 ### P2 Code Quality
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -55,6 +56,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 214:** Fixed vibefeld-si9g (nil receiver checks for Challenge and Node methods)
 **Session 213:** Fixed vibefeld-lwna (lock release-after-free semantics) and vibefeld-bs2m (External return type consistency)
 **Session 212:** Fixed P1 bug vibefeld-u3le - LoadState silent error swallowing, changed os.IsNotExist to errors.Is for proper wrapped error handling
 **Session 211:** Fixed P1 bug vibefeld-1a4m - Lock clock skew vulnerability, added 5-second ClockSkewTolerance to IsExpired()

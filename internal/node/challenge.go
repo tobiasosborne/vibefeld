@@ -89,6 +89,10 @@ func NewChallenge(id string, targetID types.NodeID, target schema.ChallengeTarge
 // Resolve marks the challenge as resolved with the given resolution.
 // Returns an error if the challenge is not open or if resolution is empty.
 func (c *Challenge) Resolve(resolution string) error {
+	if c == nil {
+		return errors.New("nil challenge")
+	}
+
 	// Validate resolution is not empty or whitespace-only
 	if strings.TrimSpace(resolution) == "" {
 		return errors.New("resolution must not be empty")
@@ -108,6 +112,10 @@ func (c *Challenge) Resolve(resolution string) error {
 // Withdraw marks the challenge as withdrawn.
 // Returns an error if the challenge is not open.
 func (c *Challenge) Withdraw() error {
+	if c == nil {
+		return errors.New("nil challenge")
+	}
+
 	// Check that challenge is still open
 	if !c.IsOpen() {
 		return errors.New("challenge is not open")
@@ -119,6 +127,10 @@ func (c *Challenge) Withdraw() error {
 }
 
 // IsOpen returns true if the challenge is still open (not resolved or withdrawn).
+// Returns false if the challenge is nil.
 func (c *Challenge) IsOpen() bool {
+	if c == nil {
+		return false
+	}
 	return c.Status == ChallengeStatusOpen
 }

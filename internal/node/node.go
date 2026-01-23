@@ -148,7 +148,11 @@ func NewNodeWithOptions(
 // ComputeContentHash computes the SHA256 hash of the node's content fields.
 // The hash is computed from: type, statement, latex, inference, context, dependencies.
 // Context and dependencies are sorted for deterministic ordering.
+// Returns an empty string if the node is nil.
 func (n *Node) ComputeContentHash() string {
+	if n == nil {
+		return ""
+	}
 	// Build a deterministic string representation of content fields using strings.Builder
 	var sb strings.Builder
 
@@ -203,6 +207,10 @@ func (n *Node) ComputeContentHash() string {
 // Validate checks if the Node is valid.
 // Returns an error describing the validation failure, or nil if valid.
 func (n *Node) Validate() error {
+	if n == nil {
+		return errors.New("nil node")
+	}
+
 	// Check statement
 	if strings.TrimSpace(n.Statement) == "" {
 		return errors.New("node statement cannot be empty")
@@ -232,17 +240,29 @@ func (n *Node) Validate() error {
 }
 
 // IsRoot returns true if this is the root node (ID is "1").
+// Returns false if the node is nil.
 func (n *Node) IsRoot() bool {
+	if n == nil {
+		return false
+	}
 	return n.ID.IsRoot()
 }
 
 // Depth returns the depth of this node in the tree.
+// Returns 0 if the node is nil.
 func (n *Node) Depth() int {
+	if n == nil {
+		return 0
+	}
 	return n.ID.Depth()
 }
 
 // VerifyContentHash returns true if the stored content hash matches
 // the computed hash of the current content.
+// Returns false if the node is nil.
 func (n *Node) VerifyContentHash() bool {
+	if n == nil {
+		return false
+	}
 	return n.ContentHash == n.ComputeContentHash()
 }
