@@ -2,19 +2,19 @@
 
 ## What Was Accomplished This Session
 
-### Session 221 Summary: CLI API design - Boolean parameter refactor
+### Session 221 Summary: CLI API design - Simplify input methods
 
 **Closed `vibefeld-yo5e` - API design: Boolean parameters in CLI**
-- Replaced `--sibling` boolean flag in `refine` command with a separate `refine-sibling` command
-- This eliminates the hidden logic path where a boolean flag fundamentally changes command semantics
-- Files changed:
-  - `cmd/af/refine.go`: Removed `--sibling` flag and sibling handling logic
-  - `cmd/af/refine_sibling.go` (new): Dedicated command for adding siblings
-- Updated help text to show `af refine-sibling` instead of `af refine --sibling`
-- CLI semantics now clearer:
-  - `af refine <node>` - Add child to node (depth)
-  - `af refine-sibling <node>` - Add sibling of node (breadth)
-- All tests pass, functional test verified both commands work correctly
+- Replaced `--sibling` boolean flag with separate `refine-sibling` command
+- Eliminates hidden logic path where boolean changes command semantics
+
+**Closed `vibefeld-9b6m` - API design: Positional statement variability in refine**
+- Removed `--statement` flag (was redundant with positional args)
+- Now only 2 ways to provide statements:
+  1. Positional args (primary): `af refine 1 "Step A" "Step B" -o agent1`
+  2. `--children` JSON (complex): `af refine 1 --children '[...]' -o agent1`
+- Dependencies (`--depends`, `--requires-validated`) only valid with single statement
+- Updated output messages to show new positional syntax
 
 ---
 
@@ -160,7 +160,7 @@
 - `vibefeld-qsyt` - Missing intermediate layer for service
 
 ### P3 API Design
-- `vibefeld-9b6m` - Positional statement variability in refine
+- (All P3 API design issues completed this session)
 
 ## Quick Commands
 
@@ -172,7 +172,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
-**Session 221:** CLI API design: Replaced --sibling boolean flag with refine-sibling command (vibefeld-yo5e)
+**Session 221:** CLI API design: refine-sibling command (vibefeld-yo5e), removed --statement flag (vibefeld-9b6m)
 **Session 220:** Service test coverage from 67.5% to 75.6% (+8.1%), 25 new tests (vibefeld-8q2j)
 **Session 219:** CLI code quality: confirmation helper (vibefeld-1amd) + flag standardization (vibefeld-2yy5)
 **Session 218:** Completed request-refinement feature (vibefeld-pno3, vibefeld-na20, vibefeld-boar)

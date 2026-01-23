@@ -14,7 +14,6 @@ import (
 // newRefineSiblingCmd creates the refine-sibling command for adding sibling nodes.
 func newRefineSiblingCmd() *cobra.Command {
 	var owner string
-	var statement string
 	var nodeType string
 	var inference string
 	var dir string
@@ -24,7 +23,7 @@ func newRefineSiblingCmd() *cobra.Command {
 	var requiresValidated string
 
 	cmd := &cobra.Command{
-		Use:     "refine-sibling <node-id> [statement]...",
+		Use:     "refine-sibling <node-id> <statement>...",
 		GroupID: GroupProver,
 		Short:   "Add a sibling node (at the parent level)",
 		Long: `Add a sibling node at the same level as the specified node.
@@ -34,15 +33,18 @@ For example, 'af refine-sibling 1.2' adds a new child (1.3, 1.4, etc.) to node 1
 
 Use this command to add breadth to the proof tree rather than depth.
 
-You can provide statements as positional arguments for quick multi-sibling creation:
-  af refine-sibling 1.2 "Step A" "Step B" --owner agent1
-This creates 1.3 and 1.4 (siblings of 1.2) atomically.
+Provide statements as positional arguments:
+  af refine-sibling 1.1 "Alternative approach" -o agent1      (creates 1.2)
+  af refine-sibling 1.2 "Step A" "Step B" -o agent1           (creates 1.3, 1.4)
+
+For complex cases with different types per sibling, use --children with JSON:
+  af refine-sibling 1.1 --children '[{"statement":"Case 2","type":"case"}]' -o agent1
 
 Examples:
-  af refine-sibling 1.1 --owner agent1 -s "Alternative approach"
-  af refine-sibling 1.2 "Step A" "Step B" --owner agent1
-  af refine-sibling 1.1 -o agent1 -s "Case 2" --type case --justification local_assume
-  af refine-sibling 1 --owner agent1 --children '[{"statement":"Sibling 1"},{"statement":"Sibling 2"}]'
+  af refine-sibling 1.1 "Alternative approach" -o agent1
+  af refine-sibling 1.2 "Step A" "Step B" -o agent1
+  af refine-sibling 1.1 "Case 2" -o agent1 --type case --justification local_assume
+  af refine-sibling 1.1 --children '[{"statement":"Sibling 1"},{"statement":"Sibling 2"}]' -o agent1
 
 Workflow:
   Use 'af refine' to add depth (children) to a node.
@@ -50,16 +52,15 @@ Workflow:
   Use 'af status' to view the updated proof tree.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var positionalStatements []string
+			var statements []string
 			if len(args) > 1 {
-				positionalStatements = args[1:]
+				statements = args[1:]
 			}
-			return runRefineSibling(cmd, args[0], owner, statement, nodeType, inference, dir, format, childrenJSON, depends, requiresValidated, positionalStatements)
+			return runRefineSibling(cmd, args[0], owner, nodeType, inference, dir, format, childrenJSON, depends, requiresValidated, statements)
 		},
 	}
 
 	cmd.Flags().StringVarP(&owner, "owner", "o", "", "Agent/owner name (required, must match claim owner)")
-	cmd.Flags().StringVarP(&statement, "statement", "s", "", "Sibling node statement (required for single sibling)")
 	cmd.Flags().StringVarP(&nodeType, "type", "t", "claim", "Node type (claim/local_assume/local_discharge/case/qed)")
 	cmd.Flags().StringVarP(&inference, "justification", "j", "assumption",
 		"Justification/inference type\n"+
@@ -69,14 +70,14 @@ Workflow:
 			"universal_generalization, existential_generalization")
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "Proof directory")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format (text/json)")
-	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of sibling specifications")
+	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of sibling specs for complex cases")
 	cmd.Flags().StringVar(&depends, "depends", "", "Comma-separated list of node IDs this node depends on")
 	cmd.Flags().StringVar(&requiresValidated, "requires-validated", "", "Comma-separated list of node IDs that must be validated before this node can be accepted")
 
 	return cmd
 }
 
-func runRefineSibling(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends, requiresValidated string, positionalStatements []string) error {
+func runRefineSibling(cmd *cobra.Command, nodeIDStr, owner, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends, requiresValidated string, statements []string) error {
 	examples := render.GetExamples("af refine-sibling")
 
 	// Validate owner is not empty
@@ -84,30 +85,20 @@ func runRefineSibling(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeS
 		return render.MissingFlagError("af refine-sibling", "owner", examples)
 	}
 
-	// Check for mutually exclusive input methods
-	hasStatement := strings.TrimSpace(statement) != ""
+	// Check input methods: positional statements vs --children JSON
 	hasChildren := strings.TrimSpace(childrenJSON) != ""
-	hasPositional := len(positionalStatements) > 0
+	hasStatements := len(statements) > 0
 
-	activeInputMethods := 0
-	if hasStatement {
-		activeInputMethods++
-	}
-	if hasChildren {
-		activeInputMethods++
-	}
-	if hasPositional {
-		activeInputMethods++
-	}
-
-	if activeInputMethods > 1 {
+	if hasChildren && hasStatements {
 		return render.NewUsageError("af refine-sibling",
-			"--statement, --children, and positional statements are mutually exclusive; use only one",
+			"positional statements and --children are mutually exclusive; use one or the other",
 			examples)
 	}
 
-	if activeInputMethods == 0 {
-		return render.MissingFlagError("af refine-sibling", "statement", examples)
+	if !hasChildren && !hasStatements {
+		return render.NewUsageError("af refine-sibling",
+			"statement required: provide as positional argument or use --children for complex cases",
+			examples)
 	}
 
 	// Parse node ID
@@ -148,66 +139,13 @@ func runRefineSibling(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeS
 	}
 	parentIDStr := parentID.String()
 
-	// Handle multi-child mode with --children flag
+	// Handle --children JSON mode (for complex cases)
 	if hasChildren {
 		return runRefineMulti(cmd, parentID, parentIDStr, owner, childrenJSON, dir, format, svc, st)
 	}
 
-	// Handle multi-child mode with positional statements
-	if hasPositional {
-		return runRefinePositional(cmd, parentID, parentIDStr, owner, nodeTypeStr, inferenceStr, format, svc, st, positionalStatements)
-	}
-
-	// Single-sibling mode
-	nodeType, inferenceType, err := validateNodeTypeAndInference("af refine-sibling", nodeTypeStr, inferenceStr, examples)
-	if err != nil {
-		return err
-	}
-
-	// Validate definition citations
-	if err := service.ValidateDefCitations(statement, st); err != nil {
-		return fmt.Errorf("invalid definition citation: %w", err)
-	}
-
-	// Parse dependencies
-	dependencies, err := parseDependencies(depends, st)
-	if err != nil {
-		return err
-	}
-
-	validationDeps, err := parseValidationDependencies(requiresValidated, st)
-	if err != nil {
-		return err
-	}
-
-	// Find next available child ID (sibling to the specified node)
-	childResult, err := findNextChildID(parentID, st, svc)
-	if err != nil {
-		return err
-	}
-
-	if childResult.WarnDepth {
-		cmd.Printf("Warning: Creating node at depth %d.\n\n", childResult.ChildID.Depth())
-	}
-
-	// Call the appropriate refine method
-	if len(dependencies) > 0 || len(validationDeps) > 0 {
-		err = svc.RefineNodeWithAllDeps(parentID, owner, childResult.ChildID, nodeType, statement, inferenceType, dependencies, validationDeps)
-	} else {
-		err = svc.RefineNode(parentID, owner, childResult.ChildID, nodeType, statement, inferenceType)
-	}
-	if err != nil {
-		return handleRefineError(err, parentIDStr, owner)
-	}
-
-	return formatRefineOutput(cmd, format, refineOutputParams{
-		ParentIDStr:    parentIDStr,
-		ChildID:        childResult.ChildID,
-		NodeTypeStr:    nodeTypeStr,
-		Statement:      statement,
-		Dependencies:   dependencies,
-		ValidationDeps: validationDeps,
-	})
+	// Handle positional statements (primary method)
+	return runRefinePositional(cmd, parentID, parentIDStr, owner, nodeTypeStr, inferenceStr, format, svc, st, statements, depends, requiresValidated)
 }
 
 func init() {
