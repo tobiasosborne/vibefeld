@@ -174,13 +174,13 @@ func formatMultiChildOutput(cmd *cobra.Command, format, parentIDStr string, spec
 		firstChildIDStr := createdChildren[0].ID
 		firstChildID, _ := service.ParseNodeID(firstChildIDStr)
 		if _, hasSiblingParent := firstChildID.Parent(); hasSiblingParent {
-			cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", firstChildIDStr)
-			cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", firstChildIDStr)
+			cmd.Printf("  af refine-sibling %s -s ... - Add sibling (breadth)\n", firstChildIDStr)
+			cmd.Printf("  af refine %s -s ...         - Add child (depth)\n", firstChildIDStr)
 		} else {
-			cmd.Printf("  af refine %s -s ...           - Add child\n", firstChildIDStr)
+			cmd.Printf("  af refine %s -s ...         - Add child\n", firstChildIDStr)
 		}
 	}
-	cmd.Printf("  af status                     - View proof status\n")
+	cmd.Printf("  af status                   - View proof status\n")
 	return nil
 }
 
@@ -231,14 +231,13 @@ func formatRefineOutput(cmd *cobra.Command, format string, params refineOutputPa
 		cmd.Printf("  Requires validated: %s\n", strings.Join(service.ToStringSlice(params.ValidationDeps), ", "))
 	}
 	cmd.Println("\nNext steps:")
-	if siblingParentID, hasSiblingParent := params.ChildID.Parent(); hasSiblingParent {
-		cmd.Printf("  af refine %s --sibling -s ... - Add sibling (recommended for breadth)\n", params.ChildID.String())
-		cmd.Printf("  af refine %s -s ...           - Add child (depth-first)\n", params.ChildID.String())
-		_ = siblingParentID // parent where siblings would be added
+	if _, hasSiblingParent := params.ChildID.Parent(); hasSiblingParent {
+		cmd.Printf("  af refine-sibling %s -s ... - Add sibling (breadth)\n", params.ChildID.String())
+		cmd.Printf("  af refine %s -s ...         - Add child (depth)\n", params.ChildID.String())
 	} else {
-		cmd.Printf("  af refine %s -s ...           - Add child\n", params.ChildID.String())
+		cmd.Printf("  af refine %s -s ...         - Add child\n", params.ChildID.String())
 	}
-	cmd.Printf("  af status                     - View proof status\n")
+	cmd.Printf("  af status                   - View proof status\n")
 	return nil
 }
 
@@ -253,7 +252,6 @@ func newRefineCmd() *cobra.Command {
 	var childrenJSON string
 	var depends string
 	var requiresValidated string
-	var sibling bool
 
 	cmd := &cobra.Command{
 		Use:     "refine <parent-id> [statement]...",
@@ -296,7 +294,7 @@ Workflow:
 			if len(args) > 1 {
 				positionalStatements = args[1:]
 			}
-			return runRefine(cmd, args[0], owner, statement, nodeType, inference, dir, format, childrenJSON, depends, requiresValidated, positionalStatements, sibling)
+			return runRefine(cmd, args[0], owner, statement, nodeType, inference, dir, format, childrenJSON, depends, requiresValidated, positionalStatements)
 		},
 	}
 
@@ -314,12 +312,11 @@ Workflow:
 	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of child specifications (mutually exclusive with --statement)")
 	cmd.Flags().StringVar(&depends, "depends", "", "Comma-separated list of node IDs this node depends on (e.g., 1.1,1.2)")
 	cmd.Flags().StringVar(&requiresValidated, "requires-validated", "", "Comma-separated list of node IDs that must be validated before this node can be accepted (e.g., 1.1,1.2,1.3,1.4)")
-	cmd.Flags().BoolVarP(&sibling, "sibling", "b", false, "Add sibling to specified node instead of child (creates at parent level)")
 
 	return cmd
 }
 
-func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends, requiresValidated string, positionalStatements []string, sibling bool) error {
+func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends, requiresValidated string, positionalStatements []string) error {
 	examples := render.GetExamples("af refine")
 
 	// Validate owner is not empty
@@ -381,25 +378,9 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, statement, nodeTypeStr, inf
 		return fmt.Errorf("node %q does not exist", nodeIDStr)
 	}
 
-	// Handle --sibling flag: convert node ID to parent ID
-	var parentID service.NodeID
-	var parentIDStr string
-	if sibling {
-		// Cannot add sibling to root node
-		if nodeID.IsRoot() {
-			return fmt.Errorf("cannot add sibling to root node (root has no parent)")
-		}
-		// Get parent of specified node - that's where we'll add the sibling
-		var hasParent bool
-		parentID, hasParent = nodeID.Parent()
-		if !hasParent {
-			return fmt.Errorf("cannot add sibling: node %s has no parent", nodeIDStr)
-		}
-		parentIDStr = parentID.String()
-	} else {
-		parentID = nodeID
-		parentIDStr = nodeIDStr
-	}
+	// The specified node is the parent for refine (use refine-sibling for siblings)
+	parentID := nodeID
+	parentIDStr := nodeIDStr
 
 	// Handle multi-child mode with --children flag
 	if hasChildren {

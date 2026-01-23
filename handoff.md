@@ -1,6 +1,22 @@
-# Handoff - 2026-01-23 (Session 220)
+# Handoff - 2026-01-23 (Session 221)
 
 ## What Was Accomplished This Session
+
+### Session 221 Summary: CLI API design - Boolean parameter refactor
+
+**Closed `vibefeld-yo5e` - API design: Boolean parameters in CLI**
+- Replaced `--sibling` boolean flag in `refine` command with a separate `refine-sibling` command
+- This eliminates the hidden logic path where a boolean flag fundamentally changes command semantics
+- Files changed:
+  - `cmd/af/refine.go`: Removed `--sibling` flag and sibling handling logic
+  - `cmd/af/refine_sibling.go` (new): Dedicated command for adding siblings
+- Updated help text to show `af refine-sibling` instead of `af refine --sibling`
+- CLI semantics now clearer:
+  - `af refine <node>` - Add child to node (depth)
+  - `af refine-sibling <node>` - Add sibling of node (breadth)
+- All tests pass, functional test verified both commands work correctly
+
+---
 
 ### Session 220 Summary: Service package test coverage improvement
 
@@ -144,7 +160,6 @@
 - `vibefeld-qsyt` - Missing intermediate layer for service
 
 ### P3 API Design
-- `vibefeld-yo5e` - Boolean parameters in CLI
 - `vibefeld-9b6m` - Positional statement variability in refine
 
 ## Quick Commands
@@ -157,6 +172,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 221:** CLI API design: Replaced --sibling boolean flag with refine-sibling command (vibefeld-yo5e)
 **Session 220:** Service test coverage from 67.5% to 75.6% (+8.1%), 25 new tests (vibefeld-8q2j)
 **Session 219:** CLI code quality: confirmation helper (vibefeld-1amd) + flag standardization (vibefeld-2yy5)
 **Session 218:** Completed request-refinement feature (vibefeld-pno3, vibefeld-na20, vibefeld-boar)
