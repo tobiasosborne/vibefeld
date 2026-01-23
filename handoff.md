@@ -1,72 +1,51 @@
-# Handoff - 2026-01-19 (Session 206)
+# Handoff - 2026-01-23 (Session 207)
 
 ## What Was Accomplished This Session
 
-### Session 206 Summary: Eliminated state package from cmd/af
+### Session 207 Summary: Fixed P0 ledger atomicity bug
 
-Continued P1 epic vibefeld-jfbc - fully eliminated state package import from all cmd/af files.
+Fixed `vibefeld-zsib` - AppendBatch partial failure atomicity issue.
 
 ### Changes Made
 
-**1. Eliminated state package from cmd/af:**
-- Added re-exports to `internal/service/exports.go`:
-  - `State` type alias (state.State)
-  - `Challenge` type alias (state.Challenge)
-  - `Amendment` type alias (state.Amendment)
-  - `NewState` function
-  - `Replay` function
-  - `ReplayWithVerify` function
-- Updated 11 files to use service package instead of state:
-  - `cmd/af/accept.go`
-  - `cmd/af/challenges.go`
-  - `cmd/af/claim.go`
-  - `cmd/af/get.go`
-  - `cmd/af/health.go`
-  - `cmd/af/jobs.go`
-  - `cmd/af/progress.go`
-  - `cmd/af/progress_test.go`
-  - `cmd/af/refine.go`
-  - `cmd/af/replay.go`
-  - `cmd/af/wizard.go`
+**1. Fixed AppendBatch rollback on partial rename failure:**
+- `internal/ledger/append.go`: Added rollback logic that removes all successfully renamed files when a later rename fails
+- Previously, if rename failed after events 1 and 2 were written, they would remain in the ledger (violating atomicity)
+- Now the operation is all-or-nothing: either all events are written, or none are
 
-**2. Import status:**
-- state package is now fully eliminated from cmd/af
-- Current imports: 4 (service, render, node, ledger)
-- Target: 2 (service, render)
-- Progress: 22 → 4 (18 packages eliminated, 2 remaining)
+**2. Added test for rollback behavior:**
+- `internal/ledger/append_test.go`: Added `TestAppendBatch_RollbackOnPartialFailure`
+- Test creates a directory at target path to force rename failure, verifies first event is rolled back
 
-**3. All 27 packages pass tests**
+**3. Commit:** `7ce12dd` pushed to `origin/main`
 
 ## Current State
 
 ### Test Status
-- All tests pass (`go test ./...`)
+- Ledger tests pass (`go test ./internal/ledger/...`)
 - Build succeeds (`go build ./cmd/af`)
-
-### Import Progress (vibefeld-jfbc)
-Current internal imports in cmd/af (4 total):
-- `service` (target - keep)
-- `render` (target - keep)
-- `node` (to eliminate - 17 files)
-- `ledger` (to eliminate - 18 files)
+- Note: Pre-existing flaky test in `internal/fs` (unrelated to this fix)
 
 ### Issue Statistics
-- **Open:** 6
-- **Ready for work:** 6
+- **P0 bugs:** 1 remaining (vibefeld-2225 - lock TOCTOU race)
+- **Ready for work:** 9
 
 ## Recommended Next Steps
+
+### P0 Critical
+- `vibefeld-2225` - Fix lock TOCTOU race in tryAcquire
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
 2 internal packages remain (excluding targets):
 - `node` - node.Node, Assumption, Definition, External, Lemma types (17 files)
 - `ledger` - ledger.Event type and Ledger operations (18 files)
 
-These are the most deeply embedded packages. The node package is used extensively for domain types throughout cmd/af. The ledger package is used for event display and ledger operations.
-
 ### P2 Code Quality
 - `vibefeld-vj5y` - Service layer leaks domain types
 - `vibefeld-264n` - service package acts as hub (11 imports)
 - `vibefeld-qsyt` - Missing intermediate layer for service
+- `vibefeld-9184` - Add needs_refinement epistemic state
+- `vibefeld-jkxx` - Add RefinementRequested event
 
 ### P3 API Design
 - `vibefeld-yo5e` - Boolean parameters in CLI
@@ -82,6 +61,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 207:** Fixed P0 bug vibefeld-zsib - AppendBatch partial failure atomicity, added rollback on rename failure
 **Session 206:** Eliminated state package by re-exporting State, Challenge, Amendment, NewState, Replay, ReplayWithVerify through service, reduced imports from 5→4
 **Session 205:** Eliminated fs package from test files by re-exporting PendingDef types and functions through service
 **Session 204:** Eliminated fs package import by adding WriteExternal to service layer, reduced imports from 6→5
