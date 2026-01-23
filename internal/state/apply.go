@@ -271,8 +271,14 @@ func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
 	// Default to "major" if severity not set (backward compatibility)
 	severity := e.Severity
 	if severity == "" {
-		severity = "major"
+		severity = string(schema.DefaultChallengeSeverity())
 	}
+
+	// Validate severity
+	if err := schema.ValidateChallengeSeverity(severity); err != nil {
+		return fmt.Errorf("invalid challenge severity: %w", err)
+	}
+
 	c := &Challenge{
 		ID:       e.ChallengeID,
 		NodeID:   e.NodeID,

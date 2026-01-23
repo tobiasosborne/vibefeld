@@ -1,47 +1,36 @@
-# Handoff - 2026-01-23 (Session 209)
+# Handoff - 2026-01-23 (Session 210)
 
 ## What Was Accomplished This Session
 
-### Session 209 Summary: Fixed P0 state challenge cache race condition
+### Session 210 Summary: Fixed P0 challenge severity validation bug
 
-Fixed `vibefeld-lxoz` - race condition in State.ChallengesByNodeID cache.
+Fixed `vibefeld-db25` - Added challenge severity validation in state package.
 
 ### Changes Made
 
-**1. Added sync.RWMutex to State struct:**
-- `internal/state/state.go`: Added `challengeMu sync.RWMutex` field to protect challenge cache and challenges map
+**1. Added severity validation in applyChallengeRaised:**
+- `internal/state/apply.go`: Added call to `schema.ValidateChallengeSeverity()` before storing challenge
+- Invalid severities (typos, uppercase, arbitrary strings) now return an error
 
-**2. Made challenge methods thread-safe:**
-- `AddChallenge`: Uses Lock to modify challenges map and invalidate cache
-- `GetChallenge`: Uses RLock to read from challenges map
-- `AllChallenges`: Uses RLock to iterate challenges map
-- `InvalidateChallengeCache`: Uses Lock to invalidate cache
-- `ChallengesByNodeID`: Uses double-checked locking pattern (RLock to check, Lock to build)
-- `OpenChallenges`: Uses RLock to iterate challenges map
-
-**3. Added concurrency test:**
-- `internal/state/state_test.go`: Added `TestChallengesByNodeIDConcurrency`
-- 10 readers and 5 writers running 100 iterations each
-- Verified with `-race` flag
+**2. Added comprehensive tests:**
+- `internal/state/apply_test.go`: Added `TestApplyChallengeRaised_InvalidSeverity` - tests that invalid severities are rejected
+- `internal/state/apply_test.go`: Added `TestApplyChallengeRaised_ValidSeverities` - tests that valid severities (critical, major, minor, note) are accepted
 
 ## Current State
 
 ### Test Status
 - All tests pass (`go test ./...`)
-- All tests pass with race detector (`go test -race ./internal/state/`)
 - Build succeeds (`go build ./cmd/af`)
 
 ### Issue Statistics
-- **P0 bugs:** 2 remaining
-  - `vibefeld-db25` - Add challenge severity validation in state package
+- **P0 bugs:** 1 remaining
   - `vibefeld-vgqt` - Fix service AcceptNodeWithNote validation race
-- **Ready for work:** 19
+- **Ready for work:** 18
 
 ## Recommended Next Steps
 
 ### P0 Bugs (Fix First)
 - `vibefeld-vgqt` - Fix service AcceptNodeWithNote validation race
-- `vibefeld-db25` - Add challenge severity validation in state package
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
 2 internal packages remain (excluding targets):
@@ -69,6 +58,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 210:** Fixed P0 bug vibefeld-db25 - Challenge severity validation in state package, added ValidateChallengeSeverity call and tests
 **Session 209:** Fixed P0 bug vibefeld-lxoz - State challenge cache race condition, added sync.RWMutex to protect concurrent access
 **Session 208:** Fixed P0 bug vibefeld-2225 - TOCTOU race in LedgerLock.tryAcquire, added agent ID verification
 **Session 207:** Fixed P0 bug vibefeld-zsib - AppendBatch partial failure atomicity, added rollback on rename failure

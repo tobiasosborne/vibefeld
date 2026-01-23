@@ -592,6 +592,59 @@ func TestApplyChallengeRaised(t *testing.T) {
 	}
 }
 
+// TestApplyChallengeRaised_InvalidSeverity verifies that invalid severity is rejected.
+func TestApplyChallengeRaised_InvalidSeverity(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	testCases := []struct {
+		name     string
+		severity string
+	}{
+		{"typo", "majr"},
+		{"uppercase", "MAJOR"},
+		{"numeric", "1"},
+		{"arbitrary", "urgent"},
+		{"empty spaces", "  "},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			event := ledger.NewChallengeRaisedWithSeverity(
+				"chal-"+tc.name, nodeID, "statement", "Test challenge", tc.severity, "verifier-1")
+			err := Apply(s, event)
+			if err == nil {
+				t.Errorf("Apply should reject invalid severity %q", tc.severity)
+			}
+		})
+	}
+}
+
+// TestApplyChallengeRaised_ValidSeverities verifies that valid severities are accepted.
+func TestApplyChallengeRaised_ValidSeverities(t *testing.T) {
+	validSeverities := []string{"critical", "major", "minor", "note"}
+
+	for _, sev := range validSeverities {
+		t.Run(sev, func(t *testing.T) {
+			s := NewState()
+			nodeID := mustParseNodeID(t, "1")
+			event := ledger.NewChallengeRaisedWithSeverity(
+				"chal-"+sev, nodeID, "statement", "Test challenge", sev, "verifier-1")
+			err := Apply(s, event)
+			if err != nil {
+				t.Errorf("Apply should accept valid severity %q: %v", sev, err)
+			}
+			c := s.GetChallenge("chal-" + sev)
+			if c == nil {
+				t.Fatal("Challenge was not added to state")
+			}
+			if c.Severity != sev {
+				t.Errorf("Severity: got %q, want %q", c.Severity, sev)
+			}
+		})
+	}
+}
+
 // TestApplyChallengeResolved verifies that ChallengeResolved event is handled.
 func TestApplyChallengeResolved(t *testing.T) {
 	s := NewState()
