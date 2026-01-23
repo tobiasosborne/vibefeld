@@ -1,39 +1,36 @@
-# Handoff - 2026-01-23 (Session 207)
+# Handoff - 2026-01-23 (Session 208)
 
 ## What Was Accomplished This Session
 
-### Session 207 Summary: Fixed P0 ledger atomicity bug
+### Session 208 Summary: Fixed P0 lock TOCTOU race
 
-Fixed `vibefeld-zsib` - AppendBatch partial failure atomicity issue.
+Fixed `vibefeld-2225` - TOCTOU race in LedgerLock.tryAcquire.
 
 ### Changes Made
 
-**1. Fixed AppendBatch rollback on partial rename failure:**
-- `internal/ledger/append.go`: Added rollback logic that removes all successfully renamed files when a later rename fails
-- Previously, if rename failed after events 1 and 2 were written, they would remain in the ledger (violating atomicity)
-- Now the operation is all-or-nothing: either all events are written, or none are
+**1. Fixed TOCTOU race in tryAcquire:**
+- `internal/ledger/lock.go`: When `l.held` was true, tryAcquire returned success without verifying the agent ID matched
+- This allowed a different agent to incorrectly believe it acquired the lock when reusing the same LedgerLock instance
+- Added `ErrLockHeldByDifferentAgent` sentinel error for this case
+- Modified `Acquire` to return immediately on this fatal error instead of retrying
 
-**2. Added test for rollback behavior:**
-- `internal/ledger/append_test.go`: Added `TestAppendBatch_RollbackOnPartialFailure`
-- Test creates a directory at target path to force rename failure, verifies first event is rolled back
+**2. Added tests:**
+- `internal/ledger/lock_test.go`: Added `TestAcquire_ReentrantSameAgent` and `TestAcquire_DifferentAgentSameInstance`
+- Tests verify same agent can re-acquire (re-entrant), but different agent fails immediately
 
-**3. Commit:** `7ce12dd` pushed to `origin/main`
+**3. Commit:** `f19bc29` pushed to `origin/main`
 
 ## Current State
 
 ### Test Status
-- Ledger tests pass (`go test ./internal/ledger/...`)
+- All tests pass (`go test ./...`)
 - Build succeeds (`go build ./cmd/af`)
-- Note: Pre-existing flaky test in `internal/fs` (unrelated to this fix)
 
 ### Issue Statistics
-- **P0 bugs:** 1 remaining (vibefeld-2225 - lock TOCTOU race)
+- **P0 bugs:** 0 (all fixed!)
 - **Ready for work:** 9
 
 ## Recommended Next Steps
-
-### P0 Critical
-- `vibefeld-2225` - Fix lock TOCTOU race in tryAcquire
 
 ### P1 Epic vibefeld-jfbc - Import Reduction
 2 internal packages remain (excluding targets):
@@ -61,6 +58,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 208:** Fixed P0 bug vibefeld-2225 - TOCTOU race in LedgerLock.tryAcquire, added agent ID verification
 **Session 207:** Fixed P0 bug vibefeld-zsib - AppendBatch partial failure atomicity, added rollback on rename failure
 **Session 206:** Eliminated state package by re-exporting State, Challenge, Amendment, NewState, Replay, ReplayWithVerify through service, reduced imports from 5→4
 **Session 205:** Eliminated fs package from test files by re-exporting PendingDef types and functions through service
