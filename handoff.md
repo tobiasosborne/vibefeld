@@ -1,6 +1,39 @@
-# Handoff - 2026-01-23 (Session 219)
+# Handoff - 2026-01-23 (Session 220)
 
 ## What Was Accomplished This Session
+
+### Session 220 Summary: Service package test coverage improvement
+
+**Closed `vibefeld-8q2j` - Increase service package test coverage**
+- Coverage improved from **67.5% to 75.6%** (+8.1 percentage points)
+- Added 25 new tests in `internal/service/service_test.go`:
+  - `TestLoadAmendmentHistory_NoAmendments` - Empty history case
+  - `TestLoadAmendmentHistory_WithAmendment` - History after amend
+  - `TestListPendingDefs_Empty` - Empty pending defs list
+  - `TestLoadAllPendingDefs_Empty` - Empty pending defs load
+  - `TestDeletePendingDef_Idempotent` - Idempotent delete behavior
+  - `TestListAssumptions_Empty` - Empty assumptions list
+  - `TestListAssumptions_WithAssumption` - List with assumption
+  - `TestReadAssumption_Success` - Read existing assumption
+  - `TestReadAssumption_NotFound` - Read non-existent assumption
+  - `TestListExternals_Empty` - Empty externals list
+  - `TestListExternals_WithExternal` - List with external
+  - `TestReadExternal_Success` - Read existing external
+  - `TestReadExternal_NotFound` - Read non-existent external
+  - `TestRecomputeAllTaint_DryRun` - Dry run mode
+  - `TestRecomputeAllTaint_Apply` - Apply mode
+  - `TestRecomputeAllTaint_WithTaintedNodes` - With tainted child nodes
+  - `TestExportProof_Markdown` - Export to markdown format
+  - `TestExportProof_LaTeX` - Export to LaTeX format
+  - `TestExportProof_InvalidFormat` - Invalid format error
+  - `TestOverallQuality` - Overall quality metrics
+  - `TestSubtreeQuality` - Subtree quality metrics
+  - `TestSubtreeQuality_NonExistentNode` - Non-existent subtree
+  - `TestRequestRefinement_Success` - Request refinement happy path
+  - `TestRequestRefinement_NodeNotFound` - Node not found error
+  - `TestRequestRefinement_InvalidState` - Invalid state transition
+
+---
 
 ### Session 219 Summary: CLI code quality improvements
 
@@ -90,37 +123,20 @@
 ### Test Status
 - All tests pass (`go test ./...`)
 - Build succeeds (`go build ./cmd/af`)
-- Manual e2e test verified full workflow:
-  1. `af accept 1` (validate node)
-  2. `af request-refinement 1` (transition to needs_refinement)
-  3. `af accept 1` fails with "has no children" message
-  4. `af claim 1 && af refine 1 --statement ...` (add child)
-  5. `af accept 1` fails with "children not yet validated"
-  6. `af accept 1.1 && af accept 1` (validate child, then parent)
+- Service package coverage: **75.6%** (up from 67.5%)
 
 ### Issue Statistics
 - **P0 bugs:** 0 remaining
-- **P1 tasks:** 3 remaining
+- **P1 tasks:** 2 remaining
   - `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2 (large epic)
   - `vibefeld-tk76` - Refactor proof.go god object into smaller modules
-  - `vibefeld-8q2j` - Increase service package test coverage (68.9% current)
 - **Ready for work:** Run `bd ready` to see available work
-
-### Feature Complete: request-refinement
-The request-refinement feature is now fully implemented:
-- `af request-refinement <node-id>` command available
-- Validated nodes can be reopened for more detailed proofs
-- State machine transitions: validated → needs_refinement → validated
-- Proper error handling for edge cases
-- Integrated with jobs system (needs_refinement shows as prover job)
-- Integrated with status display (magenta color, legend entry)
 
 ## Recommended Next Steps
 
 ### P1 Tasks
 - `vibefeld-jfbc` - Module structure epic: down from 22 to 4 packages (node and ledger remaining)
 - `vibefeld-tk76` - Refactor proof.go god object
-- `vibefeld-8q2j` - Increase service test coverage
 
 ### P2 Code Quality
 - `vibefeld-vj5y` - Service layer leaks domain types
@@ -141,6 +157,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 220:** Service test coverage from 67.5% to 75.6% (+8.1%), 25 new tests (vibefeld-8q2j)
 **Session 219:** CLI code quality: confirmation helper (vibefeld-1amd) + flag standardization (vibefeld-2yy5)
 **Session 218:** Completed request-refinement feature (vibefeld-pno3, vibefeld-na20, vibefeld-boar)
 **Session 217:** Added RequestRefinement to proof service (vibefeld-wfkj) and render support for needs_refinement (vibefeld-0hx6)

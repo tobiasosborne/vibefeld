@@ -2170,3 +2170,476 @@ func TestAcceptNodeWithNote_LeafNodeSucceeds(t *testing.T) {
 		t.Fatalf("AcceptNodeWithNote() unexpected error for leaf node: %v", err)
 	}
 }
+
+// =============================================================================
+// LoadAmendmentHistory Tests
+// =============================================================================
+
+func TestLoadAmendmentHistory_NoAmendments(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	rootID := parseNodeID(t, "1")
+	history, err := svc.LoadAmendmentHistory(rootID)
+	if err != nil {
+		t.Fatalf("LoadAmendmentHistory() unexpected error: %v", err)
+	}
+
+	// No amendments have been made, expect empty slice
+	if len(history) != 0 {
+		t.Errorf("LoadAmendmentHistory() returned %d amendments, want 0", len(history))
+	}
+}
+
+func TestLoadAmendmentHistory_WithAmendment(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	rootID := parseNodeID(t, "1")
+
+	// Claim and amend the node
+	err := svc.ClaimNode(rootID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	err = svc.AmendNode(rootID, "agent-001", "Amended statement")
+	if err != nil {
+		t.Fatalf("AmendNode() unexpected error: %v", err)
+	}
+
+	history, err := svc.LoadAmendmentHistory(rootID)
+	if err != nil {
+		t.Fatalf("LoadAmendmentHistory() unexpected error: %v", err)
+	}
+
+	if len(history) != 1 {
+		t.Errorf("LoadAmendmentHistory() returned %d amendments, want 1", len(history))
+	}
+}
+
+// =============================================================================
+// PendingDefs Wrapper Tests
+// =============================================================================
+
+func TestListPendingDefs_Empty(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	nodeIDs, err := svc.ListPendingDefs()
+	if err != nil {
+		t.Fatalf("ListPendingDefs() unexpected error: %v", err)
+	}
+
+	if len(nodeIDs) != 0 {
+		t.Errorf("ListPendingDefs() returned %d items, want 0", len(nodeIDs))
+	}
+}
+
+func TestLoadAllPendingDefs_Empty(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	defs, err := svc.LoadAllPendingDefs()
+	if err != nil {
+		t.Fatalf("LoadAllPendingDefs() unexpected error: %v", err)
+	}
+
+	if len(defs) != 0 {
+		t.Errorf("LoadAllPendingDefs() returned %d items, want 0", len(defs))
+	}
+}
+
+func TestDeletePendingDef_Idempotent(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// Delete a non-existent pending def should succeed (idempotent)
+	nodeID := parseNodeID(t, "1.99")
+	err := svc.DeletePendingDef(nodeID)
+	if err != nil {
+		t.Fatalf("DeletePendingDef() unexpected error for non-existent def: %v", err)
+	}
+}
+
+// =============================================================================
+// Assumption Wrapper Tests
+// =============================================================================
+
+func TestListAssumptions_Empty(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	ids, err := svc.ListAssumptions()
+	if err != nil {
+		t.Fatalf("ListAssumptions() unexpected error: %v", err)
+	}
+
+	if len(ids) != 0 {
+		t.Errorf("ListAssumptions() returned %d items, want 0", len(ids))
+	}
+}
+
+func TestListAssumptions_WithAssumption(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// Add an assumption
+	_, err := svc.AddAssumption("Let n be a positive integer")
+	if err != nil {
+		t.Fatalf("AddAssumption() unexpected error: %v", err)
+	}
+
+	ids, err := svc.ListAssumptions()
+	if err != nil {
+		t.Fatalf("ListAssumptions() unexpected error: %v", err)
+	}
+
+	if len(ids) != 1 {
+		t.Errorf("ListAssumptions() returned %d items, want 1", len(ids))
+	}
+}
+
+func TestReadAssumption_Success(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// Add an assumption first
+	asmID, err := svc.AddAssumption("Let x be a real number")
+	if err != nil {
+		t.Fatalf("AddAssumption() unexpected error: %v", err)
+	}
+
+	// Read it back
+	asm, err := svc.ReadAssumption(asmID)
+	if err != nil {
+		t.Fatalf("ReadAssumption() unexpected error: %v", err)
+	}
+
+	if asm == nil {
+		t.Fatal("ReadAssumption() returned nil")
+	}
+	if asm.Statement != "Let x be a real number" {
+		t.Errorf("ReadAssumption() Statement = %q, want %q", asm.Statement, "Let x be a real number")
+	}
+}
+
+func TestReadAssumption_NotFound(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	_, err := svc.ReadAssumption("nonexistent-id")
+	if err == nil {
+		t.Error("ReadAssumption() expected error for non-existent assumption, got nil")
+	}
+}
+
+// =============================================================================
+// External Wrapper Tests
+// =============================================================================
+
+func TestListExternals_Empty(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	ids, err := svc.ListExternals()
+	if err != nil {
+		t.Fatalf("ListExternals() unexpected error: %v", err)
+	}
+
+	if len(ids) != 0 {
+		t.Errorf("ListExternals() returned %d items, want 0", len(ids))
+	}
+}
+
+func TestListExternals_WithExternal(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// Add an external reference
+	_, err := svc.AddExternal("Theorem 3.1", "Smith 2020")
+	if err != nil {
+		t.Fatalf("AddExternal() unexpected error: %v", err)
+	}
+
+	ids, err := svc.ListExternals()
+	if err != nil {
+		t.Fatalf("ListExternals() unexpected error: %v", err)
+	}
+
+	if len(ids) != 1 {
+		t.Errorf("ListExternals() returned %d items, want 1", len(ids))
+	}
+}
+
+func TestReadExternal_Success(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// Add an external reference first
+	extID, err := svc.AddExternal("Lemma 2.5", "Jones et al. 2021")
+	if err != nil {
+		t.Fatalf("AddExternal() unexpected error: %v", err)
+	}
+
+	// Read it back
+	ext, err := svc.ReadExternal(extID)
+	if err != nil {
+		t.Fatalf("ReadExternal() unexpected error: %v", err)
+	}
+
+	if ext == nil {
+		t.Fatal("ReadExternal() returned nil")
+	}
+	if ext.Name != "Lemma 2.5" {
+		t.Errorf("ReadExternal() Name = %q, want %q", ext.Name, "Lemma 2.5")
+	}
+	if ext.Source != "Jones et al. 2021" {
+		t.Errorf("ReadExternal() Source = %q, want %q", ext.Source, "Jones et al. 2021")
+	}
+}
+
+func TestReadExternal_NotFound(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	_, err := svc.ReadExternal("nonexistent-id")
+	if err == nil {
+		t.Error("ReadExternal() expected error for non-existent external, got nil")
+	}
+}
+
+// =============================================================================
+// RecomputeAllTaint Tests
+// =============================================================================
+
+func TestRecomputeAllTaint_DryRun(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	result, err := svc.RecomputeAllTaint(true)
+	if err != nil {
+		t.Fatalf("RecomputeAllTaint() unexpected error: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("RecomputeAllTaint() returned nil result")
+	}
+	if !result.DryRun {
+		t.Error("RecomputeAllTaint() DryRun should be true")
+	}
+	if result.TotalNodes != 1 {
+		t.Errorf("RecomputeAllTaint() TotalNodes = %d, want 1", result.TotalNodes)
+	}
+}
+
+func TestRecomputeAllTaint_Apply(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	result, err := svc.RecomputeAllTaint(false)
+	if err != nil {
+		t.Fatalf("RecomputeAllTaint() unexpected error: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("RecomputeAllTaint() returned nil result")
+	}
+	if result.DryRun {
+		t.Error("RecomputeAllTaint() DryRun should be false")
+	}
+}
+
+func TestRecomputeAllTaint_WithTaintedNodes(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	rootID := parseNodeID(t, "1")
+
+	// Create a child node
+	err := svc.ClaimNode(rootID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	childID := parseNodeID(t, "1.1")
+	err = svc.RefineNode(rootID, "agent-001", childID, schema.NodeTypeClaim, "Child step", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("RefineNode() unexpected error: %v", err)
+	}
+
+	// Admit the root (this introduces self_admitted taint)
+	err = svc.ReleaseNode(rootID, "agent-001")
+	if err != nil {
+		t.Fatalf("ReleaseNode() unexpected error: %v", err)
+	}
+
+	err = svc.AdmitNode(rootID)
+	if err != nil {
+		t.Fatalf("AdmitNode() unexpected error: %v", err)
+	}
+
+	// Recompute taint
+	result, err := svc.RecomputeAllTaint(true)
+	if err != nil {
+		t.Fatalf("RecomputeAllTaint() unexpected error: %v", err)
+	}
+
+	if result.TotalNodes != 2 {
+		t.Errorf("RecomputeAllTaint() TotalNodes = %d, want 2", result.TotalNodes)
+	}
+}
+
+// =============================================================================
+// Export and Quality Tests
+// =============================================================================
+
+func TestExportProof_Markdown(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	output, err := ExportProof(st, "markdown")
+	if err != nil {
+		t.Fatalf("ExportProof() unexpected error: %v", err)
+	}
+
+	if output == "" {
+		t.Error("ExportProof() returned empty output")
+	}
+}
+
+func TestExportProof_LaTeX(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	output, err := ExportProof(st, "latex")
+	if err != nil {
+		t.Fatalf("ExportProof() unexpected error: %v", err)
+	}
+
+	if output == "" {
+		t.Error("ExportProof() returned empty output")
+	}
+}
+
+func TestExportProof_InvalidFormat(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	_, err = ExportProof(st, "invalid")
+	if err == nil {
+		t.Error("ExportProof() expected error for invalid format, got nil")
+	}
+}
+
+func TestOverallQuality(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	report := OverallQuality(st)
+	if report == nil {
+		t.Fatal("OverallQuality() returned nil")
+	}
+
+	// Basic sanity checks
+	if report.NodeCount != 1 {
+		t.Errorf("OverallQuality() NodeCount = %d, want 1", report.NodeCount)
+	}
+}
+
+func TestSubtreeQuality(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	rootID := parseNodeID(t, "1")
+	report := SubtreeQuality(st, rootID)
+	if report == nil {
+		t.Fatal("SubtreeQuality() returned nil")
+	}
+
+	if report.NodeCount != 1 {
+		t.Errorf("SubtreeQuality() NodeCount = %d, want 1", report.NodeCount)
+	}
+}
+
+func TestSubtreeQuality_NonExistentNode(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	nonExistentID := parseNodeID(t, "1.99.99")
+	report := SubtreeQuality(st, nonExistentID)
+
+	// Should return empty report for non-existent node
+	if report == nil {
+		t.Fatal("SubtreeQuality() returned nil for non-existent node")
+	}
+	if report.NodeCount != 0 {
+		t.Errorf("SubtreeQuality() NodeCount = %d, want 0 for non-existent node", report.NodeCount)
+	}
+}
+
+// =============================================================================
+// RequestRefinement Tests
+// =============================================================================
+
+func TestRequestRefinement_Success(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	rootID := parseNodeID(t, "1")
+
+	// First validate the node
+	err := svc.AcceptNode(rootID)
+	if err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+
+	// Now request refinement
+	err = svc.RequestRefinement(rootID, "Need more detail on step 3", "verifier-001")
+	if err != nil {
+		t.Fatalf("RequestRefinement() unexpected error: %v", err)
+	}
+
+	// Verify state transition
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+
+	n := st.GetNode(rootID)
+	if n == nil {
+		t.Fatal("Node not found")
+	}
+	if n.EpistemicState != schema.EpistemicNeedsRefinement {
+		t.Errorf("EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicNeedsRefinement)
+	}
+}
+
+func TestRequestRefinement_NodeNotFound(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	nonExistentID := parseNodeID(t, "1.99.99")
+	err := svc.RequestRefinement(nonExistentID, "reason", "agent")
+	if err == nil {
+		t.Error("RequestRefinement() expected error for non-existent node, got nil")
+	}
+}
+
+func TestRequestRefinement_InvalidState(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	rootID := parseNodeID(t, "1")
+
+	// Try to request refinement on pending node (should fail)
+	err := svc.RequestRefinement(rootID, "reason", "agent")
+	if err == nil {
+		t.Error("RequestRefinement() expected error for pending node, got nil")
+	}
+}
