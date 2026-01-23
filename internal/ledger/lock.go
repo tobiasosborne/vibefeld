@@ -29,6 +29,11 @@ type lockMetadata struct {
 const lockFileName = "ledger.lock"
 const pollInterval = 10 * time.Millisecond
 
+// ErrLockHeldByDifferentAgent is returned when tryAcquire is called on a LedgerLock
+// instance that is already held by a different agent. This is a fatal error that
+// should not be retried - it indicates misuse of the LedgerLock instance.
+var ErrLockHeldByDifferentAgent = errors.New("lock held by different agent on same instance")
+
 // NewLedgerLock creates a new LedgerLock for the given directory.
 func NewLedgerLock(dir string) *LedgerLock {
 	return &LedgerLock{
@@ -59,6 +64,11 @@ func (l *LedgerLock) Acquire(agentID string, timeout time.Duration) error {
 			return nil
 		}
 
+		// Fatal error: lock held by different agent on same instance (misuse)
+		if errors.Is(err, ErrLockHeldByDifferentAgent) {
+			return err
+		}
+
 		// If we couldn't acquire and we're past the deadline, fail
 		if time.Now().After(deadline) {
 			return errors.New("timeout waiting for lock")
@@ -74,9 +84,12 @@ func (l *LedgerLock) tryAcquire(agentID string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// Already holding this lock
+	// Already holding this lock - verify same agent (re-entrant case)
 	if l.held {
-		return nil
+		if l.agentID == agentID {
+			return nil
+		}
+		return ErrLockHeldByDifferentAgent
 	}
 
 	// Try to create lock file exclusively

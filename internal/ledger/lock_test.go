@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -538,5 +539,56 @@ func TestRelease_OwnershipMatchSucceeds(t *testing.T) {
 	lockPath := filepath.Join(dir, "ledger.lock")
 	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
 		t.Error("Lock file should be removed after successful release")
+	}
+}
+
+// TestAcquire_ReentrantSameAgent verifies that the same agent can re-acquire.
+func TestAcquire_ReentrantSameAgent(t *testing.T) {
+	dir := t.TempDir()
+	lock := NewLedgerLock(dir)
+
+	// First acquisition
+	err := lock.Acquire("agent-A", 1*time.Second)
+	if err != nil {
+		t.Fatalf("First acquire failed: %v", err)
+	}
+	defer deferRelease(t, lock)
+
+	// Same agent re-acquiring should succeed (re-entrant)
+	err = lock.Acquire("agent-A", 1*time.Second)
+	if err != nil {
+		t.Errorf("Re-entrant acquire by same agent should succeed: %v", err)
+	}
+}
+
+// TestAcquire_DifferentAgentSameInstance verifies that a different agent
+// cannot acquire using the same LedgerLock instance when already held.
+// This tests the TOCTOU fix where tryAcquire must verify agent ID.
+func TestAcquire_DifferentAgentSameInstance(t *testing.T) {
+	dir := t.TempDir()
+	lock := NewLedgerLock(dir)
+
+	// Agent A acquires the lock
+	err := lock.Acquire("agent-A", 1*time.Second)
+	if err != nil {
+		t.Fatalf("First acquire failed: %v", err)
+	}
+	defer deferRelease(t, lock)
+
+	// Different agent trying to acquire on same instance should fail immediately
+	// This catches the TOCTOU bug where l.held was true but agent ID wasn't checked
+	start := time.Now()
+	err = lock.Acquire("agent-B", 1*time.Second)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Error("Different agent should not be able to acquire on same held instance")
+	}
+	if err != nil && !errors.Is(err, ErrLockHeldByDifferentAgent) {
+		t.Errorf("Expected ErrLockHeldByDifferentAgent, got: %v", err)
+	}
+	// Should fail immediately, not after timeout
+	if elapsed > 100*time.Millisecond {
+		t.Errorf("Error should be returned immediately, but took %v", elapsed)
 	}
 }
