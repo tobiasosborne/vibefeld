@@ -1,39 +1,63 @@
-# Handoff - 2026-01-23 (Session 217)
+# Handoff - 2026-01-23 (Session 218)
 
 ## What Was Accomplished This Session
 
-### Session 217 Summary: Added RequestRefinement service method and render support for needs_refinement
+### Session 218 Summary: Completed request-refinement feature (CLI and re-validation)
 
-**Closed `vibefeld-wfkj` - Add RequestRefinement to proof service**
+**Closed `vibefeld-pno3` - Implement request-refinement CLI command**
+- `cmd/af/request_refinement.go` (new):
+  - Added `af request-refinement <node-id>` command
+  - Supports `--reason` flag for explanation of why refinement is needed
+  - Supports `--agent` flag for verifier identity
+  - Supports `--format json` for JSON output
+  - Grouped under "Verifier Commands" (request-refinement is a verifier action)
+- `cmd/af/request_refinement_test.go` (new):
+  - Added 8 tests covering:
+    - Success case with state transition
+    - With reason flag
+    - JSON output format
+    - Non-existent node error
+    - Not validated node error
+    - Invalid node ID error
+    - Missing argument error
+    - With agent ID
+
+**Closed `vibefeld-na20` - Handle re-validation after refinement**
 - `internal/service/proof.go`:
-  - Added `RequestRefinement(nodeID, reason, requestedBy)` method
-  - Validates node exists and is in validated state
-  - Uses CAS (Compare-And-Swap) with sequence numbers for concurrency safety
-  - Appends `RefinementRequested` event to ledger
-  - Returns appropriate errors: `ErrNodeNotFound`, `ErrInvalidState`, `ErrConcurrentModification`
+  - Modified `AcceptNodeWithNote()` to handle `needs_refinement` nodes
+  - Added check: `needs_refinement` nodes MUST have children to be re-validated
+  - Children must be validated or admitted (existing check still applies)
+  - Clear error message: "node is in needs_refinement state but has no children; use 'af refine' to add child nodes first"
 - `internal/service/proof_test.go`:
-  - Added `TestProofService_RequestRefinement_Success` - happy path
-  - Added `TestProofService_RequestRefinement_NonExistent` - node doesn't exist
-  - Added `TestProofService_RequestRefinement_NotValidated` - wrong epistemic state
-  - Added `TestProofService_RequestRefinement_Admitted` - admitted node cannot be refined
-  - Added `TestProofService_RequestRefinement_EmptyReason` - empty reason is allowed
+  - Added 4 new tests:
+    - `TestProofService_RevalidateAfterRefinement_Success` - full happy path
+    - `TestProofService_RevalidateAfterRefinement_NoChildren` - error when no children
+    - `TestProofService_RevalidateAfterRefinement_UnvalidatedChildren` - error when children not validated
+    - `TestProofService_RevalidateAfterRefinement_AdmittedChild` - success with admitted children
 
-**Closed `vibefeld-0hx6` - Update render package for needs_refinement state**
-- `internal/render/color.go`:
-  - Added `needs_refinement` case to `ColorEpistemicState()` - renders in magenta
-- `internal/render/color_test.go`:
-  - Added `TestColorEpistemicState_NeedsRefinement` - verifies magenta color code
-- `internal/render/status.go`:
-  - Added `needs_refinement` to epistemic state statistics display
-  - Added `needs_refinement` to status legend with description "Reopened for further refinement"
-  - Updated `renderJobs()` to count `needs_refinement` nodes as prover jobs
-  - Updated `FilterUrgentNodes()` to include `needs_refinement` nodes with "Refinement requested (reopened)" detail
+**Closed `vibefeld-boar` - Parent feature issue**
+- All dependencies completed:
+  - vibefeld-9184: needs_refinement epistemic state
+  - vibefeld-jkxx: RefinementRequested ledger event
+  - vibefeld-xt2o: State derivation handling
+  - vibefeld-cvlz: Prover jobs integration
+  - vibefeld-wfkj: RequestRefinement service method
+  - vibefeld-0hx6: Render package updates
+  - vibefeld-pno3: CLI command
+  - vibefeld-na20: Re-validation logic
 
 ## Current State
 
 ### Test Status
 - All tests pass (`go test ./...`)
 - Build succeeds (`go build ./cmd/af`)
+- Manual e2e test verified full workflow:
+  1. `af accept 1` (validate node)
+  2. `af request-refinement 1` (transition to needs_refinement)
+  3. `af accept 1` fails with "has no children" message
+  4. `af claim 1 && af refine 1 --statement ...` (add child)
+  5. `af accept 1` fails with "children not yet validated"
+  6. `af accept 1.1 && af accept 1` (validate child, then parent)
 
 ### Issue Statistics
 - **P0 bugs:** 0 remaining
@@ -43,18 +67,16 @@
   - `vibefeld-8q2j` - Increase service package test coverage (68.9% current)
 - **Ready for work:** Run `bd ready` to see available work
 
-### Blocked Issues Now Unblocked
-The following issues were blocked by the completed work:
-- `vibefeld-boar` - Implement request-refinement command (was blocked by wfkj)
-- `vibefeld-na20` - Handle re-validation after refinement (was blocked by wfkj)
-- `vibefeld-pno3` - Implement request-refinement CLI command (was blocked by wfkj)
+### Feature Complete: request-refinement
+The request-refinement feature is now fully implemented:
+- `af request-refinement <node-id>` command available
+- Validated nodes can be reopened for more detailed proofs
+- State machine transitions: validated → needs_refinement → validated
+- Proper error handling for edge cases
+- Integrated with jobs system (needs_refinement shows as prover job)
+- Integrated with status display (magenta color, legend entry)
 
 ## Recommended Next Steps
-
-### Unblocked Work (natural continuation)
-- `vibefeld-boar` - Implement request-refinement command (now unblocked)
-- `vibefeld-pno3` - Implement request-refinement CLI command (now unblocked)
-- `vibefeld-na20` - Handle re-validation after refinement (now unblocked)
 
 ### P1 Tasks
 - `vibefeld-jfbc` - Module structure epic: down from 22 to 4 packages (node and ledger remaining)
@@ -80,6 +102,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 218:** Completed request-refinement feature (vibefeld-pno3, vibefeld-na20, vibefeld-boar)
 **Session 217:** Added RequestRefinement to proof service (vibefeld-wfkj) and render support for needs_refinement (vibefeld-0hx6)
 **Session 216:** Integrated RefinementRequested into state derivation (vibefeld-xt2o) and prover jobs (vibefeld-cvlz)
 **Session 215:** Implemented needs_refinement epistemic state (vibefeld-9184) and RefinementRequested ledger event (vibefeld-jkxx)
@@ -95,21 +118,3 @@ go build ./cmd/af  # Build
 **Session 205:** Eliminated fs package from test files by re-exporting PendingDef types and functions through service
 **Session 204:** Eliminated fs package import by adding WriteExternal to service layer, reduced imports from 6->5
 **Session 203:** Health check - fixed bd doctor issues (hooks, gitignore, sync), validated all 6 open issues still relevant, all tests pass, LOC audit (125k code, 21k comments)
-**Session 202:** Eliminated cli package import by re-exporting MustString, MustBool, MustInt, MustStringSlice through service, reduced imports from 7->6
-**Session 201:** Eliminated hooks import from hooks_test.go by adding NewHookConfig re-export through service, reduced imports from 8->7
-**Session 200:** Eliminated jobs package import by re-exporting JobResult, FindJobs, FindProverJobs, FindVerifierJobs through service, reduced imports from 8->7 (non-test files only)
-**Session 199:** Eliminated hooks package import, reduced imports from 9->8
-**Session 198:** Eliminated shell package import, reduced imports from 10->9
-**Session 197:** Eliminated patterns package import, reduced imports from 11->10
-**Session 196:** Eliminated strategy package import, reduced imports from 12->11
-**Session 195:** Eliminated templates package import, reduced imports from 13->12
-**Session 194:** Eliminated metrics package import, reduced imports from 14->13
-**Session 193:** Eliminated export package import, reduced imports from 15->14
-**Session 192:** Eliminated lemma package import, reduced imports from 16->15
-**Session 191:** Eliminated fuzzy package import, reduced imports from 17->16
-**Session 190:** Eliminated scope package import, reduced imports from 18->17
-**Session 189:** Eliminated config package import, reduced imports from 19->18
-**Session 188:** Eliminated errors package import, reduced imports from 20->19
-**Session 187:** Split ProofOperations interface into 4 role-based interfaces
-**Session 186:** Eliminated taint package import
-**Session 185:** Removed 28 unused schema imports from test files

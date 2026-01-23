@@ -3118,3 +3118,246 @@ func TestProofService_RequestRefinement_EmptyReason(t *testing.T) {
 		t.Errorf("RequestRefinement() with empty reason unexpected error: %v", err)
 	}
 }
+
+// =============================================================================
+// Re-validation After Refinement Tests
+// =============================================================================
+
+// TestProofService_RevalidateAfterRefinement_Success verifies re-validating a needs_refinement node
+// after children have been added and validated.
+func TestProofService_RevalidateAfterRefinement_Success(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1"
+	nodeID := mustParseNodeID(t, "1")
+
+	// Validate the node
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+
+	// Request refinement
+	err = svc.RequestRefinement(nodeID, "Need more detail", "verifier-001")
+	if err != nil {
+		t.Fatalf("RequestRefinement() unexpected error: %v", err)
+	}
+
+	// Generate child ID
+	childID, err := nodeID.Child(1)
+	if err != nil {
+		t.Fatalf("Child() unexpected error: %v", err)
+	}
+
+	// Refine with a child node
+	err = svc.Refine(RefineSpec{
+		ParentID:  nodeID,
+		Owner:     "prover-001",
+		ChildID:   childID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "Let x = 1",
+		Inference: schema.InferenceAssumption,
+	})
+	if err != nil {
+		t.Fatalf("Refine() unexpected error: %v", err)
+	}
+
+	// Validate the child
+	err = svc.AcceptNode(childID)
+	if err != nil {
+		t.Fatalf("AcceptNode(child) unexpected error: %v", err)
+	}
+
+	// Re-validate the parent (needs_refinement -> validated)
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode(re-validate) unexpected error: %v", err)
+	}
+
+	// Verify node is back to validated state
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	n := st.GetNode(nodeID)
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Errorf("Node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+}
+
+// TestProofService_RevalidateAfterRefinement_NoChildren verifies error when trying
+// to re-validate a needs_refinement node without adding children.
+func TestProofService_RevalidateAfterRefinement_NoChildren(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1"
+	nodeID := mustParseNodeID(t, "1")
+
+	// Validate the node
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+
+	// Request refinement
+	err = svc.RequestRefinement(nodeID, "Need more detail", "verifier-001")
+	if err != nil {
+		t.Fatalf("RequestRefinement() unexpected error: %v", err)
+	}
+
+	// Try to re-validate without adding children - should fail
+	err = svc.AcceptNode(nodeID)
+	if err == nil {
+		t.Fatal("AcceptNode(needs_refinement without children) expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "has no children") {
+		t.Errorf("Error should mention 'has no children', got: %v", err)
+	}
+}
+
+// TestProofService_RevalidateAfterRefinement_UnvalidatedChildren verifies error when trying
+// to re-validate a needs_refinement node with unvalidated children.
+func TestProofService_RevalidateAfterRefinement_UnvalidatedChildren(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1"
+	nodeID := mustParseNodeID(t, "1")
+
+	// Validate the node
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+
+	// Request refinement
+	err = svc.RequestRefinement(nodeID, "Need more detail", "verifier-001")
+	if err != nil {
+		t.Fatalf("RequestRefinement() unexpected error: %v", err)
+	}
+
+	// Generate child ID
+	childID, err := nodeID.Child(1)
+	if err != nil {
+		t.Fatalf("Child() unexpected error: %v", err)
+	}
+
+	// Refine with a child node (child will be pending)
+	err = svc.Refine(RefineSpec{
+		ParentID:  nodeID,
+		Owner:     "prover-001",
+		ChildID:   childID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "Let x = 1",
+		Inference: schema.InferenceAssumption,
+	})
+	if err != nil {
+		t.Fatalf("Refine() unexpected error: %v", err)
+	}
+
+	// Try to re-validate without validating the child - should fail
+	err = svc.AcceptNode(nodeID)
+	if err == nil {
+		t.Fatal("AcceptNode(needs_refinement with unvalidated children) expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "children not yet validated") {
+		t.Errorf("Error should mention 'children not yet validated', got: %v", err)
+	}
+}
+
+// TestProofService_RevalidateAfterRefinement_AdmittedChild verifies re-validating when
+// children are admitted (tainted but acceptable).
+func TestProofService_RevalidateAfterRefinement_AdmittedChild(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1"
+	nodeID := mustParseNodeID(t, "1")
+
+	// Validate the node
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+
+	// Request refinement
+	err = svc.RequestRefinement(nodeID, "Need more detail", "verifier-001")
+	if err != nil {
+		t.Fatalf("RequestRefinement() unexpected error: %v", err)
+	}
+
+	// Generate child ID
+	childID, err := nodeID.Child(1)
+	if err != nil {
+		t.Fatalf("Child() unexpected error: %v", err)
+	}
+
+	// Refine with a child node
+	err = svc.Refine(RefineSpec{
+		ParentID:  nodeID,
+		Owner:     "prover-001",
+		ChildID:   childID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "Let x = 1",
+		Inference: schema.InferenceAssumption,
+	})
+	if err != nil {
+		t.Fatalf("Refine() unexpected error: %v", err)
+	}
+
+	// Admit the child (instead of validating)
+	err = svc.AdmitNode(childID)
+	if err != nil {
+		t.Fatalf("AdmitNode(child) unexpected error: %v", err)
+	}
+
+	// Re-validate the parent - should succeed (admitted counts as validated)
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode(re-validate with admitted child) unexpected error: %v", err)
+	}
+
+	// Verify node is back to validated state
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	n := st.GetNode(nodeID)
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Errorf("Node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+}

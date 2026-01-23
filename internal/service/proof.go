@@ -825,12 +825,14 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 
 	// Check all children are validated or admitted (PRD requirement)
 	// A child is a node whose parent ID equals this node's ID
+	var children []*node.Node
 	var unvalidatedChildren []string
 	for _, child := range st.AllNodes() {
 		parentID, hasParent := child.ID.Parent()
 		if !hasParent || parentID.String() != id.String() {
 			continue // not a child of this node
 		}
+		children = append(children, child)
 		// Child must be validated or admitted
 		if child.EpistemicState != schema.EpistemicValidated && child.EpistemicState != schema.EpistemicAdmitted {
 			unvalidatedChildren = append(unvalidatedChildren, child.ID.String())
@@ -841,7 +843,13 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 			id.String(), strings.Join(unvalidatedChildren, ", "))
 	}
 
-	// Validate epistemic state transition (only pending -> validated allowed)
+	// For needs_refinement nodes, require that refinement actually happened (has children)
+	if n.EpistemicState == schema.EpistemicNeedsRefinement && len(children) == 0 {
+		return fmt.Errorf("cannot accept node %s: node is in needs_refinement state but has no children; use 'af refine' to add child nodes first",
+			id.String())
+	}
+
+	// Validate epistemic state transition (pending -> validated or needs_refinement -> validated)
 	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
 		return err
 	}
