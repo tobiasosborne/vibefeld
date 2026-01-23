@@ -490,6 +490,54 @@ func TestAppendBatch_ErrorOnInvalidDir(t *testing.T) {
 	}
 }
 
+// TestAppendBatch_RollbackOnPartialFailure verifies that AppendBatch rolls back
+// all previously renamed files when a rename fails partway through.
+// This ensures atomicity: either all events are written, or none are.
+func TestAppendBatch_RollbackOnPartialFailure(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a directory at the path where the 2nd event would be written.
+	// os.Rename will fail when trying to rename a file over a non-empty directory.
+	blockerDir := EventFilePath(dir, 2)
+	if err := os.MkdirAll(blockerDir, 0755); err != nil {
+		t.Fatalf("Failed to create blocker directory: %v", err)
+	}
+	// Add a file inside to make it non-empty (needed for rename to fail)
+	blockerFile := filepath.Join(blockerDir, "blocker")
+	if err := os.WriteFile(blockerFile, []byte("block"), 0644); err != nil {
+		t.Fatalf("Failed to create blocker file: %v", err)
+	}
+
+	events := []Event{
+		NewProofInitialized("Rollback event 1", "agent-rollback"),
+		NewChallengeResolved("chal-rollback"),
+		NewChallengeWithdrawn("chal-rollback-2"),
+	}
+
+	_, err := AppendBatch(dir, events)
+	if err == nil {
+		t.Fatal("AppendBatch should fail when rename is blocked by directory")
+	}
+
+	// The key assertion: event 1 should NOT exist (rollback should have removed it)
+	event1Path := EventFilePath(dir, 1)
+	if _, err := os.Stat(event1Path); err == nil {
+		t.Error("Event 1 file exists after failed batch - rollback did not occur")
+	}
+
+	// Verify no temp files remain
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasSuffix(name, ".tmp") || strings.HasPrefix(name, ".event-") {
+			t.Errorf("Temp file %q remains after failed batch", name)
+		}
+	}
+}
+
 // TestAppendBatch_ContinuesFromExisting verifies batch continues from existing sequence.
 func TestAppendBatch_ContinuesFromExisting(t *testing.T) {
 	dir := t.TempDir()

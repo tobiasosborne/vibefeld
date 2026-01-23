@@ -311,14 +311,18 @@ func AppendBatch(dir string, events []Event) ([]int, error) {
 		}
 	}
 
-	// Rename all temp files to final paths
+	// Rename all temp files to final paths atomically.
+	// If any rename fails, rollback all previously renamed files to preserve atomicity.
+	finalPaths := make([]string, len(events))
 	for i := range events {
 		seq := seqs[i]
-		finalPath := filepath.Join(dir, GenerateFilename(seq))
-		if err := os.Rename(tempPaths[i], finalPath); err != nil {
-			// Note: Partial failure here leaves some files renamed.
-			// In a production system, we might want to implement rollback.
-			// For now, cleanup remaining temp files.
+		finalPaths[i] = filepath.Join(dir, GenerateFilename(seq))
+		if err := os.Rename(tempPaths[i], finalPaths[i]); err != nil {
+			// Rollback: remove all previously renamed files
+			for j := 0; j < i; j++ {
+				_ = os.Remove(finalPaths[j])
+			}
+			// Cleanup remaining temp files
 			cleanupTempFiles(tempPaths, i, len(events))
 			return nil, fmt.Errorf("failed to rename event %d: %w", i, err)
 		}
