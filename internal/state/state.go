@@ -441,3 +441,15 @@ func (s *State) GetScope(nodeID types.NodeID) *scope.Entry {
 func (s *State) ScopeTracker() *scope.Tracker {
 	return s.scopeTracker
 }
+
+// GetNodesNeedingRefinement returns all nodes with epistemic state needs_refinement.
+// These are validated nodes that have been reopened for further proof development.
+func (s *State) GetNodesNeedingRefinement() []*node.Node {
+	var result []*node.Node
+	for _, n := range s.nodes {
+		if n.EpistemicState == schema.EpistemicNeedsRefinement {
+			result = append(result, n)
+		}
+	}
+	return result
+}

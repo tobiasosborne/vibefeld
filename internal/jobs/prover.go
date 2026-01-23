@@ -41,17 +41,26 @@ func FindProverJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challenge
 
 // isProverJob checks if a single node qualifies as a prover job.
 // A prover job is a node that needs prover attention:
-//   - EpistemicState = "pending" (not yet verified)
 //   - WorkflowState != "blocked" (can be available or claimed)
-//   - Has at least one open blocking challenge (critical/major severity)
+//   - One of the following:
+//     - EpistemicState = "pending" with at least one open blocking challenge
+//     - EpistemicState = "needs_refinement" (awaiting further proof development)
 //
 // Provers address blocking challenges raised by verifiers. Minor and note
 // challenges do not require prover attention. Once all blocking challenges
 // are resolved/withdrawn, the node becomes a verifier job again.
+//
+// Nodes in needs_refinement state are also prover jobs - these are validated
+// nodes that have been reopened for further proof development.
 func isProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 	// Must not be blocked
 	if n.WorkflowState == schema.WorkflowBlocked {
 		return false
+	}
+
+	// Nodes needing refinement are prover jobs (validated nodes reopened for more proof work)
+	if n.EpistemicState == schema.EpistemicNeedsRefinement {
+		return true
 	}
 
 	// Must be pending (not yet verified)

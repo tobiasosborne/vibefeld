@@ -1,26 +1,36 @@
-# Handoff - 2026-01-23 (Session 215)
+# Handoff - 2026-01-23 (Session 216)
 
 ## What Was Accomplished This Session
 
-### Session 215 Summary: Implemented needs_refinement state and RefinementRequested event
+### Session 216 Summary: Integrated RefinementRequested into state and jobs packages
 
-**Closed `vibefeld-9184` - Add needs_refinement epistemic state to schema**
-- `internal/schema/epistemic.go`:
-  - Added `EpistemicNeedsRefinement` constant
-  - Added registry entry (non-final, no taint)
-  - Updated `ValidateEpistemicState` error message
-  - Updated `AllEpistemicStates()` to return 6 states
-  - Rewrote `ValidateEpistemicTransition` with map-based transitions:
-    - `validated` → `needs_refinement` (allowed)
-    - `needs_refinement` → `validated`, `admitted`, `refuted`, `archived` (allowed)
-- `internal/schema/epistemic_test.go`: Added comprehensive tests for new state and transitions
+**Closed `vibefeld-xt2o` - Handle RefinementRequested in state derivation**
+- `internal/state/replay.go`:
+  - Added `EventRefinementRequested` to `eventFactories` map
+  - Added `*ledger.RefinementRequested` case to `derefEvent` function
+- `internal/state/apply.go`:
+  - Added `ledger.RefinementRequested` case to `Apply()` switch
+  - Added `applyRefinementRequested()` handler function
+  - Validates only validated nodes can transition to needs_refinement
+- `internal/state/state.go`:
+  - Added `GetNodesNeedingRefinement()` query method
+- `internal/state/apply_test.go`:
+  - Added `TestApplyRefinementRequested` - basic event handling
+  - Added `TestApplyRefinementRequested_NonExistentNode` - error case
+  - Added `TestApplyRefinementRequested_OnlyValidatedNodesCanBeRefined` - transition validation
+  - Added `TestGetNodesNeedingRefinement` - query method test
 
-**Closed `vibefeld-jkxx` - Add RefinementRequested event to ledger**
-- `internal/ledger/event.go`:
-  - Added `EventRefinementRequested` constant
-  - Added `RefinementRequested` struct with NodeID, Reason, RequestedBy fields
-  - Added `NewRefinementRequested()` constructor
-- `internal/ledger/event_test.go`: Added tests for event creation, JSON roundtrip, field validation
+**Closed `vibefeld-cvlz` - Include needs_refinement nodes in prover jobs**
+- `internal/jobs/prover.go`:
+  - Updated `isProverJob()` to return true for `needs_refinement` nodes
+  - Nodes needing refinement are prover jobs without requiring challenges
+  - Updated function documentation to reflect new behavior
+- `internal/jobs/prover_test.go`:
+  - Added `TestFindProverJobs_NeedsRefinementIsProverJob` - basic case
+  - Added `TestFindProverJobs_NeedsRefinementBlockedIsNotProverJob` - blocked check
+  - Added `TestFindProverJobs_NeedsRefinementClaimedIsProverJob` - claimed case
+  - Added `TestFindProverJobs_MixedNeedsRefinementAndChallenges` - mixed scenarios
+  - Updated `TestFindProverJobs_EpistemicStatesAndProverJobs` to include needs_refinement
 
 ## Current State
 
@@ -38,16 +48,15 @@
 
 ### Blocked Issues Now Unblocked
 The following issues were blocked by the completed work:
-- `vibefeld-boar` - Implement request-refinement command (blocked by both closed issues)
-- `vibefeld-xt2o` - Handle RefinementRequested in state derivation (blocked by both)
-- `vibefeld-0hx6` - Update render package for needs_refinement state (blocked by 9184)
-- `vibefeld-cvlz` - Include needs_refinement nodes in prover jobs (blocked by 9184)
+- `vibefeld-boar` - Implement request-refinement command (was blocked by xt2o and cvlz)
+- `vibefeld-wfkj` - Add RequestRefinement to proof service (was blocked by xt2o)
 
 ## Recommended Next Steps
 
 ### Unblocked Work (natural continuation)
 - `vibefeld-boar` - Implement request-refinement command (now unblocked)
-- `vibefeld-xt2o` - Handle RefinementRequested in state derivation (now unblocked)
+- `vibefeld-wfkj` - Add RequestRefinement to proof service (now unblocked)
+- `vibefeld-0hx6` - Update render package for needs_refinement state
 
 ### P1 Tasks
 - `vibefeld-jfbc` - Module structure epic: down from 22 to 4 packages (node and ledger remaining)
@@ -73,6 +82,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 216:** Integrated RefinementRequested into state derivation (vibefeld-xt2o) and prover jobs (vibefeld-cvlz)
 **Session 215:** Implemented needs_refinement epistemic state (vibefeld-9184) and RefinementRequested ledger event (vibefeld-jkxx)
 **Session 214:** Fixed vibefeld-si9g (nil receiver checks for Challenge and Node methods)
 **Session 213:** Fixed vibefeld-lwna (lock release-after-free semantics) and vibefeld-bs2m (External return type consistency)

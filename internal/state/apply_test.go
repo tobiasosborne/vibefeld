@@ -1941,3 +1941,138 @@ func TestApplyScopeClosed(t *testing.T) {
 		t.Errorf("Expected 1 scope in all scopes, got %d", len(allScopes))
 	}
 }
+
+// TestApplyRefinementRequested verifies that RefinementRequested event updates epistemic state.
+func TestApplyRefinementRequested(t *testing.T) {
+	s := NewState()
+
+	// Add a validated node (only validated nodes can be refined)
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	n.EpistemicState = schema.EpistemicValidated
+	s.AddNode(n)
+
+	// Apply RefinementRequested event
+	event := ledger.NewRefinementRequested(nodeID, "Needs more detailed proof", "verifier-1")
+
+	err = Apply(s, event)
+	if err != nil {
+		t.Fatalf("Apply RefinementRequested failed: %v", err)
+	}
+
+	// Verify epistemic state changed to needs_refinement
+	got := s.GetNode(nodeID)
+	if got.EpistemicState != schema.EpistemicNeedsRefinement {
+		t.Errorf("Epistemic state after refinement request: got %q, want %q", got.EpistemicState, schema.EpistemicNeedsRefinement)
+	}
+}
+
+// TestApplyRefinementRequested_NonExistentNode verifies error when requesting refinement on non-existent node.
+func TestApplyRefinementRequested_NonExistentNode(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+	event := ledger.NewRefinementRequested(nodeID, "Reason", "verifier-1")
+
+	err := Apply(s, event)
+	if err == nil {
+		t.Fatal("Apply should return error when requesting refinement on non-existent node")
+	}
+
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Error should mention 'not found': got %q", err.Error())
+	}
+}
+
+// TestApplyRefinementRequested_OnlyValidatedNodesCanBeRefined verifies that only validated nodes can be refined.
+func TestApplyRefinementRequested_OnlyValidatedNodesCanBeRefined(t *testing.T) {
+	tests := []struct {
+		name      string
+		epistemic schema.EpistemicState
+		wantError bool
+	}{
+		{"pending cannot be refined", schema.EpistemicPending, true},
+		{"validated can be refined", schema.EpistemicValidated, false},
+		{"admitted cannot be refined", schema.EpistemicAdmitted, true},
+		{"refuted cannot be refined", schema.EpistemicRefuted, true},
+		{"archived cannot be refined", schema.EpistemicArchived, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewState()
+
+			nodeID := mustParseNodeID(t, "1")
+			n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+			if err != nil {
+				t.Fatalf("Failed to create test node: %v", err)
+			}
+			n.EpistemicState = tt.epistemic
+			s.AddNode(n)
+
+			event := ledger.NewRefinementRequested(nodeID, "Reason", "verifier-1")
+			err = Apply(s, event)
+
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("Apply should return error for %s state", tt.epistemic)
+				} else if !strings.Contains(err.Error(), "invalid transition") {
+					t.Errorf("Error should mention 'invalid transition': got %q", err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Apply should succeed for %s state: %v", tt.epistemic, err)
+				}
+			}
+		})
+	}
+}
+
+// TestGetNodesNeedingRefinement verifies the query method for refinement nodes.
+func TestGetNodesNeedingRefinement(t *testing.T) {
+	s := NewState()
+
+	// Add nodes in various states
+	node1ID := mustParseNodeID(t, "1")
+	n1, _ := node.NewNode(node1ID, schema.NodeTypeClaim, "Node 1", schema.InferenceAssumption)
+	n1.EpistemicState = schema.EpistemicNeedsRefinement
+	s.AddNode(n1)
+
+	node2ID := mustParseNodeID(t, "1.1")
+	n2, _ := node.NewNode(node2ID, schema.NodeTypeClaim, "Node 2", schema.InferenceAssumption)
+	n2.EpistemicState = schema.EpistemicValidated
+	s.AddNode(n2)
+
+	node3ID := mustParseNodeID(t, "1.2")
+	n3, _ := node.NewNode(node3ID, schema.NodeTypeClaim, "Node 3", schema.InferenceAssumption)
+	n3.EpistemicState = schema.EpistemicNeedsRefinement
+	s.AddNode(n3)
+
+	node4ID := mustParseNodeID(t, "1.3")
+	n4, _ := node.NewNode(node4ID, schema.NodeTypeClaim, "Node 4", schema.InferenceAssumption)
+	n4.EpistemicState = schema.EpistemicPending
+	s.AddNode(n4)
+
+	// Get nodes needing refinement
+	result := s.GetNodesNeedingRefinement()
+
+	if len(result) != 2 {
+		t.Errorf("GetNodesNeedingRefinement() returned %d nodes, want 2", len(result))
+	}
+
+	// Verify only needs_refinement nodes are returned
+	resultIDs := make(map[string]bool)
+	for _, n := range result {
+		resultIDs[n.ID.String()] = true
+	}
+
+	if !resultIDs["1"] {
+		t.Error("GetNodesNeedingRefinement() should include node 1")
+	}
+	if !resultIDs["1.2"] {
+		t.Error("GetNodesNeedingRefinement() should include node 1.2")
+	}
+}

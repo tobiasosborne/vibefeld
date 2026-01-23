@@ -176,15 +176,16 @@ func TestFindProverJobs_NodeWithMixedChallengesIsProverJob(t *testing.T) {
 	}
 }
 
-// TestFindProverJobs_OnlyPendingNodesCanBeProverJobs tests that only pending nodes
-// can be prover jobs.
-func TestFindProverJobs_OnlyPendingNodesCanBeProverJobs(t *testing.T) {
+// TestFindProverJobs_EpistemicStatesAndProverJobs tests which epistemic states
+// can be prover jobs. Pending (with challenge) and needs_refinement are prover jobs.
+func TestFindProverJobs_EpistemicStatesAndProverJobs(t *testing.T) {
 	tests := []struct {
 		name      string
 		epistemic schema.EpistemicState
 		wantJob   bool
 	}{
 		{"pending with open challenge is prover job", schema.EpistemicPending, true},
+		{"needs_refinement is prover job (even without challenge)", schema.EpistemicNeedsRefinement, true},
 		{"validated is not prover job", schema.EpistemicValidated, false},
 		{"admitted is not prover job", schema.EpistemicAdmitted, false},
 		{"refuted is not prover job", schema.EpistemicRefuted, false},
@@ -493,5 +494,86 @@ func TestProverJob_FalseWithOnlyMinorChallenge(t *testing.T) {
 
 	if len(result) != 0 {
 		t.Errorf("FindProverJobs() returned %d nodes, want 0 (node only has minor challenge, not blocking)", len(result))
+	}
+}
+
+// TestFindProverJobs_NeedsRefinementIsProverJob tests that a node with
+// needs_refinement epistemic state is a prover job (without needing challenges).
+func TestFindProverJobs_NeedsRefinementIsProverJob(t *testing.T) {
+	n := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicNeedsRefinement)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{} // No challenges needed
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 1 (node needs refinement)", len(result))
+	}
+	if len(result) > 0 && result[0].ID.String() != "1" {
+		t.Errorf("FindProverJobs() returned %s, want 1", result[0].ID.String())
+	}
+}
+
+// TestFindProverJobs_NeedsRefinementBlockedIsNotProverJob tests that blocked
+// nodes needing refinement are not prover jobs.
+func TestFindProverJobs_NeedsRefinementBlockedIsNotProverJob(t *testing.T) {
+	n := createTestNode(t, "1", schema.WorkflowBlocked, schema.EpistemicNeedsRefinement)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{}
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 0 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 0 (node is blocked)", len(result))
+	}
+}
+
+// TestFindProverJobs_NeedsRefinementClaimedIsProverJob tests that claimed
+// nodes needing refinement are still prover jobs.
+func TestFindProverJobs_NeedsRefinementClaimedIsProverJob(t *testing.T) {
+	n := createTestNode(t, "1", schema.WorkflowClaimed, schema.EpistemicNeedsRefinement)
+
+	nodes := []*node.Node{n}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := map[string][]*node.Challenge{}
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	if len(result) != 1 {
+		t.Errorf("FindProverJobs() returned %d nodes, want 1 (claimed node needs refinement)", len(result))
+	}
+}
+
+// TestFindProverJobs_MixedNeedsRefinementAndChallenges tests finding prover jobs
+// with both needs_refinement nodes and challenged nodes.
+func TestFindProverJobs_MixedNeedsRefinementAndChallenges(t *testing.T) {
+	nodeID2, _ := types.Parse("1.2")
+
+	nodes := []*node.Node{
+		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicNeedsRefinement),  // refinement -> prover
+		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),        // no challenge -> not prover
+		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending),        // with challenge -> prover
+		createTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicValidated),      // validated -> not prover
+	}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{
+		createProverTestChallenge(t, "ch-1", nodeID2, node.ChallengeStatusOpen),
+	})
+
+	result := jobs.FindProverJobs(nodes, nodeMap, challengeMap)
+
+	// Nodes 1 (needs_refinement) and 1.2 (with challenge) should be prover jobs
+	expectedIDs := map[string]bool{"1": true, "1.2": true}
+	if len(result) != len(expectedIDs) {
+		t.Errorf("FindProverJobs() returned %d nodes, want %d", len(result), len(expectedIDs))
+	}
+	for _, n := range result {
+		if !expectedIDs[n.ID.String()] {
+			t.Errorf("FindProverJobs() returned unexpected node %s", n.ID.String())
+		}
 	}
 }

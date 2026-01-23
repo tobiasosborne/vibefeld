@@ -66,6 +66,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyScopeOpened(s, e)
 	case ledger.ScopeClosed:
 		return applyScopeClosed(s, e)
+	case ledger.RefinementRequested:
+		return applyRefinementRequested(s, e)
 	default:
 		return fmt.Errorf("unknown event type: %s", event.Type())
 	}
@@ -423,4 +425,20 @@ func applyScopeOpened(s *State, e ledger.ScopeOpened) error {
 // This closes the assumption scope at the given node.
 func applyScopeClosed(s *State, e ledger.ScopeClosed) error {
 	return s.CloseScope(e.NodeID)
+}
+
+// applyRefinementRequested handles the RefinementRequested event.
+// This transitions a validated node to needs_refinement state,
+// reopening it for further proof development by provers.
+func applyRefinementRequested(s *State, e ledger.RefinementRequested) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	// Validate the state transition is legal (only validated nodes can be refined)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicNeedsRefinement); err != nil {
+		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
+	}
+	n.EpistemicState = schema.EpistemicNeedsRefinement
+	return nil
 }
