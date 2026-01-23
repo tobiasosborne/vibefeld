@@ -24,6 +24,19 @@
 
 set -euo pipefail
 
+# Determine script directory and find af binary
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Find af binary - check project root first, then PATH
+if [[ -x "$PROJECT_ROOT/af" ]]; then
+    AF_CMD="$PROJECT_ROOT/af"
+elif command -v af &> /dev/null; then
+    AF_CMD="af"
+else
+    AF_CMD=""  # Will be checked later
+fi
+
 # Default configuration
 MAX_ITERATIONS=50
 MAX_AGENTS=100
@@ -133,31 +146,38 @@ cd "$PROOF_DIR" || {
 }
 
 # Verify af is available and proof exists
-if ! command -v af &> /dev/null; then
+if [[ -z "$AF_CMD" ]]; then
     log_error "af command not found. Please build it first: go build ./cmd/af"
     exit 4
 fi
 
-if [[ ! -f "proof.jsonl" ]]; then
-    log_error "No proof.jsonl found in $PROOF_DIR. Initialize a proof first: af init"
+log_verbose "Using af binary: $AF_CMD"
+
+if [[ ! -d "ledger" ]]; then
+    log_error "No ledger/ directory found in $PROOF_DIR. Initialize a proof first: $AF_CMD init"
     exit 4
 fi
 
 # Check proof status - returns proof state
 check_proof_status() {
     local status_json
-    status_json=$(af status -f json 2>/dev/null) || return 1
+    status_json=$($AF_CMD status -f json 2>/dev/null) || return 1
 
-    # Extract root node epistemic state
+    # Extract root node (id="1") epistemic state
     local root_state
-    root_state=$(echo "$status_json" | jq -r '.root.epistemic_state // "unknown"')
+    root_state=$(echo "$status_json" | jq -r '.nodes[] | select(.id == "1") | .epistemic_state // "unknown"')
 
-    echo "$root_state"
+    # If no root found, return unknown
+    if [[ -z "$root_state" ]]; then
+        echo "unknown"
+    else
+        echo "$root_state"
+    fi
 }
 
 # Get available jobs as JSON
 get_jobs() {
-    af jobs -f json 2>/dev/null || echo '{"prover_jobs":[],"verifier_jobs":[]}'
+    $AF_CMD jobs -f json 2>/dev/null || echo '{"prover_jobs":[],"verifier_jobs":[]}'
 }
 
 # Count jobs
@@ -233,7 +253,7 @@ build_agent_prompt() {
     local job_id="$2"
 
     local context
-    context=$(af get "$job_id" --checklist 2>/dev/null || af get "$job_id" 2>/dev/null)
+    context=$($AF_CMD get "$job_id" --checklist 2>/dev/null || $AF_CMD get "$job_id" 2>/dev/null)
 
     if [[ "$job_type" == "verifier" ]]; then
         cat <<EOF
@@ -245,14 +265,14 @@ CONTEXT:
 $context
 
 INSTRUCTIONS:
-1. First, claim the node: af claim $job_id --role verifier
+1. First, claim the node: $AF_CMD claim $job_id --role verifier
 2. Read the verification checklist carefully
 3. If the proof step is CORRECT and COMPLETE:
-   - Run: af accept $job_id --note "Verified: [brief explanation]"
+   - Run: $AF_CMD accept $job_id --note "Verified: [brief explanation]"
 4. If there is ANY issue (gap, error, unclear reasoning):
-   - Run: af challenge $job_id --target <target> --severity <severity> --reason "<detailed reason>"
+   - Run: $AF_CMD challenge $job_id --target <target> --severity <severity> --reason "<detailed reason>"
    - Use critical/major for blocking issues, minor/note for suggestions
-5. Release the claim if you cannot complete: af release $job_id
+5. Release the claim if you cannot complete: $AF_CMD release $job_id
 
 Be STRICT. Mathematical proofs must be airtight. If in doubt, challenge.
 EOF
@@ -266,13 +286,13 @@ CONTEXT:
 $context
 
 INSTRUCTIONS:
-1. First, claim the node: af claim $job_id --role prover
+1. First, claim the node: $AF_CMD claim $job_id --role prover
 2. Review the open challenges on this node
 3. For each challenge:
-   - If you can fix it: Use af refine, af amend, or other commands
-   - If the challenge is resolved: af resolve-challenge <challenge-id> --note "Fixed by..."
-   - If the proof step is actually wrong: Consider af archive or af refute
-4. After addressing challenges, release: af release $job_id
+   - If you can fix it: Use $AF_CMD refine, $AF_CMD amend, or other commands
+   - If the challenge is resolved: $AF_CMD resolve-challenge <challenge-id> --note "Fixed by..."
+   - If the proof step is actually wrong: Consider $AF_CMD archive or $AF_CMD refute
+4. After addressing challenges, release: $AF_CMD release $job_id
 
 Be THOROUGH. Address every concern raised by verifiers.
 EOF
@@ -354,12 +374,12 @@ main() {
         case "$root_state" in
             validated)
                 log_success "PROOF COMPLETE! Root node is validated."
-                af progress
+                $AF_CMD progress
                 exit 0
                 ;;
             refuted)
                 log_error "PROOF REFUTED. Root node has been refuted."
-                af status
+                $AF_CMD status
                 exit 1
                 ;;
             admitted)
@@ -378,7 +398,7 @@ main() {
             # No jobs but proof not complete - might be stuck
             log_warning "No jobs available but proof not complete"
             log "Checking for stuck states..."
-            af health || true
+            $AF_CMD health || true
 
             # Wait and retry a few times
             local stuck_retries=3
@@ -387,7 +407,7 @@ main() {
                 sleep 10
 
                 # Try to reap stale locks
-                af reap 2>/dev/null || true
+                $AF_CMD reap 2>/dev/null || true
 
                 jobs_json=$(get_jobs)
                 job_count=$(count_jobs "$jobs_json")
@@ -396,7 +416,7 @@ main() {
 
             if [[ $job_count -eq 0 ]]; then
                 log_error "Still no jobs available. Proof may be stuck."
-                af status
+                $AF_CMD status
                 exit 3
             fi
         fi
@@ -438,8 +458,8 @@ main() {
     # Reached limits
     log_warning "Reached iteration/agent limits"
     log "Final status:"
-    af progress || true
-    af status || true
+    $AF_CMD progress || true
+    $AF_CMD status || true
     exit 2
 }
 
