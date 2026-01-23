@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -112,7 +111,7 @@ func TestRequestRefinementCmd_Success(t *testing.T) {
 	if n == nil {
 		t.Fatal("Node 1 should exist")
 	}
-	if n.EpistemicState != schema.EpistemicNeedsRefinement {
+	if n.EpistemicState != service.EpistemicNeedsRefinement {
 		t.Errorf("Node 1 should be in needs_refinement state, got: %s", n.EpistemicState)
 	}
 }

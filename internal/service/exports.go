@@ -98,11 +98,12 @@ type EpistemicState = schema.EpistemicState
 
 // EpistemicState constants.
 const (
-	EpistemicPending   = schema.EpistemicPending
-	EpistemicValidated = schema.EpistemicValidated
-	EpistemicAdmitted  = schema.EpistemicAdmitted
-	EpistemicRefuted   = schema.EpistemicRefuted
-	EpistemicArchived  = schema.EpistemicArchived
+	EpistemicPending          = schema.EpistemicPending
+	EpistemicValidated        = schema.EpistemicValidated
+	EpistemicAdmitted         = schema.EpistemicAdmitted
+	EpistemicRefuted          = schema.EpistemicRefuted
+	EpistemicArchived         = schema.EpistemicArchived
+	EpistemicNeedsRefinement  = schema.EpistemicNeedsRefinement
 )
 
 // WorkflowState is an alias for schema.WorkflowState.
