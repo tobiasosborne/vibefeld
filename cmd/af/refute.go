@@ -2,13 +2,12 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobias/vibefeld/internal/cli"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -71,33 +70,14 @@ func runRefute(cmd *cobra.Command, args []string) error {
 	}
 
 	// Handle confirmation for destructive action
-	if !skipConfirm {
-		// Check if stdin is a terminal (character device, not a pipe or regular file)
-		stat, err := os.Stdin.Stat()
-		if err != nil {
-			return fmt.Errorf("stdin is not a terminal; use --yes flag to confirm refute in non-interactive mode")
-		}
-		mode := stat.Mode()
-		isTerminal := (mode & os.ModeCharDevice) != 0
-		isPipe := (mode & os.ModeNamedPipe) != 0
-
-		if !isTerminal || isPipe {
-			return fmt.Errorf("stdin is not a terminal; use --yes flag to confirm refute in non-interactive mode")
-		}
-
-		// Prompt for confirmation
-		fmt.Fprintf(cmd.OutOrStdout(), "Are you sure you want to refute node %s? [y/N]: ", nodeIDStr)
-		reader := bufio.NewReader(os.Stdin)
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			// EOF or other error means non-interactive context
-			return fmt.Errorf("stdin is not a terminal; use --yes flag to confirm refute in non-interactive mode")
-		}
-		response = strings.TrimSpace(strings.ToLower(response))
-		if response != "y" && response != "yes" {
-			fmt.Fprintln(cmd.OutOrStdout(), "Refute cancelled.")
-			return nil
-		}
+	action := fmt.Sprintf("refute node %s", nodeIDStr)
+	confirmed, err := cli.ConfirmAction(cmd.OutOrStdout(), action, skipConfirm)
+	if err != nil {
+		return fmt.Errorf("stdin is not a terminal; use --yes flag to confirm refute in non-interactive mode")
+	}
+	if !confirmed {
+		fmt.Fprintln(cmd.OutOrStdout(), "Refute cancelled.")
+		return nil
 	}
 
 	// Create proof service

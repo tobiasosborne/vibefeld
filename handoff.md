@@ -1,6 +1,29 @@
-# Handoff - 2026-01-23 (Session 218)
+# Handoff - 2026-01-23 (Session 219)
 
 ## What Was Accomplished This Session
+
+### Session 219 Summary: Extracted destructive action confirmation helper
+
+**Closed `vibefeld-1amd` - Extract destructive action confirmation to helper**
+- `internal/cli/confirm.go` (new):
+  - Added `ConfirmAction()` function for prompting user confirmation
+  - Added `ConfirmActionWithReader()` for testability
+  - Added `RequireInteractiveStdin()` for terminal detection
+  - Added `ErrNotInteractive` sentinel error
+  - Handles terminal detection, EOF, and all confirmation logic
+- `internal/cli/confirm_test.go` (new):
+  - Tests for skip confirmation, y/yes/YES confirms, n/no/empty declines
+  - Test for prompt format
+  - Test for EOF error handling
+  - Test for non-terminal stdin detection
+- `cmd/af/refute.go`:
+  - Refactored to use `cli.ConfirmAction()` (reduced ~30 lines to ~10)
+  - Removed duplicate terminal detection and prompt logic
+- `cmd/af/archive.go`:
+  - Refactored to use `cli.ConfirmAction()` (reduced ~30 lines to ~10)
+  - Removed duplicate terminal detection and prompt logic
+
+---
 
 ### Session 218 Summary: Completed request-refinement feature (CLI and re-validation)
 
@@ -102,6 +125,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 219:** Extracted destructive action confirmation helper (vibefeld-1amd)
 **Session 218:** Completed request-refinement feature (vibefeld-pno3, vibefeld-na20, vibefeld-boar)
 **Session 217:** Added RequestRefinement to proof service (vibefeld-wfkj) and render support for needs_refinement (vibefeld-0hx6)
 **Session 216:** Integrated RefinementRequested into state derivation (vibefeld-xt2o) and prover jobs (vibefeld-cvlz)
