@@ -1,32 +1,28 @@
-# Handoff - 2026-01-23 (Session 211)
+# Handoff - 2026-01-23 (Session 212)
 
 ## What Was Accomplished This Session
 
-### Session 211 Summary: Fixed P1 bug - Clock skew vulnerability
+### Session 212 Summary: Fixed P1 bug - LoadState silent error swallowing
 
-**Fixed `vibefeld-1a4m` - Lock clock skew vulnerability in IsExpired**
-- `internal/lock/lock.go`: Added `ClockSkewTolerance` constant (5 seconds)
-- Modified `IsExpired()` to use `expiresAt.Add(ClockSkewTolerance)` as threshold
-- Prevents premature lock expiration when reading process's clock is slightly ahead
-- Updated tests to use JSON unmarshaling for creating already-expired locks
-- Concurrent tests now skip in short mode due to 6-second wait requirement
+**Fixed `vibefeld-u3le` - Fix service LoadState silent error swallowing**
+- `internal/service/proof.go`: Changed `os.IsNotExist(err)` to `errors.Is(err, os.ErrNotExist)`
+- Fixed for both `loadAssumptionsIntoState` and `loadExternalsIntoState` error checks
+- `os.IsNotExist()` does NOT work with wrapped errors, only with raw `*fs.PathError`
+- `errors.Is(err, os.ErrNotExist)` properly unwraps errors per Go 1.13+ semantics
+- This prevents silent error swallowing when error wrapping is added in the future
 
 **Files Changed:**
-- `internal/lock/lock.go`: Added ClockSkewTolerance, updated IsExpired()
-- `internal/lock/lock_test.go`: Updated expiration tests, added tolerance tests
-- `internal/lock/persistent_test.go`: Added injectExpiredLock helper, updated expiration tests
-- `internal/lock/concurrent_test.go`: Added skip in short mode, increased wait times
+- `internal/service/proof.go`: Updated LoadState error handling (lines 306, 316)
 
 ## Current State
 
 ### Test Status
-- All tests pass (`go test ./... -short`)
-- Full tests pass in ~13 seconds (`go test ./internal/lock/...`)
+- All tests pass (`go test ./...`)
 - Build succeeds (`go build ./cmd/af`)
 
 ### Issue Statistics
 - **P0 bugs:** 0 remaining
-- **P1 bugs:** 1 remaining
+- **P1 bugs:** 2 remaining
   - `vibefeld-lwna` - Fix lock release-after-free semantics
   - `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2
 - **Ready for work:** 9
@@ -58,6 +54,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 212:** Fixed P1 bug vibefeld-u3le - LoadState silent error swallowing, changed os.IsNotExist to errors.Is for proper wrapped error handling
 **Session 211:** Fixed P1 bug vibefeld-1a4m - Lock clock skew vulnerability, added 5-second ClockSkewTolerance to IsExpired()
 **Session 210:** Fixed P0 bugs vibefeld-db25 (challenge severity validation) and vibefeld-vgqt (AcceptNodeWithNote children validation)
 **Session 209:** Fixed P0 bug vibefeld-lxoz - State challenge cache race condition, added sync.RWMutex to protect concurrent access

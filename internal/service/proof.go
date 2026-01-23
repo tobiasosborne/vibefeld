@@ -303,7 +303,8 @@ func (s *ProofService) LoadState() (*state.State, error) {
 	// Load assumptions from filesystem
 	if err := s.loadAssumptionsIntoState(st); err != nil {
 		// Ignore errors if directory doesn't exist
-		if !os.IsNotExist(err) {
+		// Use errors.Is for proper handling of wrapped errors
+		if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
 	}
@@ -311,7 +312,8 @@ func (s *ProofService) LoadState() (*state.State, error) {
 	// Load externals from filesystem
 	if err := s.loadExternalsIntoState(st); err != nil {
 		// Ignore errors if directory doesn't exist
-		if !os.IsNotExist(err) {
+		// Use errors.Is for proper handling of wrapped errors
+		if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
 	}
