@@ -2013,3 +2013,51 @@ func getNodeAncestorsForTaint(n *node.Node, nodeMap map[string]*node.Node) []*no
 	}
 	return ancestors
 }
+
+// RequestRefinement requests refinement on a validated node, transitioning it
+// to the needs_refinement state. This allows a verifier to reopen a validated
+// node for further proof development by provers.
+//
+// The node must be in the validated epistemic state. Only validated nodes can
+// have refinement requested. This is because refinement is a mechanism for
+// requesting additional detail or rigor on a node that was previously accepted.
+//
+// Parameters:
+//   - nodeID: The ID of the node to request refinement on
+//   - reason: An explanation of why refinement is needed (optional but recommended)
+//   - requestedBy: The agent ID of the requester (optional)
+//
+// Returns ErrNodeNotFound if the node doesn't exist.
+// Returns ErrInvalidState if the node is not in validated state.
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) RequestRefinement(nodeID types.NodeID, reason, requestedBy string) error {
+	// Load current state and capture sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Check if node exists
+	n := st.GetNode(nodeID)
+	if n == nil {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	// Validate epistemic state transition (only validated -> needs_refinement allowed)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicNeedsRefinement); err != nil {
+		return fmt.Errorf("%w: node %s is in %s state, must be %s to request refinement",
+			ErrInvalidState, nodeID.String(), n.EpistemicState, schema.EpistemicValidated)
+	}
+
+	// Get ledger and append refinement requested event with CAS
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewRefinementRequested(nodeID, reason, requestedBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "RequestRefinement")
+}

@@ -108,6 +108,7 @@ func Bold(text string) string {
 //   - admitted = cyan (accepted but with epistemic uncertainty)
 //   - refuted = red (proven false)
 //   - archived = gray (inactive/superseded)
+//   - needs_refinement = magenta (reopened for further development)
 func ColorEpistemicState(state schema.EpistemicState) string {
 	s := string(state)
 	switch state {
@@ -121,6 +122,8 @@ func ColorEpistemicState(state schema.EpistemicState) string {
 		return Red(s)
 	case schema.EpistemicArchived:
 		return Gray(s)
+	case schema.EpistemicNeedsRefinement:
+		return Magenta(s)
 	default:
 		return s
 	}

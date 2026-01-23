@@ -243,6 +243,22 @@ func TestColorEpistemicState_Archived(t *testing.T) {
 	}
 }
 
+// TestColorEpistemicState_NeedsRefinement tests needs_refinement state is magenta.
+func TestColorEpistemicState_NeedsRefinement(t *testing.T) {
+	restore := saveColorState()
+	defer restore()
+	EnableColor()
+
+	result := ColorEpistemicState(schema.EpistemicNeedsRefinement)
+
+	if !strings.Contains(result, "\033[35m") { // magenta
+		t.Errorf("needs_refinement should be magenta, got: %q", result)
+	}
+	if !strings.Contains(result, "needs_refinement") {
+		t.Errorf("result should contain 'needs_refinement', got: %q", result)
+	}
+}
+
 // TestColorEpistemicState_Unknown tests unknown state returns plain text.
 func TestColorEpistemicState_Unknown(t *testing.T) {
 	restore := saveColorState()

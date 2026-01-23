@@ -2956,3 +2956,165 @@ func TestProofService_AcceptNode_MultipleBlockingChallenges(t *testing.T) {
 		t.Errorf("AcceptNode() error should mention 2 blocking challenges, got: %v", err)
 	}
 }
+
+// =============================================================================
+// RequestRefinement Operation Tests
+// =============================================================================
+
+// TestProofService_RequestRefinement_Success verifies requesting refinement on a validated node.
+func TestProofService_RequestRefinement_Success(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1" created by Init
+	nodeID := mustParseNodeID(t, "1")
+
+	// First, validate the node so it can have refinement requested
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+
+	// Verify node is validated
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	n := st.GetNode(nodeID)
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Fatalf("Node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+
+	// Request refinement
+	err = svc.RequestRefinement(nodeID, "Need more detail on this step", "verifier-001")
+	if err != nil {
+		t.Fatalf("RequestRefinement() unexpected error: %v", err)
+	}
+
+	// Verify node is now in needs_refinement state
+	st, err = svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() after refinement unexpected error: %v", err)
+	}
+	n = st.GetNode(nodeID)
+	if n.EpistemicState != schema.EpistemicNeedsRefinement {
+		t.Errorf("Node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicNeedsRefinement)
+	}
+}
+
+// TestProofService_RequestRefinement_NonExistent verifies error when requesting refinement on non-existent node.
+func TestProofService_RequestRefinement_NonExistent(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Try to request refinement on non-existent node
+	nodeID := mustParseNodeID(t, "99")
+	err = svc.RequestRefinement(nodeID, "reason", "verifier-001")
+	if err == nil {
+		t.Error("RequestRefinement() on non-existent node expected error, got nil")
+	}
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Errorf("RequestRefinement() error = %v, want error wrapping ErrNodeNotFound", err)
+	}
+}
+
+// TestProofService_RequestRefinement_NotValidated verifies error when requesting refinement on non-validated node.
+func TestProofService_RequestRefinement_NotValidated(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1" which is in pending state (not validated)
+	nodeID := mustParseNodeID(t, "1")
+
+	// Try to request refinement on pending node - should fail
+	err = svc.RequestRefinement(nodeID, "reason", "verifier-001")
+	if err == nil {
+		t.Error("RequestRefinement() on pending node expected error, got nil")
+	}
+	if !errors.Is(err, ErrInvalidState) {
+		t.Errorf("RequestRefinement() error = %v, want error wrapping ErrInvalidState", err)
+	}
+}
+
+// TestProofService_RequestRefinement_Admitted verifies error when requesting refinement on admitted node.
+func TestProofService_RequestRefinement_Admitted(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	// Use root node "1" and admit it
+	nodeID := mustParseNodeID(t, "1")
+
+	err = svc.AdmitNode(nodeID)
+	if err != nil {
+		t.Fatalf("AdmitNode() unexpected error: %v", err)
+	}
+
+	// Try to request refinement on admitted node - should fail
+	err = svc.RequestRefinement(nodeID, "reason", "verifier-001")
+	if err == nil {
+		t.Error("RequestRefinement() on admitted node expected error, got nil")
+	}
+	if !errors.Is(err, ErrInvalidState) {
+		t.Errorf("RequestRefinement() error = %v, want error wrapping ErrInvalidState", err)
+	}
+}
+
+// TestProofService_RequestRefinement_EmptyReason verifies that empty reason is allowed.
+func TestProofService_RequestRefinement_EmptyReason(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	err = svc.Init("Test conjecture", "agent-001")
+	if err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+
+	// Validate the node first
+	err = svc.AcceptNode(nodeID)
+	if err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+
+	// Request refinement with empty reason - should succeed
+	err = svc.RequestRefinement(nodeID, "", "")
+	if err != nil {
+		t.Errorf("RequestRefinement() with empty reason unexpected error: %v", err)
+	}
+}

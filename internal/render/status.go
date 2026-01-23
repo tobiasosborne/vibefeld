@@ -92,6 +92,7 @@ func writeStateCounts(sb *strings.Builder, counts stateCounts) {
 		schema.EpistemicAdmitted,
 		schema.EpistemicRefuted,
 		schema.EpistemicArchived,
+		schema.EpistemicNeedsRefinement,
 	}
 	epistemicParts := make([]string, len(epistemicStates))
 	for i, state := range epistemicStates {
@@ -166,8 +167,10 @@ func renderJobs(sb *strings.Builder, s *state.State, nodes []*node.Node) {
 	verifierJobs := 0
 
 	for _, n := range nodes {
-		// Prover jobs: available + pending
-		if n.WorkflowState == schema.WorkflowAvailable && n.EpistemicState == schema.EpistemicPending {
+		// Prover jobs: available + (pending OR needs_refinement)
+		// Nodes in needs_refinement state need further development by provers
+		if n.WorkflowState == schema.WorkflowAvailable &&
+			(n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicNeedsRefinement) {
 			proverJobs++
 		}
 
@@ -193,6 +196,7 @@ func renderLegend(sb *strings.Builder) {
 	sb.WriteString(fmt.Sprintf("  %s   - Accepted without full verification\n", ColorEpistemicState(schema.EpistemicAdmitted)))
 	sb.WriteString(fmt.Sprintf("  %s    - Proven false\n", ColorEpistemicState(schema.EpistemicRefuted)))
 	sb.WriteString(fmt.Sprintf("  %s   - Superseded or abandoned\n", ColorEpistemicState(schema.EpistemicArchived)))
+	sb.WriteString(fmt.Sprintf("  %s - Reopened for further refinement\n", ColorEpistemicState(schema.EpistemicNeedsRefinement)))
 	sb.WriteString("\n")
 
 	// Taint states legend with color coding
@@ -247,19 +251,24 @@ func FilterUrgentNodes(s *state.State) []UrgentItem {
 		})
 	}
 
-	// 2. Prover jobs: available + pending
+	// 2. Prover jobs: available + (pending OR needs_refinement)
 	for _, n := range s.AllNodes() {
 		nodeIDStr := n.ID.String()
 		if seenNodes[nodeIDStr] {
 			continue
 		}
-		if n.WorkflowState == schema.WorkflowAvailable && n.EpistemicState == schema.EpistemicPending {
+		if n.WorkflowState == schema.WorkflowAvailable &&
+			(n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicNeedsRefinement) {
 			seenNodes[nodeIDStr] = true
+			details := "Needs refinement"
+			if n.EpistemicState == schema.EpistemicNeedsRefinement {
+				details = "Refinement requested (reopened)"
+			}
 			items = append(items, UrgentItem{
 				NodeID:    nodeIDStr,
 				Statement: n.Statement,
 				Category:  "prover_job",
-				Details:   "Needs refinement",
+				Details:   details,
 			})
 		}
 	}
