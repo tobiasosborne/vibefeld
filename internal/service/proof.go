@@ -950,6 +950,10 @@ func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
 // LoadPendingNodes returns all nodes in the pending epistemic state.
 // This is useful for the --all flag in accept command.
 // Note: This method performs I/O to load state from disk.
+//
+// Deprecated: Use LoadPendingNodeSummaries instead, which returns a view model
+// that doesn't leak internal domain types. This method is kept for backward
+// compatibility but new code should prefer the summary version.
 func (s *ProofService) LoadPendingNodes() ([]*node.Node, error) {
 	st, err := s.LoadState()
 	if err != nil {
@@ -964,6 +968,32 @@ func (s *ProofService) LoadPendingNodes() ([]*node.Node, error) {
 	}
 
 	return pending, nil
+}
+
+// LoadPendingNodeSummaries returns summaries of all nodes in the pending epistemic state.
+// This returns a view model (NodeSummary) instead of the internal node.Node type,
+// which prevents the CLI from depending on internal domain types.
+//
+// Note: This method performs I/O to load state from disk.
+func (s *ProofService) LoadPendingNodeSummaries() ([]NodeSummary, error) {
+	st, err := s.LoadState()
+	if err != nil {
+		return nil, err
+	}
+
+	var summaries []NodeSummary
+	for _, n := range st.AllNodes() {
+		if n.EpistemicState == schema.EpistemicPending {
+			summaries = append(summaries, NodeSummary{
+				ID:        n.ID,
+				Type:      n.Type,
+				Statement: n.Statement,
+				Inference: n.Inference,
+			})
+		}
+	}
+
+	return summaries, nil
 }
 
 // AdmitNode admits a node without full verification.

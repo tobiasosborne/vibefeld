@@ -1,6 +1,22 @@
-# Handoff - 2026-01-23 (Session 223)
+# Handoff - 2026-01-23 (Session 224)
 
 ## What Was Accomplished This Session
+
+### Session 224 Summary: API design - Added NodeSummary view model
+
+**Closed `vibefeld-vj5y` - API design: Service layer leaks domain types**
+- Added `NodeSummary` view model struct to `internal/service/exports.go`
+  - Contains only fields needed for CLI display: ID, Type, Statement, Inference
+  - Decouples CLI from internal `node.Node` type
+- Added `LoadPendingNodeSummaries()` method to proof.go
+  - Returns `[]NodeSummary` instead of `[]*node.Node`
+  - Prevents CLI from depending on internal domain packages
+- Updated CLI callers:
+  - `cmd/af/accept.go` - now uses `LoadPendingNodeSummaries()` for `--all` flag
+  - `cmd/af/wizard.go` - now uses `LoadPendingNodeSummaries()` for verifier review
+- Marked `LoadPendingNodes()` as deprecated (kept for backward compatibility)
+
+---
 
 ### Session 223 Summary: Refactored proof.go - Extracted cycle detection
 
@@ -17,25 +33,6 @@
 
 ---
 
-### Session 222 Summary: Module structure - Eliminated schema import
-
-**Progress on `vibefeld-jfbc` - Module structure: cmd/af imports**
-- Eliminated `schema` package import from `cmd/af`
-- Added `EpistemicNeedsRefinement` re-export to `internal/service/exports.go`
-- Imports reduced from 6 to 5 (target: 2)
-
----
-
-### Session 221 Summary: CLI API design - Simplify input methods
-
-**Closed `vibefeld-yo5e` - API design: Boolean parameters in CLI**
-- Replaced `--sibling` boolean flag with separate `refine-sibling` command
-
-**Closed `vibefeld-9b6m` - API design: Positional statement variability in refine**
-- Removed `--statement` flag (was redundant with positional args)
-
----
-
 ## Current State
 
 ### Test Status
@@ -46,24 +43,29 @@
 ### Issue Statistics
 - **P0 bugs:** 0 remaining
 - **P1 tasks:** 0 remaining
-- **P2 tasks:** 3 remaining
+- **P2 tasks:** 2 remaining
 - **Ready for work:** Run `bd ready` to see available work
 
 ### Service Package Structure
 ```
 internal/service/
-  exports.go      - Re-exported types/functions (24k)
+  exports.go      - Re-exported types/functions + NodeSummary view model (24k)
   interface.go    - Interface definitions (7k)
-  proof.go        - Main service (1990 lines, down from 2071)
-  proof_cycle.go  - Cycle detection (90 lines) [NEW]
+  proof.go        - Main service (2038 lines, +48 for new method)
+  proof_cycle.go  - Cycle detection (90 lines)
 ```
 
 ## Recommended Next Steps
 
 ### P2 Code Quality
-- `vibefeld-vj5y` - Service layer leaks domain types
 - `vibefeld-264n` - service package acts as hub (9 imports)
 - `vibefeld-qsyt` - Missing intermediate layer for service
+
+### Further API Decoupling
+The NodeSummary pattern can be extended to:
+- `LoadAvailableNodeSummaries()` - for prover job discovery
+- Add more fields to NodeSummary as needed (e.g., WorkflowState, EpistemicState)
+- Consider a similar pattern for LoadState() (returning view models instead of raw State)
 
 ### Further proof.go Refactoring
 Consider extracting more cohesive groups:
@@ -81,6 +83,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 224:** Added NodeSummary view model, LoadPendingNodeSummaries() method (vibefeld-vj5y)
 **Session 223:** Extracted cycle detection to proof_cycle.go, proof.go reduced by 81 lines (vibefeld-tk76)
 **Session 222:** Eliminated schema import, down to 5 internal imports (vibefeld-jfbc progress)
 **Session 221:** CLI API design: refine-sibling command (vibefeld-yo5e), removed --statement flag (vibefeld-9b6m)

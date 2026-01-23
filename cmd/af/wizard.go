@@ -456,8 +456,8 @@ func runWizardReview(cmd *cobra.Command, dir string) error {
 		return fmt.Errorf("no proof initialized in %s. Run 'af wizard new-proof' first", dir)
 	}
 
-	// Load pending nodes
-	pendingNodes, err := svc.LoadPendingNodes()
+	// Load pending node summaries
+	pendingSummaries, err := svc.LoadPendingNodeSummaries()
 	if err != nil {
 		return fmt.Errorf("error loading pending nodes: %w", err)
 	}
@@ -470,7 +470,7 @@ func runWizardReview(cmd *cobra.Command, dir string) error {
 	fmt.Fprintln(out, "As a verifier, your role is to review pending nodes and ensure correctness.")
 	fmt.Fprintln(out, "")
 
-	if len(pendingNodes) == 0 {
+	if len(pendingSummaries) == 0 {
 		fmt.Fprintln(out, "No pending nodes to review.")
 		fmt.Fprintln(out, "")
 		fmt.Fprintln(out, "All nodes have been reviewed. The proof may be:")
@@ -484,10 +484,10 @@ func runWizardReview(cmd *cobra.Command, dir string) error {
 		return nil
 	}
 
-	fmt.Fprintf(out, "Found %d pending node(s) awaiting review:\n", len(pendingNodes))
+	fmt.Fprintf(out, "Found %d pending node(s) awaiting review:\n", len(pendingSummaries))
 	fmt.Fprintln(out, "")
 
-	for i, n := range pendingNodes {
+	for i, n := range pendingSummaries {
 		fmt.Fprintf(out, "  [%d] Node %s\n", i+1, n.ID.String())
 		fmt.Fprintf(out, "      Type:      %s\n", n.Type)
 		// Truncate statement for display

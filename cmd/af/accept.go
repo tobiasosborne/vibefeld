@@ -127,18 +127,18 @@ func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params ac
 	examples := render.GetExamples("af accept")
 
 	if params.acceptAll {
-		pendingNodes, err := svc.LoadPendingNodes()
+		pendingSummaries, err := svc.LoadPendingNodeSummaries()
 		if err != nil {
 			return nil, fmt.Errorf("error loading pending nodes: %w", err)
 		}
 
-		if len(pendingNodes) == 0 {
+		if len(pendingSummaries) == 0 {
 			outputNoPendingNodes(cmd, params.format)
 			return nil, nil
 		}
 
-		nodeIDs := make([]service.NodeID, len(pendingNodes))
-		for i, n := range pendingNodes {
+		nodeIDs := make([]service.NodeID, len(pendingSummaries))
+		for i, n := range pendingSummaries {
 			nodeIDs[i] = n.ID
 		}
 		return nodeIDs, nil

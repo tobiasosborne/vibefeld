@@ -635,3 +635,23 @@ var Replay = state.Replay
 // ReplayWithVerify replays events and verifies state consistency.
 // Re-export of state.ReplayWithVerify.
 var ReplayWithVerify = state.ReplayWithVerify
+
+// NodeSummary is a view model containing only the fields needed for CLI display.
+// This decouples the CLI from the internal node.Node type, allowing the CLI
+// to work with a stable API without importing domain packages directly.
+//
+// This addresses the API design issue where the service layer was leaking
+// domain types (node.Node) to consumers.
+type NodeSummary struct {
+	// ID is the hierarchical node identifier.
+	ID NodeID `json:"id"`
+
+	// Type is the node type (claim, local_assume, etc.).
+	Type NodeType `json:"type"`
+
+	// Statement is the content/assertion of this node.
+	Statement string `json:"statement"`
+
+	// Inference is the inference rule used to derive this statement.
+	Inference InferenceType `json:"inference"`
+}
