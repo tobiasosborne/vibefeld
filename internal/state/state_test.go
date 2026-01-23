@@ -135,7 +135,7 @@ func TestAddAndGetExternal(t *testing.T) {
 	ext, _ := node.NewExternal("Fermat's Last Theorem", "Wiles, A. (1995)")
 
 	// Add the external
-	s.AddExternal(&ext)
+	s.AddExternal(ext)
 
 	// Retrieve the external
 	got := s.GetExternal(ext.ID)
@@ -161,7 +161,7 @@ func TestGetExternalByName(t *testing.T) {
 
 	// Create and add an external
 	ext, _ := node.NewExternal("Fermat-last-theorem", "Wiles, A. (1995)")
-	s.AddExternal(&ext)
+	s.AddExternal(ext)
 
 	// Retrieve by name
 	got := s.GetExternalByName("Fermat-last-theorem")
@@ -190,18 +190,18 @@ func TestGetExternalByName_MultipleExternals(t *testing.T) {
 	ext1, _ := node.NewExternal("ZFC", "Zermelo-Fraenkel set theory")
 	ext2, _ := node.NewExternal("AC", "Axiom of Choice")
 	ext3, _ := node.NewExternal("CH", "Continuum Hypothesis")
-	s.AddExternal(&ext1)
-	s.AddExternal(&ext2)
-	s.AddExternal(&ext3)
+	s.AddExternal(ext1)
+	s.AddExternal(ext2)
+	s.AddExternal(ext3)
 
 	// Verify each can be found by name
 	tests := []struct {
 		name     string
 		expected *node.External
 	}{
-		{"ZFC", &ext1},
-		{"AC", &ext2},
-		{"CH", &ext3},
+		{"ZFC", ext1},
+		{"AC", ext2},
+		{"CH", ext3},
 	}
 
 	for _, tt := range tests {
@@ -307,7 +307,7 @@ func TestGetNonExistentExternal(t *testing.T) {
 
 	// Add an external
 	ext, _ := node.NewExternal("Existing", "Source")
-	s.AddExternal(&ext)
+	s.AddExternal(ext)
 
 	// Try to get a different external
 	got := s.GetExternal("non-existent-id")
@@ -426,12 +426,12 @@ func TestDuplicateExternalOverwrites(t *testing.T) {
 	// Create first external and record its ID
 	ext1, _ := node.NewExternal("First", "First source")
 	originalID := ext1.ID
-	s.AddExternal(&ext1)
+	s.AddExternal(ext1)
 
 	// Create second external with same ID
 	ext2, _ := node.NewExternal("Second", "Second source")
 	ext2.ID = originalID
-	s.AddExternal(&ext2)
+	s.AddExternal(ext2)
 
 	// Retrieve and verify it's the second external
 	got := s.GetExternal(originalID)
@@ -562,7 +562,7 @@ func TestMixedEntities(t *testing.T) {
 
 	// Add an external
 	ext, _ := node.NewExternal("TestExt", "Test source")
-	s.AddExternal(&ext)
+	s.AddExternal(ext)
 
 	// Add a lemma
 	lem, err := node.NewLemma("Test lemma", nodeID)
@@ -2259,7 +2259,7 @@ func TestState_MutationSafety(t *testing.T) {
 
 		// Create and add an external
 		ext, _ := node.NewExternal("TestExt", "Original source")
-		s.AddExternal(&ext)
+		s.AddExternal(ext)
 
 		// Get the external and mutate it
 		retrieved := s.GetExternal(ext.ID)

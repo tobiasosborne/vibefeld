@@ -207,11 +207,11 @@ func TestRenderProverContext_WithExternals(t *testing.T) {
 	s.AddNode(n)
 
 	// Add externals to state
-	ext1 := node.NewExternal("Fundamental Theorem of Arithmetic", "Hardy & Wright, Chapter 1")
-	s.AddExternal(&ext1)
+	ext1, _ := node.NewExternal("Fundamental Theorem of Arithmetic", "Hardy & Wright, Chapter 1")
+	s.AddExternal(ext1)
 
-	ext2 := node.NewExternalWithNotes("Euclid's Lemma", "Elements, Book VII, Prop. 30", "Used for uniqueness of factorization")
-	s.AddExternal(&ext2)
+	ext2, _ := node.NewExternalWithNotes("Euclid's Lemma", "Elements, Book VII, Prop. 30", "Used for uniqueness of factorization")
+	s.AddExternal(ext2)
 
 	rootID, _ := types.Parse("1")
 	result := RenderProverContext(s, rootID)

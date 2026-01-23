@@ -1,18 +1,21 @@
-# Handoff - 2026-01-23 (Session 212)
+# Handoff - 2026-01-23 (Session 213)
 
 ## What Was Accomplished This Session
 
-### Session 212 Summary: Fixed P1 bug - LoadState silent error swallowing
+### Session 213 Summary: Fixed 2 P1 issues
 
-**Fixed `vibefeld-u3le` - Fix service LoadState silent error swallowing**
-- `internal/service/proof.go`: Changed `os.IsNotExist(err)` to `errors.Is(err, os.ErrNotExist)`
-- Fixed for both `loadAssumptionsIntoState` and `loadExternalsIntoState` error checks
-- `os.IsNotExist()` does NOT work with wrapped errors, only with raw `*fs.PathError`
-- `errors.Is(err, os.ErrNotExist)` properly unwraps errors per Go 1.13+ semantics
-- This prevents silent error swallowing when error wrapping is added in the future
+**Fixed `vibefeld-lwna` - Fix lock release-after-free semantics**
+- `internal/lock/lock.go`: Added `MarkReleased()` and `IsReleased()` methods to ClaimLock
+- Modified `ExpiresAt()`, `IsExpired()`, and `Refresh()` to check released flag
+- A released lock now returns zero timestamp for ExpiresAt, true for IsExpired, and error for Refresh
+- `internal/lock/manager.go`: `Release()` now calls `MarkReleased()` before deleting from map
+- `internal/lock/lock_test.go`: Added 7 new tests for release-after-free protection
 
-**Files Changed:**
-- `internal/service/proof.go`: Updated LoadState error handling (lines 306, 316)
+**Fixed `vibefeld-bs2m` - Fix node External return type consistency**
+- `internal/node/external.go`: Changed `NewExternal` and `NewExternalWithNotes` to return `(*External, error)` instead of `(External, error)`
+- This matches the pattern used by Definition and Assumption constructors
+- Updated all callers to use pointer return directly instead of `&ext` pattern
+- Files updated: external_test.go, context_validate_test.go, prover_context_test.go, verifier_context_test.go, external_io_test.go, error_injection_test.go, proof.go, state_test.go, extcite_test.go
 
 ## Current State
 
@@ -22,15 +25,13 @@
 
 ### Issue Statistics
 - **P0 bugs:** 0 remaining
-- **P1 bugs:** 2 remaining
-  - `vibefeld-lwna` - Fix lock release-after-free semantics
+- **P1 bugs:** 1 remaining
   - `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2
-- **Ready for work:** 9
+- **Ready for work:** 8
 
 ## Recommended Next Steps
 
-### P1 Bugs
-- `vibefeld-lwna` - Fix lock release-after-free semantics
+### P1 Tasks
 - `vibefeld-jfbc` - Module structure: cmd/af imports 17 packages instead of 2
 
 ### P2 Code Quality
@@ -54,6 +55,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 213:** Fixed vibefeld-lwna (lock release-after-free semantics) and vibefeld-bs2m (External return type consistency)
 **Session 212:** Fixed P1 bug vibefeld-u3le - LoadState silent error swallowing, changed os.IsNotExist to errors.Is for proper wrapped error handling
 **Session 211:** Fixed P1 bug vibefeld-1a4m - Lock clock skew vulnerability, added 5-second ClockSkewTolerance to IsExpired()
 **Session 210:** Fixed P0 bugs vibefeld-db25 (challenge severity validation) and vibefeld-vgqt (AcceptNodeWithNote children validation)

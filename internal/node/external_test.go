@@ -231,29 +231,29 @@ func TestExternal_UniqueIDs(t *testing.T) {
 func TestExternal_JSONSerialization(t *testing.T) {
 	tests := []struct {
 		name   string
-		ext    func() (node.External, error)
+		ext    func() (*node.External, error)
 	}{
 		{
 			name: "basic external",
-			ext: func() (node.External, error) {
+			ext: func() (*node.External, error) {
 				return node.NewExternal("Test Theorem", "https://example.com/proof")
 			},
 		},
 		{
 			name: "external with notes",
-			ext: func() (node.External, error) {
+			ext: func() (*node.External, error) {
 				return node.NewExternalWithNotes("Important Result", "Smith (2023)", "Key lemma for main proof")
 			},
 		},
 		{
 			name: "external with unicode",
-			ext: func() (node.External, error) {
+			ext: func() (*node.External, error) {
 				return node.NewExternalWithNotes("Gödel", "Über formal unentscheidbare Sätze", "Gödel's paper")
 			},
 		},
 		{
 			name: "external with empty notes",
-			ext: func() (node.External, error) {
+			ext: func() (*node.External, error) {
 				return node.NewExternalWithNotes("AC", "Axiom of Choice", "")
 			},
 		},
@@ -459,7 +459,7 @@ func TestExternal_Validation_Valid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var ext node.External
+			var ext *node.External
 			var createErr error
 			if tt.notes == "" {
 				ext, createErr = node.NewExternal(tt.refName, tt.source)

@@ -66,9 +66,12 @@ func createTestAssumption(t *testing.T, s *state.State, statement string) *node.
 func createTestExternal(t *testing.T, s *state.State, name, source string) *node.External {
 	t.Helper()
 
-	ext := node.NewExternal(name, source)
-	s.AddExternal(&ext)
-	return &ext
+	ext, err := node.NewExternal(name, source)
+	if err != nil {
+		t.Fatalf("NewExternal() error: %v", err)
+	}
+	s.AddExternal(ext)
+	return ext
 }
 
 // ===========================================================================

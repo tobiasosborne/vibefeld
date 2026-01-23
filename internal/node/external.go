@@ -25,12 +25,12 @@ type External struct {
 // NewExternal creates a new External reference with the given name and source.
 // The ContentHash is computed from the source, and Created is set to the current time.
 // Returns an error if random ID generation fails.
-func NewExternal(name, source string) (External, error) {
+func NewExternal(name, source string) (*External, error) {
 	id, err := generateID()
 	if err != nil {
-		return External{}, err
+		return nil, err
 	}
-	return External{
+	return &External{
 		ID:          id,
 		Name:        name,
 		Source:      source,
@@ -43,12 +43,12 @@ func NewExternal(name, source string) (External, error) {
 // NewExternalWithNotes creates a new External reference with the given name, source, and notes.
 // The ContentHash is computed from the source, and Created is set to the current time.
 // Returns an error if random ID generation fails.
-func NewExternalWithNotes(name, source, notes string) (External, error) {
+func NewExternalWithNotes(name, source, notes string) (*External, error) {
 	id, err := generateID()
 	if err != nil {
-		return External{}, err
+		return nil, err
 	}
-	return External{
+	return &External{
 		ID:          id,
 		Name:        name,
 		Source:      source,

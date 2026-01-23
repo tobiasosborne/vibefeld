@@ -29,9 +29,9 @@ func TestWriteExternal(t *testing.T) {
 			t.Fatalf("failed to create externals directory: %v", err)
 		}
 
-		external := node.NewExternal("Fermat's Last Theorem", "https://en.wikipedia.org/wiki/Fermat%27s_Last_Theorem")
+		external, _ := node.NewExternal("Fermat's Last Theorem", "https://en.wikipedia.org/wiki/Fermat%27s_Last_Theorem")
 
-		err := WriteExternal(dir, &external)
+		err := WriteExternal(dir, external)
 		if err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
@@ -74,13 +74,13 @@ func TestWriteExternal(t *testing.T) {
 			t.Fatalf("failed to create externals directory: %v", err)
 		}
 
-		external := node.NewExternalWithNotes(
+		external, _ := node.NewExternalWithNotes(
 			"Pythagorean Theorem",
 			"https://mathworld.wolfram.com/PythagoreanTheorem.html",
 			"Fundamental theorem in Euclidean geometry",
 		)
 
-		err := WriteExternal(dir, &external)
+		err := WriteExternal(dir, external)
 		if err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
@@ -106,9 +106,9 @@ func TestWriteExternal(t *testing.T) {
 		dir := t.TempDir()
 		// Do NOT pre-create externals/ directory
 
-		external := node.NewExternal("Test External", "https://example.com")
+		external, _ := node.NewExternal("Test External", "https://example.com")
 
-		err := WriteExternal(dir, &external)
+		err := WriteExternal(dir, external)
 		if err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
@@ -191,13 +191,13 @@ func TestReadExternal(t *testing.T) {
 		}
 
 		// Use WriteExternal to create, then read back
-		original := node.NewExternalWithNotes(
+		original, _ := node.NewExternalWithNotes(
 			"Riemann Hypothesis",
 			"https://www.claymath.org/millennium-problems/riemann-hypothesis",
 			"One of the Millennium Prize Problems",
 		)
 
-		if err := WriteExternal(dir, &original); err != nil {
+		if err := WriteExternal(dir, original); err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
 
@@ -298,18 +298,18 @@ func TestReadExternal_NotFound(t *testing.T) {
 // for invalid directory paths.
 func TestWriteExternal_InvalidPath(t *testing.T) {
 	t.Run("empty_path", func(t *testing.T) {
-		external := node.NewExternal("Test", "https://example.com")
+		external, _ := node.NewExternal("Test", "https://example.com")
 
-		err := WriteExternal("", &external)
+		err := WriteExternal("", external)
 		if err == nil {
 			t.Error("expected error for empty path, got nil")
 		}
 	})
 
 	t.Run("whitespace_path", func(t *testing.T) {
-		external := node.NewExternal("Test", "https://example.com")
+		external, _ := node.NewExternal("Test", "https://example.com")
 
-		err := WriteExternal("   ", &external)
+		err := WriteExternal("   ", external)
 		if err == nil {
 			t.Error("expected error for whitespace path, got nil")
 		}
@@ -324,8 +324,8 @@ func TestWriteExternal_InvalidPath(t *testing.T) {
 			t.Fatalf("failed to create test file: %v", err)
 		}
 
-		external := node.NewExternal("Test", "https://example.com")
-		err := WriteExternal(filePath, &external)
+		external, _ := node.NewExternal("Test", "https://example.com")
+		err := WriteExternal(filePath, external)
 		if err == nil {
 			t.Error("expected error when path is a file, got nil")
 		}
@@ -351,17 +351,17 @@ func TestWriteExternal_InvalidPath(t *testing.T) {
 			os.Chmod(externalsDir, 0755)
 		})
 
-		external := node.NewExternal("Test", "https://example.com")
-		err := WriteExternal(dir, &external)
+		external, _ := node.NewExternal("Test", "https://example.com")
+		err := WriteExternal(dir, external)
 		if err == nil {
 			t.Error("expected error when directory is read-only, got nil")
 		}
 	})
 
 	t.Run("null_byte_in_path", func(t *testing.T) {
-		external := node.NewExternal("Test", "https://example.com")
+		external, _ := node.NewExternal("Test", "https://example.com")
 
-		err := WriteExternal("path\x00invalid", &external)
+		err := WriteExternal("path\x00invalid", external)
 		if err == nil {
 			t.Error("expected error for path with null byte, got nil")
 		}
@@ -379,10 +379,10 @@ func TestWriteExternal_Overwrite(t *testing.T) {
 		}
 
 		// Create initial external
-		external := node.NewExternal("Original Name", "https://original.example.com")
+		external, _ := node.NewExternal("Original Name", "https://original.example.com")
 		originalID := external.ID
 
-		if err := WriteExternal(dir, &external); err != nil {
+		if err := WriteExternal(dir, external); err != nil {
 			t.Fatalf("first WriteExternal failed: %v", err)
 		}
 
@@ -430,13 +430,13 @@ func TestWriteExternal_Overwrite(t *testing.T) {
 		}
 
 		// Create two externals
-		external1 := node.NewExternal("First External", "https://first.example.com")
-		external2 := node.NewExternal("Second External", "https://second.example.com")
+		external1, _ := node.NewExternal("First External", "https://first.example.com")
+		external2, _ := node.NewExternal("Second External", "https://second.example.com")
 
-		if err := WriteExternal(dir, &external1); err != nil {
+		if err := WriteExternal(dir, external1); err != nil {
 			t.Fatalf("WriteExternal for external1 failed: %v", err)
 		}
-		if err := WriteExternal(dir, &external2); err != nil {
+		if err := WriteExternal(dir, external2); err != nil {
 			t.Fatalf("WriteExternal for external2 failed: %v", err)
 		}
 
@@ -491,8 +491,8 @@ func TestListExternals(t *testing.T) {
 			t.Fatalf("failed to create externals directory: %v", err)
 		}
 
-		external := node.NewExternal("Test External", "https://example.com")
-		if err := WriteExternal(dir, &external); err != nil {
+		external, _ := node.NewExternal("Test External", "https://example.com")
+		if err := WriteExternal(dir, external); err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
 
@@ -517,19 +517,17 @@ func TestListExternals(t *testing.T) {
 		}
 
 		// Create multiple externals
-		externals := []node.External{
-			node.NewExternal("First External", "https://first.example.com"),
-			node.NewExternal("Second External", "https://second.example.com"),
-			node.NewExternal("Third External", "https://third.example.com"),
-		}
+		ext1, _ := node.NewExternal("First External", "https://first.example.com")
+		ext2, _ := node.NewExternal("Second External", "https://second.example.com")
+		ext3, _ := node.NewExternal("Third External", "https://third.example.com")
+		externals := []*node.External{ext1, ext2, ext3}
 
 		expectedKeys := make([]string, len(externals))
-		for i, e := range externals {
-			ext := e // Create local copy for pointer
-			if err := WriteExternal(dir, &ext); err != nil {
+		for i, ext := range externals {
+			if err := WriteExternal(dir, ext); err != nil {
 				t.Fatalf("WriteExternal failed for external %d: %v", i, err)
 			}
-			expectedKeys[i] = e.ID
+			expectedKeys[i] = ext.ID
 		}
 
 		keys, err := ListExternals(dir)
@@ -560,8 +558,8 @@ func TestListExternals(t *testing.T) {
 		}
 
 		// Create a valid external
-		external := node.NewExternal("Valid External", "https://valid.example.com")
-		if err := WriteExternal(dir, &external); err != nil {
+		external, _ := node.NewExternal("Valid External", "https://valid.example.com")
+		if err := WriteExternal(dir, external); err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
 
@@ -595,8 +593,8 @@ func TestListExternals(t *testing.T) {
 		}
 
 		// Create a valid external
-		external := node.NewExternal("Valid External", "https://valid.example.com")
-		if err := WriteExternal(dir, &external); err != nil {
+		external, _ := node.NewExternal("Valid External", "https://valid.example.com")
+		if err := WriteExternal(dir, external); err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
 
@@ -646,8 +644,8 @@ func TestListExternals(t *testing.T) {
 		}
 
 		// Create a valid external
-		external := node.NewExternal("Visible External", "https://visible.example.com")
-		if err := WriteExternal(dir, &external); err != nil {
+		external, _ := node.NewExternal("Visible External", "https://visible.example.com")
+		if err := WriteExternal(dir, external); err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
 
@@ -682,8 +680,8 @@ func TestDeleteExternal(t *testing.T) {
 		}
 
 		// Create an external
-		external := node.NewExternal("To be deleted", "https://delete.example.com")
-		if err := WriteExternal(dir, &external); err != nil {
+		external, _ := node.NewExternal("To be deleted", "https://delete.example.com")
+		if err := WriteExternal(dir, external); err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
 
@@ -733,13 +731,13 @@ func TestDeleteExternal(t *testing.T) {
 		}
 
 		// Create two externals
-		external1 := node.NewExternal("First External", "https://first.example.com")
-		external2 := node.NewExternal("Second External", "https://second.example.com")
+		external1, _ := node.NewExternal("First External", "https://first.example.com")
+		external2, _ := node.NewExternal("Second External", "https://second.example.com")
 
-		if err := WriteExternal(dir, &external1); err != nil {
+		if err := WriteExternal(dir, external1); err != nil {
 			t.Fatalf("WriteExternal for external1 failed: %v", err)
 		}
-		if err := WriteExternal(dir, &external2); err != nil {
+		if err := WriteExternal(dir, external2); err != nil {
 			t.Fatalf("WriteExternal for external2 failed: %v", err)
 		}
 
@@ -816,8 +814,8 @@ func TestDeleteExternal(t *testing.T) {
 		}
 
 		// Create an external
-		external := node.NewExternal("Cannot delete", "https://nodelete.example.com")
-		if err := WriteExternal(dir, &external); err != nil {
+		external, _ := node.NewExternal("Cannot delete", "https://nodelete.example.com")
+		if err := WriteExternal(dir, external); err != nil {
 			t.Fatalf("WriteExternal failed: %v", err)
 		}
 
@@ -845,41 +843,33 @@ func TestExternalIO_RoundTrip(t *testing.T) {
 		t.Fatalf("failed to create externals directory: %v", err)
 	}
 
+	ext1, _ := node.NewExternal("Simple Name", "https://simple.example.com")
+	ext2, _ := node.NewExternalWithNotes("With Notes", "https://notes.example.com", "Some notes here")
+	ext3, _ := node.NewExternalWithNotes(
+		"Name with \"quotes\" and 'apostrophes'",
+		"https://example.com/path?query=value&other=test",
+		"Notes with newlines\nand tabs\t",
+	)
+	ext4, _ := node.NewExternalWithNotes(
+		"Unicode Name: theorem",
+		"https://example.com/math",
+		"Notes with unicode: sum from i=1 to n of x_i",
+	)
+
 	testCases := []struct {
 		name     string
-		external node.External
+		external *node.External
 	}{
-		{
-			name:     "simple_external",
-			external: node.NewExternal("Simple Name", "https://simple.example.com"),
-		},
-		{
-			name:     "with_notes",
-			external: node.NewExternalWithNotes("With Notes", "https://notes.example.com", "Some notes here"),
-		},
-		{
-			name: "with_special_characters",
-			external: node.NewExternalWithNotes(
-				"Name with \"quotes\" and 'apostrophes'",
-				"https://example.com/path?query=value&other=test",
-				"Notes with newlines\nand tabs\t",
-			),
-		},
-		{
-			name: "unicode_content",
-			external: node.NewExternalWithNotes(
-				"Unicode Name: theorem",
-				"https://example.com/math",
-				"Notes with unicode: sum from i=1 to n of x_i",
-			),
-		},
+		{name: "simple_external", external: ext1},
+		{name: "with_notes", external: ext2},
+		{name: "with_special_characters", external: ext3},
+		{name: "unicode_content", external: ext4},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Write
-			ext := tc.external // Create local copy for pointer
-			if err := WriteExternal(dir, &ext); err != nil {
+			if err := WriteExternal(dir, tc.external); err != nil {
 				t.Fatalf("WriteExternal failed: %v", err)
 			}
 
@@ -1052,10 +1042,10 @@ func TestWriteExternal_AtomicWrite(t *testing.T) {
 		t.Fatalf("failed to create externals directory: %v", err)
 	}
 
-	external := node.NewExternal("Atomic Test", "https://atomic.example.com")
+	external, _ := node.NewExternal("Atomic Test", "https://atomic.example.com")
 
 	// Write the external
-	err := WriteExternal(dir, &external)
+	err := WriteExternal(dir, external)
 	if err != nil {
 		t.Fatalf("WriteExternal failed: %v", err)
 	}
@@ -1087,9 +1077,9 @@ func TestExternalFileFormat(t *testing.T) {
 		t.Fatalf("failed to create externals directory: %v", err)
 	}
 
-	external := node.NewExternalWithNotes("Format Test", "https://format.example.com", "Test notes")
+	external, _ := node.NewExternalWithNotes("Format Test", "https://format.example.com", "Test notes")
 
-	if err := WriteExternal(dir, &external); err != nil {
+	if err := WriteExternal(dir, external); err != nil {
 		t.Fatalf("WriteExternal failed: %v", err)
 	}
 

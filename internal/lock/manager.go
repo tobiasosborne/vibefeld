@@ -50,6 +50,8 @@ func (m *Manager) Acquire(nodeID types.NodeID, owner string, timeout time.Durati
 
 // Release releases a lock by owner.
 // Returns error if: node not locked, wrong owner, empty owner.
+// The lock is marked as released before being removed from the map,
+// ensuring any held references will see the lock as released.
 func (m *Manager) Release(nodeID types.NodeID, owner string) error {
 	if owner == "" {
 		return errors.New("invalid owner: empty")
@@ -69,6 +71,9 @@ func (m *Manager) Release(nodeID types.NodeID, owner string) error {
 		return errors.New("lock owned by different owner")
 	}
 
+	// Mark the lock as released before removing from map.
+	// This ensures any held references will see the lock as released.
+	lk.MarkReleased()
 	delete(m.locks, key)
 	return nil
 }

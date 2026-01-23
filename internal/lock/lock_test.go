@@ -1184,6 +1184,207 @@ func TestUnmarshalJSON_WhitespaceOwner(t *testing.T) {
 	}
 }
 
+// TestMarkReleased_SetsReleasedFlag verifies MarkReleased sets the released flag
+func TestMarkReleased_SetsReleasedFlag(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	// Before release, IsReleased should return false
+	if lk.IsReleased() {
+		t.Error("IsReleased() = true before MarkReleased, want false")
+	}
+
+	// Mark as released
+	lk.MarkReleased()
+
+	// After release, IsReleased should return true
+	if !lk.IsReleased() {
+		t.Error("IsReleased() = false after MarkReleased, want true")
+	}
+}
+
+// TestMarkReleased_Idempotent verifies MarkReleased can be called multiple times safely
+func TestMarkReleased_Idempotent(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	// Call MarkReleased multiple times - should not panic or change behavior
+	lk.MarkReleased()
+	lk.MarkReleased()
+	lk.MarkReleased()
+
+	// Should still be released
+	if !lk.IsReleased() {
+		t.Error("IsReleased() = false after multiple MarkReleased calls, want true")
+	}
+}
+
+// TestReleasedLock_RefreshReturnsError verifies Refresh returns error on released lock
+func TestReleasedLock_RefreshReturnsError(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	lk.MarkReleased()
+
+	// Refresh should return an error on released lock
+	err = lk.Refresh(30 * time.Minute)
+	if err == nil {
+		t.Error("Refresh() on released lock expected error, got nil")
+	}
+}
+
+// TestReleasedLock_ExpiresAtReturnsZero verifies ExpiresAt returns zero on released lock
+func TestReleasedLock_ExpiresAtReturnsZero(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	lk.MarkReleased()
+
+	// ExpiresAt should return zero timestamp on released lock
+	expiresAt := lk.ExpiresAt()
+	if !expiresAt.IsZero() {
+		t.Errorf("ExpiresAt() on released lock = %v, want zero timestamp", expiresAt)
+	}
+}
+
+// TestReleasedLock_IsExpiredReturnsTrue verifies IsExpired returns true on released lock
+func TestReleasedLock_IsExpiredReturnsTrue(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	// Verify lock is not expired before release
+	if lk.IsExpired() {
+		t.Error("IsExpired() = true before release, want false")
+	}
+
+	lk.MarkReleased()
+
+	// IsExpired should return true on released lock
+	if !lk.IsExpired() {
+		t.Error("IsExpired() = false on released lock, want true")
+	}
+}
+
+// TestReleasedLock_ConcurrentAccess verifies released lock is safe for concurrent access
+func TestReleasedLock_ConcurrentAccess(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	// One goroutine marks released while others access methods
+	var wg sync.WaitGroup
+	wg.Add(11)
+
+	// Releaser goroutine
+	go func() {
+		defer wg.Done()
+		time.Sleep(5 * time.Millisecond) // Let other goroutines start
+		lk.MarkReleased()
+	}()
+
+	// Reader goroutines - continue accessing even after release
+	for i := 0; i < 10; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				_ = lk.IsReleased()
+				_ = lk.IsExpired()
+				_ = lk.ExpiresAt()
+				_ = lk.Refresh(1 * time.Hour) // May or may not return error
+			}
+		}()
+	}
+
+	wg.Wait()
+	// Test passes if no race conditions or panics occur
+}
+
+// TestManagerRelease_MarksLockReleased verifies Manager.Release marks the lock as released
+func TestManagerRelease_MarksLockReleased(t *testing.T) {
+	mgr := lock.NewManager()
+
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
+	}
+
+	// Acquire lock and keep reference
+	lk, err := mgr.Acquire(nodeID, "agent-001", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("Acquire() unexpected error: %v", err)
+	}
+
+	// Verify lock is not released
+	if lk.IsReleased() {
+		t.Error("IsReleased() = true before Release, want false")
+	}
+
+	// Release the lock
+	err = mgr.Release(nodeID, "agent-001")
+	if err != nil {
+		t.Fatalf("Release() unexpected error: %v", err)
+	}
+
+	// The held reference should now be marked as released
+	if !lk.IsReleased() {
+		t.Error("IsReleased() = false after Manager.Release, want true")
+	}
+
+	// Methods should return appropriate values for released lock
+	if !lk.IsExpired() {
+		t.Error("IsExpired() = false after Manager.Release, want true")
+	}
+
+	if !lk.ExpiresAt().IsZero() {
+		t.Errorf("ExpiresAt() = %v after Manager.Release, want zero", lk.ExpiresAt())
+	}
+
+	if err := lk.Refresh(1 * time.Hour); err == nil {
+		t.Error("Refresh() after Manager.Release expected error, got nil")
+	}
+}
+
 // TestMultipleLocks verifies multiple locks can coexist independently
 func TestMultipleLocks(t *testing.T) {
 	nodeID1, err := types.Parse("1.1")

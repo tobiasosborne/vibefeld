@@ -808,8 +808,8 @@ func TestRenderVerifierContext_WithExternals(t *testing.T) {
 	s.AddNode(n)
 
 	// Add externals to state
-	ext := node.NewExternalWithNotes("Fundamental Theorem of Arithmetic", "Hardy & Wright, Chapter 1", "Uniqueness of factorization")
-	s.AddExternal(&ext)
+	ext, _ := node.NewExternalWithNotes("Fundamental Theorem of Arithmetic", "Hardy & Wright, Chapter 1", "Uniqueness of factorization")
+	s.AddExternal(ext)
 
 	// Create a challenge about the external reference
 	challenge := makeTestChallenge("chal-ext", "1", schema.TargetContext, "External reference is incorrect")

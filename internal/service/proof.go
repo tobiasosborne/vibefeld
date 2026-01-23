@@ -1178,7 +1178,7 @@ func (s *ProofService) AddExternal(name, source string) (string, error) {
 	}
 
 	// Store in filesystem (base path is the proof directory)
-	if err := fs.WriteExternal(s.path, &ext); err != nil {
+	if err := fs.WriteExternal(s.path, ext); err != nil {
 		return "", err
 	}
 

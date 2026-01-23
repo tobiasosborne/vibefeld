@@ -92,7 +92,7 @@ func createTestAssumption(id string) *node.Assumption {
 func createTestExternal(id string) *node.External {
 	ext, _ := node.NewExternal("Test external", "https://example.com")
 	ext.ID = id // Override the auto-generated ID
-	return &ext
+	return ext
 }
 
 // createTestLemma creates a valid test lemma for use in tests.

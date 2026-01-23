@@ -111,7 +111,7 @@ func TestValidateExtCitations(t *testing.T) {
 		st := state.NewState()
 		for _, name := range extNames {
 			ext, _ := node.NewExternal(name, "Source for "+name)
-			st.AddExternal(&ext)
+			st.AddExternal(ext)
 		}
 		return st
 	}
@@ -247,7 +247,7 @@ func TestCollectMissingExtCitations(t *testing.T) {
 		st := state.NewState()
 		for _, name := range extNames {
 			ext, _ := node.NewExternal(name, "Source for "+name)
-			st.AddExternal(&ext)
+			st.AddExternal(ext)
 		}
 		return st
 	}

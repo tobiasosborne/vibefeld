@@ -80,20 +80,28 @@ func (l *ClaimLock) AcquiredAt() types.Timestamp {
 }
 
 // ExpiresAt returns the timestamp when the lock expires.
+// Returns zero timestamp if the lock has been released.
 func (l *ClaimLock) ExpiresAt() types.Timestamp {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.released {
+		return types.Timestamp{}
+	}
 	return types.FromTime(l.expiresAt)
 }
 
-// IsExpired returns true if the lock has expired.
+// IsExpired returns true if the lock has expired or been released.
 // The check includes a tolerance for clock skew between processes.
 // A lock is considered expired only if the current time is past
 // expiresAt + ClockSkewTolerance, providing a grace period that
 // prevents premature expiration due to clock drift.
+// A released lock is always considered expired.
 func (l *ClaimLock) IsExpired() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.released {
+		return true
+	}
 	return time.Now().UTC().After(l.expiresAt.Add(ClockSkewTolerance))
 }
 
@@ -102,8 +110,25 @@ func (l *ClaimLock) IsOwnedBy(owner string) bool {
 	return l.owner == owner
 }
 
+// MarkReleased marks the lock as released. This is called by Manager.Release()
+// to ensure any held references to the lock will see it as released.
+// This method is idempotent and safe for concurrent use.
+func (l *ClaimLock) MarkReleased() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.released = true
+}
+
+// IsReleased returns true if the lock has been marked as released.
+// A released lock should not be used for any operations.
+func (l *ClaimLock) IsReleased() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.released
+}
+
 // Refresh extends the lock's expiration by the given timeout from now.
-// Returns an error if timeout is zero or negative.
+// Returns an error if timeout is zero or negative, or if the lock has been released.
 func (l *ClaimLock) Refresh(timeout time.Duration) error {
 	if timeout <= 0 {
 		return errors.New("invalid timeout: must be positive")
@@ -111,6 +136,9 @@ func (l *ClaimLock) Refresh(timeout time.Duration) error {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.released {
+		return errors.New("lock has been released")
+	}
 	l.expiresAt = time.Now().UTC().Add(timeout)
 	return nil
 }
