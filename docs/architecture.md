@@ -200,10 +200,11 @@ type Node struct {
     Inference      schema.InferenceType // modus_ponens, by_definition, etc.
     Context        []string          // Referenced definitions/assumptions
     Dependencies   []types.NodeID    // Referenced node IDs
+    ValidationDeps []types.NodeID    // Cross-branch validation dependencies
     Scope          []string          // Active scope entries (e.g., "1.1.A")
 
     WorkflowState  schema.WorkflowState   // available, claimed, blocked
-    EpistemicState schema.EpistemicState  // pending, validated, admitted, refuted, archived
+    EpistemicState schema.EpistemicState  // pending, validated, needs_refinement, admitted, refuted, archived
     TaintState     TaintState             // clean, self_admitted, tainted, unresolved
 
     ContentHash    string            // SHA256 for integrity
@@ -223,6 +224,7 @@ type Challenge struct {
     TargetID   types.NodeID           // Node being challenged
     Target     schema.ChallengeTarget // statement, inference, gap, scope, etc.
     Reason     string                 // Specific objection
+    Severity   string                 // critical, major, minor, note
     Status     ChallengeStatus        // open, resolved, withdrawn, superseded
     Raised     types.Timestamp
     ResolvedAt types.Timestamp
@@ -242,9 +244,10 @@ type Event interface {
 
 // Event types:
 // ProofInitialized, NodeCreated, NodesClaimed, NodesReleased,
-// ChallengeRaised, ChallengeResolved, ChallengeWithdrawn,
-// NodeValidated, NodeAdmitted, NodeRefuted, NodeArchived,
-// TaintRecomputed, DefAdded, LemmaExtracted, ...
+// ChallengeRaised, ChallengeResolved, ChallengeWithdrawn, ChallengeSuperseded,
+// NodeValidated, NodeAdmitted, NodeRefuted, NodeArchived, NodeAmended,
+// TaintRecomputed, DefAdded, LemmaExtracted, ClaimRefreshed, LockReaped,
+// ScopeOpened, ScopeClosed, RefinementRequested
 ```
 
 ### State

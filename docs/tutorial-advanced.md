@@ -41,17 +41,9 @@ af init --conjecture "For every integer n, n is either even or odd" --author "tu
 af claim 1 --owner prover-1
 
 # Set up the case split - create case nodes as children
-af refine 1 \
-  --statement "Case 1: n mod 2 = 0" \
-  --type case \
-  --inference case_split \
-  --owner prover-1
-
-af refine 1 \
-  --statement "Case 2: n mod 2 = 1" \
-  --type case \
-  --inference case_split \
-  --owner prover-1
+af refine 1 --owner prover-1 --type case --justification case_split \
+  "Case 1: n mod 2 = 0" \
+  "Case 2: n mod 2 = 1"
 
 # Release the parent after setting up cases
 af release 1 --owner prover-1
@@ -59,30 +51,18 @@ af release 1 --owner prover-1
 # Work on Case 1: even case
 af claim 1.1 --owner prover-1
 
-af refine 1.1 \
-  --statement "If n mod 2 = 0, then n = 2k for some integer k" \
-  --inference by_definition \
-  --owner prover-1
-
-af refine 1.1 \
-  --statement "By definition of even, n is even" \
-  --inference by_definition \
-  --owner prover-1
+af refine 1.1 --owner prover-1 --justification by_definition \
+  "If n mod 2 = 0, then n = 2k for some integer k" \
+  "By definition of even, n is even"
 
 af release 1.1 --owner prover-1
 
 # Work on Case 2: odd case
 af claim 1.2 --owner prover-2
 
-af refine 1.2 \
-  --statement "If n mod 2 = 1, then n = 2k + 1 for some integer k" \
-  --inference by_definition \
-  --owner prover-2
-
-af refine 1.2 \
-  --statement "By definition of odd, n is odd" \
-  --inference by_definition \
-  --owner prover-2
+af refine 1.2 --owner prover-2 --justification by_definition \
+  "If n mod 2 = 1, then n = 2k + 1 for some integer k" \
+  "By definition of odd, n is odd"
 
 af release 1.2 --owner prover-2
 ```
@@ -116,11 +96,8 @@ af init --conjecture "The square root of 2 is irrational" --author "tutorial"
 af claim 1 --owner prover-1
 
 # Introduce the contradiction assumption with local_assume
-af refine 1 \
-  --type local_assume \
-  --statement "Assume for contradiction that sqrt(2) is rational. Then sqrt(2) = a/b where a, b are coprime integers with b != 0" \
-  --inference local_assume \
-  --owner prover-1
+af refine 1 --owner prover-1 --type local_assume --justification local_assume \
+  "Assume for contradiction that sqrt(2) is rational. Then sqrt(2) = a/b where a, b are coprime integers with b != 0"
 
 af release 1 --owner prover-1
 ```
@@ -133,38 +110,25 @@ Continue building the proof under the assumption's scope:
 # Claim the assumption node to derive consequences
 af claim 1.1 --owner prover-1
 
-af refine 1.1 \
-  --statement "Squaring both sides: 2 = a^2/b^2, therefore a^2 = 2b^2" \
-  --inference modus_ponens \
-  --dependencies 1.1 \
-  --owner prover-1
+af refine 1.1 --owner prover-1 --justification modus_ponens --depends 1.1 \
+  "Squaring both sides: 2 = a^2/b^2, therefore a^2 = 2b^2"
 
-af refine 1.1 \
-  --statement "Since a^2 = 2b^2, a^2 is even. An integer squared is even only if the integer itself is even, therefore a is even" \
-  --inference modus_ponens \
-  --owner prover-1
+af refine 1.1 --owner prover-1 --justification modus_ponens \
+  "Since a^2 = 2b^2, a^2 is even. An integer squared is even only if the integer itself is even, therefore a is even"
 
 # Continue deriving...
-af refine 1.1 \
-  --statement "Since a is even, write a = 2k for some integer k" \
-  --inference by_definition \
-  --owner prover-1
+af refine 1.1 --owner prover-1 --justification by_definition \
+  "Since a is even, write a = 2k for some integer k"
 
-af refine 1.1 \
-  --statement "Substituting: (2k)^2 = 2b^2, so 4k^2 = 2b^2, therefore b^2 = 2k^2" \
-  --inference modus_ponens \
-  --owner prover-1
+af refine 1.1 --owner prover-1 --justification modus_ponens \
+  "Substituting: (2k)^2 = 2b^2, so 4k^2 = 2b^2, therefore b^2 = 2k^2"
 
-af refine 1.1 \
-  --statement "Since b^2 = 2k^2, b^2 is even, therefore b is even" \
-  --inference modus_ponens \
-  --owner prover-1
+af refine 1.1 --owner prover-1 --justification modus_ponens \
+  "Since b^2 = 2k^2, b^2 is even, therefore b is even"
 
 # State the contradiction
-af refine 1.1 \
-  --statement "Both a and b are even, meaning they share factor 2. This contradicts the assumption that a, b are coprime" \
-  --inference contradiction \
-  --owner prover-1
+af refine 1.1 --owner prover-1 --justification contradiction \
+  "Both a and b are even, meaning they share factor 2. This contradicts the assumption that a, b are coprime"
 
 af release 1.1 --owner prover-1
 ```
@@ -176,12 +140,8 @@ After establishing the contradiction, discharge the local assumption:
 ```bash
 af claim 1 --owner prover-1
 
-af refine 1 \
-  --type local_discharge \
-  --statement "The assumption that sqrt(2) is rational leads to contradiction. Therefore sqrt(2) is irrational" \
-  --inference local_discharge \
-  --discharges 1.1.A \
-  --owner prover-1
+af refine 1 --owner prover-1 --type local_discharge --justification local_discharge \
+  "The assumption that sqrt(2) is rational leads to contradiction. Therefore sqrt(2) is irrational"
 
 af release 1 --owner prover-1
 ```
@@ -221,44 +181,29 @@ af init --conjecture "For all n >= 1, the sum 1 + 2 + ... + n = n(n+1)/2" --auth
 af claim 1 --owner prover-1
 
 # Base case
-af refine 1 \
-  --statement "Base case: When n = 1, the sum is 1. And 1(1+1)/2 = 2/2 = 1. So P(1) holds." \
-  --inference induction_base \
-  --owner prover-1
+af refine 1 --owner prover-1 --justification induction_base \
+  "Base case: When n = 1, the sum is 1. And 1(1+1)/2 = 2/2 = 1. So P(1) holds."
 
 # Inductive step setup
-af refine 1 \
-  --statement "Inductive step: Assume P(k) holds for some k >= 1, i.e., 1 + 2 + ... + k = k(k+1)/2" \
-  --type local_assume \
-  --inference local_assume \
-  --owner prover-1
+af refine 1 --owner prover-1 --type local_assume --justification local_assume \
+  "Inductive step: Assume P(k) holds for some k >= 1, i.e., 1 + 2 + ... + k = k(k+1)/2"
 
 af release 1 --owner prover-1
 
 # Prove P(k+1) using P(k)
 af claim 1.2 --owner prover-1
 
-af refine 1.2 \
-  --statement "We must show: 1 + 2 + ... + k + (k+1) = (k+1)(k+2)/2" \
-  --inference modus_ponens \
-  --owner prover-1
+af refine 1.2 --owner prover-1 --justification modus_ponens \
+  "We must show: 1 + 2 + ... + k + (k+1) = (k+1)(k+2)/2"
 
-af refine 1.2 \
-  --statement "By the inductive hypothesis: 1 + 2 + ... + k + (k+1) = k(k+1)/2 + (k+1)" \
-  --inference substitution \
-  --dependencies 1.2 \
-  --owner prover-1
+af refine 1.2 --owner prover-1 --justification substitution --depends 1.2 \
+  "By the inductive hypothesis: 1 + 2 + ... + k + (k+1) = k(k+1)/2 + (k+1)"
 
-af refine 1.2 \
-  --statement "Simplifying: k(k+1)/2 + (k+1) = k(k+1)/2 + 2(k+1)/2 = (k+1)(k+2)/2" \
-  --inference direct_computation \
-  --owner prover-1
+af refine 1.2 --owner prover-1 --justification direct_computation \
+  "Simplifying: k(k+1)/2 + (k+1) = k(k+1)/2 + 2(k+1)/2 = (k+1)(k+2)/2"
 
-af refine 1.2 \
-  --statement "Therefore P(k) implies P(k+1). By induction, P(n) holds for all n >= 1." \
-  --inference induction_step \
-  --type qed \
-  --owner prover-1
+af refine 1.2 --owner prover-1 --type qed --justification induction_step \
+  "Therefore P(k) implies P(k+1). By induction, P(n) holds for all n >= 1."
 
 af release 1.2 --owner prover-1
 ```
@@ -283,11 +228,8 @@ Definitions are globally registered, immutable references that provers and verif
 Provers can request new definitions when needed:
 
 ```bash
-# Request a definition
-af request-def "coprime" \
-  --latex "\\gcd(a, b) = 1" \
-  --source "standard number theory" \
-  --agent prover-1
+# Request a definition (prover requests while working on a node)
+af request-def --node 1.1 --term "coprime"
 ```
 
 This creates a pending definition request. A human operator must approve it:
@@ -297,12 +239,10 @@ This creates a pending definition request. A human operator must approve it:
 af pending-defs
 
 # Operator adds the definition
-af def-add "coprime" \
-  --latex "\\gcd(a, b) = 1" \
-  --source "standard number theory"
+af def-add coprime "Two integers a and b are coprime if gcd(a, b) = 1"
 
 # Or rejects it
-af def-reject REQ-001 --reason "Definition already exists as 'relatively_prime'"
+af def-reject coprime --reason "Definition already exists as 'relatively_prime'"
 ```
 
 ### Definition Dependencies
@@ -310,12 +250,8 @@ af def-reject REQ-001 --reason "Definition already exists as 'relatively_prime'"
 When creating a node, reference definitions in the `--context` flag:
 
 ```bash
-af refine 1.2 \
-  --statement "Since gcd(a, b) = 1 by assumption, a and b are coprime" \
-  --inference by_definition \
-  --context DEF-coprime,DEF-gcd \
-  --dependencies 1.1 \
-  --owner prover-1
+af refine 1.2 --owner prover-1 --justification by_definition --depends 1.1 \
+  "Since gcd(a, b) = 1 by assumption, a and b are coprime"
 ```
 
 ### Best Practices for Definitions
@@ -362,24 +298,17 @@ Lemmas can only be extracted from **validated** nodes with certain criteria:
 # First, ensure the subproof nodes are validated
 af status
 
-# Extract a lemma from validated nodes
-af extract-lemma \
-  --name "Even squares imply even roots" \
-  --root 1.3 \
-  --nodes 1.3,1.3.1,1.3.2 \
-  --agent prover-1
+# Extract a lemma from a validated node
+af extract-lemma 1.3 --statement "If n^2 is even, then n is even" --name "Even squares imply even roots"
 ```
 
 ### Using Extracted Lemmas
 
-Once extracted, reference lemmas using the `lemma_application` inference:
+Once extracted, reference lemmas in your proof:
 
 ```bash
-af refine 1.5 \
-  --statement "Since a^2 is even, a must be even by LEM-001" \
-  --inference lemma_application \
-  --context LEM-001 \
-  --owner prover-1
+af refine 1.5 --owner prover-1 --justification lemma_application \
+  "Since a^2 is even, a must be even by LEM-001"
 ```
 
 ### Viewing Lemmas
@@ -418,11 +347,11 @@ Challenges are how verifiers raise objections. Proper challenge handling is cruc
 # Claim the node first
 af claim 1.2.1 --owner verifier-1
 
-# Raise a challenge with specific target(s)
+# Raise a challenge with specific target
 af challenge 1.2.1 \
-  --objection "The claim uses p > 0 but only p > 2 is established" \
-  --targets domain,scope \
-  --agent verifier-1
+  --reason "The claim uses p > 0 but only p > 2 is established" \
+  --target domain \
+  --severity major
 
 af release 1.2.1 --owner verifier-1
 ```
@@ -436,12 +365,8 @@ af release 1.2.1 --owner verifier-1
 af claim 1.2.1 --owner prover-1
 
 # Add child nodes that address the challenge
-af refine 1.2.1 \
-  --statement "Since p > 2 by hypothesis (ASM-p-gt-2), we have p > 0 a fortiori" \
-  --inference modus_ponens \
-  --context ASM-p-gt-2 \
-  --addresses ch-003 \
-  --owner prover-1
+af refine 1.2.1 --owner prover-1 --justification modus_ponens \
+  "Since p > 2 by hypothesis, we have p > 0 a fortiori"
 
 af release 1.2.1 --owner prover-1
 ```
@@ -452,9 +377,7 @@ af release 1.2.1 --owner prover-1
 af claim 1.2.1 --owner verifier-1
 
 # Resolve the challenge after reviewing addressing nodes
-af resolve-challenge 1.2.1 \
-  --challenge ch-003 \
-  --agent verifier-1
+af resolve-challenge ch-003 --response "The prover has added node 1.2.1.1 which addresses the concern"
 
 af release 1.2.1 --owner verifier-1
 ```
@@ -462,7 +385,7 @@ af release 1.2.1 --owner verifier-1
 **Strategy 3: Verifier withdraws (challenge was unfounded)**
 
 ```bash
-af withdraw-challenge 1.2.1 --challenge ch-003 --agent verifier-1
+af withdraw-challenge ch-003
 ```
 
 ### When to Admit vs Prove
@@ -471,9 +394,12 @@ Sometimes complete proof is impractical. AF provides **escape hatches**:
 
 **Admit**: Accept without full proof (introduces taint)
 ```bash
-af admit 1.2.1 \
-  --reason "Standard result from Rudin, Theorem 4.2" \
-  --agent human-operator
+af admit 1.2.1
+```
+
+**Note:** Admitted nodes should reference external sources. Add an external reference first:
+```bash
+af add-external "Rudin Theorem 4.2" "Rudin, Principles of Mathematical Analysis, 3rd ed., Theorem 4.2"
 ```
 
 **When to admit**:
@@ -486,12 +412,9 @@ af admit 1.2.1 \
 - Descendants get `tainted` status
 - The proof is complete but not fully verified
 
-**Better alternative**: Use `external_application` with external references:
+**Better alternative**: Use external references:
 ```bash
-af add-external \
-  --doi "10.1000/example" \
-  --statement "Every continuous function on [a,b] is bounded" \
-  --agent prover-1
+af add-external "Extreme Value Theorem" "Every continuous function on [a,b] is bounded (standard analysis result)"
 ```
 
 ---
@@ -507,12 +430,12 @@ Multiple agents can work simultaneously on different nodes:
 ```bash
 # Terminal 1: Prover works on node 1.1
 af claim 1.1 --owner prover-agent-001
-af refine 1.1 --statement "..." --owner prover-agent-001
+af refine 1.1 --owner prover-agent-001 "Step 1.1 content"
 af release 1.1 --owner prover-agent-001
 
 # Terminal 2: Different prover works on node 1.2
 af claim 1.2 --owner prover-agent-002
-af refine 1.2 --statement "..." --owner prover-agent-002
+af refine 1.2 --owner prover-agent-002 "Step 1.2 content"
 af release 1.2 --owner prover-agent-002
 
 # Terminal 3: Verifier reviews completed work
@@ -700,13 +623,13 @@ Cannot accept node 1.2.1:
 
 **Solution**: Resolve the challenge first:
 ```bash
-af resolve-challenge 1.2.1 --challenge ch-003 --agent verifier-1
+af resolve-challenge ch-003 --response "Issue addressed in child nodes"
 af accept 1.2.1 --agent verifier-1
 ```
 
 **Issue: Scope violation**
 ```bash
-$ af refine 1.3 --statement "..." --dependencies 1.1.2 --owner prover-1
+$ af refine 1.3 --owner prover-1 --depends 1.1.2 "Statement depending on 1.1.2"
 Error: SCOPE_VIOLATION
 
 Node 1.3 cannot depend on 1.1.2: dependency uses scope entry 1.1.A which is not active in node's scope
@@ -718,7 +641,7 @@ Node 1.3 cannot depend on 1.1.2: dependency uses scope entry 1.1.A which is not 
 
 **Issue: Circular dependency**
 ```bash
-$ af refine 1.2 --dependencies 1.2.1 --owner prover-1
+$ af refine 1.2 --owner prover-1 --depends 1.2.1 "Statement"
 Error: DEPENDENCY_CYCLE
 
 Circular reference detected: 1.2 -> 1.2.1 -> 1.2
@@ -760,7 +683,7 @@ This recalculates taint for all nodes based on current epistemic states.
 | `af request-def` | Request a new definition |
 | `af def-add` | Add definition (operator only) |
 | `af extract-lemma` | Package validated subproof as lemma |
-| `af challenge --targets X,Y` | Raise specific challenge types |
+| `af challenge --target X` | Raise specific challenge type |
 | `af resolve-challenge` | Close a challenge as addressed |
 | `af withdraw-challenge` | Retract a challenge |
 | `af admit` | Accept without full proof (escape hatch) |

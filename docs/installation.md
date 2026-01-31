@@ -6,7 +6,7 @@ This guide covers installation, configuration, and troubleshooting for AF (Adver
 
 ### Go Version
 
-AF requires **Go 1.22 or later**. The project uses Go modules and modern language features.
+AF requires **Go 1.25.5 or later**. The project uses Go modules and modern language features.
 
 To check your Go version:
 

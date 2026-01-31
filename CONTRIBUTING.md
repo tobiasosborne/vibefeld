@@ -6,7 +6,7 @@ Welcome to Vibefeld! We appreciate your interest in contributing to the adversar
 
 ### Prerequisites
 
-- Go 1.22 or later
+- Go 1.25.5 or later
 - Git
 - [Beads](https://github.com/beads-project/beads) (`bd`) for issue tracking (optional but recommended)
 
@@ -18,7 +18,7 @@ git clone https://github.com/tobias/vibefeld.git
 cd vibefeld
 
 # Verify your Go version
-go version  # Should be 1.22+
+go version  # Should be 1.25.5+
 
 # Run tests to ensure everything works
 go test ./...

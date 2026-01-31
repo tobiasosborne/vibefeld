@@ -18,10 +18,13 @@ Multiple AI agents work concurrently as adversarial provers and verifiers, refin
 | `amend` | Amend a node's statement |
 | `challenge` | Raise a challenge against a proof node |
 | `resolve-challenge` | Resolve a challenge with a response |
+| `refine-sibling` | Add sibling node (breadth expansion) |
 | `accept` | Accept/validate proof nodes |
 | `admit` | Admit a node without full verification (introduces taint) |
 | `refute` | Refute a proof node (mark as disproven) |
 | `archive` | Archive a proof node (abandon the branch) |
+| `request-refinement` | Request deeper proof for validated node |
+| `withdraw-challenge` | Withdraw an open challenge |
 | `get` | Get node details by ID |
 | `jobs` | List available jobs |
 | `search` | Search and filter nodes |
@@ -470,17 +473,17 @@ af refine <parent-id> [statement]... [flags]
 | Flag | Short | Type | Required | Default | Description |
 |------|-------|------|----------|---------|-------------|
 | `--owner` | `-o` | string | Yes | | Agent/owner name (must match claim) |
-| `--statement` | `-s` | string | No* | | Child node statement |
+| `--statement` | `-s` | string | No | | (Deprecated) Use positional args instead |
 | `--type` | `-t` | string | No | "claim" | Node type: claim, local_assume, local_discharge, case, qed |
 | `--justification` | `-j` | string | No | "assumption" | Inference type |
 | `--depends` | | string | No | | Comma-separated node IDs this node depends on |
 | `--requires-validated` | | string | No | | Node IDs that must be validated before acceptance |
-| `--sibling` | `-b` | bool | No | false | Add sibling instead of child |
+| `--sibling` | `-b` | bool | No | false | (Deprecated) Use `refine-sibling` command instead |
 | `--children` | | string | No | | JSON array of child specifications |
 | `--dir` | `-d` | string | No | "." | Proof directory |
 | `--format` | `-f` | string | No | "text" | Output format: text or json |
 
-*Required when not using positional arguments or `--children`
+**Note:** Prefer positional arguments over `--statement`. The `--statement` flag is deprecated.
 
 **Inference Types:**
 `modus_ponens`, `modus_tollens`, `by_definition`, `assumption`, `local_assume`, `local_discharge`, `contradiction`, `universal_instantiation`, `existential_instantiation`, `universal_generalization`, `existential_generalization`
@@ -510,6 +513,46 @@ af refine 1 --owner agent1 --children '[{"statement":"Child 1"},{"statement":"Ch
 ```
 
 **Next Steps:** Use `af status` to see the updated tree, then continue refining or release the claim.
+
+---
+
+### `refine-sibling`
+
+Add a sibling node at the same level as the specified node (breadth instead of depth).
+
+**Syntax:**
+```
+af refine-sibling <node-id> [statement]... [flags]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `node-id` | Yes | The sibling node ID (new node added at same level) |
+| `statement...` | No | One or more sibling statements |
+
+**Flags:**
+
+| Flag | Short | Type | Required | Default | Description |
+|------|-------|------|----------|---------|-------------|
+| `--owner` | `-o` | string | Yes | | Agent/owner name (must match claim on parent) |
+| `--type` | `-t` | string | No | "claim" | Node type: claim, local_assume, local_discharge, case, qed |
+| `--justification` | `-j` | string | No | "assumption" | Inference type |
+| `--depends` | | string | No | | Comma-separated node IDs this node depends on |
+| `--dir` | `-d` | string | No | "." | Proof directory |
+| `--format` | `-f` | string | No | "text" | Output format |
+
+**Examples:**
+```bash
+# Add sibling to node 1.1
+af refine-sibling 1.1 "Alternative approach" --owner prover-001
+
+# Multiple siblings
+af refine-sibling 1.2 "Case A" "Case B" --owner prover-001 --type case
+```
+
+**Note:** You must hold a claim on the parent node to add siblings.
 
 ---
 
@@ -671,6 +714,78 @@ af accept 1 --agent v1 --confirm  # Accept without having raised challenges
 ```
 
 **Next Steps:** Check `af progress` to see overall completion status.
+
+---
+
+### `request-refinement`
+
+Request deeper refinement for a validated node that needs more detail.
+
+**Syntax:**
+```
+af request-refinement <node-id> [flags]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `node-id` | Yes | The validated node to request refinement for |
+
+**Flags:**
+
+| Flag | Short | Type | Required | Default | Description |
+|------|-------|------|----------|---------|-------------|
+| `--reason` | `-r` | string | No | | Reason for requesting refinement |
+| `--dir` | `-d` | string | No | "." | Proof directory path |
+| `--format` | `-f` | string | No | "text" | Output format |
+
+**Requirements:**
+- Node must be in `validated` epistemic state
+- Transitions node to `needs_refinement` state
+
+**Examples:**
+```bash
+af request-refinement 1.2 --reason "Step needs more detail"
+af request-refinement 1.1.1 -r "Please elaborate on the convergence argument"
+```
+
+**Note:** This reopens a validated node for further proof work without invalidating it.
+
+---
+
+### `withdraw-challenge`
+
+Withdraw a previously raised challenge that is still open.
+
+**Syntax:**
+```
+af withdraw-challenge <challenge-id> [flags]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `challenge-id` | Yes | The challenge ID to withdraw |
+
+**Flags:**
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--dir` | `-d` | string | "." | Proof directory path |
+| `--format` | `-f` | string | "text" | Output format |
+
+**Requirements:**
+- Challenge must be in `open` status (not already resolved or withdrawn)
+
+**Examples:**
+```bash
+af withdraw-challenge chal-001
+af withdraw-challenge ch-abc123 -d ./proof
+```
+
+**Note:** Use this when a challenge was raised in error or is no longer relevant.
 
 ---
 
@@ -2229,6 +2344,7 @@ af wizard respond-challenge
 |-------|-------------|
 | `pending` | Not yet verified (default) |
 | `validated` | Verified correct by verifier |
+| `needs_refinement` | Validated but reopened for deeper proof |
 | `admitted` | Accepted without full verification (introduces taint) |
 | `refuted` | Marked as disproven |
 | `archived` | Branch abandoned |

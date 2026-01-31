@@ -171,14 +171,17 @@ Epistemic state reflects the verification status of a node's content:
 | State | Description | Terminal? |
 |-------|-------------|-----------|
 | `pending` | Not yet evaluated by a verifier. | No |
-| `validated` | Accepted by a verifier as correct. | Yes |
+| `validated` | Accepted by a verifier as correct. | No* |
+| `needs_refinement` | Validated but reopened for deeper proof. | No |
 | `admitted` | Accepted without full verification (escape hatch). Introduces taint. | Yes |
 | `refuted` | Proven to be false. | Yes |
 | `archived` | Abandoned as a proof strategy, preserved for history. | Yes |
 
+*Note: Validated nodes can transition to `needs_refinement` via `af request-refinement`.
+
 Key points about epistemic states:
 
-1. **Only `pending` can transition**: Once a node reaches any other state, it is terminal.
+1. **Most states are terminal**: `admitted`, `refuted`, and `archived` are final states. However, `validated` can transition to `needs_refinement` when a verifier requests deeper proof.
 
 2. **Validation requires explicit acceptance**: A verifier must explicitly call `af accept` to validate a node.
 

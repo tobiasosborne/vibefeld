@@ -33,7 +33,7 @@ This separation creates rigorous verification - every claim must survive scrutin
 
 Before starting, you need:
 
-1. **Go 1.22 or later** - Check with `go version`
+1. **Go 1.25.5 or later** - Check with `go version`
 2. **A terminal** - Any Unix-like shell (bash, zsh, etc.)
 3. **Basic math knowledge** - We will prove a classic result you may have seen before
 
@@ -416,9 +416,8 @@ The prover can respond by refining the step further:
 ../af claim 1.3 --role prover --owner prover-agent-2
 
 # Add a sub-step explaining the logic
-../af refine 1.3 --owner prover-agent-2 \
-  --statement "Proof: If a were odd, then a = 2m+1 for some integer m. Then a^2 = (2m+1)^2 = 4m^2 + 4m + 1 = 2(2m^2 + 2m) + 1, which is odd. But a^2 = 2b^2 is even. Contradiction, so a must be even." \
-  --justification contradiction
+../af refine 1.3 --owner prover-agent-2 --justification contradiction \
+  "Proof: If a were odd, then a = 2m+1 for some integer m. Then a^2 = (2m+1)^2 = 4m^2 + 4m + 1 = 2(2m^2 + 2m) + 1, which is odd. But a^2 = 2b^2 is even. Contradiction, so a must be even."
 
 # Release the claim
 ../af release 1.3 --owner prover-agent-2
@@ -540,7 +539,7 @@ af release <id> --owner <name>
 
 # Add proof steps (prover)
 af refine <id> --owner <name> "Step 1" "Step 2" "Step 3"
-af refine <id> --owner <name> --statement "Single step" --justification modus_ponens
+af refine <id> --owner <name> --justification modus_ponens "Single step"
 
 # Accept a step (verifier)
 af accept <id>

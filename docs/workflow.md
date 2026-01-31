@@ -122,11 +122,8 @@ Add child nodes to develop the proof or address challenges:
 
 **Single child:**
 ```bash
-af refine 1.2.1 \
-  --owner prover-42 \
-  --statement "By definition of even, p = 2k implies 2 | p" \
-  --justification by_definition \
-  --type claim
+af refine 1.2.1 --owner prover-42 --justification by_definition --type claim \
+  "By definition of even, p = 2k implies 2 | p"
 ```
 
 **Multiple children (quick form):**
@@ -146,14 +143,14 @@ af refine 1.2.1 --owner prover-42 --children '[
 - `--type` - Node type: claim, local_assume, local_discharge, case, qed
 - `--justification` - Inference type (see `af inferences` for full list)
 - `--depends` - Comma-separated node IDs this step depends on
-- `--sibling` - Add as sibling instead of child
+- Use `af refine-sibling` to add sibling nodes instead of children
 
 ### Step 6: Request Definitions (if needed)
 
 If you need a definition that does not exist:
 
 ```bash
-af request-def "coprime" --latex "\\gcd(a, b) = 1"
+af request-def --node 1.2.1 --term "coprime"
 ```
 
 This blocks the node until a human operator provides the definition.
@@ -558,7 +555,7 @@ af release 1.2.1 --owner verifier-42
 **Step 2: Prover addresses challenge**
 ```bash
 af claim 1.2.1 --owner prover-42 --role prover
-af refine 1.2.1 --owner prover-42 --statement "Here is the missing step..."
+af refine 1.2.1 --owner prover-42 "Here is the missing step..."
 # (auto-released after refine)
 ```
 
@@ -636,15 +633,15 @@ af refute 1.2.1 --reason "Found counterexample" --yes
    ```bash
    af pending-defs
    # Human operator must resolve:
-   af def-add "term" --latex "..."
+   af def-add term "Definition content"
    # or
-   af def-reject req-xxx --reason "..."
+   af def-reject term --reason "..."
    ```
 
 2. **External reference pending verification**
    ```bash
    af pending-refs
-   af verify-external ext-xxx --status verified
+   af verify-external ext-xxx
    ```
 
 ### Stuck Proofs
@@ -721,7 +718,7 @@ af status                              # View proof state
 af jobs --role prover                  # Find prover work
 af claim <id> --owner X --role prover  # Claim for prover work
 af get <id> --full                     # Get node context
-af refine <id> --owner X --statement "..." --justification Y  # Add child
+af refine <id> --owner X --justification Y "Statement"  # Add child
 af request-def "term"                  # Request definition
 af release <id> --owner X              # Release claim
 ```

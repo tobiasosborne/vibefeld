@@ -2,7 +2,7 @@
 
 **Adversarial proof verification for the AI age.**
 
-[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![Go](https://img.shields.io/badge/Go-1.25.5-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://github.com/tobias/vibefeld)
 
@@ -83,7 +83,7 @@ go install github.com/tobias/vibefeld/cmd/af@latest
 
 ```bash
 # Initialize a proof
-af init --claim "The square root of 2 is irrational"
+af init --conjecture "The square root of 2 is irrational" --author "human"
 
 # See what needs work
 af status
@@ -91,14 +91,15 @@ af status
 # Claim the root node as a prover
 af claim 1 --role prover --owner prover-001
 
-# Break it down into steps
-af refine 1 --statement "Assume sqrt(2) = a/b where a,b are coprime"
-af refine 1 --statement "Then 2 = a^2/b^2, so a^2 = 2b^2"
-af refine 1 --statement "Therefore a^2 is even, so a is even"
+# Break it down into steps (using positional arguments)
+af refine 1 --owner prover-001 \
+  "Assume sqrt(2) = a/b where a,b are coprime" \
+  "Then 2 = a^2/b^2, so a^2 = 2b^2" \
+  "Therefore a^2 is even, so a is even"
 # ... continue building the proof
 
 # Release the claim
-af release 1
+af release 1 --owner prover-001
 
 # As a verifier, challenge weak steps
 af claim 1.3 --role verifier --owner verifier-001
@@ -155,6 +156,7 @@ The **ledger** records every event. State is always derived from history. Full a
 |-----------------|---------|
 | `pending` | Awaiting proof or verification |
 | `validated` | Accepted by adversarial verifier |
+| `needs_refinement` | Validated but reopened for deeper proof |
 | `admitted` | Assumed without full proof (introduces taint) |
 | `refuted` | Proven false |
 | `archived` | Superseded or abandoned branch |
@@ -196,9 +198,12 @@ af status --dir examples/dobinski-proof
 
 | Document | Description |
 |----------|-------------|
-| [Tutorial](docs/tutorial.md) | Step-by-step guide to your first proof |
+| [Tutorial](docs/tutorial-sqrt2.md) | Step-by-step guide to your first proof |
+| [Advanced Tutorial](docs/tutorial-advanced.md) | Complex proof patterns and workflows |
 | [CLI Reference](docs/cli-reference.md) | Complete command documentation |
+| [Concepts](docs/concepts.md) | Core concepts: states, taint, scope |
 | [Architecture](docs/architecture.md) | System design and data model |
+| [Workflow](docs/workflow.md) | Agent workflows and patterns |
 | [PRD](docs/prd.md) | Full product requirements document |
 | [Contributing](CONTRIBUTING.md) | How to contribute |
 
@@ -208,17 +213,65 @@ Or just run `af --help` -- the CLI is fully self-documenting.
 
 ## Common Commands
 
+### Setup & Status
 | Command | Description |
 |---------|-------------|
 | `af init` | Initialize a new proof workspace |
 | `af status` | Show proof tree with states and taint |
-| `af jobs` | List available prover/verifier work |
-| `af claim` | Claim a node for work |
-| `af refine` | Add child nodes to develop proof |
-| `af challenge` | Raise objection against a node |
-| `af accept` | Validate a node (verifier) |
 | `af progress` | Show completion metrics |
+| `af health` | Check for stuck states |
+| `af jobs` | List available prover/verifier work |
+
+### Agent Workflow
+| Command | Description |
+|---------|-------------|
+| `af claim` | Claim a node for work |
+| `af release` | Release a claimed node |
+| `af extend-claim` | Extend claim timeout |
+| `af agents` | Show active agents and claims |
+
+### Prover Commands
+| Command | Description |
+|---------|-------------|
+| `af refine` | Add child nodes to develop proof |
+| `af refine-sibling` | Add sibling node (breadth) |
+| `af amend` | Correct a node's statement |
+| `af request-def` | Request a definition for a term |
+| `af resolve-challenge` | Address a challenge with response |
+
+### Verifier Commands
+| Command | Description |
+|---------|-------------|
+| `af challenge` | Raise objection against a node |
+| `af accept` | Validate a node |
+| `af request-refinement` | Request deeper proof for validated node |
+| `af withdraw-challenge` | Retract an open challenge |
+
+### Escape Hatches
+| Command | Description |
+|---------|-------------|
+| `af admit` | Accept without proof (introduces taint) |
+| `af refute` | Mark node as disproven |
+| `af archive` | Abandon a proof branch |
+
+### Query & Reference
+| Command | Description |
+|---------|-------------|
+| `af get` | Get node details by ID |
+| `af deps` | Show dependency graph |
+| `af challenges` | List all challenges |
+| `af defs` / `af def` | List/show definitions |
+| `af scope` | Show scope information |
+| `af search` | Search and filter nodes |
 | `af log` | View event history |
+
+### Administration
+| Command | Description |
+|---------|-------------|
+| `af export` | Export to Markdown/LaTeX |
+| `af replay` | Rebuild state from ledger |
+| `af recompute-taint` | Force taint recalculation |
+| `af shell` | Interactive shell mode |
 
 ---
 
@@ -255,7 +308,7 @@ Every proof in Vibefeld is a record of intellectual combat: claims made, challen
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.25.5+
 - POSIX-compliant filesystem (for atomic operations)
 
 ---

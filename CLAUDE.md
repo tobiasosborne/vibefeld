@@ -4,7 +4,7 @@
 
 AF (Adversarial Proof Framework) is a CLI tool for collaborative construction of natural-language mathematical proofs. Multiple AI agents work as adversarial provers and verifiers, refining proof steps until rigorous acceptance.
 
-**Language**: Go 1.22+
+**Language**: Go 1.25.5+
 **CLI Framework**: Cobra
 **Status**: Feature-complete, in hardening phase
 
