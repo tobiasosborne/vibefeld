@@ -2,7 +2,32 @@
 
 ## What Was Accomplished This Session
 
-### Session 231 Summary: Amendment diffs (vibefeld-ndzg, P1)
+### Session 231b Summary: Status navigation (vibefeld-h4wb, P1)
+
+**Closed vibefeld-h4wb [P1]**: 5 of 6 status navigation features for large proof trees.
+
+**What was added**:
+- `af status --focus <node-id>` — show only subtree rooted at a node
+- `af status --depth N` — limit tree display depth (relative to focus if combined)
+- `af status --compact` — one line per node with challenge count badges, no legend
+- `af path <node-id>` — show ancestry chain: 1 [state] → 1.6 [state] → 1.6.4 [state]
+- `af nearby <node-id>` — show parent, siblings, and children
+
+**Filed vibefeld-xjwm [P2]**: `--critical-path` follow-up (longest unvalidated chain).
+
+**Files changed** (6 files):
+- `cmd/af/status.go` — added --focus, --depth, --compact flags
+- `cmd/af/path.go` — NEW: path command
+- `cmd/af/nearby.go` — NEW: nearby command
+- `cmd/af/status_nav_test.go` — NEW: 9 integration tests
+- `internal/render/status.go` — RenderStatusFiltered(), StatusOptions, renderCompactTree()
+- `internal/render/tree.go` — FormatNodeLine() public API
+
+**Testing**: All 27 packages pass, 9 new tests.
+
+---
+
+### Session 231a Summary: Amendment diffs (vibefeld-ndzg, P1)
 
 **Closed vibefeld-ndzg [P1]**: Implemented `af amendments` and `af diff` commands for node version history.
 
@@ -232,10 +257,10 @@ Each issue includes concrete deployment evidence (node counts, challenge counts,
 - Coverage highlights: 13 packages >80%, taint/hash/scope at 100%
 - Weak spots: `cmd/af` 23%, `render` 41.6%, `ledger` 59.3%
 
-### Issue Statistics (662 total, 650 closed)
+### Issue Statistics (663 total, 651 closed)
 - **P0 open:** 0 (all P0s closed!)
-- **P1 open:** 5 (navigation, unvalidate, evidence, failed approaches)
-- **P2 open:** 4 (workspace fork, falsification, def stress testing, strategy diversity)
+- **P1 open:** 4 (unvalidate, evidence, failed approaches, taint-trace)
+- **P2 open:** 5 (critical-path, workspace fork, falsification, def stress testing, strategy diversity)
 - **P3 open:** 3 (v0.2 designs: queries, learnings, forest)
 
 ### Codebase
@@ -282,7 +307,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
-**Session 231:** Amendment diffs (ndzg, P1) — af amendments, af diff with --version/--all/--since-challenge, 17 tests
+**Session 231:** Amendment diffs (ndzg) + status navigation (h4wb) — af amendments, af diff, af path, af nearby, --focus/--depth/--compact, 26 tests
 **Session 230:** Draft/WIP state (qcdm, P0) — new epistemic state, af refine --draft, af submit, 12 sub-issues closed
 **Session 229:** af handoff (4p8f) + challenge triage (n52z) — handoff reports, severity/summary/active-only filters
 **Session 228:** Taint fixes (w9qr, ayl9) + update-external command (hw0w), filed z8tc

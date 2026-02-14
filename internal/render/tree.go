@@ -187,6 +187,12 @@ func isDescendantOrEqual(nodeID, ancestorID types.NodeID) bool {
 	return ancestorID.IsAncestorOf(nodeID)
 }
 
+// FormatNodeLine formats a node for display with state context.
+// This is the public API for formatting a single node line.
+func FormatNodeLine(n *node.Node, s *state.State) string {
+	return formatNodeWithState(n, s)
+}
+
 // formatNode formats a single node for tree display.
 // Format: ID [epistemic/taint] statement
 // Mathematical statements are shown in full without truncation to preserve precision.

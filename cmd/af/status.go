@@ -35,13 +35,20 @@ Urgent mode:
   - Available prover jobs (nodes needing refinement)
   - Ready verifier jobs (nodes ready for review)
 
+Navigation:
+  Use --focus to show only a subtree, --depth to limit tree depth,
+  and --compact for a condensed one-line-per-node view with challenge badges.
+
 Examples:
   af status                        Show proof status in current directory
   af status --dir /path/to/proof   Show status for specific proof directory
   af status --format json          Output in JSON format
   af status --limit 10             Show only the first 10 nodes
   af status --limit 10 --offset 5  Show 10 nodes, starting from the 6th
-  af status --urgent               Show only urgent items needing attention`,
+  af status --urgent               Show only urgent items needing attention
+  af status --focus 1.6            Show only subtree rooted at node 1.6
+  af status --depth 2              Show only nodes up to depth 2
+  af status --compact              One line per node with challenge badges`,
 		RunE: runStatus,
 	}
 
@@ -50,6 +57,9 @@ Examples:
 	cmd.Flags().IntP("limit", "l", 0, "Maximum nodes to display (0 = unlimited)")
 	cmd.Flags().IntP("offset", "o", 0, "Number of nodes to skip")
 	cmd.Flags().BoolP("urgent", "u", false, "Show only urgent items (blocking challenges, available jobs)")
+	cmd.Flags().String("focus", "", "Show only subtree rooted at this node ID")
+	cmd.Flags().Int("depth", 0, "Maximum tree depth to display (0 = unlimited)")
+	cmd.Flags().BoolP("compact", "c", false, "Compact one-line-per-node view with challenge badges")
 
 	return cmd
 }
@@ -62,6 +72,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	limit := service.MustInt(cmd, "limit")
 	offset := service.MustInt(cmd, "offset")
 	urgent := service.MustBool(cmd, "urgent")
+	focus, _ := cmd.Flags().GetString("focus")
+	depth, _ := cmd.Flags().GetInt("depth")
+	compact := service.MustBool(cmd, "compact")
 
 	// Validate pagination flags
 	if limit < 0 {
@@ -69,6 +82,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 	if offset < 0 {
 		return fmt.Errorf("invalid offset %d: must be non-negative", offset)
+	}
+	if depth < 0 {
+		return fmt.Errorf("invalid depth %d: must be non-negative", depth)
 	}
 
 	// Validate format
@@ -115,15 +131,31 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Output based on format with pagination support
+	// Build render options
+	opts := render.StatusOptions{
+		Limit:   limit,
+		Offset:  offset,
+		Focus:   focus,
+		Depth:   depth,
+		Compact: compact,
+	}
+
+	// Validate focus node ID if provided
+	if focus != "" {
+		if _, err := service.ParseNodeID(focus); err != nil {
+			return fmt.Errorf("invalid focus node ID %q: %w", focus, err)
+		}
+	}
+
+	// Output based on format with navigation support
 	if format == "json" {
 		output := render.RenderStatusJSON(st, limit, offset)
 		fmt.Fprintln(cmd.OutOrStdout(), output)
 		return nil
 	}
 
-	// Text format with pagination support
-	output := render.RenderStatus(st, limit, offset)
+	// Text format with navigation support
+	output := render.RenderStatusFiltered(st, opts)
 	fmt.Fprint(cmd.OutOrStdout(), output)
 
 	return nil

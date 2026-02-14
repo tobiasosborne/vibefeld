@@ -8,6 +8,7 @@ import (
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/state"
+	"github.com/tobias/vibefeld/internal/types"
 )
 
 // RenderStatus renders the full proof status including tree, statistics, jobs, and legend.
@@ -373,6 +374,134 @@ func RenderStatusUrgent(s *state.State) string {
 		sb.WriteString(fmt.Sprintf("  Verifier jobs: %d (review and accept/challenge)\n", len(verifierJobs)))
 	}
 
+	return sb.String()
+}
+
+// StatusOptions configures the status command rendering.
+type StatusOptions struct {
+	Limit   int
+	Offset  int
+	Focus   string // Node ID to focus on (show subtree only)
+	Depth   int    // Max depth (0 = unlimited)
+	Compact bool   // One line per node with challenge badges
+}
+
+// RenderStatusFiltered renders the proof status with navigation filtering.
+func RenderStatusFiltered(s *state.State, opts StatusOptions) string {
+	if s == nil {
+		return "No proof state initialized."
+	}
+
+	nodes := s.AllNodes()
+	if len(nodes) == 0 {
+		return "No proof initialized. Run 'af init' to start a new proof."
+	}
+
+	// Apply focus filter: only include nodes in the focused subtree
+	if opts.Focus != "" {
+		focusID, _ := types.Parse(opts.Focus)
+		var filtered []*node.Node
+		for _, n := range nodes {
+			if n.ID.Equal(focusID) || focusID.IsAncestorOf(n.ID) {
+				filtered = append(filtered, n)
+			}
+		}
+		nodes = filtered
+		if len(nodes) == 0 {
+			return fmt.Sprintf("Node %s not found.\n", opts.Focus)
+		}
+	}
+
+	// Apply depth filter
+	if opts.Depth > 0 {
+		baseDepth := 0
+		if opts.Focus != "" {
+			focusID, _ := types.Parse(opts.Focus)
+			baseDepth = focusID.Depth() - 1
+		}
+		var filtered []*node.Node
+		for _, n := range nodes {
+			if n.ID.Depth()-baseDepth <= opts.Depth {
+				filtered = append(filtered, n)
+			}
+		}
+		nodes = filtered
+	}
+
+	sortNodesByID(nodes)
+
+	totalFiltered := len(nodes)
+	paginatedNodes := applyPagination(nodes, opts.Limit, opts.Offset)
+
+	var sb strings.Builder
+
+	// Header
+	if opts.Focus != "" {
+		sb.WriteString(fmt.Sprintf("=== Proof Status (subtree: %s) ===\n\n", opts.Focus))
+	} else {
+		sb.WriteString("=== Proof Status ===\n\n")
+	}
+
+	// Tree view
+	if opts.Compact {
+		sb.WriteString(renderCompactTree(s, paginatedNodes))
+	} else {
+		treeOutput := RenderTreeForNodes(s, paginatedNodes)
+		if treeOutput != "" {
+			sb.WriteString(treeOutput)
+		}
+	}
+	sb.WriteString("\n")
+
+	// Statistics
+	sb.WriteString("--- Statistics ---\n")
+	renderStatisticsWithPagination(&sb, paginatedNodes, totalFiltered, opts.Limit, opts.Offset)
+	sb.WriteString("\n")
+
+	// Jobs
+	sb.WriteString("--- Jobs ---\n")
+	renderJobs(&sb, s, paginatedNodes)
+	sb.WriteString("\n")
+
+	// Legend (skip in compact mode to save space)
+	if !opts.Compact {
+		sb.WriteString("--- Legend ---\n")
+		renderLegend(&sb)
+	}
+
+	return sb.String()
+}
+
+// renderCompactTree renders nodes in compact format: one line per node with challenge badges.
+// Format: ID [epistemic/taint] statement_preview {Nc}
+func renderCompactTree(s *state.State, nodes []*node.Node) string {
+	var sb strings.Builder
+	for _, n := range nodes {
+		depth := n.ID.Depth()
+		indent := strings.Repeat("  ", depth-1)
+		sb.WriteString(indent)
+		sb.WriteString(n.ID.String())
+		sb.WriteString(" [")
+		sb.WriteString(ColorEpistemicState(n.EpistemicState))
+		sb.WriteString("] ")
+		sb.WriteString(truncateStatement(n.Statement, 60))
+
+		// Challenge badge
+		challenges := s.GetChallengesForNode(n.ID)
+		if len(challenges) > 0 {
+			open := 0
+			for _, c := range challenges {
+				if c.Status == "open" {
+					open++
+				}
+			}
+			if open > 0 {
+				sb.WriteString(fmt.Sprintf(" %s", Red(fmt.Sprintf("{%dc}", open))))
+			}
+		}
+
+		sb.WriteString("\n")
+	}
 	return sb.String()
 }
 
