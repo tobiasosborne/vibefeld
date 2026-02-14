@@ -310,6 +310,7 @@ func TestEventFactoriesCompleteness(t *testing.T) {
 		ledger.EventNodeUnvalidated,
 		ledger.EventApproachTried,
 		ledger.EventEvidenceAttached,
+		ledger.EventHintAdded,
 	}
 
 	for _, et := range expectedTypes {
@@ -378,6 +379,11 @@ func TestParseEvent_AllEventTypes(t *testing.T) {
 			"node_submitted",
 			`{"type":"node_submitted","node_id":"1","owner":"agent1","time":"2024-01-01T00:00:00Z"}`,
 			ledger.EventNodeSubmitted,
+		},
+		{
+			"hint_added",
+			`{"type":"hint_added","node_id":"1","text":"Try induction","time":"2024-01-01T00:00:00Z"}`,
+			ledger.EventHintAdded,
 		},
 	}
 

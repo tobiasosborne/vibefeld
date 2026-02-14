@@ -76,6 +76,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyApproachTried(s, e)
 	case ledger.EvidenceAttached:
 		return applyEvidenceAttached(s, e)
+	case ledger.HintAdded:
+		return applyHintAdded(s, e)
 	case ledger.OutlineSet:
 		return applyOutlineSet(s, e)
 	case ledger.OutlineStageLinked:
@@ -531,6 +533,23 @@ func applyEvidenceAttached(s *State, e ledger.EvidenceAttached) error {
 		AttachedBy:   e.AttachedBy,
 	}
 	s.AddEvidence(e.NodeID, ev)
+	return nil
+}
+
+// applyHintAdded handles the HintAdded event.
+// This records a domain expert hint for a node.
+func applyHintAdded(s *State, e ledger.HintAdded) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+
+	hint := Hint{
+		Timestamp: e.EventTime,
+		Text:      e.Text,
+		HintBy:    e.HintBy,
+	}
+	s.AddHint(e.NodeID, hint)
 	return nil
 }
 

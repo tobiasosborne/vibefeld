@@ -84,6 +84,13 @@ type OutlineCoverageReport struct {
 	Stages            []OutlineStageCoverage `json:"stages"`
 }
 
+// Hint represents a directional hint from a domain expert attached to a node.
+type Hint struct {
+	Timestamp types.Timestamp // When the hint was added
+	Text      string          // The hint content
+	HintBy    string          // Who provided the hint
+}
+
 // FailedApproach represents an attempted but failed proof approach for a node.
 type FailedApproach struct {
 	Timestamp types.Timestamp // When the approach was attempted
@@ -133,6 +140,10 @@ type State struct {
 	// This tracks computational evidence attached to each node.
 	evidence map[string][]Evidence
 
+	// hints maps NodeID string to a slice of Hint records.
+	// This tracks domain expert hints for each node.
+	hints map[string][]Hint
+
 	// outlineStages holds the current proof outline stages.
 	// Replaced entirely on each OutlineSet event.
 	outlineStages []OutlineStage
@@ -161,6 +172,7 @@ func NewState() *State {
 		amendments:       make(map[string][]Amendment),
 		failedApproaches: make(map[string][]FailedApproach),
 		evidence:         make(map[string][]Evidence),
+		hints:            make(map[string][]Hint),
 		outlineLinks:     make(map[string]types.NodeID),
 		scopeTracker:     scope.NewTracker(),
 	}
@@ -498,6 +510,18 @@ func (s *State) AddEvidence(nodeID types.NodeID, ev Evidence) {
 // Returns an empty slice if no evidence has been attached.
 func (s *State) GetEvidence(nodeID types.NodeID) []Evidence {
 	return s.evidence[nodeID.String()]
+}
+
+// AddHint adds a hint record for a node.
+func (s *State) AddHint(nodeID types.NodeID, hint Hint) {
+	key := nodeID.String()
+	s.hints[key] = append(s.hints[key], hint)
+}
+
+// GetHints returns the list of hints for a node.
+// Returns an empty slice if no hints have been added.
+func (s *State) GetHints(nodeID types.NodeID) []Hint {
+	return s.hints[nodeID.String()]
 }
 
 // SetOutline replaces the entire outline with the given stages.

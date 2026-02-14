@@ -39,6 +39,7 @@ const (
 	EventEvidenceAttached     EventType = "evidence_attached"
 	EventOutlineSet           EventType = "outline_set"
 	EventOutlineStageLinked   EventType = "outline_stage_linked"
+	EventHintAdded            EventType = "hint_added"
 )
 
 // Event is the base interface for all ledger events.
@@ -627,6 +628,27 @@ func NewOutlineStageLinked(label string, nodeID types.NodeID) OutlineStageLinked
 		},
 		Label:  label,
 		NodeID: nodeID,
+	}
+}
+
+// HintAdded is emitted when a domain expert adds a directional hint to a node.
+type HintAdded struct {
+	BaseEvent
+	NodeID  types.NodeID `json:"node_id"`
+	Text    string       `json:"text"`
+	HintBy  string       `json:"hint_by,omitempty"`
+}
+
+// NewHintAdded creates a HintAdded event.
+func NewHintAdded(nodeID types.NodeID, text, hintBy string) HintAdded {
+	return HintAdded{
+		BaseEvent: BaseEvent{
+			EventType: EventHintAdded,
+			EventTime: types.Now(),
+		},
+		NodeID: nodeID,
+		Text:   text,
+		HintBy: hintBy,
 	}
 }
 

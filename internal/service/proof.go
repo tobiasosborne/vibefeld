@@ -2163,6 +2163,38 @@ func (s *ProofService) RecordApproachTried(nodeID types.NodeID, approach, outcom
 	return wrapSequenceMismatch(err, "RecordApproachTried")
 }
 
+// AddHint adds a directional hint from a domain expert to a node.
+// Hints provide guidance that provers must address (incorporate or explain why not).
+//
+// Returns ErrEmptyInput if the hint text is empty.
+// Returns ErrNodeNotFound if the node doesn't exist.
+// Returns ErrConcurrentModification if the proof was modified by another process.
+func (s *ProofService) AddHint(nodeID types.NodeID, text, hintBy string) error {
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("%w: hint text", ErrEmptyInput)
+	}
+
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	n := st.GetNode(nodeID)
+	if n == nil {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewHintAdded(nodeID, text, hintBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "AddHint")
+}
+
 // AttachEvidence links computational evidence (a script or result file) to a node.
 // The file content is hashed for reproducibility verification.
 //
