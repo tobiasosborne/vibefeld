@@ -40,7 +40,10 @@ type HealthStatistics struct {
 	VerifierJobs   int `json:"verifier_jobs"`
 	LeafNodes        int `json:"leaf_nodes"`
 	BlockedLeaves    int `json:"blocked_leaves"`
-	FatiguedSubtrees int `json:"fatigued_subtrees"`
+	FatiguedSubtrees         int `json:"fatigued_subtrees"`
+	OutlineStages            int `json:"outline_stages,omitempty"`
+	OutlineMapped            int `json:"outline_mapped,omitempty"`
+	OutlineCriticalUntouched int `json:"outline_critical_untouched,omitempty"`
 }
 
 // HealthReport contains the complete health assessment of a proof.
@@ -289,6 +292,26 @@ func analyzeHealth(st *service.State) *HealthReport {
 		}
 	}
 
+	// Check 5: Untouched critical outline stages
+	if st.HasOutline() {
+		coverageReport := st.GetOutlineCoverage()
+		stats.OutlineStages = coverageReport.StagesTotal
+		stats.OutlineMapped = coverageReport.StagesMapped
+		stats.OutlineCriticalUntouched = len(coverageReport.CriticalUntouched)
+
+		if len(coverageReport.CriticalUntouched) > 0 {
+			labels := strings.Join(coverageReport.CriticalUntouched, ", ")
+			blockers = append(blockers, Blocker{
+				Type:       "critical_stages_untouched",
+				Message:    fmt.Sprintf("%d critical outline stage(s) not started: %s", len(coverageReport.CriticalUntouched), labels),
+				Suggestion: "Map stages to nodes with 'af outline map' and begin work",
+			})
+			if status == HealthStatusHealthy {
+				status = HealthStatusWarning
+			}
+		}
+	}
+
 	// Ensure blockers is never nil for consistent JSON output
 	if blockers == nil {
 		blockers = []Blocker{}
@@ -343,6 +366,9 @@ func renderHealthText(report *HealthReport) string {
 	sb.WriteString(fmt.Sprintf("  Blocked leaves:   %d\n", report.Statistics.BlockedLeaves))
 	if report.Statistics.FatiguedSubtrees > 0 {
 		sb.WriteString(fmt.Sprintf("  Fatigued subtrees:%d\n", report.Statistics.FatiguedSubtrees))
+	}
+	if report.Statistics.OutlineStages > 0 {
+		sb.WriteString(fmt.Sprintf("  Outline stages:   %d (%d mapped, %d critical untouched)\n", report.Statistics.OutlineStages, report.Statistics.OutlineMapped, report.Statistics.OutlineCriticalUntouched))
 	}
 	sb.WriteString("\n")
 

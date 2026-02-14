@@ -51,6 +51,39 @@ type Evidence struct {
 	AttachedBy   string          // Who attached it
 }
 
+// OutlineStage represents a stage in the proof outline tracked in state.
+type OutlineStage struct {
+	Label       string       // User-facing key (e.g., "A", "B")
+	Description string       // What this stage covers
+	Criticality string       // "critical", "important", "routine"
+	NodeID      types.NodeID // Mapped subtree root (zero value if unmapped)
+	Mapped      bool         // Whether a node has been linked to this stage
+}
+
+// OutlineStageCoverage contains computed coverage metrics for a stage.
+type OutlineStageCoverage struct {
+	Label       string  `json:"label"`
+	Description string  `json:"description"`
+	Criticality string  `json:"criticality"`
+	Mapped      bool    `json:"mapped"`
+	NodeID      string  `json:"node_id,omitempty"`
+	Started     bool    `json:"started"`
+	TotalNodes  int     `json:"total_nodes"`
+	Validated   int     `json:"validated_nodes"`
+	Pending     int     `json:"pending_nodes"`
+	Fraction    float64 `json:"fraction_complete"`
+}
+
+// OutlineCoverageReport contains coverage metrics for the entire outline.
+type OutlineCoverageReport struct {
+	StagesTotal       int                    `json:"stages_total"`
+	StagesMapped      int                    `json:"stages_mapped"`
+	StagesStarted     int                    `json:"stages_started"`
+	StagesComplete    int                    `json:"stages_complete"`
+	CriticalUntouched []string               `json:"critical_untouched,omitempty"`
+	Stages            []OutlineStageCoverage `json:"stages"`
+}
+
 // FailedApproach represents an attempted but failed proof approach for a node.
 type FailedApproach struct {
 	Timestamp types.Timestamp // When the approach was attempted
@@ -100,6 +133,13 @@ type State struct {
 	// This tracks computational evidence attached to each node.
 	evidence map[string][]Evidence
 
+	// outlineStages holds the current proof outline stages.
+	// Replaced entirely on each OutlineSet event.
+	outlineStages []OutlineStage
+
+	// outlineLinks maps stage label to the linked node ID.
+	outlineLinks map[string]types.NodeID
+
 	// scopeTracker tracks assumption scopes and which nodes are inside them.
 	scopeTracker *scope.Tracker
 
@@ -121,6 +161,7 @@ func NewState() *State {
 		amendments:       make(map[string][]Amendment),
 		failedApproaches: make(map[string][]FailedApproach),
 		evidence:         make(map[string][]Evidence),
+		outlineLinks:     make(map[string]types.NodeID),
 		scopeTracker:     scope.NewTracker(),
 	}
 }
@@ -457,6 +498,87 @@ func (s *State) AddEvidence(nodeID types.NodeID, ev Evidence) {
 // Returns an empty slice if no evidence has been attached.
 func (s *State) GetEvidence(nodeID types.NodeID) []Evidence {
 	return s.evidence[nodeID.String()]
+}
+
+// SetOutline replaces the entire outline with the given stages.
+func (s *State) SetOutline(stages []OutlineStage) {
+	s.outlineStages = stages
+}
+
+// LinkOutlineStage links a stage label to a node ID.
+func (s *State) LinkOutlineStage(label string, nodeID types.NodeID) {
+	s.outlineLinks[label] = nodeID
+}
+
+// GetOutlineStages returns the current outline stages with link info populated.
+func (s *State) GetOutlineStages() []OutlineStage {
+	result := make([]OutlineStage, len(s.outlineStages))
+	for i, stage := range s.outlineStages {
+		result[i] = stage
+		if nodeID, ok := s.outlineLinks[stage.Label]; ok {
+			result[i].NodeID = nodeID
+			result[i].Mapped = true
+		}
+	}
+	return result
+}
+
+// HasOutline returns true if an outline has been set.
+func (s *State) HasOutline() bool {
+	return len(s.outlineStages) > 0
+}
+
+// GetOutlineCoverage computes coverage metrics for the outline.
+func (s *State) GetOutlineCoverage() *OutlineCoverageReport {
+	stages := s.GetOutlineStages()
+	report := &OutlineCoverageReport{
+		StagesTotal: len(stages),
+	}
+
+	allNodes := s.AllNodes()
+
+	for _, stage := range stages {
+		cov := OutlineStageCoverage{
+			Label:       stage.Label,
+			Description: stage.Description,
+			Criticality: stage.Criticality,
+			Mapped:      stage.Mapped,
+		}
+
+		if stage.Mapped {
+			report.StagesMapped++
+			cov.NodeID = stage.NodeID.String()
+
+			for _, n := range allNodes {
+				if n.ID.Equal(stage.NodeID) || stage.NodeID.IsAncestorOf(n.ID) {
+					cov.TotalNodes++
+					switch n.EpistemicState {
+					case schema.EpistemicValidated, schema.EpistemicAdmitted:
+						cov.Validated++
+					case schema.EpistemicPending, schema.EpistemicDraft, schema.EpistemicNeedsRefinement:
+						cov.Pending++
+					}
+				}
+			}
+
+			if cov.TotalNodes > 0 {
+				cov.Started = true
+				report.StagesStarted++
+				cov.Fraction = float64(cov.Validated) / float64(cov.TotalNodes)
+				if cov.Validated == cov.TotalNodes {
+					report.StagesComplete++
+				}
+			}
+		}
+
+		if stage.Criticality == "critical" && !cov.Started {
+			report.CriticalUntouched = append(report.CriticalUntouched, stage.Label)
+		}
+
+		report.Stages = append(report.Stages, cov)
+	}
+
+	return report
 }
 
 // OpenScope opens a new assumption scope at the given node.

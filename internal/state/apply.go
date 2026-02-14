@@ -76,6 +76,10 @@ func Apply(s *State, event ledger.Event) error {
 		return applyApproachTried(s, e)
 	case ledger.EvidenceAttached:
 		return applyEvidenceAttached(s, e)
+	case ledger.OutlineSet:
+		return applyOutlineSet(s, e)
+	case ledger.OutlineStageLinked:
+		return applyOutlineStageLinked(s, e)
 	case ledger.LockReaped:
 		return nil // lock reaping is informational, no state change needed
 	default:
@@ -527,5 +531,27 @@ func applyEvidenceAttached(s *State, e ledger.EvidenceAttached) error {
 		AttachedBy:   e.AttachedBy,
 	}
 	s.AddEvidence(e.NodeID, ev)
+	return nil
+}
+
+// applyOutlineSet handles the OutlineSet event.
+// This replaces the entire outline with the new set of stages.
+func applyOutlineSet(s *State, e ledger.OutlineSet) error {
+	stages := make([]OutlineStage, len(e.Stages))
+	for i, stage := range e.Stages {
+		stages[i] = OutlineStage{
+			Label:       stage.Label,
+			Description: stage.Description,
+			Criticality: stage.Criticality,
+		}
+	}
+	s.SetOutline(stages)
+	return nil
+}
+
+// applyOutlineStageLinked handles the OutlineStageLinked event.
+// This links a stage label to a subtree root node.
+func applyOutlineStageLinked(s *State, e ledger.OutlineStageLinked) error {
+	s.LinkOutlineStage(e.Label, e.NodeID)
 	return nil
 }

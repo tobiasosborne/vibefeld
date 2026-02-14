@@ -2208,3 +2208,98 @@ func (s *ProofService) AttachEvidence(nodeID types.NodeID, filePath, evidenceTyp
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
 	return wrapSequenceMismatch(err, "AttachEvidence")
 }
+
+// SetOutline sets the proof outline with the given stages.
+// This replaces any previous outline entirely.
+func (s *ProofService) SetOutline(stages []ledger.OutlineStage, setBy string) error {
+	if len(stages) == 0 {
+		return fmt.Errorf("%w: at least one stage is required", ErrEmptyInput)
+	}
+
+	seen := make(map[string]bool)
+	for i, stage := range stages {
+		if strings.TrimSpace(stage.Label) == "" {
+			return fmt.Errorf("%w: stage %d label cannot be empty", ErrEmptyInput, i+1)
+		}
+		if strings.TrimSpace(stage.Description) == "" {
+			return fmt.Errorf("%w: stage %d description cannot be empty", ErrEmptyInput, i+1)
+		}
+		crit := strings.ToLower(stage.Criticality)
+		if crit != "critical" && crit != "important" && crit != "routine" {
+			return fmt.Errorf("stage %d: invalid criticality %q (must be critical, important, or routine)", i+1, stage.Criticality)
+		}
+		stages[i].Criticality = crit
+		if seen[stage.Label] {
+			return fmt.Errorf("duplicate stage label: %q", stage.Label)
+		}
+		seen[stage.Label] = true
+	}
+
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewOutlineSet(stages, setBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "SetOutline")
+}
+
+// LinkOutlineStage maps an outline stage to a subtree root node.
+func (s *ProofService) LinkOutlineStage(label string, nodeID types.NodeID) error {
+	if strings.TrimSpace(label) == "" {
+		return fmt.Errorf("%w: label", ErrEmptyInput)
+	}
+
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	if !st.HasOutline() {
+		return fmt.Errorf("no outline set; use 'af outline set' first")
+	}
+
+	found := false
+	for _, stage := range st.GetOutlineStages() {
+		if stage.Label == label {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("outline stage %q not found in current outline", label)
+	}
+
+	if st.GetNode(nodeID) == nil {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewOutlineStageLinked(label, nodeID)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "LinkOutlineStage")
+}
+
+// GetOutlineCoverage loads state and returns the outline coverage report.
+func (s *ProofService) GetOutlineCoverage() (*state.OutlineCoverageReport, error) {
+	st, err := s.LoadState()
+	if err != nil {
+		return nil, err
+	}
+	if !st.HasOutline() {
+		return nil, fmt.Errorf("no outline set; use 'af outline set' first")
+	}
+	return st.GetOutlineCoverage(), nil
+}

@@ -37,6 +37,8 @@ const (
 	EventNodeUnvalidated      EventType = "node_unvalidated"
 	EventApproachTried        EventType = "approach_tried"
 	EventEvidenceAttached     EventType = "evidence_attached"
+	EventOutlineSet           EventType = "outline_set"
+	EventOutlineStageLinked   EventType = "outline_stage_linked"
 )
 
 // Event is the base interface for all ledger events.
@@ -579,6 +581,52 @@ func NewEvidenceAttached(nodeID types.NodeID, filePath, contentHash, evidenceTyp
 		EvidenceType: evidenceType,
 		Description:  description,
 		AttachedBy:   attachedBy,
+	}
+}
+
+// OutlineStage represents a single stage in a proof outline.
+type OutlineStage struct {
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Criticality string `json:"criticality"` // "critical", "important", "routine"
+}
+
+// OutlineSet is emitted when a proof outline is defined or replaced.
+// This replaces any previous outline entirely.
+type OutlineSet struct {
+	BaseEvent
+	Stages []OutlineStage `json:"stages"`
+	SetBy  string         `json:"set_by,omitempty"`
+}
+
+// NewOutlineSet creates an OutlineSet event.
+func NewOutlineSet(stages []OutlineStage, setBy string) OutlineSet {
+	return OutlineSet{
+		BaseEvent: BaseEvent{
+			EventType: EventOutlineSet,
+			EventTime: types.Now(),
+		},
+		Stages: stages,
+		SetBy:  setBy,
+	}
+}
+
+// OutlineStageLinked is emitted when an outline stage is mapped to a subtree root node.
+type OutlineStageLinked struct {
+	BaseEvent
+	Label  string       `json:"label"`
+	NodeID types.NodeID `json:"node_id"`
+}
+
+// NewOutlineStageLinked creates an OutlineStageLinked event.
+func NewOutlineStageLinked(label string, nodeID types.NodeID) OutlineStageLinked {
+	return OutlineStageLinked{
+		BaseEvent: BaseEvent{
+			EventType: EventOutlineStageLinked,
+			EventTime: types.Now(),
+		},
+		Label:  label,
+		NodeID: nodeID,
 	}
 }
 

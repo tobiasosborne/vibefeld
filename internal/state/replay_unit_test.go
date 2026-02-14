@@ -68,6 +68,8 @@ func TestExtractEventType_AllKnownTypes(t *testing.T) {
 		{"claim_refreshed", `{"type":"claim_refreshed"}`, ledger.EventClaimRefreshed},
 		{"approach_tried", `{"type":"approach_tried"}`, ledger.EventApproachTried},
 		{"evidence_attached", `{"type":"evidence_attached"}`, ledger.EventEvidenceAttached},
+		{"outline_set", `{"type":"outline_set"}`, ledger.EventOutlineSet},
+		{"outline_stage_linked", `{"type":"outline_stage_linked"}`, ledger.EventOutlineStageLinked},
 	}
 
 	for _, tt := range tests {
