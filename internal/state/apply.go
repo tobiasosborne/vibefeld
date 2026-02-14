@@ -80,6 +80,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyHintAdded(s, e)
 	case ledger.NodeVetoed:
 		return applyNodeVetoed(s, e)
+	case ledger.StrategyProposed:
+		return applyStrategyProposed(s, e)
 	case ledger.OutlineSet:
 		return applyOutlineSet(s, e)
 	case ledger.OutlineStageLinked:
@@ -542,6 +544,25 @@ func applyApproachTried(s *State, e ledger.ApproachTried) error {
 		TriedBy:   e.TriedBy,
 	}
 	s.AddFailedApproach(e.NodeID, approach)
+	return nil
+}
+
+// applyStrategyProposed handles the StrategyProposed event.
+// This records a proposed proof strategy for a node.
+func applyStrategyProposed(s *State, e ledger.StrategyProposed) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+
+	ps := ProposedStrategy{
+		Timestamp:  e.EventTime,
+		Strategy:   e.Strategy,
+		Novelty:    e.Novelty,
+		Rationale:  e.Rationale,
+		ProposedBy: e.ProposedBy,
+	}
+	s.AddProposedStrategy(e.NodeID, ps)
 	return nil
 }
 

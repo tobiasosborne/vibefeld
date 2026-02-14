@@ -41,6 +41,7 @@ const (
 	EventOutlineStageLinked   EventType = "outline_stage_linked"
 	EventHintAdded            EventType = "hint_added"
 	EventNodeVetoed           EventType = "node_vetoed"
+	EventStrategyProposed     EventType = "strategy_proposed"
 )
 
 // Event is the base interface for all ledger events.
@@ -673,6 +674,32 @@ func NewNodeVetoed(nodeID types.NodeID, reason, vetoedBy string) NodeVetoed {
 		NodeID:   nodeID,
 		Reason:   reason,
 		VetoedBy: vetoedBy,
+	}
+}
+
+// StrategyProposed is emitted when a prover proposes a proof strategy for a node.
+// This records the strategy, its novelty assessment, and rationale for comparison.
+type StrategyProposed struct {
+	BaseEvent
+	NodeID     types.NodeID `json:"node_id"`
+	Strategy   string       `json:"strategy"`
+	Novelty    string       `json:"novelty"`
+	Rationale  string       `json:"rationale,omitempty"`
+	ProposedBy string       `json:"proposed_by,omitempty"`
+}
+
+// NewStrategyProposed creates a StrategyProposed event.
+func NewStrategyProposed(nodeID types.NodeID, strategy, novelty, rationale, proposedBy string) StrategyProposed {
+	return StrategyProposed{
+		BaseEvent: BaseEvent{
+			EventType: EventStrategyProposed,
+			EventTime: types.Now(),
+		},
+		NodeID:     nodeID,
+		Strategy:   strategy,
+		Novelty:    novelty,
+		Rationale:  rationale,
+		ProposedBy: proposedBy,
 	}
 }
 

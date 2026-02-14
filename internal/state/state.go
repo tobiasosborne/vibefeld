@@ -99,6 +99,15 @@ type FailedApproach struct {
 	TriedBy   string          // Who attempted it
 }
 
+// ProposedStrategy represents a proof strategy proposed for a node.
+type ProposedStrategy struct {
+	Timestamp  types.Timestamp // When the strategy was proposed
+	Strategy   string          // Description of the strategy
+	Novelty    string          // Novelty assessment: low, medium, high
+	Rationale  string          // Why this strategy might work
+	ProposedBy string          // Who proposed it
+}
+
 // State represents the current derived state of a proof.
 // It is reconstructed by replaying ledger events.
 type State struct {
@@ -144,6 +153,10 @@ type State struct {
 	// This tracks domain expert hints for each node.
 	hints map[string][]Hint
 
+	// proposedStrategies maps NodeID string to a slice of ProposedStrategy records.
+	// This tracks proof strategies proposed for each node.
+	proposedStrategies map[string][]ProposedStrategy
+
 	// outlineStages holds the current proof outline stages.
 	// Replaced entirely on each OutlineSet event.
 	outlineStages []OutlineStage
@@ -172,7 +185,8 @@ func NewState() *State {
 		amendments:       make(map[string][]Amendment),
 		failedApproaches: make(map[string][]FailedApproach),
 		evidence:         make(map[string][]Evidence),
-		hints:            make(map[string][]Hint),
+		hints:              make(map[string][]Hint),
+		proposedStrategies: make(map[string][]ProposedStrategy),
 		outlineLinks:     make(map[string]types.NodeID),
 		scopeTracker:     scope.NewTracker(),
 	}
@@ -498,6 +512,18 @@ func (s *State) AddFailedApproach(nodeID types.NodeID, approach FailedApproach) 
 // Returns an empty slice if no approaches have been tried.
 func (s *State) GetFailedApproaches(nodeID types.NodeID) []FailedApproach {
 	return s.failedApproaches[nodeID.String()]
+}
+
+// AddProposedStrategy adds a proposed strategy record for a node.
+func (s *State) AddProposedStrategy(nodeID types.NodeID, ps ProposedStrategy) {
+	key := nodeID.String()
+	s.proposedStrategies[key] = append(s.proposedStrategies[key], ps)
+}
+
+// GetProposedStrategies returns the list of proposed strategies for a node.
+// Returns an empty slice if no strategies have been proposed.
+func (s *State) GetProposedStrategies(nodeID types.NodeID) []ProposedStrategy {
+	return s.proposedStrategies[nodeID.String()]
 }
 
 // AddEvidence adds an evidence record for a node.

@@ -312,6 +312,7 @@ func TestEventFactoriesCompleteness(t *testing.T) {
 		ledger.EventEvidenceAttached,
 		ledger.EventHintAdded,
 		ledger.EventNodeVetoed,
+		ledger.EventStrategyProposed,
 	}
 
 	for _, et := range expectedTypes {
@@ -390,6 +391,11 @@ func TestParseEvent_AllEventTypes(t *testing.T) {
 			"node_vetoed",
 			`{"type":"node_vetoed","node_id":"1","reason":"Expert override","time":"2024-01-01T00:00:00Z"}`,
 			ledger.EventNodeVetoed,
+		},
+		{
+			"strategy_proposed",
+			`{"type":"strategy_proposed","node_id":"1","strategy":"Induction","novelty":"medium","time":"2024-01-01T00:00:00Z"}`,
+			ledger.EventStrategyProposed,
 		},
 	}
 

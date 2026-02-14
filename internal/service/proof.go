@@ -2211,6 +2211,38 @@ func (s *ProofService) RecordApproachTried(nodeID types.NodeID, approach, outcom
 	return wrapSequenceMismatch(err, "RecordApproachTried")
 }
 
+// ProposeStrategy records a proposed proof strategy for a node.
+// This helps track what strategies have been considered before committing.
+//
+// Returns ErrEmptyInput if the strategy description is empty.
+// Returns ErrNodeNotFound if the node doesn't exist.
+// Returns ErrConcurrentModification if the proof was modified by another process.
+func (s *ProofService) ProposeStrategy(nodeID types.NodeID, strategy, novelty, rationale, proposedBy string) error {
+	if strings.TrimSpace(strategy) == "" {
+		return fmt.Errorf("%w: strategy description", ErrEmptyInput)
+	}
+
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	n := st.GetNode(nodeID)
+	if n == nil {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewStrategyProposed(nodeID, strategy, novelty, rationale, proposedBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "ProposeStrategy")
+}
+
 // AddHint adds a directional hint from a domain expert to a node.
 // Hints provide guidance that provers must address (incorporate or explain why not).
 //
