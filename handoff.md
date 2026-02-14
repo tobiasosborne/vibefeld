@@ -1,6 +1,45 @@
-# Handoff - 2026-02-14 (Session 229)
+# Handoff - 2026-02-14 (Session 230)
 
 ## What Was Accomplished This Session
+
+### Session 230 Summary: Draft/WIP epistemic state (vibefeld-qcdm, P0)
+
+**Closed vibefeld-qcdm [P0]** plus 12 sub-task issues: Full implementation of draft/WIP epistemic state for iterative proof development.
+
+**Problem solved**: AF's binary pending/validated model forced premature verification. problem05 abandoned after 45 challenges, examples3 abandoned AF entirely. Proofs develop iteratively but AF had no way to express "work in progress."
+
+**What was added**:
+- `EpistemicDraft` state: non-final, no taint, challenges are non-blocking suggestions
+- `af refine --draft` flag: creates nodes in draft state
+- `af submit <node-id>` command: promotes draft→pending for formal verification
+- State transitions: `draft→pending` (submit), `draft→archived` (abandon)
+- `NodeSubmitted` ledger event for audit trail
+- Blue color rendering for draft nodes in `af status`
+- Draft nodes appear as prover jobs (need development), not verifier jobs
+- `GetBlockingChallengesForNode()` returns empty for draft nodes
+
+**Files changed** (17 files, +250/-21):
+- `internal/schema/epistemic.go` — new state, registry, transitions
+- `internal/ledger/event.go` — NodeSubmitted event
+- `internal/state/apply.go` — apply handler + LockReaped no-op fix
+- `internal/state/replay.go` — factory + deref
+- `internal/state/state.go` — draft challenge bypass
+- `internal/taint/compute.go` — draft=unresolved
+- `internal/node/node.go` — Draft in NodeOptions
+- `internal/service/proof.go` — Draft in RefineSpec/ChildSpec, SubmitNode()
+- `internal/service/exports.go` — EpistemicDraft export
+- `internal/render/color.go` — Blue for draft
+- `internal/render/status.go` — stats, legend, jobs
+- `internal/jobs/prover.go` — draft as prover job
+- `cmd/af/refine.go` — --draft flag
+- `cmd/af/refine_sibling.go` — pass-through fix
+- `cmd/af/submit.go` — NEW command
+- `internal/schema/epistemic_test.go` — updated count
+- `internal/state/replay_unit_test.go` — factory completeness + parse test
+
+**Testing**: All 27 packages pass, clean build, smoke-tested end-to-end.
+
+---
 
 ### Session 229 Summary: af handoff + challenge triage (vibefeld-4p8f, vibefeld-n52z)
 
@@ -167,10 +206,10 @@ Each issue includes concrete deployment evidence (node counts, challenge counts,
 - Coverage highlights: 13 packages >80%, taint/hash/scope at 100%
 - Weak spots: `cmd/af` 23%, `render` 41.6%, `ledger` 59.3%
 
-### Issue Statistics (609 total, 584 closed)
-- **P0 open:** 3 (draft/WIP, handoff, challenge triage)
-- **P1 open:** 6 (diffs, navigation, unvalidate, taint, evidence, failed approaches)
-- **P2 open:** 13 (expert hooks, CAS integration, workspace fork, etc.)
+### Issue Statistics (662 total, 649 closed)
+- **P0 open:** 0 (all P0s closed!)
+- **P1 open:** 6 (diffs, navigation, unvalidate, evidence, failed approaches)
+- **P2 open:** 4 (workspace fork, falsification, def stress testing, strategy diversity)
 - **P3 open:** 3 (v0.2 designs: queries, learnings, forest)
 
 ### Codebase
@@ -179,45 +218,25 @@ Each issue includes concrete deployment evidence (node counts, challenge counts,
 
 ## Recommended Next Steps
 
-### Tier 1 — Highest leverage (start here)
+### Tier 1 — Highest leverage P1 features
 
-**1. vibefeld-qcdm [P0] Draft/WIP state** — Highest single-impact change.
-- problem05 abandoned after 45 challenges hit at once with no iterative path
-- examples3 abandoned AF entirely because binary pending/validated killed incremental work
-- Adds `draft` epistemic state; challenges on drafts become non-blocking suggestions
-- Touch: schema (new state), ledger (new event), state, jobs, service, CLI
+**1. vibefeld-ndzg [P1] Amendment diffs** — `af diff <id>`, `af amendments <id>`.
+- Verifiers currently can't tell if their challenge was addressed after amendment
+- `old_statement` already stored in NodeAmended events
+- Touch: state, render, CLI (new commands)
 
-**2. vibefeld-ayl9 [P2] Auto taint computation** — PARTIALLY ALREADY IMPLEMENTED.
-- Investigation found `emitTaintRecomputedEvents()` already called from accept/admit/refute/archive
-- Tree renderer already shows taint badges `[epistemic/taint]`
-- Deployments show "all unresolved" because nodes stayed `pending` (correct behavior)
-- **Remaining gaps**: (a) `af accept` should warn if node has tainted/admitted deps, (b) `af taint-trace <id>` command, (c) consider re-scoping or closing issue
-- Touch: service (accept warning), CLI (taint-trace command)
-
-**3. vibefeld-n52z [P0] Challenge triage** — Addresses the "302KB wall" from the challenge side.
-- `af challenges --severity critical`, `--active-only`, `--node <id>`, `--summary`
-- Auto-emit `ChallengeSuperseded` on refute/archive
-- Touch: state (supersede logic), render (filtering), CLI (new flags)
-
-### Tier 2 — Complete the feedback loops
-
-**4. vibefeld-h4wb [P1] Status navigation** — `--focus`, `--depth`, `--compact`, `--critical-path`.
+**2. vibefeld-h4wb [P1] Status navigation** — `--focus`, `--depth`, `--compact`, `--critical-path`.
 - Addresses the "302KB wall" from the status side
 - Touch: render, CLI
 
-**5. vibefeld-ndzg [P1] Amendment diffs** — `af diff <id>`, `af amendments <id>`.
-- Verifiers currently can't tell if their challenge was addressed after amendment
-- Requires storing `old_statement` in NodeAmended events
-- Touch: ledger (event schema), state, render, CLI (new commands)
+**3. vibefeld-dqh3 [P1] Unvalidate/supersede** — Allow reverting validated nodes.
+- Touch: schema (transition), service, CLI
 
-**6. vibefeld-w9qr [P1] Archive severs taint** — Fix taint propagation for archived/refuted nodes.
-- Pairs naturally with vibefeld-ayl9 (auto taint)
-- Touch: taint (propagation logic), service
+**4. vibefeld-tio5 [P1] Attach computational evidence** — Link scripts/results to nodes.
+- Touch: ledger (new event), service, CLI
 
-**7. vibefeld-4p8f [P0] Auto-generate handoff** — `af handoff` command.
-- Every deployment maintained 100-250 line external HANDOFF.md
-- Generates tree summary, challenge counts, recommended next steps
-- Touch: service (new method), render, CLI (new command)
+**5. vibefeld-fvxp [P1] Failed approach registry** — Track exhausted strategies.
+- Touch: ledger (new event), service, CLI
 
 ### Tier 3 — Strategic features (design now, build after Tier 1-2)
 
@@ -242,6 +261,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 230:** Draft/WIP state (qcdm, P0) — new epistemic state, af refine --draft, af submit, 12 sub-issues closed
 **Session 229:** af handoff (4p8f) + challenge triage (n52z) — handoff reports, severity/summary/active-only filters
 **Session 228:** Taint fixes (w9qr, ayl9) + update-external command (hw0w), filed z8tc
 **Session 227:** Holistic project review — strategic prioritization of 25 open issues into 4 execution tiers
