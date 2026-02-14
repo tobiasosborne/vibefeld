@@ -299,6 +299,10 @@ func TestEventFactoriesCompleteness(t *testing.T) {
 		ledger.EventLemmaExtracted,
 		ledger.EventLockReaped,
 		ledger.EventClaimRefreshed,
+		ledger.EventScopeOpened,
+		ledger.EventScopeClosed,
+		ledger.EventRefinementRequested,
+		ledger.EventNodeSubmitted,
 	}
 
 	for _, et := range expectedTypes {
@@ -362,6 +366,11 @@ func TestParseEvent_AllEventTypes(t *testing.T) {
 			"taint_recomputed",
 			`{"type":"taint_recomputed","node_id":"1","new_taint":"clean","time":"2024-01-01T00:00:00Z"}`,
 			ledger.EventTaintRecomputed,
+		},
+		{
+			"node_submitted",
+			`{"type":"node_submitted","node_id":"1","owner":"agent1","time":"2024-01-01T00:00:00Z"}`,
+			ledger.EventNodeSubmitted,
 		},
 	}
 

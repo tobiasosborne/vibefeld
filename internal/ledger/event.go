@@ -33,6 +33,7 @@ const (
 	EventScopeClosed          EventType = "scope_closed"
 	EventClaimRefreshed       EventType = "claim_refreshed"
 	EventRefinementRequested  EventType = "refinement_requested"
+	EventNodeSubmitted        EventType = "node_submitted"
 )
 
 // Event is the base interface for all ledger events.
@@ -494,5 +495,25 @@ func NewRefinementRequested(nodeID types.NodeID, reason, requestedBy string) Ref
 		NodeID:      nodeID,
 		Reason:      reason,
 		RequestedBy: requestedBy,
+	}
+}
+
+// NodeSubmitted is emitted when a prover submits a draft node for formal verification.
+// This transitions the node from draft to pending state.
+type NodeSubmitted struct {
+	BaseEvent
+	NodeID types.NodeID `json:"node_id"`
+	Owner  string       `json:"owner"`
+}
+
+// NewNodeSubmitted creates a NodeSubmitted event.
+func NewNodeSubmitted(nodeID types.NodeID, owner string) NodeSubmitted {
+	return NodeSubmitted{
+		BaseEvent: BaseEvent{
+			EventType: EventNodeSubmitted,
+			EventTime: types.Now(),
+		},
+		NodeID: nodeID,
+		Owner:  owner,
 	}
 }

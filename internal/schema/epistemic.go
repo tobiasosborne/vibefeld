@@ -12,6 +12,7 @@ const (
 	EpistemicRefuted         EpistemicState = "refuted"
 	EpistemicArchived        EpistemicState = "archived"
 	EpistemicNeedsRefinement EpistemicState = "needs_refinement"
+	EpistemicDraft           EpistemicState = "draft"
 )
 
 // EpistemicStateInfo provides metadata about an epistemic state.
@@ -59,15 +60,21 @@ var epistemicStateRegistry = map[EpistemicState]EpistemicStateInfo{
 		IsFinal:         false,
 		IntroducesTaint: false,
 	},
+	EpistemicDraft: {
+		ID:              EpistemicDraft,
+		Description:     "Work in progress (not yet submitted for verification)",
+		IsFinal:         false,
+		IntroducesTaint: false,
+	},
 }
 
 // ValidateEpistemicState checks if the given string is a valid epistemic state.
 func ValidateEpistemicState(s string) error {
 	state := EpistemicState(s)
 	if _, ok := epistemicStateRegistry[state]; !ok {
-		return fmt.Errorf("invalid epistemic state: %q, must be one of: %s, %s, %s, %s, %s, %s",
+		return fmt.Errorf("invalid epistemic state: %q, must be one of: %s, %s, %s, %s, %s, %s, %s",
 			s, EpistemicPending, EpistemicValidated, EpistemicAdmitted,
-			EpistemicRefuted, EpistemicArchived, EpistemicNeedsRefinement)
+			EpistemicRefuted, EpistemicArchived, EpistemicNeedsRefinement, EpistemicDraft)
 	}
 	return nil
 }
@@ -88,6 +95,7 @@ func AllEpistemicStates() []EpistemicStateInfo {
 		epistemicStateRegistry[EpistemicRefuted],
 		epistemicStateRegistry[EpistemicArchived],
 		epistemicStateRegistry[EpistemicNeedsRefinement],
+		epistemicStateRegistry[EpistemicDraft],
 	}
 	return states
 }
@@ -105,6 +113,8 @@ func AllEpistemicStates() []EpistemicStateInfo {
 // - needs_refinement → admitted (verifier admits without proof)
 // - needs_refinement → refuted (verifier rejects)
 // - needs_refinement → archived (proof path abandoned)
+// - draft → pending (prover submits for verification)
+// - draft → archived (abandon draft)
 // - admitted/refuted/archived are terminal (no transitions out)
 func ValidateEpistemicTransition(from, to EpistemicState) error {
 	// Validate both states exist
@@ -130,6 +140,10 @@ func ValidateEpistemicTransition(from, to EpistemicState) error {
 			EpistemicValidated,
 			EpistemicAdmitted,
 			EpistemicRefuted,
+			EpistemicArchived,
+		},
+		EpistemicDraft: {
+			EpistemicPending,
 			EpistemicArchived,
 		},
 	}

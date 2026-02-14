@@ -58,6 +58,11 @@ func isProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 		return false
 	}
 
+	// Draft nodes are prover jobs (work in progress, need development)
+	if n.EpistemicState == schema.EpistemicDraft {
+		return true
+	}
+
 	// Nodes needing refinement are prover jobs (validated nodes reopened for more proof work)
 	if n.EpistemicState == schema.EpistemicNeedsRefinement {
 		return true

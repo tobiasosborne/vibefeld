@@ -146,8 +146,8 @@ func TestGetEpistemicStateInfo_NotExists(t *testing.T) {
 
 func TestAllEpistemicStates_Count(t *testing.T) {
 	states := AllEpistemicStates()
-	if len(states) != 6 {
-		t.Errorf("AllEpistemicStates() returned %d states, want 6", len(states))
+	if len(states) != 7 {
+		t.Errorf("AllEpistemicStates() returned %d states, want 7", len(states))
 	}
 
 	// Verify all expected states are present
@@ -158,6 +158,7 @@ func TestAllEpistemicStates_Count(t *testing.T) {
 		EpistemicRefuted:         false,
 		EpistemicArchived:        false,
 		EpistemicNeedsRefinement: false,
+		EpistemicDraft:           false,
 	}
 
 	for _, info := range states {

@@ -124,6 +124,8 @@ func ColorEpistemicState(state schema.EpistemicState) string {
 		return Gray(s)
 	case schema.EpistemicNeedsRefinement:
 		return Magenta(s)
+	case schema.EpistemicDraft:
+		return Blue(s)
 	default:
 		return s
 	}

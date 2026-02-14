@@ -251,6 +251,7 @@ func newRefineCmd() *cobra.Command {
 	var childrenJSON string
 	var depends string
 	var requiresValidated string
+	var draft bool
 
 	cmd := &cobra.Command{
 		Use:     "refine <parent-id> <statement>...",
@@ -292,7 +293,7 @@ Workflow:
 			if len(args) > 1 {
 				statements = args[1:]
 			}
-			return runRefine(cmd, args[0], owner, nodeType, inference, dir, format, childrenJSON, depends, requiresValidated, statements)
+			return runRefine(cmd, args[0], owner, nodeType, inference, dir, format, childrenJSON, depends, requiresValidated, statements, draft)
 		},
 	}
 
@@ -309,11 +310,12 @@ Workflow:
 	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of child specs for complex cases (different types per child)")
 	cmd.Flags().StringVar(&depends, "depends", "", "Comma-separated list of node IDs this node depends on (e.g., 1.1,1.2)")
 	cmd.Flags().StringVar(&requiresValidated, "requires-validated", "", "Comma-separated list of node IDs that must be validated before this node can be accepted")
+	cmd.Flags().BoolVar(&draft, "draft", false, "Create node in draft state (work-in-progress, challenges non-blocking)")
 
 	return cmd
 }
 
-func runRefine(cmd *cobra.Command, nodeIDStr, owner, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends, requiresValidated string, statements []string) error {
+func runRefine(cmd *cobra.Command, nodeIDStr, owner, nodeTypeStr, inferenceStr, dir, format, childrenJSON, depends, requiresValidated string, statements []string, draft bool) error {
 	examples := render.GetExamples("af refine")
 
 	// Validate owner is not empty
@@ -370,17 +372,17 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, nodeTypeStr, inferenceStr, 
 
 	// Handle --children JSON mode (for complex cases with different types per child)
 	if hasChildren {
-		return runRefineMulti(cmd, parentID, parentIDStr, owner, childrenJSON, dir, format, svc, st)
+		return runRefineMulti(cmd, parentID, parentIDStr, owner, childrenJSON, dir, format, svc, st, draft)
 	}
 
 	// Handle positional statements (primary method)
-	return runRefinePositional(cmd, parentID, parentIDStr, owner, nodeTypeStr, inferenceStr, format, svc, st, statements, depends, requiresValidated)
+	return runRefinePositional(cmd, parentID, parentIDStr, owner, nodeTypeStr, inferenceStr, format, svc, st, statements, depends, requiresValidated, draft)
 }
 
 // runRefineMulti handles the --children flag for creating multiple child nodes at once.
 // This uses the atomic RefineNodeBulk method to create all children in a single operation,
 // preventing race conditions where other agents could grab the node between individual refines.
-func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, childrenJSON, dir, format string, svc *service.ProofService, st *service.State) error {
+func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, childrenJSON, dir, format string, svc *service.ProofService, st *service.State, draft bool) error {
 	examples := render.GetExamples("af refine")
 
 	// Parse children JSON
@@ -432,6 +434,7 @@ func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, ow
 			NodeType:  nodeType,
 			Statement: child.Statement,
 			Inference: inferenceType,
+			Draft:     draft,
 		}
 	}
 
@@ -447,7 +450,7 @@ func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, ow
 // runRefinePositional handles positional arguments for creating child nodes.
 // Single statement: af refine 1 "Step A" -o agent1 (supports --depends, --requires-validated)
 // Multiple statements: af refine 1 "Step A" "Step B" -o agent1 (atomic bulk creation)
-func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, nodeTypeStr, inferenceStr, format string, svc *service.ProofService, st *service.State, statements []string, depends, requiresValidated string) error {
+func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, nodeTypeStr, inferenceStr, format string, svc *service.ProofService, st *service.State, statements []string, depends, requiresValidated string, draft bool) error {
 	examples := render.GetExamples("af refine")
 
 	// Validate node type and inference type (will be used for all children)
@@ -495,7 +498,17 @@ func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDSt
 			cmd.Printf("Warning: Creating node at depth %d. Consider adding siblings instead.\n\n", childResult.ChildID.Depth())
 		}
 
-		err = svc.RefineNodeWithAllDeps(parentID, owner, childResult.ChildID, nodeType, statements[0], inferenceType, dependencies, validationDeps)
+		err = svc.Refine(service.RefineSpec{
+			ParentID:       parentID,
+			Owner:          owner,
+			ChildID:        childResult.ChildID,
+			NodeType:       nodeType,
+			Statement:      statements[0],
+			Inference:      inferenceType,
+			Dependencies:   dependencies,
+			ValidationDeps: validationDeps,
+			Draft:          draft,
+		})
 		if err != nil {
 			return handleRefineError(err, parentIDStr, owner)
 		}
@@ -517,6 +530,7 @@ func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDSt
 			NodeType:  nodeType,
 			Statement: stmt,
 			Inference: inferenceType,
+			Draft:     draft,
 		}
 	}
 

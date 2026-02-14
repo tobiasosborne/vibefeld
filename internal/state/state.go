@@ -305,6 +305,11 @@ func (s *State) OpenChallenges() []*Challenge {
 // challenges cannot be accepted until those challenges are resolved.
 // This uses the cached challengesByNode map for O(1) node lookup.
 func (s *State) GetBlockingChallengesForNode(nodeID types.NodeID) []*Challenge {
+	// Draft nodes have no blocking challenges — all challenges are non-blocking suggestions
+	if n := s.GetNode(nodeID); n != nil && n.EpistemicState == schema.EpistemicDraft {
+		return nil
+	}
+
 	var blocking []*Challenge
 	// Use the cached lookup
 	challenges := s.GetChallengesForNode(nodeID)

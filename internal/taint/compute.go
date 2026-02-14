@@ -24,8 +24,8 @@ func ComputeTaint(n *node.Node, ancestors []*node.Node) node.TaintState {
 		return node.TaintClean
 	}
 
-	// Rule 1: If the node is pending, return unresolved
-	if n.EpistemicState == schema.EpistemicPending {
+	// Rule 1: If the node is pending or draft, return unresolved
+	if n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicDraft {
 		return node.TaintUnresolved
 	}
 

@@ -104,6 +104,7 @@ const (
 	EpistemicRefuted          = schema.EpistemicRefuted
 	EpistemicArchived         = schema.EpistemicArchived
 	EpistemicNeedsRefinement  = schema.EpistemicNeedsRefinement
+	EpistemicDraft            = schema.EpistemicDraft
 )
 
 // WorkflowState is an alias for schema.WorkflowState.

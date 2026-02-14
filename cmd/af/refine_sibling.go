@@ -141,11 +141,11 @@ func runRefineSibling(cmd *cobra.Command, nodeIDStr, owner, nodeTypeStr, inferen
 
 	// Handle --children JSON mode (for complex cases)
 	if hasChildren {
-		return runRefineMulti(cmd, parentID, parentIDStr, owner, childrenJSON, dir, format, svc, st)
+		return runRefineMulti(cmd, parentID, parentIDStr, owner, childrenJSON, dir, format, svc, st, false)
 	}
 
 	// Handle positional statements (primary method)
-	return runRefinePositional(cmd, parentID, parentIDStr, owner, nodeTypeStr, inferenceStr, format, svc, st, statements, depends, requiresValidated)
+	return runRefinePositional(cmd, parentID, parentIDStr, owner, nodeTypeStr, inferenceStr, format, svc, st, statements, depends, requiresValidated, false)
 }
 
 func init() {

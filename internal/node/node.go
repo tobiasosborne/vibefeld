@@ -95,6 +95,7 @@ type NodeOptions struct {
 	Dependencies   []types.NodeID
 	ValidationDeps []types.NodeID
 	Scope          []string
+	Draft          bool // If true, node starts in draft state instead of pending
 }
 
 // NewNodeWithOptions creates a new Node with the given parameters and options.
@@ -137,6 +138,10 @@ func NewNodeWithOptions(
 		TaintState:     TaintUnresolved,
 		Created:        types.Now(),
 		Scope:          opts.Scope,
+	}
+
+	if opts.Draft {
+		node.EpistemicState = schema.EpistemicDraft
 	}
 
 	// Compute content hash

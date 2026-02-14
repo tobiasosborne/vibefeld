@@ -68,6 +68,10 @@ func Apply(s *State, event ledger.Event) error {
 		return applyScopeClosed(s, e)
 	case ledger.RefinementRequested:
 		return applyRefinementRequested(s, e)
+	case ledger.NodeSubmitted:
+		return applyNodeSubmitted(s, e)
+	case ledger.LockReaped:
+		return nil // lock reaping is informational, no state change needed
 	default:
 		return fmt.Errorf("unknown event type: %s", event.Type())
 	}
@@ -440,5 +444,25 @@ func applyRefinementRequested(s *State, e ledger.RefinementRequested) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicNeedsRefinement
+	return nil
+}
+
+// applyNodeSubmitted handles the NodeSubmitted event.
+// This transitions a draft node to pending state, making it ready for
+// formal verification.
+func applyNodeSubmitted(s *State, e ledger.NodeSubmitted) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	// Validate the state transition is legal (only draft nodes can be submitted)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
+		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
+	}
+	n.EpistemicState = schema.EpistemicPending
+
+	// Auto-trigger taint recomputation after epistemic state change
+	recomputeTaintForNode(s, n)
+
 	return nil
 }

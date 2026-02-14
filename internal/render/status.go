@@ -87,6 +87,7 @@ func writeStateCounts(sb *strings.Builder, counts stateCounts) {
 	// Write epistemic state counts (in fixed order for determinism) with color coding
 	sb.WriteString("  Epistemic: ")
 	epistemicStates := []schema.EpistemicState{
+		schema.EpistemicDraft,
 		schema.EpistemicPending,
 		schema.EpistemicValidated,
 		schema.EpistemicAdmitted,
@@ -167,10 +168,10 @@ func renderJobs(sb *strings.Builder, s *state.State, nodes []*node.Node) {
 	verifierJobs := 0
 
 	for _, n := range nodes {
-		// Prover jobs: available + (pending OR needs_refinement)
-		// Nodes in needs_refinement state need further development by provers
+		// Prover jobs: available + (draft OR pending OR needs_refinement)
+		// Nodes in draft/needs_refinement state need further development by provers
 		if n.WorkflowState == schema.WorkflowAvailable &&
-			(n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicNeedsRefinement) {
+			(n.EpistemicState == schema.EpistemicDraft || n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicNeedsRefinement) {
 			proverJobs++
 		}
 
@@ -191,6 +192,7 @@ func renderJobs(sb *strings.Builder, s *state.State, nodes []*node.Node) {
 func renderLegend(sb *strings.Builder) {
 	// Epistemic states legend with color coding
 	sb.WriteString("Epistemic States:\n")
+	sb.WriteString(fmt.Sprintf("  %s      - Work in progress (not submitted)\n", ColorEpistemicState(schema.EpistemicDraft)))
 	sb.WriteString(fmt.Sprintf("  %s    - Awaiting proof/verification\n", ColorEpistemicState(schema.EpistemicPending)))
 	sb.WriteString(fmt.Sprintf("  %s  - Verified by adversarial verifier\n", ColorEpistemicState(schema.EpistemicValidated)))
 	sb.WriteString(fmt.Sprintf("  %s   - Accepted without full verification\n", ColorEpistemicState(schema.EpistemicAdmitted)))
@@ -251,14 +253,14 @@ func FilterUrgentNodes(s *state.State) []UrgentItem {
 		})
 	}
 
-	// 2. Prover jobs: available + (pending OR needs_refinement)
+	// 2. Prover jobs: available + (draft OR pending OR needs_refinement)
 	for _, n := range s.AllNodes() {
 		nodeIDStr := n.ID.String()
 		if seenNodes[nodeIDStr] {
 			continue
 		}
 		if n.WorkflowState == schema.WorkflowAvailable &&
-			(n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicNeedsRefinement) {
+			(n.EpistemicState == schema.EpistemicDraft || n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicNeedsRefinement) {
 			seenNodes[nodeIDStr] = true
 			details := "Needs refinement"
 			if n.EpistemicState == schema.EpistemicNeedsRefinement {

@@ -729,6 +729,7 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 	opts := node.NodeOptions{
 		Dependencies:   spec.Dependencies,
 		ValidationDeps: spec.ValidationDeps,
+		Draft:          spec.Draft,
 	}
 	child, err := node.NewNodeWithOptions(spec.ChildID, spec.NodeType, spec.Statement, spec.Inference, opts)
 	if err != nil {
@@ -1434,11 +1435,44 @@ func (s *ProofService) emitTaintRecomputedEvents(ldg *ledger.Ledger, nodeID type
 	return nil
 }
 
+// SubmitNode transitions a draft node to pending state, making it ready for
+// formal verification. Only draft nodes can be submitted.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) SubmitNode(nodeID types.NodeID, owner string) error {
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	n := st.GetNode(nodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found", nodeID.String())
+	}
+
+	if n.EpistemicState != schema.EpistemicDraft {
+		return fmt.Errorf("node %s is in state %q, not %q: only draft nodes can be submitted",
+			nodeID.String(), n.EpistemicState, schema.EpistemicDraft)
+	}
+
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewNodeSubmitted(nodeID, owner)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "SubmitNode")
+}
+
 // ChildSpec specifies a child node to be created in a bulk refine operation.
 type ChildSpec struct {
 	NodeType  schema.NodeType
 	Statement string
 	Inference schema.InferenceType
+	Draft     bool
 }
 
 // RefineSpec specifies parameters for refining a node with a child.
@@ -1470,6 +1504,10 @@ type RefineSpec struct {
 	// ValidationDeps specify nodes that must be validated before this node
 	// can be accepted (optional).
 	ValidationDeps []types.NodeID
+
+	// Draft creates the node in draft state instead of pending.
+	// Draft nodes are work-in-progress; challenges on them are non-blocking.
+	Draft bool
 }
 
 // AllocateChildID allocates the next available child ID for a parent node atomically.
@@ -1607,7 +1645,7 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		childIDs[i] = childID
 
 		// Create the child node
-		childNode, err := node.NewNode(childID, spec.NodeType, spec.Statement, spec.Inference)
+		childNode, err := node.NewNodeWithOptions(childID, spec.NodeType, spec.Statement, spec.Inference, node.NodeOptions{Draft: spec.Draft})
 		if err != nil {
 			return nil, fmt.Errorf("child %d: %w", i+1, err)
 		}
