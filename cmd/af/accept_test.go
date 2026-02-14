@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
@@ -1673,5 +1674,54 @@ func TestAcceptCommand_NoAgentFlagMeansNoCheck(t *testing.T) {
 	}
 	if n.EpistemicState != service.EpistemicValidated {
 		t.Errorf("node EpistemicState = %q, want %q", n.EpistemicState, service.EpistemicValidated)
+	}
+}
+
+// TestAcceptCmd_WarnsTaintedDeps tests that accepting a node with an admitted child
+// produces a warning about tainted dependencies.
+func TestAcceptCmd_WarnsTaintedDeps(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTest(t)
+	defer cleanup()
+
+	svc, err := service.NewProofService(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim node 1, then refine to create child 1.1
+	rootID := mustParseNodeID(t, "1")
+	if err := svc.ClaimNode(rootID, "prover", 1*time.Hour); err != nil {
+		t.Fatalf("ClaimNode: %v", err)
+	}
+	childID := mustParseNodeID(t, "1.1")
+	if err := svc.RefineNode(rootID, "prover", childID, "claim", "Sub-claim", "assumption"); err != nil {
+		t.Fatalf("RefineNode: %v", err)
+	}
+
+	// Admit child 1.1 (introduces taint)
+	if err := svc.AdmitNode(childID); err != nil {
+		t.Fatalf("AdmitNode: %v", err)
+	}
+
+	// Accept node 1 — should succeed but warn about admitted child
+	cmd := newAcceptCmd()
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"1", "-d", tmpDir})
+
+	err = cmd.Execute()
+	if err != nil {
+		t.Fatalf("accept should succeed, got: %v", err)
+	}
+
+	// Check stderr contains taint warning
+	warning := stderr.String()
+	if !strings.Contains(warning, "tainted") && !strings.Contains(warning, "admitted") {
+		t.Errorf("expected taint warning on stderr, got: %q", warning)
+	}
+	if !strings.Contains(warning, "1.1") {
+		t.Errorf("expected warning to mention child 1.1, got: %q", warning)
 	}
 }

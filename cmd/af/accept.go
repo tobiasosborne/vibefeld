@@ -9,7 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/cli"
+	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/render"
+	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 )
 
@@ -287,6 +289,44 @@ func outputBulkAcceptance(cmd *cobra.Command, acceptedStrs []string, format stri
 	return nil
 }
 
+// warnTaintedDeps prints a non-blocking warning if any node to be accepted
+// has children with admitted or tainted taint state.
+func warnTaintedDeps(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID) {
+	st, err := svc.LoadState()
+	if err != nil {
+		return // Best-effort: skip warning if state can't be loaded
+	}
+
+	allNodes := st.AllNodes()
+	for _, nodeID := range nodeIDs {
+		var taintedChildren []string
+		for _, child := range allNodes {
+			parentID, hasParent := child.ID.Parent()
+			if !hasParent || parentID.String() != nodeID.String() {
+				continue
+			}
+			if child.TaintState == node.TaintSelfAdmitted || child.TaintState == node.TaintTainted {
+				taintedChildren = append(taintedChildren, fmt.Sprintf("%s (%s, taint: %s)",
+					child.ID.String(), child.EpistemicState, child.TaintState))
+			}
+			if child.EpistemicState == schema.EpistemicAdmitted {
+				// Also warn if child is admitted even if taint hasn't been computed yet
+				if child.TaintState != node.TaintSelfAdmitted && child.TaintState != node.TaintTainted {
+					taintedChildren = append(taintedChildren, fmt.Sprintf("%s (admitted)",
+						child.ID.String()))
+				}
+			}
+		}
+		if len(taintedChildren) > 0 {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: node %s has tainted/admitted children:\n", nodeID.String())
+			for _, tc := range taintedChildren {
+				fmt.Fprintf(cmd.ErrOrStderr(), "  %s\n", tc)
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "Accepting will propagate taint to this node.\n\n")
+		}
+	}
+}
+
 func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent string) error {
 	dir := cli.MustString(cmd, "dir")
 	format := cli.MustString(cmd, "format")
@@ -321,6 +361,9 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 	if err := verifyAgentChallenges(svc, nodeIDs, agent, confirm); err != nil {
 		return err
 	}
+
+	// Warn if any nodes have tainted/admitted children (non-blocking)
+	warnTaintedDeps(cmd, svc, nodeIDs)
 
 	if len(nodeIDs) == 1 {
 		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format)
