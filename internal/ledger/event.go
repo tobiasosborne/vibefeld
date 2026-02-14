@@ -36,6 +36,7 @@ const (
 	EventNodeSubmitted        EventType = "node_submitted"
 	EventNodeUnvalidated      EventType = "node_unvalidated"
 	EventApproachTried        EventType = "approach_tried"
+	EventEvidenceAttached     EventType = "evidence_attached"
 )
 
 // Event is the base interface for all ledger events.
@@ -550,6 +551,34 @@ func NewApproachTried(nodeID types.NodeID, approach, outcome, triedBy string) Ap
 		Approach: approach,
 		Outcome:  outcome,
 		TriedBy:  triedBy,
+	}
+}
+
+// EvidenceAttached is emitted when computational evidence (a script, dataset,
+// or verification result) is linked to a proof node.
+type EvidenceAttached struct {
+	BaseEvent
+	NodeID       types.NodeID `json:"node_id"`
+	FilePath     string       `json:"file_path"`               // Path relative to proof dir
+	ContentHash  string       `json:"content_hash"`            // SHA256 of file content
+	EvidenceType string       `json:"evidence_type,omitempty"` // verification, computation, test, other
+	Description  string       `json:"description,omitempty"`
+	AttachedBy   string       `json:"attached_by,omitempty"`
+}
+
+// NewEvidenceAttached creates an EvidenceAttached event.
+func NewEvidenceAttached(nodeID types.NodeID, filePath, contentHash, evidenceType, description, attachedBy string) EvidenceAttached {
+	return EvidenceAttached{
+		BaseEvent: BaseEvent{
+			EventType: EventEvidenceAttached,
+			EventTime: types.Now(),
+		},
+		NodeID:       nodeID,
+		FilePath:     filePath,
+		ContentHash:  contentHash,
+		EvidenceType: evidenceType,
+		Description:  description,
+		AttachedBy:   attachedBy,
 	}
 }
 

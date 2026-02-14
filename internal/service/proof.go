@@ -2162,3 +2162,49 @@ func (s *ProofService) RecordApproachTried(nodeID types.NodeID, approach, outcom
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
 	return wrapSequenceMismatch(err, "RecordApproachTried")
 }
+
+// AttachEvidence links computational evidence (a script or result file) to a node.
+// The file content is hashed for reproducibility verification.
+//
+// Returns ErrEmptyInput if the file path is empty.
+// Returns ErrNodeNotFound if the node doesn't exist.
+// Returns an error if the file cannot be read or hashed.
+// Returns ErrConcurrentModification if the proof was modified by another process.
+func (s *ProofService) AttachEvidence(nodeID types.NodeID, filePath, evidenceType, description, attachedBy string) error {
+	if strings.TrimSpace(filePath) == "" {
+		return fmt.Errorf("%w: file path", ErrEmptyInput)
+	}
+
+	// Compute content hash of the file
+	absPath := filepath.Join(s.path, filePath)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		// Try as absolute path
+		data, err = os.ReadFile(filePath)
+		if err != nil {
+			return fmt.Errorf("cannot read evidence file: %w", err)
+		}
+	}
+	sum := sha256.Sum256(data)
+	contentHash := hex.EncodeToString(sum[:])
+
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	n := st.GetNode(nodeID)
+	if n == nil {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewEvidenceAttached(nodeID, filePath, contentHash, evidenceType, description, attachedBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "AttachEvidence")
+}

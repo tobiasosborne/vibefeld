@@ -41,6 +41,16 @@ type Amendment struct {
 	Owner             string          // Who made the amendment
 }
 
+// Evidence represents computational evidence attached to a proof node.
+type Evidence struct {
+	Timestamp    types.Timestamp // When the evidence was attached
+	FilePath     string          // Path relative to proof dir
+	ContentHash  string          // SHA256 of file content
+	EvidenceType string          // verification, computation, test, other
+	Description  string          // Human-readable description
+	AttachedBy   string          // Who attached it
+}
+
 // FailedApproach represents an attempted but failed proof approach for a node.
 type FailedApproach struct {
 	Timestamp types.Timestamp // When the approach was attempted
@@ -86,6 +96,10 @@ type State struct {
 	// This tracks all failed proof attempts for each node.
 	failedApproaches map[string][]FailedApproach
 
+	// evidence maps NodeID string to a slice of Evidence records.
+	// This tracks computational evidence attached to each node.
+	evidence map[string][]Evidence
+
 	// scopeTracker tracks assumption scopes and which nodes are inside them.
 	scopeTracker *scope.Tracker
 
@@ -106,6 +120,7 @@ func NewState() *State {
 		challenges:   make(map[string]*Challenge),
 		amendments:       make(map[string][]Amendment),
 		failedApproaches: make(map[string][]FailedApproach),
+		evidence:         make(map[string][]Evidence),
 		scopeTracker:     scope.NewTracker(),
 	}
 }
@@ -430,6 +445,18 @@ func (s *State) AddFailedApproach(nodeID types.NodeID, approach FailedApproach) 
 // Returns an empty slice if no approaches have been tried.
 func (s *State) GetFailedApproaches(nodeID types.NodeID) []FailedApproach {
 	return s.failedApproaches[nodeID.String()]
+}
+
+// AddEvidence adds an evidence record for a node.
+func (s *State) AddEvidence(nodeID types.NodeID, ev Evidence) {
+	key := nodeID.String()
+	s.evidence[key] = append(s.evidence[key], ev)
+}
+
+// GetEvidence returns the list of evidence attached to a node.
+// Returns an empty slice if no evidence has been attached.
+func (s *State) GetEvidence(nodeID types.NodeID) []Evidence {
+	return s.evidence[nodeID.String()]
 }
 
 // OpenScope opens a new assumption scope at the given node.

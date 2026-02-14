@@ -2,7 +2,39 @@
 
 ## What Was Accomplished This Session
 
-### Session 233 Summary: Failed approach registry (vibefeld-fvxp, P1)
+### Session 233b Summary: Attach computational evidence (vibefeld-tio5, P1)
+
+**Closed vibefeld-tio5 [P1]**: `af attach` and `af evidence` — link scripts and results to proof nodes with content hashing.
+
+**Problem solved**: Every serious deployment created external verification scripts (124 Python scripts in problem04, 63 in examples7, Julia scripts in examples5). AF had zero way to attach, track, or record computational evidence — results were cited in prose but not in the ledger.
+
+**What was added**:
+- `af attach <node-id> <file-path> --type verification|computation|test|other` — link evidence to a node
+- `af evidence <node-id>` — list all attached evidence for a node
+- `EvidenceAttached` ledger event with SHA256 content hash for reproducibility
+- `Evidence` state tracking (per-node, replayed from ledger)
+- `AttachEvidence()` service method with CAS concurrency + file hashing
+- Both commands support `--format json`, `--agent`, `--description` flags
+- Evidence type validation (verification, computation, test, other)
+
+**Deferred to follow-ups**: `af verify-run` (execute attached scripts) and `af export --include-scripts` (bundle evidence with exports).
+
+**Files changed** (10 files, ~280 lines):
+- `internal/ledger/event.go` — `EventEvidenceAttached` constant, `EvidenceAttached` struct, factory
+- `internal/state/state.go` — `Evidence` struct, `evidence` map, accessors
+- `internal/state/apply.go` — `applyEvidenceAttached()` handler
+- `internal/state/replay.go` — factory + deref for `EvidenceAttached`
+- `internal/state/replay_unit_test.go` — factory completeness + extraction tests
+- `internal/service/proof.go` — `AttachEvidence()` method with SHA256 hashing
+- `cmd/af/attach.go` — NEW: CLI command
+- `cmd/af/evidence.go` — NEW: CLI command
+- `cmd/af/evidence_test.go` — NEW: 8 integration tests
+
+**Testing**: All 27 packages pass, clean build, 8 new tests.
+
+---
+
+### Session 233a Summary: Failed approach registry (vibefeld-fvxp, P1)
 
 **Closed vibefeld-fvxp [P1]**: `af approach-tried` and `af approach-list` — track exhausted proof strategies in the ledger.
 
@@ -316,7 +348,7 @@ Each issue includes concrete deployment evidence (node counts, challenge counts,
 
 ### Issue Statistics (663 total, 651 closed)
 - **P0 open:** 0 (all P0s closed!)
-- **P1 open:** 2 (evidence, taint-trace)
+- **P1 open:** 0 (all P1s closed! taint-trace is P2)
 - **P2 open:** 5 (critical-path, workspace fork, falsification, def stress testing, strategy diversity)
 - **P3 open:** 3 (v0.2 designs: queries, learnings, forest)
 
@@ -364,7 +396,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
-**Session 233:** Failed approach registry (fvxp) — af approach-tried, af approach-list, ApproachTried event, 9 tests
+**Session 233:** Failed approach registry (fvxp) + evidence attachment (tio5) — af approach-tried, af approach-list, af attach, af evidence, 17 new tests
 **Session 232:** Unvalidate command (dqh3) — af unvalidate, validated→pending, taint propagation, 6 tests
 **Session 231:** Amendment diffs (ndzg) + status navigation (h4wb) — af amendments, af diff, af path, af nearby, --focus/--depth/--compact, 26 tests
 **Session 230:** Draft/WIP state (qcdm, P0) — new epistemic state, af refine --draft, af submit, 12 sub-issues closed

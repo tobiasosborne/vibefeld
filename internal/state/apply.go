@@ -74,6 +74,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyNodeUnvalidated(s, e)
 	case ledger.ApproachTried:
 		return applyApproachTried(s, e)
+	case ledger.EvidenceAttached:
+		return applyEvidenceAttached(s, e)
 	case ledger.LockReaped:
 		return nil // lock reaping is informational, no state change needed
 	default:
@@ -505,5 +507,25 @@ func applyApproachTried(s *State, e ledger.ApproachTried) error {
 		TriedBy:   e.TriedBy,
 	}
 	s.AddFailedApproach(e.NodeID, approach)
+	return nil
+}
+
+// applyEvidenceAttached handles the EvidenceAttached event.
+// This records computational evidence linked to a node.
+func applyEvidenceAttached(s *State, e ledger.EvidenceAttached) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+
+	ev := Evidence{
+		Timestamp:    e.EventTime,
+		FilePath:     e.FilePath,
+		ContentHash:  e.ContentHash,
+		EvidenceType: e.EvidenceType,
+		Description:  e.Description,
+		AttachedBy:   e.AttachedBy,
+	}
+	s.AddEvidence(e.NodeID, ev)
 	return nil
 }
