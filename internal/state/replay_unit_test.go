@@ -66,6 +66,7 @@ func TestExtractEventType_AllKnownTypes(t *testing.T) {
 		{"scope_opened", `{"type":"scope_opened"}`, ledger.EventScopeOpened},
 		{"scope_closed", `{"type":"scope_closed"}`, ledger.EventScopeClosed},
 		{"claim_refreshed", `{"type":"claim_refreshed"}`, ledger.EventClaimRefreshed},
+		{"approach_tried", `{"type":"approach_tried"}`, ledger.EventApproachTried},
 	}
 
 	for _, tt := range tests {
@@ -304,6 +305,7 @@ func TestEventFactoriesCompleteness(t *testing.T) {
 		ledger.EventRefinementRequested,
 		ledger.EventNodeSubmitted,
 		ledger.EventNodeUnvalidated,
+		ledger.EventApproachTried,
 	}
 
 	for _, et := range expectedTypes {

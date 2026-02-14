@@ -72,6 +72,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyNodeSubmitted(s, e)
 	case ledger.NodeUnvalidated:
 		return applyNodeUnvalidated(s, e)
+	case ledger.ApproachTried:
+		return applyApproachTried(s, e)
 	case ledger.LockReaped:
 		return nil // lock reaping is informational, no state change needed
 	default:
@@ -485,5 +487,23 @@ func applyNodeUnvalidated(s *State, e ledger.NodeUnvalidated) error {
 	// Auto-trigger taint recomputation after epistemic state change
 	recomputeTaintForNode(s, n)
 
+	return nil
+}
+
+// applyApproachTried handles the ApproachTried event.
+// This records a failed proof approach for a node.
+func applyApproachTried(s *State, e ledger.ApproachTried) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+
+	approach := FailedApproach{
+		Timestamp: e.EventTime,
+		Approach:  e.Approach,
+		Outcome:   e.Outcome,
+		TriedBy:   e.TriedBy,
+	}
+	s.AddFailedApproach(e.NodeID, approach)
 	return nil
 }

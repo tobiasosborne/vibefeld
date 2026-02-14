@@ -2130,3 +2130,35 @@ func (s *ProofService) UnvalidateNode(nodeID types.NodeID, reason, revokedBy str
 	// which propagates to descendants
 	return s.emitTaintRecomputedEvents(ldg, nodeID)
 }
+
+// RecordApproachTried records a failed proof approach for a node.
+// This prevents other agents from re-attempting the same dead end.
+//
+// Returns ErrEmptyInput if the approach description is empty.
+// Returns ErrNodeNotFound if the node doesn't exist.
+// Returns ErrConcurrentModification if the proof was modified by another process.
+func (s *ProofService) RecordApproachTried(nodeID types.NodeID, approach, outcome, triedBy string) error {
+	if strings.TrimSpace(approach) == "" {
+		return fmt.Errorf("%w: approach description", ErrEmptyInput)
+	}
+
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	n := st.GetNode(nodeID)
+	if n == nil {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewApproachTried(nodeID, approach, outcome, triedBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "RecordApproachTried")
+}

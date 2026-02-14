@@ -41,6 +41,14 @@ type Amendment struct {
 	Owner             string          // Who made the amendment
 }
 
+// FailedApproach represents an attempted but failed proof approach for a node.
+type FailedApproach struct {
+	Timestamp types.Timestamp // When the approach was attempted
+	Approach  string          // Description of the attempted approach
+	Outcome   string          // Why it failed
+	TriedBy   string          // Who attempted it
+}
+
 // State represents the current derived state of a proof.
 // It is reconstructed by replaying ledger events.
 type State struct {
@@ -74,6 +82,10 @@ type State struct {
 	// This tracks the history of all amendments made to each node.
 	amendments map[string][]Amendment
 
+	// failedApproaches maps NodeID string to a slice of FailedApproach records.
+	// This tracks all failed proof attempts for each node.
+	failedApproaches map[string][]FailedApproach
+
 	// scopeTracker tracks assumption scopes and which nodes are inside them.
 	scopeTracker *scope.Tracker
 
@@ -92,8 +104,9 @@ func NewState() *State {
 		externals:    make(map[string]*node.External),
 		lemmas:       make(map[string]*node.Lemma),
 		challenges:   make(map[string]*Challenge),
-		amendments:   make(map[string][]Amendment),
-		scopeTracker: scope.NewTracker(),
+		amendments:       make(map[string][]Amendment),
+		failedApproaches: make(map[string][]FailedApproach),
+		scopeTracker:     scope.NewTracker(),
 	}
 }
 
@@ -405,6 +418,18 @@ func (s *State) AddAmendment(nodeID types.NodeID, amendment Amendment) {
 // Returns an empty slice if no amendments have been made.
 func (s *State) GetAmendmentHistory(nodeID types.NodeID) []Amendment {
 	return s.amendments[nodeID.String()]
+}
+
+// AddFailedApproach adds a failed approach record for a node.
+func (s *State) AddFailedApproach(nodeID types.NodeID, approach FailedApproach) {
+	key := nodeID.String()
+	s.failedApproaches[key] = append(s.failedApproaches[key], approach)
+}
+
+// GetFailedApproaches returns the list of failed approaches for a node.
+// Returns an empty slice if no approaches have been tried.
+func (s *State) GetFailedApproaches(nodeID types.NodeID) []FailedApproach {
+	return s.failedApproaches[nodeID.String()]
 }
 
 // OpenScope opens a new assumption scope at the given node.

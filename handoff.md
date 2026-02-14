@@ -1,6 +1,35 @@
-# Handoff - 2026-02-14 (Session 232)
+# Handoff - 2026-02-14 (Session 233)
 
 ## What Was Accomplished This Session
+
+### Session 233 Summary: Failed approach registry (vibefeld-fvxp, P1)
+
+**Closed vibefeld-fvxp [P1]**: `af approach-tried` and `af approach-list` — track exhausted proof strategies in the ledger.
+
+**Problem solved**: No mechanism to record "tried X, it fails because Y." Agents wasted effort re-attempting dead approaches. The only protection was HANDOFF.md "DO NOT RETRY" lists (problem04 had 17 killed approaches across two deployments).
+
+**What was added**:
+- `af approach-tried <node-id> --approach "..." --outcome "..."` — record a failed approach
+- `af approach-list <node-id>` (alias: `af approaches`) — list all failed approaches for a node
+- `ApproachTried` ledger event for full audit trail
+- `FailedApproach` state tracking (per-node, replayed from ledger)
+- `RecordApproachTried()` service method with CAS concurrency control
+- Both commands support `--format json` and `--agent` flags
+
+**Files changed** (10 files, ~250 lines):
+- `internal/ledger/event.go` — `EventApproachTried` constant, `ApproachTried` struct, factory
+- `internal/state/state.go` — `FailedApproach` struct, `failedApproaches` map, accessors
+- `internal/state/apply.go` — `applyApproachTried()` handler
+- `internal/state/replay.go` — factory + deref for `ApproachTried`
+- `internal/state/replay_unit_test.go` — factory completeness + extraction tests
+- `internal/service/proof.go` — `RecordApproachTried()` method
+- `cmd/af/approach_tried.go` — NEW: CLI command
+- `cmd/af/approach_list.go` — NEW: CLI command
+- `cmd/af/approach_test.go` — NEW: 9 integration tests
+
+**Testing**: All 27 packages pass, clean build, 9 new tests.
+
+---
 
 ### Session 232 Summary: Unvalidate command (vibefeld-dqh3, P1)
 
@@ -287,7 +316,7 @@ Each issue includes concrete deployment evidence (node counts, challenge counts,
 
 ### Issue Statistics (663 total, 651 closed)
 - **P0 open:** 0 (all P0s closed!)
-- **P1 open:** 3 (evidence, failed approaches, taint-trace)
+- **P1 open:** 2 (evidence, taint-trace)
 - **P2 open:** 5 (critical-path, workspace fork, falsification, def stress testing, strategy diversity)
 - **P3 open:** 3 (v0.2 designs: queries, learnings, forest)
 
@@ -335,6 +364,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 233:** Failed approach registry (fvxp) — af approach-tried, af approach-list, ApproachTried event, 9 tests
 **Session 232:** Unvalidate command (dqh3) — af unvalidate, validated→pending, taint propagation, 6 tests
 **Session 231:** Amendment diffs (ndzg) + status navigation (h4wb) — af amendments, af diff, af path, af nearby, --focus/--depth/--compact, 26 tests
 **Session 230:** Draft/WIP state (qcdm, P0) — new epistemic state, af refine --draft, af submit, 12 sub-issues closed

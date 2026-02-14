@@ -35,6 +35,7 @@ const (
 	EventRefinementRequested  EventType = "refinement_requested"
 	EventNodeSubmitted        EventType = "node_submitted"
 	EventNodeUnvalidated      EventType = "node_unvalidated"
+	EventApproachTried        EventType = "approach_tried"
 )
 
 // Event is the base interface for all ledger events.
@@ -526,6 +527,30 @@ type NodeUnvalidated struct {
 	NodeID    types.NodeID `json:"node_id"`
 	Reason    string       `json:"reason,omitempty"`
 	RevokedBy string       `json:"revoked_by,omitempty"`
+}
+
+// ApproachTried is emitted when a prover records a failed proof approach,
+// preventing other agents from re-attempting the same dead end.
+type ApproachTried struct {
+	BaseEvent
+	NodeID      types.NodeID `json:"node_id"`
+	Approach    string       `json:"approach"`
+	Outcome     string       `json:"outcome,omitempty"`
+	TriedBy     string       `json:"tried_by,omitempty"`
+}
+
+// NewApproachTried creates an ApproachTried event.
+func NewApproachTried(nodeID types.NodeID, approach, outcome, triedBy string) ApproachTried {
+	return ApproachTried{
+		BaseEvent: BaseEvent{
+			EventType: EventApproachTried,
+			EventTime: types.Now(),
+		},
+		NodeID:   nodeID,
+		Approach: approach,
+		Outcome:  outcome,
+		TriedBy:  triedBy,
+	}
 }
 
 // NewNodeUnvalidated creates a NodeUnvalidated event.
