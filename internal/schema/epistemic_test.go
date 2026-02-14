@@ -209,10 +209,16 @@ func TestValidateEpistemicTransition_ValidatedToNeedsRefinement(t *testing.T) {
 	}
 }
 
+func TestValidateEpistemicTransition_ValidatedToPending(t *testing.T) {
+	err := ValidateEpistemicTransition(EpistemicValidated, EpistemicPending)
+	if err != nil {
+		t.Errorf("ValidateEpistemicTransition(validated, pending) returned error: %v", err)
+	}
+}
+
 func TestValidateEpistemicTransition_ValidatedToOther(t *testing.T) {
-	// validated can only transition to needs_refinement
+	// validated can only transition to needs_refinement or pending
 	invalidTargets := []EpistemicState{
-		EpistemicPending,
 		EpistemicValidated,
 		EpistemicAdmitted,
 		EpistemicRefuted,

@@ -1,6 +1,34 @@
-# Handoff - 2026-02-14 (Session 231)
+# Handoff - 2026-02-14 (Session 232)
 
 ## What Was Accomplished This Session
+
+### Session 232 Summary: Unvalidate command (vibefeld-dqh3, P1)
+
+**Closed vibefeld-dqh3 [P1]** plus 6 sub-task issues: `af unvalidate` — revert validated nodes back to pending.
+
+**Problem solved**: Once a node was validated, there was no way to revert it. In af-tests/examples5, a formula error was discovered AFTER 39 nodes were validated — workaround required 3 corrective child nodes and 15 challenge resolutions.
+
+**What was added**:
+- `af unvalidate <node-id>` — reverts `validated → pending` for re-examination
+- `--reason`, `--agent`, `--format (text|json)`, `--yes` flags
+- Confirmation prompt (destructive action) unless `--yes`
+- Taint auto-propagation: unvalidated node becomes `TaintUnresolved`, propagates to descendants
+- Full audit trail preserved (NodeUnvalidated ledger event)
+
+**Files changed** (8 files, ~200 lines):
+- `internal/schema/epistemic.go` — added `validated → pending` transition
+- `internal/ledger/event.go` — `NodeUnvalidated` event type, struct, factory
+- `internal/state/apply.go` — `applyNodeUnvalidated()` handler
+- `internal/state/replay.go` — factory + deref for `NodeUnvalidated`
+- `internal/service/proof.go` — `UnvalidateNode()` method with CAS + taint
+- `cmd/af/unvalidate.go` — NEW: CLI command
+- `cmd/af/unvalidate_test.go` — NEW: 6 integration tests
+- `internal/schema/epistemic_test.go` — updated for new transition
+- `internal/state/replay_unit_test.go` — factory completeness
+
+**Testing**: All 27 packages pass, clean build, clean vet, 6 new tests.
+
+---
 
 ### Session 231b Summary: Status navigation (vibefeld-h4wb, P1)
 
@@ -259,7 +287,7 @@ Each issue includes concrete deployment evidence (node counts, challenge counts,
 
 ### Issue Statistics (663 total, 651 closed)
 - **P0 open:** 0 (all P0s closed!)
-- **P1 open:** 4 (unvalidate, evidence, failed approaches, taint-trace)
+- **P1 open:** 3 (evidence, failed approaches, taint-trace)
 - **P2 open:** 5 (critical-path, workspace fork, falsification, def stress testing, strategy diversity)
 - **P3 open:** 3 (v0.2 designs: queries, learnings, forest)
 
@@ -307,6 +335,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 232:** Unvalidate command (dqh3) — af unvalidate, validated→pending, taint propagation, 6 tests
 **Session 231:** Amendment diffs (ndzg) + status navigation (h4wb) — af amendments, af diff, af path, af nearby, --focus/--depth/--compact, 26 tests
 **Session 230:** Draft/WIP state (qcdm, P0) — new epistemic state, af refine --draft, af submit, 12 sub-issues closed
 **Session 229:** af handoff (4p8f) + challenge triage (n52z) — handoff reports, severity/summary/active-only filters

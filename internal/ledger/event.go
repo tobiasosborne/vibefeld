@@ -34,6 +34,7 @@ const (
 	EventClaimRefreshed       EventType = "claim_refreshed"
 	EventRefinementRequested  EventType = "refinement_requested"
 	EventNodeSubmitted        EventType = "node_submitted"
+	EventNodeUnvalidated      EventType = "node_unvalidated"
 )
 
 // Event is the base interface for all ledger events.
@@ -515,5 +516,27 @@ func NewNodeSubmitted(nodeID types.NodeID, owner string) NodeSubmitted {
 		},
 		NodeID: nodeID,
 		Owner:  owner,
+	}
+}
+
+// NodeUnvalidated is emitted when a verifier revokes validation on a node,
+// reverting it from validated back to pending for re-examination.
+type NodeUnvalidated struct {
+	BaseEvent
+	NodeID    types.NodeID `json:"node_id"`
+	Reason    string       `json:"reason,omitempty"`
+	RevokedBy string       `json:"revoked_by,omitempty"`
+}
+
+// NewNodeUnvalidated creates a NodeUnvalidated event.
+func NewNodeUnvalidated(nodeID types.NodeID, reason, revokedBy string) NodeUnvalidated {
+	return NodeUnvalidated{
+		BaseEvent: BaseEvent{
+			EventType: EventNodeUnvalidated,
+			EventTime: types.Now(),
+		},
+		NodeID:    nodeID,
+		Reason:    reason,
+		RevokedBy: revokedBy,
 	}
 }

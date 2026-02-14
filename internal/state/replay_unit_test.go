@@ -303,6 +303,7 @@ func TestEventFactoriesCompleteness(t *testing.T) {
 		ledger.EventScopeClosed,
 		ledger.EventRefinementRequested,
 		ledger.EventNodeSubmitted,
+		ledger.EventNodeUnvalidated,
 	}
 
 	for _, et := range expectedTypes {

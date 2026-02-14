@@ -109,6 +109,7 @@ func AllEpistemicStates() []EpistemicStateInfo {
 // - pending → refuted (verifier rejects)
 // - pending → archived (proof path abandoned)
 // - validated → needs_refinement (refinement request)
+// - validated → pending (unvalidate: revert validation for re-examination)
 // - needs_refinement → validated (re-validation after children validated)
 // - needs_refinement → admitted (verifier admits without proof)
 // - needs_refinement → refuted (verifier rejects)
@@ -135,6 +136,7 @@ func ValidateEpistemicTransition(from, to EpistemicState) error {
 		},
 		EpistemicValidated: {
 			EpistemicNeedsRefinement,
+			EpistemicPending, // unvalidate: revert validation for re-examination
 		},
 		EpistemicNeedsRefinement: {
 			EpistemicValidated,

@@ -2086,3 +2086,47 @@ func (s *ProofService) RequestRefinement(nodeID types.NodeID, reason, requestedB
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
 	return wrapSequenceMismatch(err, "RequestRefinement")
 }
+
+// UnvalidateNode revokes validation on a node, reverting it from validated
+// back to pending for re-examination. This is a verifier action used when
+// a validation error is discovered after acceptance.
+//
+// Returns ErrNodeNotFound if the node doesn't exist.
+// Returns ErrInvalidState if the node is not in validated state.
+// Returns ErrConcurrentModification if the proof was modified by another process.
+func (s *ProofService) UnvalidateNode(nodeID types.NodeID, reason, revokedBy string) error {
+	// Load current state and capture sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Check if node exists
+	n := st.GetNode(nodeID)
+	if n == nil {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	// Validate epistemic state transition (only validated -> pending allowed)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
+		return fmt.Errorf("%w: node %s is in %s state, must be %s to unvalidate",
+			ErrInvalidState, nodeID.String(), n.EpistemicState, schema.EpistemicValidated)
+	}
+
+	// Get ledger and append event with CAS
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewNodeUnvalidated(nodeID, reason, revokedBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	if err != nil {
+		return wrapSequenceMismatch(err, "UnvalidateNode")
+	}
+
+	// Emit taint recomputation — node becomes pending (TaintUnresolved),
+	// which propagates to descendants
+	return s.emitTaintRecomputedEvents(ldg, nodeID)
+}
