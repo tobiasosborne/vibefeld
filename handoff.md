@@ -1,6 +1,24 @@
-# Handoff - 2026-02-13 (Session 226)
+# Handoff - 2026-02-14 (Session 227)
 
 ## What Was Accomplished This Session
+
+### Session 227 Summary: Holistic project review and strategic prioritization
+
+**Full project audit** across all 609 tracked issues, 15 field deployments, First Proof post-mortem, codebase health, and git history. Five parallel research agents analyzed issues, docs/PRD, git trajectory, build health, and feature proposals.
+
+**Key findings:**
+- Core adversarial verification thesis validated — catches real math errors in every deployment
+- UX breaks at scale (50+ nodes): challenges pile up, status is unusable, no iterative workflow
+- Taint system (Law 8): code investigation reveals auto-triggering IS implemented (emitTaintRecomputedEvents called from accept/admit/refute/archive), and tree renderer shows taint badges. Deployments show "all unresolved" because most nodes stayed `pending` (taint rule: pending → unresolved is correct). Remaining gaps: no `af accept` warning for tainted deps, no `af taint-trace` command.
+- 25 open issues all from field experience, forming a coherent priority stack
+- Codebase healthy: all 27 packages pass, clean build/vet, 13 packages above 80% coverage
+
+**Strategic recommendation: Fix v0.1 before building v0.2.**
+- P0/P1 issues are well-scoped UX fixes that address ~80% of observed field friction
+- v0.2 features (forest mode, slice queries, learnings tree) need the P0/P1 fixes to be useful
+- Design v0.2 now, but build it after the foundation is solid
+
+---
 
 ### Session 226 Summary: Deployment analysis — 12 improvement issues filed from field usage
 
@@ -80,32 +98,75 @@ Each issue includes concrete deployment evidence (node counts, challenge counts,
 ## Current State
 
 ### Test Status
-- All tests pass (`go test ./...`)
-- Build succeeds (`go build ./cmd/af`)
-- Service package coverage: **75.6%**
+- All tests pass (`go test ./...`) — 27/27 packages
+- Build succeeds, `go vet` clean
+- Coverage highlights: 13 packages >80%, taint/hash/scope at 100%
+- Weak spots: `cmd/af` 23%, `render` 41.6%, `ledger` 59.3%
 
-### Issue Statistics
-- **P0 bugs:** 0 remaining
-- **P1 tasks:** 0 remaining
-- **P2 tasks:** 0 remaining
-- **Ready for work:** Run `bd ready` (currently no open issues)
+### Issue Statistics (609 total, 584 closed)
+- **P0 open:** 3 (draft/WIP, handoff, challenge triage)
+- **P1 open:** 6 (diffs, navigation, unvalidate, taint, evidence, failed approaches)
+- **P2 open:** 13 (expert hooks, CAS integration, workspace fork, etc.)
+- **P3 open:** 3 (v0.2 designs: queries, learnings, forest)
 
-### Service Package Structure
-```
-internal/service/
-  exports.go      - Re-exported types/functions + NodeSummary view model (24k)
-  interface.go    - Interface definitions (7k)
-  proof.go        - Main service (2038 lines, +48 for new method)
-  proof_cycle.go  - Cycle detection (90 lines)
-```
+### Codebase
+- 367 Go files, ~176K LOC, 60+ CLI commands
+- 552 commits across 14 active development days
 
 ## Recommended Next Steps
 
-### 12 deployment-informed issues filed (run `bd ready`)
-Start with P0 issues — they address ~70% of observed field frictions:
-1. **vibefeld-n52z** Challenge triage (every deployment hit this)
-2. **vibefeld-4p8f** Auto-generate handoff (eliminates #1 workaround)
-3. **vibefeld-qcdm** Draft/WIP state (unblocks iterative workflows)
+### Tier 1 — Highest leverage (start here)
+
+**1. vibefeld-qcdm [P0] Draft/WIP state** — Highest single-impact change.
+- problem05 abandoned after 45 challenges hit at once with no iterative path
+- examples3 abandoned AF entirely because binary pending/validated killed incremental work
+- Adds `draft` epistemic state; challenges on drafts become non-blocking suggestions
+- Touch: schema (new state), ledger (new event), state, jobs, service, CLI
+
+**2. vibefeld-ayl9 [P2] Auto taint computation** — PARTIALLY ALREADY IMPLEMENTED.
+- Investigation found `emitTaintRecomputedEvents()` already called from accept/admit/refute/archive
+- Tree renderer already shows taint badges `[epistemic/taint]`
+- Deployments show "all unresolved" because nodes stayed `pending` (correct behavior)
+- **Remaining gaps**: (a) `af accept` should warn if node has tainted/admitted deps, (b) `af taint-trace <id>` command, (c) consider re-scoping or closing issue
+- Touch: service (accept warning), CLI (taint-trace command)
+
+**3. vibefeld-n52z [P0] Challenge triage** — Addresses the "302KB wall" from the challenge side.
+- `af challenges --severity critical`, `--active-only`, `--node <id>`, `--summary`
+- Auto-emit `ChallengeSuperseded` on refute/archive
+- Touch: state (supersede logic), render (filtering), CLI (new flags)
+
+### Tier 2 — Complete the feedback loops
+
+**4. vibefeld-h4wb [P1] Status navigation** — `--focus`, `--depth`, `--compact`, `--critical-path`.
+- Addresses the "302KB wall" from the status side
+- Touch: render, CLI
+
+**5. vibefeld-ndzg [P1] Amendment diffs** — `af diff <id>`, `af amendments <id>`.
+- Verifiers currently can't tell if their challenge was addressed after amendment
+- Requires storing `old_statement` in NodeAmended events
+- Touch: ledger (event schema), state, render, CLI (new commands)
+
+**6. vibefeld-w9qr [P1] Archive severs taint** — Fix taint propagation for archived/refuted nodes.
+- Pairs naturally with vibefeld-ayl9 (auto taint)
+- Touch: taint (propagation logic), service
+
+**7. vibefeld-4p8f [P0] Auto-generate handoff** — `af handoff` command.
+- Every deployment maintained 100-250 line external HANDOFF.md
+- Generates tree summary, challenge counts, recommended next steps
+- Touch: service (new method), render, CLI (new command)
+
+### Tier 3 — Strategic features (design now, build after Tier 1-2)
+
+**8. vibefeld-fvxp [P1] Failed approach registry** — `af approach-tried`, `af approach-list`
+**9. vibefeld-tio5 [P1] Attach computational evidence** — `af attach`, `af verify-run`
+**10. vibefeld-dqh3 [P1] Unvalidate/supersede** — `af unvalidate`, `af supersede`
+
+### Tier 4 — v0.2 horizon (design only)
+
+- **vibefeld-t9u6** Forest mode (multiple roots per workspace)
+- **vibefeld-q05l** Slice queries (composable tree queries for agents)
+- **vibefeld-95mk** Learnings tree (structured meta-knowledge)
+- **vibefeld-p125** Conjecture falsification (dual proof/disproof trees)
 
 ## Quick Commands
 
@@ -117,6 +178,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 227:** Holistic project review — strategic prioritization of 25 open issues into 4 execution tiers
 **Session 226:** Deployment analysis — investigated 15 real AF deployments, filed 12 improvement issues (3 P0, 6 P1, 3 P2)
 **Session 225:** Issue triage - closed vibefeld-264n, vibefeld-qsyt as "by design" (over-engineering)
 **Session 224:** Added NodeSummary view model, LoadPendingNodeSummaries() method (vibefeld-vj5y)
