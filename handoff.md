@@ -1,6 +1,32 @@
-# Handoff - 2026-02-14 (Session 230)
+# Handoff - 2026-02-14 (Session 231)
 
 ## What Was Accomplished This Session
+
+### Session 231 Summary: Amendment diffs (vibefeld-ndzg, P1)
+
+**Closed vibefeld-ndzg [P1]**: Implemented `af amendments` and `af diff` commands for node version history.
+
+**Problem solved**: When nodes are amended, verifiers couldn't tell if their challenge was addressed. Users had to manually diff ledger events. Nodes like problem01's 1.6.4.3 (7 amendments) and problem08's 1.3 (24 challenges, 2 amendments) were untrackable.
+
+**What was added**:
+- `af amendments <node-id>` — lists all versions with timestamps, owners, and full statements
+- `af diff <node-id>` — shows diff between previous and current version
+- `af diff <node-id> --version N` — diff from version N to current
+- `af diff <node-id> --all` — shows all diffs in chronological order
+- `af diff <node-id> --since-challenge <id>` — changes since a challenge was raised
+- Both commands support `--format json` for machine-readable output
+
+**Files changed** (4 files, ~450 lines):
+- `cmd/af/amendments.go` — NEW: amendments command (~140 lines)
+- `cmd/af/amendments_test.go` — NEW: 7 integration tests
+- `cmd/af/diff.go` — NEW: diff command (~260 lines)
+- `cmd/af/diff_test.go` — NEW: 10 integration tests
+
+**No service/state changes needed** — `LoadAmendmentHistory()`, `GetAmendmentHistory()`, and `state.Amendment` struct were already implemented. This was purely CLI-layer work.
+
+**Testing**: All 27 packages pass, clean build, 17 new tests all passing.
+
+---
 
 ### Session 230 Summary: Draft/WIP epistemic state (vibefeld-qcdm, P0)
 
@@ -206,9 +232,9 @@ Each issue includes concrete deployment evidence (node counts, challenge counts,
 - Coverage highlights: 13 packages >80%, taint/hash/scope at 100%
 - Weak spots: `cmd/af` 23%, `render` 41.6%, `ledger` 59.3%
 
-### Issue Statistics (662 total, 649 closed)
+### Issue Statistics (662 total, 650 closed)
 - **P0 open:** 0 (all P0s closed!)
-- **P1 open:** 6 (diffs, navigation, unvalidate, evidence, failed approaches)
+- **P1 open:** 5 (navigation, unvalidate, evidence, failed approaches)
 - **P2 open:** 4 (workspace fork, falsification, def stress testing, strategy diversity)
 - **P3 open:** 3 (v0.2 designs: queries, learnings, forest)
 
@@ -220,12 +246,7 @@ Each issue includes concrete deployment evidence (node counts, challenge counts,
 
 ### Tier 1 — Highest leverage P1 features
 
-**1. vibefeld-ndzg [P1] Amendment diffs** — `af diff <id>`, `af amendments <id>`.
-- Verifiers currently can't tell if their challenge was addressed after amendment
-- `old_statement` already stored in NodeAmended events
-- Touch: state, render, CLI (new commands)
-
-**2. vibefeld-h4wb [P1] Status navigation** — `--focus`, `--depth`, `--compact`, `--critical-path`.
+**1. vibefeld-h4wb [P1] Status navigation** — `--focus`, `--depth`, `--compact`, `--critical-path`.
 - Addresses the "302KB wall" from the status side
 - Touch: render, CLI
 
@@ -261,6 +282,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 231:** Amendment diffs (ndzg, P1) — af amendments, af diff with --version/--all/--since-challenge, 17 tests
 **Session 230:** Draft/WIP state (qcdm, P0) — new epistemic state, af refine --draft, af submit, 12 sub-issues closed
 **Session 229:** af handoff (4p8f) + challenge triage (n52z) — handoff reports, severity/summary/active-only filters
 **Session 228:** Taint fixes (w9qr, ayl9) + update-external command (hw0w), filed z8tc
