@@ -70,6 +70,7 @@ func TestExtractEventType_AllKnownTypes(t *testing.T) {
 		{"evidence_attached", `{"type":"evidence_attached"}`, ledger.EventEvidenceAttached},
 		{"outline_set", `{"type":"outline_set"}`, ledger.EventOutlineSet},
 		{"outline_stage_linked", `{"type":"outline_stage_linked"}`, ledger.EventOutlineStageLinked},
+		{"pattern_added", `{"type":"pattern_added"}`, ledger.EventPatternAdded},
 	}
 
 	for _, tt := range tests {
@@ -313,6 +314,7 @@ func TestEventFactoriesCompleteness(t *testing.T) {
 		ledger.EventHintAdded,
 		ledger.EventNodeVetoed,
 		ledger.EventStrategyProposed,
+		ledger.EventPatternAdded,
 	}
 
 	for _, et := range expectedTypes {
@@ -396,6 +398,11 @@ func TestParseEvent_AllEventTypes(t *testing.T) {
 			"strategy_proposed",
 			`{"type":"strategy_proposed","node_id":"1","strategy":"Induction","novelty":"medium","time":"2024-01-01T00:00:00Z"}`,
 			ledger.EventStrategyProposed,
+		},
+		{
+			"pattern_added",
+			`{"type":"pattern_added","name":"test","description":"test desc","time":"2024-01-01T00:00:00Z"}`,
+			ledger.EventPatternAdded,
 		},
 	}
 

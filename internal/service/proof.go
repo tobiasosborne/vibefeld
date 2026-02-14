@@ -2243,6 +2243,36 @@ func (s *ProofService) ProposeStrategy(nodeID types.NodeID, strategy, novelty, r
 	return wrapSequenceMismatch(err, "ProposeStrategy")
 }
 
+// AddPattern registers a failure pattern in the workspace.
+// Failure patterns capture recurring proof anti-patterns so agents can
+// recognize and avoid them.
+//
+// Returns ErrEmptyInput if the name or description is empty.
+// Returns ErrConcurrentModification if the proof was modified by another process.
+func (s *ProofService) AddPattern(name, description, indicators, remediation, addedBy string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("%w: pattern name", ErrEmptyInput)
+	}
+	if strings.TrimSpace(description) == "" {
+		return fmt.Errorf("%w: pattern description", ErrEmptyInput)
+	}
+
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewPatternAdded(name, description, indicators, remediation, addedBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	return wrapSequenceMismatch(err, "AddPattern")
+}
+
 // AddHint adds a directional hint from a domain expert to a node.
 // Hints provide guidance that provers must address (incorporate or explain why not).
 //

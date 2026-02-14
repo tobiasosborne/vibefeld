@@ -163,6 +163,7 @@ var eventFactories = map[ledger.EventType]eventFactory{
 	ledger.EventHintAdded:           func() ledger.Event { return &ledger.HintAdded{} },
 	ledger.EventNodeVetoed:          func() ledger.Event { return &ledger.NodeVetoed{} },
 	ledger.EventStrategyProposed:    func() ledger.Event { return &ledger.StrategyProposed{} },
+	ledger.EventPatternAdded:        func() ledger.Event { return &ledger.PatternAdded{} },
 }
 
 // parseEvent parses raw JSON bytes into a typed Event.
@@ -255,6 +256,8 @@ func derefEvent(eventPtr ledger.Event) ledger.Event {
 	case *ledger.NodeVetoed:
 		return *e
 	case *ledger.StrategyProposed:
+		return *e
+	case *ledger.PatternAdded:
 		return *e
 	default:
 		// Should never happen since factory already validated the type

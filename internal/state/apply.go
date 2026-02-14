@@ -82,6 +82,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyNodeVetoed(s, e)
 	case ledger.StrategyProposed:
 		return applyStrategyProposed(s, e)
+	case ledger.PatternAdded:
+		return applyPatternAdded(s, e)
 	case ledger.OutlineSet:
 		return applyOutlineSet(s, e)
 	case ledger.OutlineStageLinked:
@@ -563,6 +565,21 @@ func applyStrategyProposed(s *State, e ledger.StrategyProposed) error {
 		ProposedBy: e.ProposedBy,
 	}
 	s.AddProposedStrategy(e.NodeID, ps)
+	return nil
+}
+
+// applyPatternAdded handles the PatternAdded event.
+// This registers a failure pattern in the workspace.
+func applyPatternAdded(s *State, e ledger.PatternAdded) error {
+	p := FailurePattern{
+		Timestamp:   e.EventTime,
+		Name:        e.Name,
+		Description: e.Description,
+		Indicators:  e.Indicators,
+		Remediation: e.Remediation,
+		AddedBy:     e.AddedBy,
+	}
+	s.AddPattern(p)
 	return nil
 }
 

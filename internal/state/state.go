@@ -108,6 +108,17 @@ type ProposedStrategy struct {
 	ProposedBy string          // Who proposed it
 }
 
+// FailurePattern represents a known failure pattern registered in the workspace.
+// These capture recurring proof anti-patterns so agents can recognize and avoid them.
+type FailurePattern struct {
+	Timestamp   types.Timestamp // When the pattern was registered
+	Name        string          // Short identifying name (e.g., "continuum-to-finite")
+	Description string          // What goes wrong
+	Indicators  string          // How to recognize this pattern
+	Remediation string          // What to do instead
+	AddedBy     string          // Who registered it
+}
+
 // State represents the current derived state of a proof.
 // It is reconstructed by replaying ledger events.
 type State struct {
@@ -156,6 +167,9 @@ type State struct {
 	// proposedStrategies maps NodeID string to a slice of ProposedStrategy records.
 	// This tracks proof strategies proposed for each node.
 	proposedStrategies map[string][]ProposedStrategy
+
+	// patterns holds registered failure patterns for the workspace.
+	patterns []FailurePattern
 
 	// outlineStages holds the current proof outline stages.
 	// Replaced entirely on each OutlineSet event.
@@ -548,6 +562,16 @@ func (s *State) AddHint(nodeID types.NodeID, hint Hint) {
 // Returns an empty slice if no hints have been added.
 func (s *State) GetHints(nodeID types.NodeID) []Hint {
 	return s.hints[nodeID.String()]
+}
+
+// AddPattern adds a failure pattern to the workspace.
+func (s *State) AddPattern(p FailurePattern) {
+	s.patterns = append(s.patterns, p)
+}
+
+// GetPatterns returns all registered failure patterns.
+func (s *State) GetPatterns() []FailurePattern {
+	return s.patterns
 }
 
 // SetOutline replaces the entire outline with the given stages.

@@ -42,6 +42,7 @@ const (
 	EventHintAdded            EventType = "hint_added"
 	EventNodeVetoed           EventType = "node_vetoed"
 	EventStrategyProposed     EventType = "strategy_proposed"
+	EventPatternAdded         EventType = "pattern_added"
 )
 
 // Event is the base interface for all ledger events.
@@ -713,5 +714,32 @@ func NewNodeUnvalidated(nodeID types.NodeID, reason, revokedBy string) NodeUnval
 		NodeID:    nodeID,
 		Reason:    reason,
 		RevokedBy: revokedBy,
+	}
+}
+
+// PatternAdded is emitted when a failure pattern is registered in the workspace.
+// Failure patterns capture recurring proof anti-patterns (e.g., continuum-to-finite
+// fallacy) so agents can recognize and avoid them.
+type PatternAdded struct {
+	BaseEvent
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Indicators  string `json:"indicators,omitempty"`
+	Remediation string `json:"remediation,omitempty"`
+	AddedBy     string `json:"added_by,omitempty"`
+}
+
+// NewPatternAdded creates a PatternAdded event.
+func NewPatternAdded(name, description, indicators, remediation, addedBy string) PatternAdded {
+	return PatternAdded{
+		BaseEvent: BaseEvent{
+			EventType: EventPatternAdded,
+			EventTime: types.Now(),
+		},
+		Name:        name,
+		Description: description,
+		Indicators:  indicators,
+		Remediation: remediation,
+		AddedBy:     addedBy,
 	}
 }
