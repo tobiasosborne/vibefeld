@@ -311,6 +311,7 @@ func TestEventFactoriesCompleteness(t *testing.T) {
 		ledger.EventApproachTried,
 		ledger.EventEvidenceAttached,
 		ledger.EventHintAdded,
+		ledger.EventNodeVetoed,
 	}
 
 	for _, et := range expectedTypes {
@@ -384,6 +385,11 @@ func TestParseEvent_AllEventTypes(t *testing.T) {
 			"hint_added",
 			`{"type":"hint_added","node_id":"1","text":"Try induction","time":"2024-01-01T00:00:00Z"}`,
 			ledger.EventHintAdded,
+		},
+		{
+			"node_vetoed",
+			`{"type":"node_vetoed","node_id":"1","reason":"Expert override","time":"2024-01-01T00:00:00Z"}`,
+			ledger.EventNodeVetoed,
 		},
 	}
 

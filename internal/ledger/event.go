@@ -40,6 +40,7 @@ const (
 	EventOutlineSet           EventType = "outline_set"
 	EventOutlineStageLinked   EventType = "outline_stage_linked"
 	EventHintAdded            EventType = "hint_added"
+	EventNodeVetoed           EventType = "node_vetoed"
 )
 
 // Event is the base interface for all ledger events.
@@ -649,6 +650,29 @@ func NewHintAdded(nodeID types.NodeID, text, hintBy string) HintAdded {
 		NodeID: nodeID,
 		Text:   text,
 		HintBy: hintBy,
+	}
+}
+
+// NodeVetoed is emitted when a human expert force-refutes a node,
+// bypassing normal adversarial workflow. Unlike NodeRefuted, this can
+// override any non-terminal state including validated and admitted nodes.
+type NodeVetoed struct {
+	BaseEvent
+	NodeID   types.NodeID `json:"node_id"`
+	Reason   string       `json:"reason"`
+	VetoedBy string       `json:"vetoed_by,omitempty"`
+}
+
+// NewNodeVetoed creates a NodeVetoed event.
+func NewNodeVetoed(nodeID types.NodeID, reason, vetoedBy string) NodeVetoed {
+	return NodeVetoed{
+		BaseEvent: BaseEvent{
+			EventType: EventNodeVetoed,
+			EventTime: types.Now(),
+		},
+		NodeID:   nodeID,
+		Reason:   reason,
+		VetoedBy: vetoedBy,
 	}
 }
 

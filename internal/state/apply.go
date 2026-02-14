@@ -78,6 +78,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyEvidenceAttached(s, e)
 	case ledger.HintAdded:
 		return applyHintAdded(s, e)
+	case ledger.NodeVetoed:
+		return applyNodeVetoed(s, e)
 	case ledger.OutlineSet:
 		return applyOutlineSet(s, e)
 	case ledger.OutlineStageLinked:
@@ -491,6 +493,33 @@ func applyNodeUnvalidated(s *State, e ledger.NodeUnvalidated) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicPending
+
+	// Auto-trigger taint recomputation after epistemic state change
+	recomputeTaintForNode(s, n)
+
+	return nil
+}
+
+// applyNodeVetoed handles the NodeVetoed event.
+// This is a human expert force-refute that bypasses normal state transition
+// validation. Unlike applyNodeRefuted, this can override any non-terminal state
+// including validated and admitted nodes.
+func applyNodeVetoed(s *State, e ledger.NodeVetoed) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	// Veto can override any state except already-refuted and archived
+	if n.EpistemicState == schema.EpistemicRefuted {
+		return fmt.Errorf("node %s is already refuted", e.NodeID.String())
+	}
+	if n.EpistemicState == schema.EpistemicArchived {
+		return fmt.Errorf("node %s is archived and cannot be vetoed", e.NodeID.String())
+	}
+	n.EpistemicState = schema.EpistemicRefuted
+
+	// Auto-supersede any open challenges on this node
+	supersedeOpenChallengesForNode(s, e.NodeID)
 
 	// Auto-trigger taint recomputation after epistemic state change
 	recomputeTaintForNode(s, n)

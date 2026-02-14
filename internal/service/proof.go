@@ -1091,6 +1091,54 @@ func (s *ProofService) RefuteNode(id types.NodeID) error {
 	return s.emitTaintRecomputedEvents(ldg, id)
 }
 
+// VetoNode is a human expert force-refute that bypasses normal adversarial
+// workflow. Unlike RefuteNode, this can override any non-terminal state
+// including validated and admitted nodes.
+//
+// Requires a non-empty reason for audit trail.
+//
+// Returns ErrEmptyInput if the reason is empty.
+// Returns ErrNodeNotFound if the node doesn't exist.
+// Returns ErrInvalidState if the node is already refuted or archived.
+// Returns ErrConcurrentModification if the proof was modified by another process.
+func (s *ProofService) VetoNode(id types.NodeID, reason, vetoedBy string) error {
+	if strings.TrimSpace(reason) == "" {
+		return fmt.Errorf("%w: reason is required for veto", ErrEmptyInput)
+	}
+
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	n := st.GetNode(id)
+	if n == nil {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+	}
+
+	// Veto can override any state except already-refuted and archived
+	if n.EpistemicState == schema.EpistemicRefuted {
+		return fmt.Errorf("%w: node %s is already refuted", ErrInvalidState, id.String())
+	}
+	if n.EpistemicState == schema.EpistemicArchived {
+		return fmt.Errorf("%w: node %s is archived and cannot be vetoed", ErrInvalidState, id.String())
+	}
+
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewNodeVetoed(id, reason, vetoedBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	if err != nil {
+		return wrapSequenceMismatch(err, "VetoNode")
+	}
+
+	return s.emitTaintRecomputedEvents(ldg, id)
+}
+
 // ArchiveNode archives a node, abandoning the branch.
 // Returns an error if the node doesn't exist.
 //
