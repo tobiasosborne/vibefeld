@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobias/vibefeld/internal/state"
 )
 
 // Health status constants
@@ -37,8 +38,9 @@ type HealthStatistics struct {
 	OpenChallenges int `json:"open_challenges"`
 	ProverJobs     int `json:"prover_jobs"`
 	VerifierJobs   int `json:"verifier_jobs"`
-	LeafNodes      int `json:"leaf_nodes"`
-	BlockedLeaves  int `json:"blocked_leaves"`
+	LeafNodes        int `json:"leaf_nodes"`
+	BlockedLeaves    int `json:"blocked_leaves"`
+	FatiguedSubtrees int `json:"fatigued_subtrees"`
 }
 
 // HealthReport contains the complete health assessment of a proof.
@@ -263,8 +265,29 @@ func analyzeHealth(st *service.State) *HealthReport {
 		}
 	}
 
-	// Check 4: Circular dependencies (simplified check - nodes depending on themselves through parent chain)
-	// For now, we skip this as the hierarchical ID system prevents true cycles
+	// Check 4: Repair fatigue — subtrees with chronic challenge/amendment cycles
+	fatigued := st.FindFatiguedSubtrees(state.DefaultRepairWarningThreshold, state.DefaultRepairAlarmThreshold)
+	stats.FatiguedSubtrees = len(fatigued)
+	for _, f := range fatigued {
+		severity := "warning"
+		msg := fmt.Sprintf("Subtree %s shows repair fatigue: %d repair cycles (%d challenges, %d amendments, %d refuted)",
+			f.NodeID, f.RepairCycles, f.Metrics.TotalChallenges, f.Metrics.TotalAmendments, f.Metrics.RefutedDescendants)
+		suggestion := "Investigate whether the parent claim or root conjecture may be false"
+		if f.Level == state.FatigueAlarm {
+			severity = "alarm"
+			suggestion = "ALARM: Repeated repairs strongly suggest the claim or root conjecture is false. Re-examine foundational assumptions."
+		}
+		_ = severity // used implicitly by blocker type
+		blockers = append(blockers, Blocker{
+			Type:       "repair_fatigue",
+			Message:    msg,
+			Suggestion: suggestion,
+			NodeIDs:    []string{f.NodeID},
+		})
+		if status == HealthStatusHealthy {
+			status = HealthStatusWarning
+		}
+	}
 
 	// Ensure blockers is never nil for consistent JSON output
 	if blockers == nil {
@@ -318,6 +341,9 @@ func renderHealthText(report *HealthReport) string {
 	sb.WriteString(fmt.Sprintf("  Open challenges:  %d\n", report.Statistics.OpenChallenges))
 	sb.WriteString(fmt.Sprintf("  Leaf nodes:       %d\n", report.Statistics.LeafNodes))
 	sb.WriteString(fmt.Sprintf("  Blocked leaves:   %d\n", report.Statistics.BlockedLeaves))
+	if report.Statistics.FatiguedSubtrees > 0 {
+		sb.WriteString(fmt.Sprintf("  Fatigued subtrees:%d\n", report.Statistics.FatiguedSubtrees))
+	}
 	sb.WriteString("\n")
 
 	sb.WriteString("Jobs:\n")
