@@ -1,6 +1,25 @@
-# Handoff - 2026-02-14 (Session 228)
+# Handoff - 2026-02-14 (Session 229)
 
 ## What Was Accomplished This Session
+
+### Session 229 Summary: af handoff command (vibefeld-4p8f)
+
+**Closed vibefeld-4p8f [P0]**: Implemented `af handoff` command that generates concise handoff reports for session transitions.
+
+**Features**:
+- Proof summary: conjecture, completion %, node counts by epistemic state, taint summary
+- Open challenges grouped by node with severity counts (critical/major/minor/note), sorted by priority
+- Recommended next steps based on available jobs, critical challenges, taint issues
+- Recent activity via `--since <seq>` flag (filters noise events like taint_recomputed)
+- Both text and JSON output formats (`--format json`)
+
+**Files changed**:
+- `cmd/af/handoff.go` — New CLI command (~300 lines)
+- `cmd/af/handoff_test.go` — 6 integration tests (no-proof text/JSON, basic proof text/JSON, --since, invalid format)
+
+**Testing**: All 27 packages pass, clean build.
+
+---
 
 ### Session 228 Summary: Taint system fixes (vibefeld-w9qr, vibefeld-ayl9)
 
@@ -203,6 +222,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 229:** af handoff command (vibefeld-4p8f) — concise handoff reports with challenges, next steps, recent activity
 **Session 228:** Taint fixes (w9qr, ayl9) + update-external command (hw0w), filed z8tc
 **Session 227:** Holistic project review — strategic prioritization of 25 open issues into 4 execution tiers
 **Session 226:** Deployment analysis — investigated 15 real AF deployments, filed 12 improvement issues (3 P0, 6 P1, 3 P2)
