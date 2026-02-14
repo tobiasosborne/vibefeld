@@ -12,11 +12,16 @@
 
 **Filed vibefeld-z8tc**: `af taint-trace` command (P2 follow-up from vibefeld-ayl9).
 
+**3. Closed vibefeld-hw0w**: Added `af update-external <name-or-id>` command with `--name`, `--source`, `--notes` flags. Resolves by name or ID. Content hash recomputed on source change. Service method `UpdateExternal()` added to proof.go.
+
 **Files changed**:
 - `internal/taint/compute.go` — Added rule 0 (6 lines)
 - `internal/taint/compute_test.go` — 4 new tests for archived/refuted with tainted ancestors
 - `cmd/af/accept.go` — Added `warnTaintedDeps()` function, called before acceptance
 - `cmd/af/accept_test.go` — 1 integration test for taint warning
+- `internal/service/proof.go` — Added `UpdateExternal()` method
+- `cmd/af/update_external.go` — New CLI command `af update-external`
+- `cmd/af/update_external_test.go` — 4 integration tests
 
 **Testing**: All 27 packages pass, clean build, clean vet.
 
@@ -198,7 +203,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
-**Session 228:** Taint fixes — vibefeld-w9qr (archive severs taint), vibefeld-ayl9 (accept warns on tainted deps), filed vibefeld-z8tc
+**Session 228:** Taint fixes (w9qr, ayl9) + update-external command (hw0w), filed z8tc
 **Session 227:** Holistic project review — strategic prioritization of 25 open issues into 4 execution tiers
 **Session 226:** Deployment analysis — investigated 15 real AF deployments, filed 12 improvement issues (3 P0, 6 P1, 3 P2)
 **Session 225:** Issue triage - closed vibefeld-264n, vibefeld-qsyt as "by design" (over-engineering)

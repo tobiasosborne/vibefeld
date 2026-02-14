@@ -3,6 +3,8 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -1848,6 +1850,34 @@ func (s *ProofService) WriteExternal(ext *node.External) error {
 // This is a convenience wrapper around fs.ListExternals that uses the service's path.
 func (s *ProofService) ListExternals() ([]string, error) {
 	return fs.ListExternals(s.path)
+}
+
+// UpdateExternal updates fields of an existing external reference.
+// Only non-empty values are applied. Returns the updated external.
+func (s *ProofService) UpdateExternal(id string, name, source, notes string) (*node.External, error) {
+	ext, err := fs.ReadExternal(s.path, id)
+	if err != nil {
+		return nil, fmt.Errorf("external %q not found: %w", id, err)
+	}
+
+	if strings.TrimSpace(name) != "" {
+		ext.Name = name
+	}
+	if strings.TrimSpace(source) != "" {
+		ext.Source = source
+		// Recompute content hash from new source
+		sum := sha256.Sum256([]byte(source))
+		ext.ContentHash = hex.EncodeToString(sum[:])
+	}
+	if notes != "" {
+		ext.Notes = notes
+	}
+
+	if err := fs.WriteExternal(s.path, ext); err != nil {
+		return nil, fmt.Errorf("writing updated external: %w", err)
+	}
+
+	return ext, nil
 }
 
 // RecomputeAllTaint recomputes taint state for all nodes in the proof tree.
