@@ -1,6 +1,20 @@
-# Handoff - 2026-02-14 (Session 227)
+# Handoff - 2026-02-14 (Session 228)
 
 ## What Was Accomplished This Session
+
+### Session 228 Summary: Fixed taint severing for archived/refuted nodes (vibefeld-w9qr)
+
+**Fixed P1 bug**: Archived and refuted nodes now always compute as `TaintClean`, regardless of ancestor taint state. Previously, archived/refuted nodes inherited `TaintUnresolved` from pending ancestors, causing phantom taint to block progress on proofs where branches had been explicitly abandoned.
+
+**Change**: Added rule 0 to `ComputeTaint()` in `internal/taint/compute.go` — if node is archived or refuted, return `TaintClean` immediately. This fires before all other taint rules, effectively severing abandoned nodes from the taint propagation chain.
+
+**Files changed**:
+- `internal/taint/compute.go` — Added rule 0 (6 lines)
+- `internal/taint/compute_test.go` — 4 new tests covering archived/refuted with unresolved and tainted ancestors
+
+**Testing**: All 27 packages pass, clean build, clean vet.
+
+---
 
 ### Session 227 Summary: Holistic project review and strategic prioritization
 
@@ -178,6 +192,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 228:** Fixed vibefeld-w9qr — archived/refuted nodes severed from taint propagation (rule 0 in ComputeTaint)
 **Session 227:** Holistic project review — strategic prioritization of 25 open issues into 4 execution tiers
 **Session 226:** Deployment analysis — investigated 15 real AF deployments, filed 12 improvement issues (3 P0, 6 P1, 3 P2)
 **Session 225:** Issue triage - closed vibefeld-264n, vibefeld-qsyt as "by design" (over-engineering)

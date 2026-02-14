@@ -10,12 +10,20 @@ import (
 // and its ancestors' taint states.
 //
 // The taint computation follows these rules:
+// 0. If the node is archived or refuted, return clean (severed from proof)
 // 1. If the node is pending, return unresolved
 // 2. If any ancestor is unresolved, return unresolved
 // 3. If the node's epistemic state introduces taint (admitted), return self_admitted
 // 4. If any ancestor is tainted or self_admitted, return tainted
 // 5. Otherwise, return clean
 func ComputeTaint(n *node.Node, ancestors []*node.Node) node.TaintState {
+	// Rule 0: Archived/refuted nodes are severed from the proof — always clean.
+	// They are explicitly abandoned (archived) or disproven (refuted) and
+	// should not inherit taint from ancestors.
+	if n.EpistemicState == schema.EpistemicArchived || n.EpistemicState == schema.EpistemicRefuted {
+		return node.TaintClean
+	}
+
 	// Rule 1: If the node is pending, return unresolved
 	if n.EpistemicState == schema.EpistemicPending {
 		return node.TaintUnresolved

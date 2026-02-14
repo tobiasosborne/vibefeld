@@ -198,6 +198,60 @@ func TestComputeTaint_ArchivedNode(t *testing.T) {
 	}
 }
 
+func TestComputeTaint_ArchivedNodeWithUnresolvedAncestor(t *testing.T) {
+	// An archived node should be clean even if its ancestor is unresolved.
+	// Archived nodes are severed from the proof — ancestor taint doesn't propagate.
+	n := makeTestNode("1.1", schema.EpistemicArchived, node.TaintUnresolved)
+	parent := makeTestNode("1", schema.EpistemicPending, node.TaintUnresolved)
+	ancestors := []*node.Node{parent}
+
+	result := ComputeTaint(n, ancestors)
+
+	if result != node.TaintClean {
+		t.Errorf("ComputeTaint() = %v, want %v", result, node.TaintClean)
+	}
+}
+
+func TestComputeTaint_RefutedNodeWithUnresolvedAncestor(t *testing.T) {
+	// A refuted node should be clean even if its ancestor is unresolved.
+	// Refuted nodes are severed from the proof — ancestor taint doesn't propagate.
+	n := makeTestNode("1.1", schema.EpistemicRefuted, node.TaintUnresolved)
+	parent := makeTestNode("1", schema.EpistemicPending, node.TaintUnresolved)
+	ancestors := []*node.Node{parent}
+
+	result := ComputeTaint(n, ancestors)
+
+	if result != node.TaintClean {
+		t.Errorf("ComputeTaint() = %v, want %v", result, node.TaintClean)
+	}
+}
+
+func TestComputeTaint_ArchivedNodeWithTaintedAncestor(t *testing.T) {
+	// An archived node should be clean even if its ancestor is tainted.
+	n := makeTestNode("1.1", schema.EpistemicArchived, node.TaintUnresolved)
+	parent := makeTestNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+	ancestors := []*node.Node{parent}
+
+	result := ComputeTaint(n, ancestors)
+
+	if result != node.TaintClean {
+		t.Errorf("ComputeTaint() = %v, want %v", result, node.TaintClean)
+	}
+}
+
+func TestComputeTaint_RefutedNodeWithTaintedAncestor(t *testing.T) {
+	// A refuted node should be clean even if its ancestor is tainted.
+	n := makeTestNode("1.1", schema.EpistemicRefuted, node.TaintUnresolved)
+	parent := makeTestNode("1", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+	ancestors := []*node.Node{parent}
+
+	result := ComputeTaint(n, ancestors)
+
+	if result != node.TaintClean {
+		t.Errorf("ComputeTaint() = %v, want %v", result, node.TaintClean)
+	}
+}
+
 func TestComputeTaint_NilNode(t *testing.T) {
 	// ComputeTaint should handle nil node gracefully by panicking
 	// (defensive behavior - caller must provide valid node)
