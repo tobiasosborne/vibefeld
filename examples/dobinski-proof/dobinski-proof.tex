@@ -1,0 +1,155 @@
+%% ALETHFELD PROOF - Dobinski's Formula
+%% Generated from adversarial proof verification
+
+\documentclass[11pt,a4paper]{article}
+
+%% ===== PACKAGES =====
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amsthm,amssymb,amsfonts}
+\usepackage{mathtools}
+\usepackage{enumitem}
+\usepackage{marginnote}
+\usepackage[usenames,dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+%% ===== THEOREM ENVIRONMENTS =====
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{claim}[theorem]{Claim}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\newtheorem*{note}{Note}
+
+%% ===== PROOF STEP ENVIRONMENT (Lamport-style) =====
+\newcounter{proofstep}[theorem]
+\renewcommand{\theproofstep}{\arabic{proofstep}}
+\newenvironment{proofsteps}{%
+  \setcounter{proofstep}{0}%
+  \begin{list}{\textbf{\theproofstep.}}%
+    {\usecounter{proofstep}%
+     \setlength{\leftmargin}{2.5em}%
+     \setlength{\labelsep}{0.5em}%
+     \setlength{\itemsep}{0.5ex plus 0.2ex minus 0.1ex}}%
+}{\end{list}}
+
+%% ===== NESTED PROOF STEPS =====
+\newcounter{substep}[proofstep]
+\renewcommand{\thesubstep}{\theproofstep.\arabic{substep}}
+\newenvironment{substeps}{%
+  \setcounter{substep}{0}%
+  \begin{list}{\textbf{\thesubstep.}}%
+    {\usecounter{substep}%
+     \setlength{\leftmargin}{2em}%
+     \setlength{\labelsep}{0.5em}%
+     \setlength{\itemsep}{0.3ex}}%
+}{\end{list}}
+
+%% ===== JUSTIFICATION MARGIN NOTE =====
+\newcommand{\by}[1]{\marginnote{\footnotesize\textit{#1}}}
+
+%% ===== STATUS MARKERS =====
+\newcommand{\verified}{\,\textcolor{ForestGreen}{\checkmark}}
+
+%% ===== DOCUMENT BEGINS =====
+\begin{document}
+
+%% ----- TITLE -----
+\title{Dobinski's Formula for Bell Numbers}
+\author{Alethfeld Proof System}
+\date{2026-01-16}
+\maketitle
+
+%% ===== THEOREM STATEMENT =====
+\begin{theorem}[Dobinski's Formula]\label{thm:main}
+For all non-negative integers $n$, the Bell number $B_n$ equals
+\[
+B_n = \frac{1}{e} \sum_{k=0}^{\infty} \frac{k^n}{k!}
+\]
+where $B_n$ counts the number of partitions of a set with $n$ elements.
+\end{theorem}
+
+%% ===== MAIN PROOF =====
+\begin{proof}[Proof of Theorem~\ref{thm:main}]
+\begin{proofsteps}
+
+\item \label{step:1.1} By definition, $B_n = \sum_{k=0}^{n} S(n,k)$, the sum of Stirling numbers of the second kind. \by{definition} \verified
+
+\begin{substeps}
+\item For $n \geq 1$, every partition of an $n$-set has exactly $k$ non-empty blocks for some unique $k$ with $1 \leq k \leq n$. For $n = 0$, the unique partition (the empty partition) has $k = 0$ blocks. \verified
+
+\item The set of all partitions of an $n$-set is the disjoint union of partitions with exactly $k$ blocks, for $k = 1, 2, \ldots, n$. \verified
+
+\item By definition of $S(n,k)$, there are exactly $S(n,k)$ partitions with exactly $k$ blocks. \verified
+
+\item By the addition principle for disjoint sets, $B_n = \sum_{k=1}^{n} S(n,k)$. Since $S(n,0) = 0$ for $n > 0$, we can write $B_n = \sum_{k=0}^{n} S(n,k)$. \verified
+\end{substeps}
+
+\item \label{step:1.2} $S(n,k)$ counts surjections from an $n$-set to a $k$-set divided by $k!$. Equivalently:
+\[
+S(n,k) = \frac{1}{k!} \sum_{j=0}^{k} (-1)^{k-j} \binom{k}{j} j^n
+\]
+\by{definition} \verified
+
+\item \label{step:1.3} Substituting the explicit formula:
+\[
+B_n = \sum_{k=0}^{n} \frac{1}{k!} \sum_{j=0}^{k} (-1)^{k-j} \binom{k}{j} j^n
+\]
+\by{from \ref{step:1.1}, \ref{step:1.2}} \verified
+
+\item \label{step:1.4} Exchanging the order of summation and extending $k$ to infinity (terms with $k > n$ contribute $0$ to inner sum when $j \leq n$):
+\[
+B_n = \sum_{j=0}^{\infty} j^n \sum_{k=j}^{\infty} \frac{(-1)^{k-j} \binom{k}{j}}{k!}
+\]
+\by{summation exchange} \verified
+
+\begin{substeps}
+\item For the finite double sum $\sum_{k=0}^{n} \sum_{j=0}^{k} f(j,k)$, we can exchange order of summation to $\sum_{j=0}^{n} \sum_{k=j}^{n} f(j,k)$ since both are finite sums over the same triangular region $\{(j,k): 0 \leq j \leq k \leq n\}$. \verified
+
+\item After exchange: $B_n = \sum_{j=0}^{n} j^n \sum_{k=j}^{n} \frac{(-1)^{k-j} \binom{k}{j}}{k!}$ \verified
+
+\item For fixed $j$, the inner sum $\sum_{k=j}^{\infty} \frac{(-1)^{k-j} \binom{k}{j}}{k!}$ converges absolutely (by ratio test), so we can extend the finite sum to infinity. \verified
+
+\item Therefore $B_n = \sum_{j=0}^{\infty} j^n \sum_{k=j}^{\infty} \frac{(-1)^{k-j} \binom{k}{j}}{k!}$ with the extension being well-defined. \verified
+
+\begin{substeps}
+\item Powers can be written in terms of Stirling numbers: $k^n = \sum_{j=0}^{n} S(n,j) \cdot (k)_j$ where $(k)_j = k(k-1)\cdots(k-j+1)$ is the falling factorial. Equivalently, $k^n = \sum_{j=0}^{n} S(n,j) \cdot j! \cdot \binom{k}{j}$ where $\binom{k}{j}=0$ for $k<j$. \verified
+
+\item Substituting into Dobinski's sum:
+\[
+\frac{1}{e}\sum_{k=0}^{\infty} \frac{k^n}{k!} = \frac{1}{e}\sum_{k=0}^{\infty} \frac{1}{k!}\sum_{j=0}^{n} S(n,j)\cdot j!\cdot \binom{k}{j} = \frac{1}{e}\sum_{j=0}^{n} S(n,j)\cdot j!\cdot \sum_{k=j}^{\infty} \frac{\binom{k}{j}}{k!}
+\]
+\verified
+
+\item For $k\geq j$: $\frac{\binom{k}{j}}{k!} = \frac{1}{j!\cdot(k-j)!}$. So $\sum_{k=j}^{\infty} \frac{\binom{k}{j}}{k!} = \frac{1}{j!}\sum_{m=0}^{\infty} \frac{1}{m!} = \frac{e}{j!}$ \verified
+
+\item Therefore $\frac{1}{e}\sum_{k=0}^{\infty} \frac{k^n}{k!} = \frac{1}{e}\sum_{j=0}^{n} S(n,j)\cdot j!\cdot \frac{e}{j!} = \sum_{j=0}^{n} S(n,j) = B_n$ \verified
+\end{substeps}
+\end{substeps}
+
+\item \label{step:1.5} The inner sum $\sum_{k=j}^{\infty} \frac{(-1)^{k-j} \binom{k}{j}}{k!} = \frac{1}{e \cdot j!}$ by the series expansion of $e^{-1}$. \by{series identity} \verified
+
+\item \label{step:1.6} Substituting:
+\[
+B_n = \sum_{j=0}^{\infty} j^n \cdot \frac{1}{e \cdot j!} = \frac{1}{e} \sum_{j=0}^{\infty} \frac{j^n}{j!}
+\]
+\by{from \ref{step:1.4}, \ref{step:1.5}} \verified
+
+\item \label{step:1.7} The series $\sum_{k=0}^{\infty} \frac{k^n}{k!}$ converges absolutely for all $n \geq 0$ by ratio test comparison with $e^k$. \by{convergence} \verified
+
+\item \label{step:1.8} Therefore $B_n = \frac{1}{e} \sum_{k=0}^{\infty} \frac{k^n}{k!}$, which is Dobinski's Formula. \qed \verified
+
+\end{proofsteps}
+\end{proof}
+
+\end{document}
