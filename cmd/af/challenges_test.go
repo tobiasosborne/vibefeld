@@ -669,8 +669,8 @@ func TestChallengesCmd_StatusFilterValues(t *testing.T) {
 		{"withdrawn status", "withdrawn", false},
 		{"Open uppercase", "Open", false},
 		{"RESOLVED uppercase", "RESOLVED", false},
+		{"superseded status", "superseded", false},
 		{"invalid status", "pending", true},
-		{"invalid status2", "superseded", true},
 	}
 
 	for _, tt := range tests {
@@ -822,5 +822,246 @@ func TestChallengesCmd_CommandMetadata(t *testing.T) {
 
 	if cmd.Long == "" {
 		t.Error("expected Long description to be set")
+	}
+}
+
+// =============================================================================
+// New Flag Tests (severity, active-only, summary)
+// =============================================================================
+
+// setupChallengesTestWithSeverities creates a proof with challenges of different severities.
+func setupChallengesTestWithSeverities(t *testing.T) (string, func()) {
+	t.Helper()
+
+	proofDir, cleanup := setupChallengesTest(t)
+
+	svc, err := service.NewProofService(proofDir)
+	if err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	ledgerDir := filepath.Join(svc.Path(), "ledger")
+	ldg, err := ledger.NewLedger(ledgerDir)
+	if err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	nodeID1, _ := service.ParseNodeID("1")
+
+	// Critical challenge
+	e1 := ledger.NewChallengeRaisedWithSeverity("ch-crit", nodeID1, "gap", "Critical flaw", "critical", "v1")
+	if _, err := ldg.Append(e1); err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	// Major challenge
+	e2 := ledger.NewChallengeRaisedWithSeverity("ch-maj", nodeID1, "logic", "Logic gap", "major", "v1")
+	if _, err := ldg.Append(e2); err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	// Minor challenge
+	e3 := ledger.NewChallengeRaisedWithSeverity("ch-min", nodeID1, "clarity", "Unclear wording", "minor", "v2")
+	if _, err := ldg.Append(e3); err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+
+	return proofDir, cleanup
+}
+
+// TestChallengesCmd_FilterBySeverity verifies --severity filtering.
+func TestChallengesCmd_FilterBySeverity(t *testing.T) {
+	proofDir, cleanup := setupChallengesTestWithSeverities(t)
+	defer cleanup()
+
+	tests := []struct {
+		name     string
+		severity string
+		expectID string
+		notIDs   []string
+	}{
+		{"critical only", "critical", "ch-crit", []string{"ch-maj", "ch-min"}},
+		{"major only", "major", "ch-maj", []string{"ch-crit", "ch-min"}},
+		{"minor only", "minor", "ch-min", []string{"ch-crit", "ch-maj"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newTestChallengesCmd()
+			output, err := executeChallengesCommand(cmd, "challenges", "--severity", tt.severity, "--dir", proofDir)
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !strings.Contains(output, tt.expectID) {
+				t.Errorf("expected output to contain %q, got: %q", tt.expectID, output)
+			}
+
+			for _, id := range tt.notIDs {
+				if strings.Contains(output, id) {
+					t.Errorf("expected output NOT to contain %q, got: %q", id, output)
+				}
+			}
+		})
+	}
+}
+
+// TestChallengesCmd_InvalidSeverity verifies error for invalid severity filter.
+func TestChallengesCmd_InvalidSeverity(t *testing.T) {
+	proofDir, cleanup := setupChallengesTest(t)
+	defer cleanup()
+
+	cmd := newTestChallengesCmd()
+	_, err := executeChallengesCommand(cmd, "challenges", "--severity", "high", "--dir", proofDir)
+
+	if err == nil {
+		t.Error("expected error for invalid severity, got nil")
+	}
+}
+
+// TestChallengesCmd_ActiveOnly verifies --active-only flag.
+func TestChallengesCmd_ActiveOnly(t *testing.T) {
+	proofDir, cleanup := setupChallengesTestWithMultipleNodes(t)
+	defer cleanup()
+
+	cmd := newTestChallengesCmd()
+	output, err := executeChallengesCommand(cmd, "challenges", "--active-only", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should show only open challenge
+	if !strings.Contains(output, "ch-def456") {
+		t.Errorf("expected open challenge, got: %q", output)
+	}
+
+	// Should NOT show resolved challenge
+	if strings.Contains(output, "ch-abc123") {
+		t.Errorf("expected resolved challenge to be filtered, got: %q", output)
+	}
+}
+
+// TestChallengesCmd_ActiveOnlyConflictsWithStatus verifies --active-only conflicts with --status.
+func TestChallengesCmd_ActiveOnlyConflictsWithStatus(t *testing.T) {
+	proofDir, cleanup := setupChallengesTest(t)
+	defer cleanup()
+
+	cmd := newTestChallengesCmd()
+	_, err := executeChallengesCommand(cmd, "challenges", "--active-only", "--status", "resolved", "--dir", proofDir)
+
+	if err == nil {
+		t.Error("expected error for conflicting --active-only and --status, got nil")
+	}
+}
+
+// TestChallengesCmd_Summary verifies --summary flag output.
+func TestChallengesCmd_Summary(t *testing.T) {
+	proofDir, cleanup := setupChallengesTestWithSeverities(t)
+	defer cleanup()
+
+	cmd := newTestChallengesCmd()
+	output, err := executeChallengesCommand(cmd, "challenges", "--summary", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should show summary header
+	if !strings.Contains(output, "Challenge Summary") {
+		t.Errorf("expected 'Challenge Summary' in output, got: %q", output)
+	}
+
+	// Should show column headers
+	for _, col := range []string{"NODE", "CRITICAL", "MAJOR", "MINOR", "TOTAL"} {
+		if !strings.Contains(output, col) {
+			t.Errorf("expected column %q in output, got: %q", col, output)
+		}
+	}
+
+	// Should show node 1
+	if !strings.Contains(output, "1") {
+		t.Errorf("expected node '1' in summary, got: %q", output)
+	}
+}
+
+// TestChallengesCmd_SummaryJSON verifies --summary with --format json.
+func TestChallengesCmd_SummaryJSON(t *testing.T) {
+	proofDir, cleanup := setupChallengesTestWithSeverities(t)
+	defer cleanup()
+
+	cmd := newTestChallengesCmd()
+	output, err := executeChallengesCommand(cmd, "challenges", "--summary", "--format", "json", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result struct {
+		Nodes []struct {
+			NodeID   string `json:"node_id"`
+			Critical int    `json:"critical"`
+			Major    int    `json:"major"`
+			Minor    int    `json:"minor"`
+			Total    int    `json:"total"`
+		} `json:"nodes"`
+		Total int `json:"total"`
+	}
+
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if result.Total != 3 {
+		t.Errorf("expected total 3, got %d", result.Total)
+	}
+
+	if len(result.Nodes) != 1 {
+		t.Fatalf("expected 1 node entry, got %d", len(result.Nodes))
+	}
+
+	n := result.Nodes[0]
+	if n.Critical != 1 {
+		t.Errorf("expected 1 critical, got %d", n.Critical)
+	}
+	if n.Major != 1 {
+		t.Errorf("expected 1 major, got %d", n.Major)
+	}
+	if n.Minor != 1 {
+		t.Errorf("expected 1 minor, got %d", n.Minor)
+	}
+}
+
+// TestChallengesCmd_SummaryNoChallenges verifies --summary with no challenges.
+func TestChallengesCmd_SummaryNoChallenges(t *testing.T) {
+	proofDir, cleanup := setupChallengesTest(t)
+	defer cleanup()
+
+	cmd := newTestChallengesCmd()
+	output, err := executeChallengesCommand(cmd, "challenges", "--summary", "--dir", proofDir)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(strings.ToLower(output), "no challenges") {
+		t.Errorf("expected 'no challenges' for empty summary, got: %q", output)
+	}
+}
+
+// TestChallengesCmd_NewFlags verifies new flags exist.
+func TestChallengesCmd_NewFlags(t *testing.T) {
+	cmd := newChallengesCmd()
+
+	for _, flagName := range []string{"severity", "active-only", "summary"} {
+		if cmd.Flags().Lookup(flagName) == nil {
+			t.Errorf("expected challenges command to have flag %q", flagName)
+		}
 	}
 }

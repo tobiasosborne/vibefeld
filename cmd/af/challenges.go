@@ -24,21 +24,30 @@ identifies an issue that the prover must address before a node can
 be validated.
 
 Filter options:
-  --node     Show only challenges targeting a specific node
-  --status   Filter by challenge status (open, resolved, withdrawn)
+  --node       Show only challenges targeting a specific node
+  --status     Filter by challenge status (open, resolved, withdrawn, superseded)
+  --severity   Filter by severity (critical, major, minor, note)
+  --active-only  Show only open challenges (shorthand for --status open)
+  --summary    Show aggregate counts by node and severity instead of individual challenges
 
 Examples:
-  af challenges                    List all challenges
-  af challenges --node 1.1.1       Challenges on specific node
-  af challenges --status open      Only open challenges
-  af challenges --format json      Machine-readable output`,
+  af challenges                         List all challenges
+  af challenges --node 1.1.1            Challenges on specific node
+  af challenges --status open           Only open challenges
+  af challenges --active-only           Same as --status open
+  af challenges --severity critical     Only critical challenges
+  af challenges --summary               Aggregate view by node
+  af challenges --format json           Machine-readable output`,
 		RunE: runChallenges,
 	}
 
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
 	cmd.Flags().StringP("node", "n", "", "Filter by target node ID")
-	cmd.Flags().StringP("status", "s", "", "Filter by status (open, resolved, withdrawn)")
+	cmd.Flags().StringP("status", "s", "", "Filter by status (open, resolved, withdrawn, superseded)")
+	cmd.Flags().String("severity", "", "Filter by severity (critical, major, minor, note)")
+	cmd.Flags().Bool("active-only", false, "Show only open challenges")
+	cmd.Flags().Bool("summary", false, "Show aggregate summary by node and severity")
 
 	return cmd
 }
@@ -50,6 +59,9 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 	format, _ := cmd.Flags().GetString("format")
 	nodeFilter, _ := cmd.Flags().GetString("node")
 	statusFilter, _ := cmd.Flags().GetString("status")
+	severityFilter, _ := cmd.Flags().GetString("severity")
+	activeOnly, _ := cmd.Flags().GetBool("active-only")
+	summary, _ := cmd.Flags().GetBool("summary")
 
 	// Validate format
 	format = strings.ToLower(format)
@@ -57,10 +69,24 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
 	}
 
+	// --active-only is shorthand for --status open
+	if activeOnly {
+		if statusFilter != "" && statusFilter != "open" {
+			return fmt.Errorf("--active-only conflicts with --status %q", statusFilter)
+		}
+		statusFilter = "open"
+	}
+
 	// Validate status if provided
 	statusFilter = strings.ToLower(statusFilter)
-	if statusFilter != "" && statusFilter != "open" && statusFilter != "resolved" && statusFilter != "withdrawn" {
-		return fmt.Errorf("invalid status %q: must be 'open', 'resolved', or 'withdrawn'", statusFilter)
+	if statusFilter != "" && statusFilter != "open" && statusFilter != "resolved" && statusFilter != "withdrawn" && statusFilter != "superseded" {
+		return fmt.Errorf("invalid status %q: must be 'open', 'resolved', 'withdrawn', or 'superseded'", statusFilter)
+	}
+
+	// Validate severity if provided
+	severityFilter = strings.ToLower(severityFilter)
+	if severityFilter != "" && severityFilter != "critical" && severityFilter != "major" && severityFilter != "minor" && severityFilter != "note" {
+		return fmt.Errorf("invalid severity %q: must be 'critical', 'major', 'minor', or 'note'", severityFilter)
 	}
 
 	// Parse node filter if provided
@@ -98,10 +124,22 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 	challenges := st.AllChallenges()
 
 	// Apply filters
-	filtered := filterChallenges(challenges, nodeID, nodeFilter != "", statusFilter)
+	filtered := filterChallenges(challenges, nodeID, nodeFilter != "", statusFilter, severityFilter)
 
 	// Sort challenges by node ID then by challenge ID
 	sortChallenges(filtered)
+
+	// Summary mode
+	if summary {
+		if format == "json" {
+			output := renderChallengeSummaryJSON(filtered)
+			fmt.Fprintln(cmd.OutOrStdout(), output)
+			return nil
+		}
+		output := renderChallengeSummaryText(filtered)
+		fmt.Fprint(cmd.OutOrStdout(), output)
+		return nil
+	}
 
 	// Output based on format
 	if format == "json" {
@@ -129,8 +167,8 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// filterChallenges filters challenges based on node ID and status.
-func filterChallenges(challenges []*service.Challenge, nodeID service.NodeID, filterByNode bool, statusFilter string) []*service.Challenge {
+// filterChallenges filters challenges based on node ID, status, and severity.
+func filterChallenges(challenges []*service.Challenge, nodeID service.NodeID, filterByNode bool, statusFilter, severityFilter string) []*service.Challenge {
 	var result []*service.Challenge
 
 	for _, c := range challenges {
@@ -142,6 +180,17 @@ func filterChallenges(challenges []*service.Challenge, nodeID service.NodeID, fi
 		// Apply status filter
 		if statusFilter != "" && c.Status != statusFilter {
 			continue
+		}
+
+		// Apply severity filter
+		if severityFilter != "" {
+			sev := c.Severity
+			if sev == "" {
+				sev = "major" // default severity
+			}
+			if sev != severityFilter {
+				continue
+			}
 		}
 
 		result = append(result, c)
@@ -262,6 +311,109 @@ func countOpenChallenges(challenges []*service.Challenge) int {
 		}
 	}
 	return count
+}
+
+// challengeSummaryEntry represents aggregate challenge counts for one node.
+type challengeSummaryEntry struct {
+	NodeID   string `json:"node_id"`
+	Critical int    `json:"critical"`
+	Major    int    `json:"major"`
+	Minor    int    `json:"minor"`
+	Note     int    `json:"note"`
+	Total    int    `json:"total"`
+}
+
+// buildChallengeSummary groups challenges by node and counts by severity.
+func buildChallengeSummary(challenges []*service.Challenge) []challengeSummaryEntry {
+	byNode := make(map[string]*challengeSummaryEntry)
+	for _, c := range challenges {
+		nodeID := c.NodeID.String()
+		entry, ok := byNode[nodeID]
+		if !ok {
+			entry = &challengeSummaryEntry{NodeID: nodeID}
+			byNode[nodeID] = entry
+		}
+		sev := c.Severity
+		if sev == "" {
+			sev = "major"
+		}
+		switch sev {
+		case "critical":
+			entry.Critical++
+		case "major":
+			entry.Major++
+		case "minor":
+			entry.Minor++
+		case "note":
+			entry.Note++
+		}
+		entry.Total++
+	}
+
+	entries := make([]challengeSummaryEntry, 0, len(byNode))
+	for _, e := range byNode {
+		entries = append(entries, *e)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Critical != entries[j].Critical {
+			return entries[i].Critical > entries[j].Critical
+		}
+		if entries[i].Major != entries[j].Major {
+			return entries[i].Major > entries[j].Major
+		}
+		return entries[i].NodeID < entries[j].NodeID
+	})
+	return entries
+}
+
+// renderChallengeSummaryText renders an aggregate summary of challenges.
+func renderChallengeSummaryText(challenges []*service.Challenge) string {
+	if len(challenges) == 0 {
+		return "No challenges found.\n"
+	}
+
+	entries := buildChallengeSummary(challenges)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Challenge Summary: %d challenge(s) across %d node(s)\n\n", len(challenges), len(entries)))
+	sb.WriteString(fmt.Sprintf("%-10s %8s %8s %8s %8s %8s\n", "NODE", "CRITICAL", "MAJOR", "MINOR", "NOTE", "TOTAL"))
+
+	for _, e := range entries {
+		sb.WriteString(fmt.Sprintf("%-10s %8d %8d %8d %8d %8d\n",
+			e.NodeID, e.Critical, e.Major, e.Minor, e.Note, e.Total))
+	}
+
+	// Totals row
+	var totalCrit, totalMaj, totalMin, totalNote int
+	for _, e := range entries {
+		totalCrit += e.Critical
+		totalMaj += e.Major
+		totalMin += e.Minor
+		totalNote += e.Note
+	}
+	sb.WriteString(fmt.Sprintf("%-10s %8d %8d %8d %8d %8d\n",
+		"TOTAL", totalCrit, totalMaj, totalMin, totalNote, len(challenges)))
+
+	return sb.String()
+}
+
+// renderChallengeSummaryJSON renders an aggregate summary as JSON.
+func renderChallengeSummaryJSON(challenges []*service.Challenge) string {
+	entries := buildChallengeSummary(challenges)
+
+	result := struct {
+		Nodes []challengeSummaryEntry `json:"nodes"`
+		Total int                     `json:"total"`
+	}{
+		Nodes: entries,
+		Total: len(challenges),
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Sprintf(`{"error":"failed to marshal JSON: %v"}`, err)
+	}
+	return string(data)
 }
 
 func init() {

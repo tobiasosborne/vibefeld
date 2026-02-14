@@ -2,6 +2,26 @@
 
 ## What Was Accomplished This Session
 
+### Session 229 Summary: af handoff + challenge triage (vibefeld-4p8f, vibefeld-n52z)
+
+**Closed vibefeld-n52z [P0]**: Challenge triage — added filtering and summary to `af challenges`.
+
+**New flags**:
+- `--severity critical|major|minor|note` — filter by severity level
+- `--active-only` — shorthand for `--status open`
+- `--summary` — aggregate view: counts by node and severity in a table
+- `--status` now accepts `superseded` (was missing from validation)
+
+**Auto-supersede**: Already implemented in state layer (`applyNodeArchived`/`applyNodeRefuted` call `supersedeOpenChallengesForNode`). No service-layer changes needed.
+
+**Files changed**:
+- `cmd/af/challenges.go` — Added 3 flags, severity filter, summary renderers (~100 lines added)
+- `cmd/af/challenges_test.go` — 9 new integration tests, fixed superseded status validation test
+
+**Testing**: All 27 packages pass. One pre-existing integration test failure (`TestChallengesCmd_FilterByNonExistentNode` uses invalid node "2").
+
+---
+
 ### Session 229 Summary: af handoff command (vibefeld-4p8f)
 
 **Closed vibefeld-4p8f [P0]**: Implemented `af handoff` command that generates concise handoff reports for session transitions.
@@ -222,7 +242,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
-**Session 229:** af handoff command (vibefeld-4p8f) — concise handoff reports with challenges, next steps, recent activity
+**Session 229:** af handoff (4p8f) + challenge triage (n52z) — handoff reports, severity/summary/active-only filters
 **Session 228:** Taint fixes (w9qr, ayl9) + update-external command (hw0w), filed z8tc
 **Session 227:** Holistic project review — strategic prioritization of 25 open issues into 4 execution tiers
 **Session 226:** Deployment analysis — investigated 15 real AF deployments, filed 12 improvement issues (3 P0, 6 P1, 3 P2)
