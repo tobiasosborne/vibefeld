@@ -1,6 +1,20 @@
-# Handoff - 2026-02-14 (Session 233)
+# Handoff - 2026-02-15 (Session 234)
 
 ## What Was Accomplished This Session
+
+### Session 234 Summary: Version bump 0.1.1 + changelog command
+
+**Version bumped** from 0.1.0 to 0.1.1 in `cmd/af/main.go`. Installed for all users via `go install`.
+
+**Added `af changelog`** — simple command listing what's new in each version. Solves discoverability: 60+ commands in `af --help` meant returning users would never notice new features like `af attach`, `af diff`, `af submit`, etc.
+
+**Smoke-tested on all 9 real proof trees** in `../firstproof/problem01` through `problem09`. All load, parse, and render correctly with `af status`, `af progress`, and `af challenges`.
+
+**Files changed** (2 files):
+- `cmd/af/main.go` — Version `0.1.0` → `0.1.1`
+- `cmd/af/changelog.go` — NEW: changelog command (~75 lines)
+
+---
 
 ### Session 233b Summary: Attach computational evidence (vibefeld-tio5, P1)
 
@@ -396,6 +410,7 @@ go build ./cmd/af  # Build
 
 ## Session History
 
+**Session 234:** Version bump 0.1.1 + af changelog command, smoke-tested all 9 proof trees
 **Session 233:** Failed approach registry (fvxp) + evidence attachment (tio5) — af approach-tried, af approach-list, af attach, af evidence, 17 new tests
 **Session 232:** Unvalidate command (dqh3) — af unvalidate, validated→pending, taint propagation, 6 tests
 **Session 231:** Amendment diffs (ndzg) + status navigation (h4wb) — af amendments, af diff, af path, af nearby, --focus/--depth/--compact, 26 tests
