@@ -198,6 +198,9 @@ func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, node
 		acceptErr = svc.AcceptNode(nodeID)
 	}
 	if acceptErr != nil {
+		if strings.Contains(acceptErr.Error(), "claim-test") {
+			return fmt.Errorf("node %s is marked as crux and has no passing claim-test.\nRun 'af claim-test %s --script <path>' first", nodeID.String(), nodeID.String())
+		}
 		if errors.Is(acceptErr, service.ErrBlockingChallenges) {
 			return handleBlockingChallengesError(cmd, svc, nodeID, format, acceptErr)
 		}
@@ -259,6 +262,9 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote,
 // performBulkAcceptance handles acceptance of multiple nodes.
 func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format string) error {
 	if err := svc.AcceptNodeBulk(nodeIDs); err != nil {
+		if strings.Contains(err.Error(), "claim-test") {
+			return fmt.Errorf("a crux node has no passing claim-test: %w\nRun 'af claim-test <node-id> --script <path>' first", err)
+		}
 		if errors.Is(err, service.ErrBlockingChallenges) {
 			nodeID := extractNodeIDFromBlockingError(err)
 			if nodeID != nil {

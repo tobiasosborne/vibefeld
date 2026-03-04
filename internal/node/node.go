@@ -74,6 +74,10 @@ type Node struct {
 
 	// ClaimedAt is the timestamp when the node was claimed.
 	ClaimedAt types.Timestamp `json:"claimed_at,omitempty"`
+
+	// Crux marks this node as critical path — it cannot be validated
+	// without a passing claim-test.
+	Crux bool `json:"crux,omitempty"`
 }
 
 // NewNode creates a new Node with the given parameters.
@@ -96,6 +100,7 @@ type NodeOptions struct {
 	ValidationDeps []types.NodeID
 	Scope          []string
 	Draft          bool // If true, node starts in draft state instead of pending
+	Crux           bool // If true, node requires passing claim-test before acceptance
 }
 
 // NewNodeWithOptions creates a new Node with the given parameters and options.
@@ -142,6 +147,9 @@ func NewNodeWithOptions(
 
 	if opts.Draft {
 		node.EpistemicState = schema.EpistemicDraft
+	}
+	if opts.Crux {
+		node.Crux = true
 	}
 
 	// Compute content hash

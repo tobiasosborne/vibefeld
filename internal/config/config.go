@@ -32,7 +32,7 @@ type Config struct {
 	// MaxDepth is the maximum depth of the proof tree (default: 20)
 	MaxDepth int `json:"max_depth"`
 
-	// MaxChildren is the maximum number of children per node (default: 10)
+	// MaxChildren is the maximum number of children per node (default: 100)
 	MaxChildren int `json:"max_children"`
 
 	// WarnDepth is the depth at which warnings are issued for deep nodes (default: 3)
@@ -77,7 +77,7 @@ func Load(path string) (*Config, error) {
 		cfg.MaxDepth = 20
 	}
 	if cfg.MaxChildren == 0 {
-		cfg.MaxChildren = 20
+		cfg.MaxChildren = 100
 	}
 	if cfg.WarnDepth == 0 {
 		cfg.WarnDepth = 3
@@ -96,7 +96,7 @@ func Default() *Config {
 	return &Config{
 		LockTimeout:          5 * time.Minute,
 		MaxDepth:             20,
-		MaxChildren:          20,
+		MaxChildren:          100,
 		WarnDepth:            3,
 		AutoCorrectThreshold: 0.8,
 		Version:              "1.0",
@@ -112,7 +112,7 @@ func Default() *Config {
 // - Conjecture must not be empty
 // - LockTimeout must be between 1s and 1h
 // - MaxDepth must be between 1 and MaxDepthLimit (100)
-// - MaxChildren must be between 1 and 50
+// - MaxChildren must be between 1 and 100
 // - AutoCorrectThreshold must be between 0.0 and 1.0
 // - Version must be "1.0"
 func Validate(c *Config) error {

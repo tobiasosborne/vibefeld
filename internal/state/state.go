@@ -91,6 +91,28 @@ type Hint struct {
 	HintBy    string          // Who provided the hint
 }
 
+// ClaimTestResult represents the result of a computational falsification test on a node's claim.
+type ClaimTestResult struct {
+	Timestamp  types.Timestamp // When the test was run
+	Engine     string          // "script" or "sympy"
+	ScriptPath string          // Path to test script (if engine=script)
+	Expression string          // Sympy expression (if engine=sympy)
+	Passed     bool            // Whether the test passed
+	Output     string          // Captured stdout/stderr
+	Agent      string          // Who ran the test
+}
+
+// DefCheckResult represents the result of a definition stress test.
+type DefCheckResult struct {
+	Timestamp  types.Timestamp // When the check was run
+	DefName    string          // Definition name
+	CheckType  string          // "boundary", "non_triviality", "script"
+	ScriptPath string          // Path to check script
+	Passed     bool            // Whether the check passed
+	Output     string          // Captured stdout/stderr
+	Agent      string          // Who ran the check
+}
+
 // FailedApproach represents an attempted but failed proof approach for a node.
 type FailedApproach struct {
 	Timestamp types.Timestamp // When the approach was attempted
@@ -168,6 +190,14 @@ type State struct {
 	// This tracks proof strategies proposed for each node.
 	proposedStrategies map[string][]ProposedStrategy
 
+	// claimTests maps NodeID string to a slice of ClaimTestResult records.
+	// This tracks computational falsification test results for each node.
+	claimTests map[string][]ClaimTestResult
+
+	// defChecks maps definition name to a slice of DefCheckResult records.
+	// This tracks stress test results for each definition.
+	defChecks map[string][]DefCheckResult
+
 	// patterns holds registered failure patterns for the workspace.
 	patterns []FailurePattern
 
@@ -201,6 +231,8 @@ func NewState() *State {
 		evidence:         make(map[string][]Evidence),
 		hints:              make(map[string][]Hint),
 		proposedStrategies: make(map[string][]ProposedStrategy),
+		claimTests:        make(map[string][]ClaimTestResult),
+		defChecks:         make(map[string][]DefCheckResult),
 		outlineLinks:     make(map[string]types.NodeID),
 		scopeTracker:     scope.NewTracker(),
 	}
@@ -562,6 +594,54 @@ func (s *State) AddHint(nodeID types.NodeID, hint Hint) {
 // Returns an empty slice if no hints have been added.
 func (s *State) GetHints(nodeID types.NodeID) []Hint {
 	return s.hints[nodeID.String()]
+}
+
+// AddClaimTest adds a claim test result for a node.
+func (s *State) AddClaimTest(nodeID types.NodeID, result ClaimTestResult) {
+	key := nodeID.String()
+	s.claimTests[key] = append(s.claimTests[key], result)
+}
+
+// GetClaimTests returns the claim test results for a node.
+// Returns an empty slice if no tests have been run.
+func (s *State) GetClaimTests(nodeID types.NodeID) []ClaimTestResult {
+	return s.claimTests[nodeID.String()]
+}
+
+// HasPassingClaimTest returns true if the node has at least one passing claim test.
+func (s *State) HasPassingClaimTest(nodeID types.NodeID) bool {
+	for _, t := range s.claimTests[nodeID.String()] {
+		if t.Passed {
+			return true
+		}
+	}
+	return false
+}
+
+// AddDefCheck adds a definition check result.
+func (s *State) AddDefCheck(defName string, result DefCheckResult) {
+	s.defChecks[defName] = append(s.defChecks[defName], result)
+}
+
+// GetDefChecks returns the check results for a definition.
+// Returns an empty slice if no checks have been run.
+func (s *State) GetDefChecks(defName string) []DefCheckResult {
+	return s.defChecks[defName]
+}
+
+// HasPassingDefCheck returns true if the definition has at least one passing check.
+func (s *State) HasPassingDefCheck(defName string) bool {
+	for _, c := range s.defChecks[defName] {
+		if c.Passed {
+			return true
+		}
+	}
+	return false
+}
+
+// IsDefChecked returns true if the definition has any check results.
+func (s *State) IsDefChecked(defName string) bool {
+	return len(s.defChecks[defName]) > 0
 }
 
 // AddPattern adds a failure pattern to the workspace.

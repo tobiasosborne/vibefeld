@@ -43,6 +43,8 @@ const (
 	EventNodeVetoed           EventType = "node_vetoed"
 	EventStrategyProposed     EventType = "strategy_proposed"
 	EventPatternAdded         EventType = "pattern_added"
+	EventClaimTested          EventType = "claim_tested"
+	EventDefChecked           EventType = "def_checked"
 )
 
 // Event is the base interface for all ledger events.
@@ -741,5 +743,65 @@ func NewPatternAdded(name, description, indicators, remediation, addedBy string)
 		Indicators:  indicators,
 		Remediation: remediation,
 		AddedBy:     addedBy,
+	}
+}
+
+// ClaimTested is emitted when a computational falsification test is run against
+// a proof node's claim. The test can use an external script or an inline sympy
+// expression. Results are stored for audit and used to gate acceptance of crux nodes.
+type ClaimTested struct {
+	BaseEvent
+	NodeID     types.NodeID `json:"node_id"`
+	Engine     string       `json:"engine"`               // "script", "sympy"
+	ScriptPath string       `json:"script_path,omitempty"`
+	Expression string       `json:"expression,omitempty"`
+	Passed     bool         `json:"passed"`
+	Output     string       `json:"output,omitempty"`
+	Agent      string       `json:"agent,omitempty"`
+}
+
+// NewClaimTested creates a ClaimTested event.
+func NewClaimTested(nodeID types.NodeID, engine, scriptPath, expression string, passed bool, output, agent string) ClaimTested {
+	return ClaimTested{
+		BaseEvent: BaseEvent{
+			EventType: EventClaimTested,
+			EventTime: types.Now(),
+		},
+		NodeID:     nodeID,
+		Engine:     engine,
+		ScriptPath: scriptPath,
+		Expression: expression,
+		Passed:     passed,
+		Output:     output,
+		Agent:      agent,
+	}
+}
+
+// DefChecked is emitted when a definition stress test is run against a registered
+// definition. Tests verify boundary cases, non-triviality, or run user-provided
+// scripts. Failed tests warn provers before building on flawed definitions.
+type DefChecked struct {
+	BaseEvent
+	DefName    string `json:"def_name"`
+	CheckType  string `json:"check_type"` // "boundary", "non_triviality", "script"
+	ScriptPath string `json:"script_path,omitempty"`
+	Passed     bool   `json:"passed"`
+	Output     string `json:"output,omitempty"`
+	Agent      string `json:"agent,omitempty"`
+}
+
+// NewDefChecked creates a DefChecked event.
+func NewDefChecked(defName, checkType, scriptPath string, passed bool, output, agent string) DefChecked {
+	return DefChecked{
+		BaseEvent: BaseEvent{
+			EventType: EventDefChecked,
+			EventTime: types.Now(),
+		},
+		DefName:    defName,
+		CheckType:  checkType,
+		ScriptPath: scriptPath,
+		Passed:     passed,
+		Output:     output,
+		Agent:      agent,
 	}
 }

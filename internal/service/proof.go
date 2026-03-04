@@ -730,6 +730,7 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 		Dependencies:   spec.Dependencies,
 		ValidationDeps: spec.ValidationDeps,
 		Draft:          spec.Draft,
+		Crux:           spec.Crux,
 	}
 	child, err := node.NewNodeWithOptions(spec.ChildID, spec.NodeType, spec.Statement, spec.Inference, opts)
 	if err != nil {
@@ -803,6 +804,11 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 	blockingChallenges := st.GetBlockingChallengesForNode(id)
 	if len(blockingChallenges) > 0 {
 		return formatBlockingChallengesError(id, blockingChallenges)
+	}
+
+	// Check crux nodes require a passing claim-test
+	if n.Crux && !st.HasPassingClaimTest(id) {
+		return fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
 	}
 
 	// Check validation dependencies - all must be validated before this node can be accepted
@@ -912,6 +918,11 @@ func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
 		blockingChallenges := st.GetBlockingChallengesForNode(id)
 		if len(blockingChallenges) > 0 {
 			return formatBlockingChallengesError(id, blockingChallenges)
+		}
+
+		// Check crux nodes require a passing claim-test
+		if n.Crux && !st.HasPassingClaimTest(id) {
+			return fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
 		}
 
 		// Validate epistemic state transition (only pending -> validated allowed)
@@ -1521,6 +1532,7 @@ type ChildSpec struct {
 	Statement string
 	Inference schema.InferenceType
 	Draft     bool
+	Crux      bool
 }
 
 // RefineSpec specifies parameters for refining a node with a child.
@@ -1556,6 +1568,10 @@ type RefineSpec struct {
 	// Draft creates the node in draft state instead of pending.
 	// Draft nodes are work-in-progress; challenges on them are non-blocking.
 	Draft bool
+
+	// Crux marks the node as critical path. Crux nodes cannot be
+	// validated without a passing claim-test.
+	Crux bool
 }
 
 // AllocateChildID allocates the next available child ID for a parent node atomically.
@@ -1693,7 +1709,7 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		childIDs[i] = childID
 
 		// Create the child node
-		childNode, err := node.NewNodeWithOptions(childID, spec.NodeType, spec.Statement, spec.Inference, node.NodeOptions{Draft: spec.Draft})
+		childNode, err := node.NewNodeWithOptions(childID, spec.NodeType, spec.Statement, spec.Inference, node.NodeOptions{Draft: spec.Draft, Crux: spec.Crux})
 		if err != nil {
 			return nil, fmt.Errorf("child %d: %w", i+1, err)
 		}
@@ -1789,6 +1805,9 @@ func (s *ProofService) appendBulkIfSequence(ldg *ledger.Ledger, events []ledger.
 // ErrCircularDependency is returned when a cycle is detected in node dependencies.
 // Exit code: 3 (logic error)
 var ErrCircularDependency = aferrors.New(aferrors.DEPENDENCY_CYCLE, "circular dependency detected")
+
+// ErrClaimTestRequired is returned when a crux node is accepted without a passing claim-test.
+var ErrClaimTestRequired = aferrors.New(aferrors.NODE_BLOCKED, "crux node requires passing claim-test before acceptance")
 
 // AmendNode allows a prover to correct the statement of a node they own.
 // The original statement is preserved in the amendment history.
@@ -2444,4 +2463,111 @@ func (s *ProofService) GetOutlineCoverage() (*state.OutlineCoverageReport, error
 		return nil, fmt.Errorf("no outline set; use 'af outline set' first")
 	}
 	return st.GetOutlineCoverage(), nil
+}
+
+// RunClaimTest executes a computational falsification test against a node's claim.
+// It runs the specified script or sympy expression, captures the result, and
+// records a ClaimTested event in the ledger.
+// Returns whether the test passed, the captured output, and any error.
+func (s *ProofService) RunClaimTest(nodeID types.NodeID, engine, scriptPath, expression, agent string) (bool, string, error) {
+	// Load state for validation and CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return false, "", err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Validate node exists
+	if st.GetNode(nodeID) == nil {
+		return false, "", fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	// Execute the test
+	var passed bool
+	var output string
+	switch engine {
+	case "sympy":
+		if strings.TrimSpace(expression) == "" {
+			return false, "", fmt.Errorf("%w: expression", ErrEmptyInput)
+		}
+		passed, output, err = executeSympyExpression(expression, s.path, 0)
+	case "script", "":
+		if strings.TrimSpace(scriptPath) == "" {
+			return false, "", fmt.Errorf("%w: script path", ErrEmptyInput)
+		}
+		passed, output, err = executeScript(scriptPath, s.path, 0)
+		if engine == "" {
+			engine = "script"
+		}
+	default:
+		return false, "", fmt.Errorf("unsupported engine %q: use 'script' or 'sympy'", engine)
+	}
+	if err != nil {
+		return false, output, fmt.Errorf("test execution failed: %w", err)
+	}
+
+	// Record result in ledger
+	ldg, err := s.getLedger()
+	if err != nil {
+		return passed, output, err
+	}
+
+	event := ledger.NewClaimTested(nodeID, engine, scriptPath, expression, passed, output, agent)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	if err != nil {
+		return passed, output, wrapSequenceMismatch(err, "RunClaimTest")
+	}
+
+	return passed, output, nil
+}
+
+// RunDefCheck executes a stress test against a registered definition.
+// It resolves the definition by name or ID, runs the script, and records
+// a DefChecked event in the ledger.
+// Returns whether the check passed, the captured output, and any error.
+func (s *ProofService) RunDefCheck(defNameOrID, checkType, scriptPath, agent string) (bool, string, error) {
+	// Load state for validation and CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return false, "", err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Resolve definition by name or ID
+	defName := defNameOrID
+	def := st.GetDefinitionByName(defNameOrID)
+	if def == nil {
+		def = st.GetDefinition(defNameOrID)
+	}
+	if def == nil {
+		return false, "", fmt.Errorf("definition %q not found", defNameOrID)
+	}
+	defName = def.Name
+
+	if strings.TrimSpace(scriptPath) == "" {
+		return false, "", fmt.Errorf("%w: script path", ErrEmptyInput)
+	}
+	if strings.TrimSpace(checkType) == "" {
+		checkType = "script"
+	}
+
+	// Execute the check
+	passed, output, err := executeScript(scriptPath, s.path, 0)
+	if err != nil {
+		return false, output, fmt.Errorf("check execution failed: %w", err)
+	}
+
+	// Record result in ledger
+	ldg, err := s.getLedger()
+	if err != nil {
+		return passed, output, err
+	}
+
+	event := ledger.NewDefChecked(defName, checkType, scriptPath, passed, output, agent)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	if err != nil {
+		return passed, output, wrapSequenceMismatch(err, "RunDefCheck")
+	}
+
+	return passed, output, nil
 }

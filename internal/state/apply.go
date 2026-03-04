@@ -88,6 +88,10 @@ func Apply(s *State, event ledger.Event) error {
 		return applyOutlineSet(s, e)
 	case ledger.OutlineStageLinked:
 		return applyOutlineStageLinked(s, e)
+	case ledger.ClaimTested:
+		return applyClaimTested(s, e)
+	case ledger.DefChecked:
+		return applyDefChecked(s, e)
 	case ledger.LockReaped:
 		return nil // lock reaping is informational, no state change needed
 	default:
@@ -639,5 +643,39 @@ func applyOutlineSet(s *State, e ledger.OutlineSet) error {
 // This links a stage label to a subtree root node.
 func applyOutlineStageLinked(s *State, e ledger.OutlineStageLinked) error {
 	s.LinkOutlineStage(e.Label, e.NodeID)
+	return nil
+}
+
+// applyClaimTested handles the ClaimTested event.
+// Records the result of a computational falsification test against a node's claim.
+func applyClaimTested(s *State, e ledger.ClaimTested) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	s.AddClaimTest(e.NodeID, ClaimTestResult{
+		Timestamp:  e.EventTime,
+		Engine:     e.Engine,
+		ScriptPath: e.ScriptPath,
+		Expression: e.Expression,
+		Passed:     e.Passed,
+		Output:     e.Output,
+		Agent:      e.Agent,
+	})
+	return nil
+}
+
+// applyDefChecked handles the DefChecked event.
+// Records the result of a definition stress test.
+func applyDefChecked(s *State, e ledger.DefChecked) error {
+	s.AddDefCheck(e.DefName, DefCheckResult{
+		Timestamp:  e.EventTime,
+		DefName:    e.DefName,
+		CheckType:  e.CheckType,
+		ScriptPath: e.ScriptPath,
+		Passed:     e.Passed,
+		Output:     e.Output,
+		Agent:      e.Agent,
+	})
 	return nil
 }

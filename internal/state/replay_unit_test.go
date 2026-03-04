@@ -315,6 +315,8 @@ func TestEventFactoriesCompleteness(t *testing.T) {
 		ledger.EventNodeVetoed,
 		ledger.EventStrategyProposed,
 		ledger.EventPatternAdded,
+		ledger.EventClaimTested,
+		ledger.EventDefChecked,
 	}
 
 	for _, et := range expectedTypes {
@@ -403,6 +405,16 @@ func TestParseEvent_AllEventTypes(t *testing.T) {
 			"pattern_added",
 			`{"type":"pattern_added","name":"test","description":"test desc","time":"2024-01-01T00:00:00Z"}`,
 			ledger.EventPatternAdded,
+		},
+		{
+			"claim_tested",
+			`{"type":"claim_tested","node_id":"1","engine":"script","passed":true,"time":"2024-01-01T00:00:00Z"}`,
+			ledger.EventClaimTested,
+		},
+		{
+			"def_checked",
+			`{"type":"def_checked","def_name":"test_def","check_type":"script","passed":true,"time":"2024-01-01T00:00:00Z"}`,
+			ledger.EventDefChecked,
 		},
 	}
 
