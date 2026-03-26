@@ -1,0 +1,32 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage[most]{tcolorbox}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\newcommand{\step}[1]{\par\noindent\hangindent=2em\hangafter=1%
+  \makebox[2em][l]{\textbf{#1.}}}
+\newcommand{\steptag}[1]{\hfill{\small\textsf{[#1]}}}
+
+\newtcolorbox{proofbox}[1]{
+  colback=gray!5, colframe=gray!60,
+  fonttitle=\bfseries, title={#1},
+  breakable, enhanced,
+  left=4pt, right=4pt, top=4pt, bottom=4pt,
+  before skip=10pt, after skip=10pt
+}
+
+\begin{document}
+
+\begin{proofbox}{There is no unitary operator U acting on two qubits such ...}
+\step{1} There is no unitary operator U acting on two qubits such that U$|psi\rangle$$|0\rangle$ = $|psi\rangle$$|psi\rangle$ for every single-qubit state $|psi\rangle$. \\[6pt]
+\step{1.1} \textsc{assume}: Assume for contradiction that such a unitary U exists: U$|psi\rangle$$|0\rangle$ = $|psi\rangle$$|psi\rangle$ for all single-qubit states $|psi\rangle$. \\[4pt]
+\step{1.2} We derive a contradiction by applying U to $|+\rangle$ = (1/sqrt2)($|0\rangle$+$|1\rangle$) in two different ways. \\[6pt]
+\step{1.2.1} Applying U to the computational basis states: U$|0\rangle$$|0\rangle$ = $|0\rangle$$|0\rangle$ and U$|1\rangle$$|0\rangle$ = $|1\rangle$$|1\rangle$. \\[4pt]
+\step{1.2.2} Since U is linear, U$|+\rangle$$|0\rangle$ = (1/sqrt2)(U$|0\rangle$$|0\rangle$ + U$|1\rangle$$|0\rangle$) = (1/sqrt2)($|00\rangle$ + $|11\rangle$). This is an entangled state. \\[4pt]
+\step{1.2.3} But the cloning assumption gives U$|+\rangle$$|0\rangle$ = $|+\rangle$$|+\rangle$ = (1/2)($|00\rangle$ + $|01\rangle$ + $|10\rangle$ + $|11\rangle$). This is a product state. \\[4pt]
+\step{1.2.4} Steps 1.2.2 and 1.2.3 give different results for U$|+\rangle$$|0\rangle$: (1/sqrt2)($|00\rangle$+$|11\rangle$) != (1/2)($|00\rangle$+$|01\rangle$+$|10\rangle$+$|11\rangle$). The left side is entangled (Schmidt rank 2); the right is a product (Schmidt rank 1). Contradiction. \\[4pt]
+\end{proofbox}
+
+\end{document}

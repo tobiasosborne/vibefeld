@@ -293,8 +293,8 @@ func TestToLaTeX_DeterministicOutput(t *testing.T) {
 	}
 }
 
-// TestToLaTeX_UsesEnumerateOrItemize tests that LaTeX uses proper list structure.
-func TestToLaTeX_UsesEnumerateOrItemize(t *testing.T) {
+// TestToLaTeX_UsesStructuredSteps tests that LaTeX uses step-based structure.
+func TestToLaTeX_UsesStructuredSteps(t *testing.T) {
 	s := state.NewState()
 	addTestNode(t, s, "1", "Root", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicPending, node.TaintClean)
 	addTestNode(t, s, "1.1", "Child 1", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicValidated, node.TaintClean)
@@ -302,14 +302,46 @@ func TestToLaTeX_UsesEnumerateOrItemize(t *testing.T) {
 
 	result := ToLaTeX(s)
 
-	// Should use either enumerate or itemize for structure
-	hasListStructure := strings.Contains(result, "\\begin{enumerate}") ||
-		strings.Contains(result, "\\begin{itemize}") ||
-		strings.Contains(result, "\\section") ||
-		strings.Contains(result, "\\subsection")
+	// Should use \step commands and proofbox for structure
+	hasStepStructure := strings.Contains(result, "\\step{1}") &&
+		strings.Contains(result, "\\step{1.1}") &&
+		strings.Contains(result, "\\step{1.2}")
+	hasProofbox := strings.Contains(result, "\\begin{proofbox}")
 
-	if !hasListStructure {
-		t.Error("LaTeX output should use proper hierarchical structure (enumerate, itemize, or sections)")
+	if !hasStepStructure {
+		t.Errorf("LaTeX output should use \\step commands for hierarchical structure")
+	}
+	if !hasProofbox {
+		t.Errorf("LaTeX output should use proofbox environment")
+	}
+}
+
+// TestToLaTeX_KetNotation tests that |X> is converted to math mode.
+func TestToLaTeX_KetNotation(t *testing.T) {
+	s := state.NewState()
+	addTestNode(t, s, "1", "U|psi>|0> = |psi>|psi>", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicPending, node.TaintClean)
+
+	result := ToLaTeX(s)
+
+	if !strings.Contains(result, "\\rangle") {
+		t.Error("LaTeX output should convert |X> to ket notation with \\rangle")
+	}
+}
+
+// TestToLaTeX_NodeTypePrefixes tests that ASSUME/CASE/QED get prefixes.
+func TestToLaTeX_NodeTypePrefixes(t *testing.T) {
+	s := state.NewState()
+	addTestNode(t, s, "1", "Root claim", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicPending, node.TaintClean)
+	addTestNode(t, s, "1.1", "Hypothesis", schema.NodeTypeLocalAssume, schema.InferenceAssumption, schema.EpistemicPending, node.TaintClean)
+	addTestNode(t, s, "1.2", "Conclusion", schema.NodeTypeLocalDischarge, schema.InferenceContradiction, schema.EpistemicPending, node.TaintClean)
+
+	result := ToLaTeX(s)
+
+	if !strings.Contains(result, "\\textsc{assume}") {
+		t.Error("LaTeX output should prefix local_assume nodes with ASSUME")
+	}
+	if !strings.Contains(result, "\\textsc{q.e.d.}") {
+		t.Error("LaTeX output should prefix local_discharge nodes with Q.E.D.")
 	}
 }
 
