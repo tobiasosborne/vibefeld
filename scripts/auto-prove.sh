@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# auto-prove.sh - Automated proof development using headless Claude agents
+# auto-prove.sh - Automated proof development using headless AI agents
 #
 # Usage:
 #   ./scripts/auto-prove.sh [options]
@@ -11,6 +11,9 @@
 #   --delay-seconds N     Delay between agent calls (default: 5)
 #   --burst-limit N       Max consecutive calls before longer pause (default: 3)
 #   --burst-pause N       Seconds to pause after burst limit (default: 30)
+#   --agent-backend NAME  Agent backend to use: claude or codex (default: claude)
+#   --codex               Shortcut for --agent-backend codex
+#   --claude              Shortcut for --agent-backend claude
 #   --dry-run             Show what would be done without calling agents
 #   --proof-dir DIR       Directory containing the proof (default: current)
 #   --verbose             Show detailed output
@@ -46,6 +49,7 @@ BURST_PAUSE=30
 DRY_RUN=false
 PROOF_DIR="."
 VERBOSE=false
+AGENT_BACKEND="${AF_AGENT_BACKEND:-claude}"
 
 # Counters
 ITERATION=0
@@ -90,7 +94,11 @@ log_error() {
 }
 
 usage() {
-    grep '^#' "$0" | grep -v '#!/' | sed 's/^# \?//'
+    awk '
+        NR == 1 && /^#!/ { next }
+        /^#/ { sub(/^# ?/, "", $0); print; next }
+        { exit }
+    ' "$0"
     exit 0
 }
 
@@ -117,6 +125,18 @@ while [[ $# -gt 0 ]]; do
             BURST_PAUSE="$2"
             shift 2
             ;;
+        --agent-backend)
+            AGENT_BACKEND="$2"
+            shift 2
+            ;;
+        --codex)
+            AGENT_BACKEND="codex"
+            shift
+            ;;
+        --claude)
+            AGENT_BACKEND="claude"
+            shift
+            ;;
         --dry-run)
             DRY_RUN=true
             shift
@@ -139,6 +159,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+AGENT_BACKEND="${AGENT_BACKEND,,}"
+
+case "$AGENT_BACKEND" in
+    claude|codex)
+        ;;
+    *)
+        log_error "Unknown agent backend: $AGENT_BACKEND"
+        exit 4
+        ;;
+esac
+
 # Change to proof directory
 cd "$PROOF_DIR" || {
     log_error "Cannot change to proof directory: $PROOF_DIR"
@@ -157,6 +188,21 @@ if [[ ! -d "ledger" ]]; then
     log_error "No ledger/ directory found in $PROOF_DIR. Initialize a proof first: $AF_CMD init"
     exit 4
 fi
+
+case "$AGENT_BACKEND" in
+    claude)
+        if ! command -v claude &> /dev/null; then
+            log_error "claude command not found. Install Claude Code or rerun with --codex."
+            exit 4
+        fi
+        ;;
+    codex)
+        if ! command -v codex &> /dev/null; then
+            log_error "codex command not found. Install Codex CLI or rerun without --codex."
+            exit 4
+        fi
+        ;;
+esac
 
 # Check proof status - returns proof state
 check_proof_status() {
@@ -320,13 +366,28 @@ EOF
     fi
 }
 
-# Call Claude agent headlessly
+# Call agent headlessly
+run_claude_agent() {
+    local prompt_file="$1"
+    claude --print --dangerously-skip-permissions -p "$(cat "$prompt_file")"
+}
+
+run_codex_agent() {
+    local prompt_file="$1"
+    local output_file="$2"
+    codex exec \
+        --dangerously-bypass-approvals-and-sandbox \
+        -C "$PWD" \
+        -o "$output_file" \
+        - < "$prompt_file"
+}
+
 call_agent() {
     local prompt="$1"
     local job_type="$2"
     local job_id="$3"
 
-    log "Calling Claude agent ($job_type for node $job_id)..."
+    log "Calling $AGENT_BACKEND agent ($job_type for node $job_id)..."
 
     if [[ "$DRY_RUN" == "true" ]]; then
         log_verbose "DRY RUN: Would call agent with prompt (truncated):"
@@ -334,19 +395,32 @@ call_agent() {
         return 0
     fi
 
-    # Call Claude Code in headless mode
-    # Using --print to just output the result, -p for prompt
     local output
     local exit_code=0
 
-    # Create a temporary file for the prompt (handles special chars better)
     local prompt_file
+    local output_file
+    local log_file
     prompt_file=$(mktemp)
-    echo "$prompt" > "$prompt_file"
+    output_file=$(mktemp)
+    log_file=$(mktemp)
+    printf '%s\n' "$prompt" > "$prompt_file"
 
-    output=$(claude --print --dangerously-skip-permissions -p "$(cat "$prompt_file")" 2>&1) || exit_code=$?
+    case "$AGENT_BACKEND" in
+        claude)
+            run_claude_agent "$prompt_file" > "$log_file" 2>&1 || exit_code=$?
+            output=$(cat "$log_file")
+            ;;
+        codex)
+            run_codex_agent "$prompt_file" "$output_file" > "$log_file" 2>&1 || exit_code=$?
+            output=$(cat "$output_file" 2>/dev/null || true)
+            if [[ -z "$output" ]]; then
+                output=$(cat "$log_file")
+            fi
+            ;;
+    esac
 
-    rm -f "$prompt_file"
+    rm -f "$prompt_file" "$output_file" "$log_file"
 
     if [[ $exit_code -ne 0 ]]; then
         log_warning "Agent exited with code $exit_code"
@@ -381,6 +455,7 @@ main() {
     log "  Max agent calls: $MAX_AGENTS"
     log "  Delay between calls: ${DELAY_SECONDS}s"
     log "  Burst limit: $BURST_LIMIT calls, then ${BURST_PAUSE}s pause"
+    log "  Agent backend: $AGENT_BACKEND"
     log "  Dry run: $DRY_RUN"
     log ""
 
