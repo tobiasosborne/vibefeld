@@ -191,60 +191,81 @@ count_jobs() {
     echo "$((prover_count + verifier_count))"
 }
 
-# Select next job (prioritizes verifier jobs for breadth-first, then prover)
+# Track recently-attempted nodes to avoid churning
+declare -A RECENT_ATTEMPTS  # node_id -> attempt count
+MAX_ATTEMPTS_PER_NODE=2     # skip node after this many consecutive failures
+
+# Pick a job from a list, skipping recently-failed nodes
+# Usage: pick_from_list "$json_array_expr" "$job_type"
+pick_from_list() {
+    local jobs_json="$1"
+    local jq_expr="$2"
+    local job_type="$3"
+
+    local node_ids
+    node_ids=$(echo "$jobs_json" | jq -r "$jq_expr")
+
+    local nid
+    while IFS= read -r nid; do
+        [[ -z "$nid" || "$nid" == "null" ]] && continue
+        local attempts=${RECENT_ATTEMPTS["$nid"]:-0}
+        if [[ $attempts -lt $MAX_ATTEMPTS_PER_NODE ]]; then
+            local stmt
+            stmt=$(echo "$jobs_json" | jq -r ".${job_type}_jobs[] | select(.node_id == \"$nid\") | .statement")
+            echo "$job_type|$nid|$stmt"
+            return 0
+        else
+            log_verbose "Skipping $nid ($attempts recent attempts without progress)"
+        fi
+    done <<< "$node_ids"
+
+    return 1
+}
+
+# Select next job (prioritizes prover leaf work, then verifier)
 select_job() {
     local jobs_json="$1"
-    local job_type job_id job_statement
 
-    # First check for recommended verifier job
-    local verifier_rec
-    verifier_rec=$(echo "$jobs_json" | jq -r '.verifier_jobs[] | select(.recommended == true) | .node_id' | head -1)
-
-    if [[ -n "$verifier_rec" && "$verifier_rec" != "null" ]]; then
-        job_type="verifier"
-        job_id="$verifier_rec"
-        job_statement=$(echo "$jobs_json" | jq -r ".verifier_jobs[] | select(.node_id == \"$job_id\") | .statement")
-        echo "$job_type|$job_id|$job_statement"
+    # 1. Prover jobs first — this is where the actual work happens
+    #    Recommended prover, then all provers in order
+    if pick_from_list "$jobs_json" \
+        '(.prover_jobs[] | select(.recommended == true) | .node_id), (.prover_jobs[].node_id)' \
+        "prover"; then
         return 0
     fi
 
-    # Then check for recommended prover job
-    local prover_rec
-    prover_rec=$(echo "$jobs_json" | jq -r '.prover_jobs[] | select(.recommended == true) | .node_id' | head -1)
-
-    if [[ -n "$prover_rec" && "$prover_rec" != "null" ]]; then
-        job_type="prover"
-        job_id="$prover_rec"
-        job_statement=$(echo "$jobs_json" | jq -r ".prover_jobs[] | select(.node_id == \"$job_id\") | .statement")
-        echo "$job_type|$job_id|$job_statement"
+    # 2. Verifier jobs — only after all prover work is exhausted or skipped
+    #    Recommended verifier, then all verifiers in order
+    if pick_from_list "$jobs_json" \
+        '(.verifier_jobs[] | select(.recommended == true) | .node_id), (.verifier_jobs[].node_id)' \
+        "verifier"; then
         return 0
     fi
 
-    # Fall back to first verifier job
-    local first_verifier
-    first_verifier=$(echo "$jobs_json" | jq -r '.verifier_jobs[0].node_id // empty')
-
-    if [[ -n "$first_verifier" ]]; then
-        job_type="verifier"
-        job_id="$first_verifier"
-        job_statement=$(echo "$jobs_json" | jq -r ".verifier_jobs[0].statement")
-        echo "$job_type|$job_id|$job_statement"
-        return 0
-    fi
-
-    # Fall back to first prover job
-    local first_prover
-    first_prover=$(echo "$jobs_json" | jq -r '.prover_jobs[0].node_id // empty')
-
-    if [[ -n "$first_prover" ]]; then
-        job_type="prover"
-        job_id="$first_prover"
-        job_statement=$(echo "$jobs_json" | jq -r ".prover_jobs[0].statement")
-        echo "$job_type|$job_id|$job_statement"
-        return 0
+    # 3. Nothing available (or everything skipped) — reset attempts and try once more
+    if [[ ${#RECENT_ATTEMPTS[@]} -gt 0 ]]; then
+        log "All jobs skipped due to recent failures. Resetting attempt tracker."
+        RECENT_ATTEMPTS=()
+        # Retry with clean slate (recursive, but only once since we just cleared)
+        select_job "$jobs_json"
+        return $?
     fi
 
     return 1
+}
+
+# Record that we attempted a node (call after agent returns)
+record_attempt() {
+    local node_id="$1"
+    local success="$2"  # "true" if the agent made progress
+
+    if [[ "$success" == "true" ]]; then
+        # Reset on success
+        RECENT_ATTEMPTS["$node_id"]=0
+    else
+        local prev=${RECENT_ATTEMPTS["$node_id"]:-0}
+        RECENT_ATTEMPTS["$node_id"]=$((prev + 1))
+    fi
 }
 
 # Build agent prompt for a job
@@ -437,6 +458,10 @@ main() {
         log "Selected: $job_type job for node $job_id"
         log_verbose "Statement: $job_statement"
 
+        # Snapshot ledger event count before agent runs
+        local events_before
+        events_before=$($AF_CMD log 2>/dev/null | wc -l)
+
         # Build and execute agent
         local prompt
         prompt=$(build_agent_prompt "$job_type" "$job_id")
@@ -447,6 +472,20 @@ main() {
             log_success "Agent call $AGENT_CALLS completed"
         else
             log_warning "Agent call $AGENT_CALLS had issues (continuing anyway)"
+        fi
+
+        # Check if agent made progress (new ledger events beyond claim/release)
+        local events_after
+        events_after=$($AF_CMD log 2>/dev/null | wc -l)
+        local new_events=$((events_after - events_before))
+
+        # claim + release = 2 events with no real work; >2 means something happened
+        if [[ $new_events -gt 2 ]]; then
+            log_success "Node $job_id: agent produced $new_events events (progress!)"
+            record_attempt "$job_id" "true"
+        else
+            log_warning "Node $job_id: agent produced only $new_events events (no progress)"
+            record_attempt "$job_id" "false"
         fi
 
         # Apply rate limiting
