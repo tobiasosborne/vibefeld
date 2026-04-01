@@ -241,58 +241,126 @@ count_jobs() {
 declare -A RECENT_ATTEMPTS  # node_id -> attempt count
 MAX_ATTEMPTS_PER_NODE=2     # skip node after this many consecutive failures
 
-# Pick a job from a list, skipping recently-failed nodes
-# Usage: pick_from_list "$json_array_expr" "$job_type"
-pick_from_list() {
-    local jobs_json="$1"
-    local jq_expr="$2"
-    local job_type="$3"
+# Cache for proof tree structure (refreshed each iteration)
+TREE_JSON=""
 
-    local node_ids
-    node_ids=$(echo "$jobs_json" | jq -r "$jq_expr")
-
-    local nid
-    while IFS= read -r nid; do
-        [[ -z "$nid" || "$nid" == "null" ]] && continue
-        local attempts=${RECENT_ATTEMPTS["$nid"]:-0}
-        if [[ $attempts -lt $MAX_ATTEMPTS_PER_NODE ]]; then
-            local stmt
-            stmt=$(echo "$jobs_json" | jq -r ".${job_type}_jobs[] | select(.node_id == \"$nid\") | .statement")
-            echo "$job_type|$nid|$stmt"
-            return 0
-        else
-            log_verbose "Skipping $nid ($attempts recent attempts without progress)"
-        fi
-    done <<< "$node_ids"
-
-    return 1
+# Refresh the proof tree cache
+refresh_tree() {
+    TREE_JSON=$($AF_CMD status -f json 2>/dev/null) || TREE_JSON=""
 }
 
-# Select next job (prioritizes prover leaf work, then verifier)
+# Check if a node is a leaf (has no children in the proof tree)
+is_leaf() {
+    local node_id="$1"
+    [[ -z "$TREE_JSON" ]] && return 1
+    # A child of node X has id "X.<something>" with exactly one more dot-level
+    local depth
+    depth=$(echo "$node_id" | awk -F. '{print NF}')
+    local child_depth=$((depth + 1))
+    local has_children
+    has_children=$(echo "$TREE_JSON" | jq -r \
+        --arg nid "$node_id" \
+        --argjson cdepth "$child_depth" \
+        '[.nodes[] | select(.id | startswith($nid + ".")) | select(.id | split(".") | length == $cdepth)] | length')
+    [[ "$has_children" == "0" ]]
+}
+
+# Check if all children of a node are validated/admitted
+all_children_validated() {
+    local node_id="$1"
+    [[ -z "$TREE_JSON" ]] && return 1
+    local depth
+    depth=$(echo "$node_id" | awk -F. '{print NF}')
+    local child_depth=$((depth + 1))
+    # Count children that are NOT validated or admitted
+    local pending_children
+    pending_children=$(echo "$TREE_JSON" | jq -r \
+        --arg nid "$node_id" \
+        --argjson cdepth "$child_depth" \
+        '[.nodes[] | select(.id | startswith($nid + ".")) | select(.id | split(".") | length == $cdepth) | select(.epistemic_state != "validated" and .epistemic_state != "admitted")] | length')
+    [[ "$pending_children" == "0" ]]
+}
+
+# Check if a job is actionable given the current tree state
+is_actionable() {
+    local job_type="$1"
+    local node_id="$2"
+
+    if [[ "$job_type" == "prover" ]]; then
+        # Prover on a leaf: good — this is actual derivation work
+        if is_leaf "$node_id"; then
+            return 0
+        fi
+        # Prover on a parent: only useful if agent might refine (add children)
+        # But if it already has children, refinement is done — skip it
+        log_verbose "Skipping prover job on non-leaf $node_id (already has children)" >&2
+        return 1
+    else
+        # Verifier: only actionable if node is a leaf OR all children are validated
+        if is_leaf "$node_id"; then
+            return 0
+        fi
+        if all_children_validated "$node_id"; then
+            return 0
+        fi
+        log_verbose "Skipping verifier job on $node_id (children not all validated)" >&2
+        return 1
+    fi
+}
+
+# Select next job — leaves first, skip unactionable nodes and recently-failed ones
 select_job() {
     local jobs_json="$1"
 
-    # 1. Prover jobs first — this is where the actual work happens
-    #    Recommended prover, then all provers in order
-    if pick_from_list "$jobs_json" \
-        '(.prover_jobs[] | select(.recommended == true) | .node_id), (.prover_jobs[].node_id)' \
-        "prover"; then
-        return 0
-    fi
+    # Refresh tree structure for filtering
+    refresh_tree
 
-    # 2. Verifier jobs — only after all prover work is exhausted or skipped
-    #    Recommended verifier, then all verifiers in order
-    if pick_from_list "$jobs_json" \
-        '(.verifier_jobs[] | select(.recommended == true) | .node_id), (.verifier_jobs[].node_id)' \
-        "verifier"; then
-        return 0
-    fi
+    # NOTE: this function's stdout is captured by the caller, so all log
+    # messages must go to stderr (>&2) to avoid corrupting the return value.
 
-    # 3. Nothing available (or everything skipped) — reset attempts and try once more
+    # 1. Prover leaf nodes first (the actual math work)
+    local prover_ids
+    prover_ids=$(echo "$jobs_json" | jq -r '.prover_jobs[].node_id')
+    while IFS= read -r nid; do
+        [[ -z "$nid" || "$nid" == "null" ]] && continue
+        local attempts=${RECENT_ATTEMPTS["$nid"]:-0}
+        if [[ $attempts -ge $MAX_ATTEMPTS_PER_NODE ]]; then
+            log_verbose "Skipping $nid ($attempts recent attempts without progress)" >&2
+            continue
+        fi
+        if ! is_actionable "prover" "$nid"; then
+            continue
+        fi
+        local stmt
+        stmt=$(echo "$jobs_json" | jq -r ".prover_jobs[] | select(.node_id == \"$nid\") | .statement")
+        echo "prover|$nid|$stmt"
+        return 0
+    done <<< "$prover_ids"
+
+    # 2. Verifier nodes where all children are done
+    #    Sort deepest-first so leaf nodes (the actual math) get priority
+    local verifier_ids
+    verifier_ids=$(echo "$jobs_json" | jq -r '.verifier_jobs[].node_id' | awk -F. '{print NF, $0}' | sort -rnk1 | cut -d' ' -f2)
+    while IFS= read -r nid; do
+        [[ -z "$nid" || "$nid" == "null" ]] && continue
+        local attempts=${RECENT_ATTEMPTS["$nid"]:-0}
+        if [[ $attempts -ge $MAX_ATTEMPTS_PER_NODE ]]; then
+            log_verbose "Skipping $nid ($attempts recent attempts without progress)" >&2
+            continue
+        fi
+        if ! is_actionable "verifier" "$nid"; then
+            continue
+        fi
+        local stmt
+        stmt=$(echo "$jobs_json" | jq -r ".verifier_jobs[] | select(.node_id == \"$nid\") | .statement")
+        echo "verifier|$nid|$stmt"
+        return 0
+    done <<< "$verifier_ids"
+
+    # 3. Everything skipped — reset and try once more
     if [[ ${#RECENT_ATTEMPTS[@]} -gt 0 ]]; then
-        log "All jobs skipped due to recent failures. Resetting attempt tracker."
+        log "All actionable jobs skipped due to recent failures. Resetting attempt tracker." >&2
         RECENT_ATTEMPTS=()
-        # Retry with clean slate (recursive, but only once since we just cleared)
         select_job "$jobs_json"
         return $?
     fi
