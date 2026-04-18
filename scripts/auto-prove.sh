@@ -49,6 +49,8 @@ BURST_PAUSE=30
 DRY_RUN=false
 PROOF_DIR="."
 VERBOSE=false
+AGENT_TIMEOUT=300  # 5 minute timeout per agent call
+PARALLEL=5         # number of agents to run concurrently
 AGENT_BACKEND="${AF_AGENT_BACKEND:-claude}"
 
 # Counters
@@ -132,6 +134,10 @@ while [[ $# -gt 0 ]]; do
         --codex)
             AGENT_BACKEND="codex"
             shift
+            ;;
+        --parallel)
+            PARALLEL="$2"
+            shift 2
             ;;
         --claude)
             AGENT_BACKEND="claude"
@@ -238,8 +244,19 @@ count_jobs() {
 }
 
 # Track recently-attempted nodes to avoid churning
-declare -A RECENT_ATTEMPTS  # node_id -> attempt count
+declare -A RECENT_ATTEMPTS=()  # node_id -> attempt count
+RECENT_ATTEMPTS["__init__"]=0  # dummy entry to avoid set -u failures on empty array
 MAX_ATTEMPTS_PER_NODE=2     # skip node after this many consecutive failures
+
+# Subtree diversity — avoid drilling down a single branch
+LAST_SUBTREE=""
+SUBTREE_STREAK=0
+MAX_SUBTREE_STREAK=3  # rotate to a different subtree after this many consecutive iterations
+
+# Get the top-level subtree of a node (e.g., "1.10.4.2.1" → "1.10")
+get_subtree() {
+    echo "$1" | awk -F. '{if(NF>=2) print $1"."$2; else print $0}'
+}
 
 # Cache for proof tree structure (refreshed each iteration)
 TREE_JSON=""
@@ -309,20 +326,32 @@ is_actionable() {
 }
 
 # Select next job — leaves first, skip unactionable nodes and recently-failed ones
+# $2 = space-separated list of node IDs to exclude (already dispatched this batch)
 select_job() {
     local jobs_json="$1"
+    local exclude_list="${2:-}"
 
-    # Refresh tree structure for filtering
-    refresh_tree
+    # Refresh tree structure for filtering (only if not cached this batch)
+    [[ -z "$TREE_JSON" ]] && refresh_tree
 
     # NOTE: this function's stdout is captured by the caller, so all log
     # messages must go to stderr (>&2) to avoid corrupting the return value.
 
     # 1. Prover leaf nodes first (the actual math work)
+    #    When subtree streak is high, sort different subtrees first
     local prover_ids
-    prover_ids=$(echo "$jobs_json" | jq -r '.prover_jobs[].node_id')
+    if [[ $SUBTREE_STREAK -ge $MAX_SUBTREE_STREAK && -n "$LAST_SUBTREE" ]]; then
+        prover_ids=$(echo "$jobs_json" | jq -r '.prover_jobs[].node_id' | awk -F. -v last="$LAST_SUBTREE" '{
+            subtree = (NF>=2) ? $1"."$2 : $0
+            same = (subtree == last) ? 1 : 0
+            print same, $0
+        }' | sort -k1,1n | awk '{print $2}')
+    else
+        prover_ids=$(echo "$jobs_json" | jq -r '.prover_jobs[].node_id')
+    fi
     while IFS= read -r nid; do
         [[ -z "$nid" || "$nid" == "null" ]] && continue
+        [[ " $exclude_list " == *" $nid "* ]] && continue
         local attempts=${RECENT_ATTEMPTS["$nid"]:-0}
         if [[ $attempts -ge $MAX_ATTEMPTS_PER_NODE ]]; then
             log_verbose "Skipping $nid ($attempts recent attempts without progress)" >&2
@@ -340,9 +369,20 @@ select_job() {
     # 2. Verifier nodes where all children are done
     #    Sort deepest-first so leaf nodes (the actual math) get priority
     local verifier_ids
-    verifier_ids=$(echo "$jobs_json" | jq -r '.verifier_jobs[].node_id' | awk -F. '{print NF, $0}' | sort -rnk1 | cut -d' ' -f2)
+    if [[ $SUBTREE_STREAK -ge $MAX_SUBTREE_STREAK && -n "$LAST_SUBTREE" ]]; then
+        # Diversify: different subtrees first, then deepest-first within each group
+        log_verbose "Subtree diversity: deprioritising $LAST_SUBTREE (streak: $SUBTREE_STREAK)" >&2
+        verifier_ids=$(echo "$jobs_json" | jq -r '.verifier_jobs[].node_id' | awk -F. -v last="$LAST_SUBTREE" '{
+            subtree = (NF>=2) ? $1"."$2 : $0
+            same = (subtree == last) ? 1 : 0
+            print same, NF, $0
+        }' | sort -k1,1n -k2,2rn | awk '{print $3}')
+    else
+        verifier_ids=$(echo "$jobs_json" | jq -r '.verifier_jobs[].node_id' | awk -F. '{print NF, $0}' | sort -k1,1rn | cut -d' ' -f2)
+    fi
     while IFS= read -r nid; do
         [[ -z "$nid" || "$nid" == "null" ]] && continue
+        [[ " $exclude_list " == *" $nid "* ]] && continue
         local attempts=${RECENT_ATTEMPTS["$nid"]:-0}
         if [[ $attempts -ge $MAX_ATTEMPTS_PER_NODE ]]; then
             log_verbose "Skipping $nid ($attempts recent attempts without progress)" >&2
@@ -437,13 +477,13 @@ EOF
 # Call agent headlessly
 run_claude_agent() {
     local prompt_file="$1"
-    claude --print --dangerously-skip-permissions -p "$(cat "$prompt_file")"
+    timeout "${AGENT_TIMEOUT:-300}" claude --print --dangerously-skip-permissions -p "$(cat "$prompt_file")"
 }
 
 run_codex_agent() {
     local prompt_file="$1"
     local output_file="$2"
-    codex exec \
+    timeout "${AGENT_TIMEOUT:-300}" codex exec \
         --dangerously-bypass-approvals-and-sandbox \
         -C "$PWD" \
         -o "$output_file" \
@@ -490,7 +530,10 @@ call_agent() {
 
     rm -f "$prompt_file" "$output_file" "$log_file"
 
-    if [[ $exit_code -ne 0 ]]; then
+    if [[ $exit_code -eq 124 ]]; then
+        log_warning "Agent TIMED OUT after ${AGENT_TIMEOUT}s — reaping stale locks"
+        $AF_CMD reap 2>/dev/null || true
+    elif [[ $exit_code -ne 0 ]]; then
         log_warning "Agent exited with code $exit_code"
         log_verbose "Output: $output"
     else
@@ -524,6 +567,7 @@ main() {
     log "  Delay between calls: ${DELAY_SECONDS}s"
     log "  Burst limit: $BURST_LIMIT calls, then ${BURST_PAUSE}s pause"
     log "  Agent backend: $AGENT_BACKEND"
+    log "  Parallel agents: $PARALLEL"
     log "  Dry run: $DRY_RUN"
     log ""
 
@@ -588,52 +632,83 @@ main() {
         log "Found $job_count available jobs"
         log_verbose "Jobs JSON: $jobs_json"
 
-        # Select next job
-        local job_info
-        if ! job_info=$(select_job "$jobs_json"); then
-            log_error "Failed to select job"
-            continue
-        fi
+        # Refresh tree once for this batch
+        refresh_tree
 
-        local job_type job_id job_statement
-        IFS='|' read -r job_type job_id job_statement <<< "$job_info"
-
-        log "Selected: $job_type job for node $job_id"
-        log_verbose "Statement: $job_statement"
-
-        # Snapshot ledger event count before agent runs
+        # Select up to PARALLEL jobs for this batch
+        local batch_pids=()
+        local batch_nodes=()
+        local exclude_list=""
         local events_before
         events_before=$($AF_CMD log 2>/dev/null | wc -l)
 
-        # Build and execute agent
-        local prompt
-        prompt=$(build_agent_prompt "$job_type" "$job_id")
+        local batch_size=$PARALLEL
+        local remaining=$((MAX_AGENTS - AGENT_CALLS))
+        [[ $remaining -lt $batch_size ]] && batch_size=$remaining
 
-        AGENT_CALLS=$((AGENT_CALLS + 1))
+        for ((b=0; b < batch_size; b++)); do
+            local job_info
+            if ! job_info=$(select_job "$jobs_json" "$exclude_list"); then
+                [[ $b -eq 0 ]] && log_error "Failed to select any jobs"
+                break
+            fi
 
-        if call_agent "$prompt" "$job_type" "$job_id"; then
-            log_success "Agent call $AGENT_CALLS completed"
-        else
-            log_warning "Agent call $AGENT_CALLS had issues (continuing anyway)"
+            local job_type job_id job_statement
+            IFS='|' read -r job_type job_id job_statement <<< "$job_info"
+
+            log "Dispatching: $job_type for node $job_id"
+
+            # Track subtree for diversity
+            local selected_subtree
+            selected_subtree=$(get_subtree "$job_id")
+            if [[ "$selected_subtree" == "$LAST_SUBTREE" ]]; then
+                SUBTREE_STREAK=$((SUBTREE_STREAK + 1))
+            else
+                LAST_SUBTREE="$selected_subtree"
+                SUBTREE_STREAK=1
+            fi
+
+            exclude_list="${exclude_list:+$exclude_list }$job_id"
+
+            local prompt
+            prompt=$(build_agent_prompt "$job_type" "$job_id")
+
+            AGENT_CALLS=$((AGENT_CALLS + 1))
+
+            if [[ "$DRY_RUN" == "true" ]]; then
+                log_verbose "DRY RUN: Would call $job_type agent for $job_id"
+                batch_nodes+=("$job_id")
+            else
+                # Launch agent in background
+                call_agent "$prompt" "$job_type" "$job_id" &
+                batch_pids+=($!)
+                batch_nodes+=("$job_id")
+            fi
+        done
+
+        if [[ ${#batch_nodes[@]} -eq 0 ]]; then
+            continue
         fi
 
-        # Check if agent made progress (new ledger events beyond claim/release)
+        log "Waiting for ${#batch_nodes[@]} parallel agents: ${batch_nodes[*]}"
+
+        # Wait for all agents in this batch
+        for pid in "${batch_pids[@]}"; do
+            wait "$pid" || true
+        done
+
+        # Check batch progress
         local events_after
         events_after=$($AF_CMD log 2>/dev/null | wc -l)
         local new_events=$((events_after - events_before))
+        log_success "Batch complete: ${#batch_nodes[@]} agents, $new_events ledger events"
 
-        # claim + release = 2 events with no real work; >2 means something happened
-        if [[ $new_events -gt 2 ]]; then
-            log_success "Node $job_id: agent produced $new_events events (progress!)"
-            record_attempt "$job_id" "true"
-        else
-            log_warning "Node $job_id: agent produced only $new_events events (no progress)"
-            record_attempt "$job_id" "false"
-        fi
+        # Reap any stale locks from timed-out agents
+        $AF_CMD reap 2>/dev/null || true
 
-        # Apply rate limiting
+        # Brief pause between batches
         if [[ $ITERATION -lt $MAX_ITERATIONS && $AGENT_CALLS -lt $MAX_AGENTS ]]; then
-            apply_rate_limit
+            sleep "$DELAY_SECONDS"
         fi
     done
 
