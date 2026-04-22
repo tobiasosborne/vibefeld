@@ -294,7 +294,7 @@ all_children_validated() {
     pending_children=$(echo "$TREE_JSON" | jq -r \
         --arg nid "$node_id" \
         --argjson cdepth "$child_depth" \
-        '[.nodes[] | select(.id | startswith($nid + ".")) | select(.id | split(".") | length == $cdepth) | select(.epistemic_state != "validated" and .epistemic_state != "admitted")] | length')
+        '[.nodes[] | select(.id | startswith($nid + ".")) | select(.id | split(".") | length == $cdepth) | select(.epistemic_state != "validated" and .epistemic_state != "admitted" and .epistemic_state != "archived")] | length')
     [[ "$pending_children" == "0" ]]
 }
 
@@ -308,9 +308,16 @@ is_actionable() {
         if is_leaf "$node_id"; then
             return 0
         fi
-        # Prover on a parent: only useful if agent might refine (add children)
-        # But if it already has children, refinement is done — skip it
-        log_verbose "Skipping prover job on non-leaf $node_id (already has children)" >&2
+        # Non-leaf prover: actionable if it has open challenges to resolve
+        # Note: uses 'af challenges' not 'af get' due to af get JSON pipe bug (Bug 3)
+        local open_challenges
+        open_challenges=$($AF_CMD challenges -f json -d "$PROOF_DIR" 2>/dev/null \
+            | jq "[.challenges[]? | select(.node_id == \"$node_id\" and .status == \"open\")] | length" 2>/dev/null)
+        if [[ "${open_challenges:-0}" -gt 0 ]]; then
+            log_verbose "Non-leaf prover $node_id has $open_challenges open challenge(s) — actionable" >&2
+            return 0
+        fi
+        log_verbose "Skipping prover job on non-leaf $node_id (no open challenges)" >&2
         return 1
     else
         # Verifier: only actionable if node is a leaf OR all children are validated
