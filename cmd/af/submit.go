@@ -65,17 +65,17 @@ func runSubmit(cmd *cobra.Command, nodeIDStr, owner, dir, format string) error {
 	}
 
 	if format == "json" {
-		cmd.Printf(`{"success":true,"node_id":%q,"previous_state":"draft","new_state":"pending"}`, nodeIDStr)
-		cmd.Println()
+		fmt.Fprintf(cmd.OutOrStdout(), `{"success":true,"node_id":%q,"previous_state":"draft","new_state":"pending"}`, nodeIDStr)
+		fmt.Fprintln(cmd.OutOrStdout())
 		return nil
 	}
 
-	cmd.Printf("Node %s submitted for verification.\n", nodeIDStr)
-	cmd.Printf("  State: draft → pending\n")
-	cmd.Println("\nNext steps:")
-	cmd.Printf("  af status           - View proof status\n")
-	cmd.Printf("  af challenge %s   - Challenge this node\n", nodeIDStr)
-	cmd.Printf("  af accept %s      - Accept this node\n", nodeIDStr)
+	fmt.Fprintf(cmd.OutOrStdout(), "Node %s submitted for verification.\n", nodeIDStr)
+	fmt.Fprintf(cmd.OutOrStdout(), "  State: draft → pending\n")
+	fmt.Fprintln(cmd.OutOrStdout(), "\nNext steps:")
+	fmt.Fprintf(cmd.OutOrStdout(), "  af status           - View proof status\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "  af challenge %s   - Challenge this node\n", nodeIDStr)
+	fmt.Fprintf(cmd.OutOrStdout(), "  af accept %s      - Accept this node\n", nodeIDStr)
 
 	return nil
 }

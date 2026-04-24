@@ -172,27 +172,27 @@ func outputScopeJSON(cmd *cobra.Command, nodeID service.NodeID, info *service.Sc
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
-	cmd.Println(string(data))
+	fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	return nil
 }
 
 // outputScopeText outputs scope info for a node in text format.
 func outputScopeText(cmd *cobra.Command, nodeID service.NodeID, info *service.ScopeInfo) error {
-	cmd.Printf("Scope information for node %s:\n", nodeID.String())
-	cmd.Printf("  Scope depth: %d\n", info.Depth)
+	fmt.Fprintf(cmd.OutOrStdout(), "Scope information for node %s:\n", nodeID.String())
+	fmt.Fprintf(cmd.OutOrStdout(), "  Scope depth: %d\n", info.Depth)
 
 	if !info.IsInAnyScope() {
-		cmd.Println("  Node is not inside any scope.")
+		fmt.Fprintln(cmd.OutOrStdout(), "  Node is not inside any scope.")
 		return nil
 	}
 
-	cmd.Println("  Containing scopes (outermost to innermost):")
+	fmt.Fprintln(cmd.OutOrStdout(), "  Containing scopes (outermost to innermost):")
 	for i, s := range info.ContainingScopes {
 		status := "active"
 		if !s.IsActive() {
 			status = "closed"
 		}
-		cmd.Printf("    %d. [%s] %s: %q\n", i+1, s.NodeID.String(), status, s.Statement)
+		fmt.Fprintf(cmd.OutOrStdout(), "    %d. [%s] %s: %q\n", i+1, s.NodeID.String(), status, s.Statement)
 	}
 
 	return nil
@@ -225,26 +225,26 @@ func outputAllScopesJSON(cmd *cobra.Command, allScopes, activeScopes []*service.
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
-	cmd.Println(string(data))
+	fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	return nil
 }
 
 // outputAllScopesText outputs all scopes in text format.
 func outputAllScopesText(cmd *cobra.Command, allScopes, activeScopes []*service.ScopeEntry) error {
-	cmd.Printf("Assumption Scopes: %d total, %d active\n\n", len(allScopes), len(activeScopes))
+	fmt.Fprintf(cmd.OutOrStdout(), "Assumption Scopes: %d total, %d active\n\n", len(allScopes), len(activeScopes))
 
 	if len(allScopes) == 0 {
-		cmd.Println("No assumption scopes in this proof.")
+		fmt.Fprintln(cmd.OutOrStdout(), "No assumption scopes in this proof.")
 		return nil
 	}
 
 	// Show active scopes
 	if len(activeScopes) > 0 {
-		cmd.Println("Active Scopes:")
+		fmt.Fprintln(cmd.OutOrStdout(), "Active Scopes:")
 		for _, s := range activeScopes {
-			cmd.Printf("  [%s] %q\n", s.NodeID.String(), s.Statement)
+			fmt.Fprintf(cmd.OutOrStdout(), "  [%s] %q\n", s.NodeID.String(), s.Statement)
 		}
-		cmd.Println()
+		fmt.Fprintln(cmd.OutOrStdout())
 	}
 
 	// Show closed scopes
@@ -256,9 +256,9 @@ func outputAllScopesText(cmd *cobra.Command, allScopes, activeScopes []*service.
 	}
 
 	if len(closedScopes) > 0 {
-		cmd.Println("Closed Scopes:")
+		fmt.Fprintln(cmd.OutOrStdout(), "Closed Scopes:")
 		for _, s := range closedScopes {
-			cmd.Printf("  [%s] %q (closed)\n", s.NodeID.String(), s.Statement)
+			fmt.Fprintf(cmd.OutOrStdout(), "  [%s] %q (closed)\n", s.NodeID.String(), s.Statement)
 		}
 	}
 

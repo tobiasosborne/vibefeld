@@ -141,21 +141,21 @@ func outputExtendClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner stri
 		return fmt.Errorf("failed to encode JSON: %w", err)
 	}
 
-	cmd.Println(string(data))
+	fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	return nil
 }
 
 // outputExtendClaimText outputs the extend-claim result in human-readable text format.
 func outputExtendClaimText(cmd *cobra.Command, nodeID service.NodeID, owner string, duration time.Duration, newTimeout service.Timestamp) error {
-	cmd.Printf("Extended claim on node %s\n", nodeID.String())
-	cmd.Printf("  Owner:      %s\n", owner)
-	cmd.Printf("  Duration:   %s\n", duration)
-	cmd.Printf("  Expires at: %s\n", time.Now().Add(duration).Format("15:04:05"))
-	cmd.Println()
+	fmt.Fprintf(cmd.OutOrStdout(), "Extended claim on node %s\n", nodeID.String())
+	fmt.Fprintf(cmd.OutOrStdout(), "  Owner:      %s\n", owner)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Duration:   %s\n", duration)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Expires at: %s\n", time.Now().Add(duration).Format("15:04:05"))
+	fmt.Fprintln(cmd.OutOrStdout())
 
-	cmd.Println("Next steps:")
-	cmd.Println("  af refine  - Continue working on this node")
-	cmd.Println("  af release - Release the claim when done")
+	fmt.Fprintln(cmd.OutOrStdout(), "Next steps:")
+	fmt.Fprintln(cmd.OutOrStdout(), "  af refine  - Continue working on this node")
+	fmt.Fprintln(cmd.OutOrStdout(), "  af release - Release the claim when done")
 
 	return nil
 }

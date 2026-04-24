@@ -181,7 +181,7 @@ func outputClaimJSON(cmd *cobra.Command, nodeID service.NodeID, owner, role stri
 		return fmt.Errorf("failed to encode JSON: %w", err)
 	}
 
-	cmd.Println(string(data))
+	fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	return nil
 }
 
@@ -192,22 +192,22 @@ func outputClaimText(cmd *cobra.Command, nodeID service.NodeID, owner string, ti
 
 	// Print action based on whether this was a refresh or new claim
 	if refresh {
-		cmd.Printf("Refreshed claim on node %s\n", nodeID.String())
+		fmt.Fprintf(cmd.OutOrStdout(), "Refreshed claim on node %s\n", nodeID.String())
 	} else {
-		cmd.Printf("Claimed node %s\n", nodeID.String())
+		fmt.Fprintf(cmd.OutOrStdout(), "Claimed node %s\n", nodeID.String())
 	}
-	cmd.Printf("  Owner:      %s\n", owner)
-	cmd.Printf("  Role:       %s\n", role)
-	cmd.Printf("  Timeout:    %s\n", timeout)
-	cmd.Printf("  Expires at: %s\n", expiresAt.Format("15:04:05"))
-	cmd.Println()
+	fmt.Fprintf(cmd.OutOrStdout(), "  Owner:      %s\n", owner)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Role:       %s\n", role)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Timeout:    %s\n", timeout)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Expires at: %s\n", expiresAt.Format("15:04:05"))
+	fmt.Fprintln(cmd.OutOrStdout())
 
 	// Render and display context based on role
 	// Both prover and verifier roles use prover context when claiming a node
 	// (verifier context is specifically for examining challenges)
 	context := render.RenderProverContext(st, nodeID)
 	if context != "" {
-		cmd.Println(context)
+		fmt.Fprintln(cmd.OutOrStdout(), context)
 	}
 
 	// Display verification checklist for verifier role
@@ -216,19 +216,19 @@ func outputClaimText(cmd *cobra.Command, nodeID service.NodeID, owner string, ti
 		if targetNode != nil {
 			checklist := render.RenderVerificationChecklist(targetNode, st)
 			if checklist != "" {
-				cmd.Println(checklist)
+				fmt.Fprintln(cmd.OutOrStdout(), checklist)
 			}
 		}
 	}
 
-	cmd.Println("Next steps:")
+	fmt.Fprintln(cmd.OutOrStdout(), "Next steps:")
 	if role == "prover" {
-		cmd.Println("  af refine  - Add or modify proof content for this node")
+		fmt.Fprintln(cmd.OutOrStdout(), "  af refine  - Add or modify proof content for this node")
 	} else {
-		cmd.Println("  af challenge - Raise a challenge on a claim")
-		cmd.Println("  af accept    - Accept a valid claim")
+		fmt.Fprintln(cmd.OutOrStdout(), "  af challenge - Raise a challenge on a claim")
+		fmt.Fprintln(cmd.OutOrStdout(), "  af accept    - Accept a valid claim")
 	}
-	cmd.Println("  af release - Release the claim if you cannot complete the work")
+	fmt.Fprintln(cmd.OutOrStdout(), "  af release - Release the claim if you cannot complete the work")
 
 	return nil
 }

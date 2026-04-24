@@ -154,15 +154,15 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
-		cmd.Println(string(jsonBytes))
+		fmt.Fprintln(cmd.OutOrStdout(), string(jsonBytes))
 	} else {
 		// Text output
-		cmd.Printf("Dependencies for node %s\n", nodeIDStr)
-		cmd.Printf("Statement: %s\n", truncateString(node.Statement, 60))
-		cmd.Printf("State: %s\n\n", node.EpistemicState)
+		fmt.Fprintf(cmd.OutOrStdout(), "Dependencies for node %s\n", nodeIDStr)
+		fmt.Fprintf(cmd.OutOrStdout(), "Statement: %s\n", truncateString(node.Statement, 60))
+		fmt.Fprintf(cmd.OutOrStdout(), "State: %s\n\n", node.EpistemicState)
 
 		if len(deps) == 0 {
-			cmd.Println("No dependencies")
+			fmt.Fprintln(cmd.OutOrStdout(), "No dependencies")
 		} else {
 			// Group by type
 			var refDeps, valDeps []depInfo
@@ -175,15 +175,15 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 			}
 
 			if len(refDeps) > 0 {
-				cmd.Println("Reference Dependencies:")
+				fmt.Fprintln(cmd.OutOrStdout(), "Reference Dependencies:")
 				for _, d := range refDeps {
-					cmd.Printf("  %s [%s] - %s\n", d.ID, d.State, d.Statement)
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s] - %s\n", d.ID, d.State, d.Statement)
 				}
-				cmd.Println()
+				fmt.Fprintln(cmd.OutOrStdout())
 			}
 
 			if len(valDeps) > 0 {
-				cmd.Println("Validation Dependencies (must be validated before accepting):")
+				fmt.Fprintln(cmd.OutOrStdout(), "Validation Dependencies (must be validated before accepting):")
 				for _, d := range valDeps {
 					status := d.State
 					if d.IsBlocking {
@@ -191,16 +191,16 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 					} else {
 						status += " (satisfied)"
 					}
-					cmd.Printf("  %s [%s] - %s\n", d.ID, status, d.Statement)
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s] - %s\n", d.ID, status, d.Statement)
 				}
-				cmd.Println()
+				fmt.Fprintln(cmd.OutOrStdout())
 			}
 
 			if blockingCount > 0 {
-				cmd.Printf("Status: BLOCKED - %d validation dependencies are unvalidated\n", blockingCount)
-				cmd.Println("Cannot accept this node until all validation dependencies are validated.")
+				fmt.Fprintf(cmd.OutOrStdout(), "Status: BLOCKED - %d validation dependencies are unvalidated\n", blockingCount)
+				fmt.Fprintln(cmd.OutOrStdout(), "Cannot accept this node until all validation dependencies are validated.")
 			} else if len(valDeps) > 0 {
-				cmd.Println("Status: Ready - all validation dependencies are satisfied")
+				fmt.Fprintln(cmd.OutOrStdout(), "Status: Ready - all validation dependencies are satisfied")
 			}
 		}
 	}

@@ -72,12 +72,12 @@ func runPath(cmd *cobra.Command, args []string) error {
 		}
 		ids = append(ids, fmt.Sprintf("%s [%s]", id.String(), render.ColorEpistemicState(n.EpistemicState)))
 	}
-	cmd.Println(strings.Join(ids, " → "))
+	fmt.Fprintln(cmd.OutOrStdout(), strings.Join(ids, " → "))
 
 	// Show the target node's statement
 	target := st.GetNode(nodeID)
 	if target != nil {
-		cmd.Printf("\nStatement: %s\n", target.Statement)
+		fmt.Fprintf(cmd.OutOrStdout(), "\nStatement: %s\n", target.Statement)
 	}
 
 	return nil

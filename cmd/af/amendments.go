@@ -76,23 +76,23 @@ func runAmendments(cmd *cobra.Command, args []string) error {
 // renderAmendmentsText renders the amendment history in human-readable text.
 func renderAmendmentsText(cmd *cobra.Command, nodeID service.NodeID, currentStatement string, amendments []service.Amendment) error {
 	if len(amendments) == 0 {
-		cmd.Printf("Node %s: no amendments (original statement unchanged)\n", nodeID)
-		cmd.Printf("\nCurrent statement:\n  %s\n", currentStatement)
+		fmt.Fprintf(cmd.OutOrStdout(), "Node %s: no amendments (original statement unchanged)\n", nodeID)
+		fmt.Fprintf(cmd.OutOrStdout(), "\nCurrent statement:\n  %s\n", currentStatement)
 		return nil
 	}
 
-	cmd.Printf("Node %s: %d amendment(s)\n\n", nodeID, len(amendments))
+	fmt.Fprintf(cmd.OutOrStdout(), "Node %s: %d amendment(s)\n\n", nodeID, len(amendments))
 
 	// Show version 0 (original) — the PreviousStatement of the first amendment
-	cmd.Printf("[v0] Original\n")
-	cmd.Printf("  %s\n\n", amendments[0].PreviousStatement)
+	fmt.Fprintf(cmd.OutOrStdout(), "[v0] Original\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "  %s\n\n", amendments[0].PreviousStatement)
 
 	// Show each amendment
 	for i, a := range amendments {
-		cmd.Printf("[v%d] %s by %s\n", i+1, a.Timestamp.String(), a.Owner)
-		cmd.Printf("  %s\n", a.NewStatement)
+		fmt.Fprintf(cmd.OutOrStdout(), "[v%d] %s by %s\n", i+1, a.Timestamp.String(), a.Owner)
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", a.NewStatement)
 		if i < len(amendments)-1 {
-			cmd.Println()
+			fmt.Fprintln(cmd.OutOrStdout())
 		}
 	}
 

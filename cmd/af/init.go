@@ -63,17 +63,17 @@ Workflow:
 
 // runListTemplates displays all available proof templates.
 func runListTemplates(cmd *cobra.Command) error {
-	cmd.Println("Available proof templates:")
-	cmd.Println()
+	fmt.Fprintln(cmd.OutOrStdout(), "Available proof templates:")
+	fmt.Fprintln(cmd.OutOrStdout())
 
 	for _, tmpl := range service.ListTemplates() {
-		cmd.Printf("  %s\n", tmpl.Name)
-		cmd.Printf("    %s\n", tmpl.Description)
-		cmd.Println()
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", tmpl.Name)
+		fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", tmpl.Description)
+		fmt.Fprintln(cmd.OutOrStdout())
 	}
 
-	cmd.Println("Usage:")
-	cmd.Println("  af init --conjecture \"...\" --author \"...\" --template <name>")
+	fmt.Fprintln(cmd.OutOrStdout(), "Usage:")
+	fmt.Fprintln(cmd.OutOrStdout(), "  af init --conjecture \"...\" --author \"...\" --template <name>")
 
 	return nil
 }
@@ -114,35 +114,35 @@ func runInit(cmd *cobra.Command, conjecture, author, dir, templateName string) e
 	}
 
 	// Output success message
-	cmd.Printf("Proof initialized successfully in %s\n", dir)
-	cmd.Printf("Conjecture: %s\n", conjecture)
-	cmd.Printf("Author: %s\n", author)
+	fmt.Fprintf(cmd.OutOrStdout(), "Proof initialized successfully in %s\n", dir)
+	fmt.Fprintf(cmd.OutOrStdout(), "Conjecture: %s\n", conjecture)
+	fmt.Fprintf(cmd.OutOrStdout(), "Author: %s\n", author)
 
 	if hasTemplate {
-		cmd.Printf("Template: %s\n", tmpl.Name)
-		cmd.Println("\nProof structure created:")
-		cmd.Println("  1   - Root conjecture")
+		fmt.Fprintf(cmd.OutOrStdout(), "Template: %s\n", tmpl.Name)
+		fmt.Fprintln(cmd.OutOrStdout(), "\nProof structure created:")
+		fmt.Fprintln(cmd.OutOrStdout(), "  1   - Root conjecture")
 		for i, child := range tmpl.Children {
-			cmd.Printf("  1.%d - %s\n", i+1, child.StatementTemplate)
+			fmt.Fprintf(cmd.OutOrStdout(), "  1.%d - %s\n", i+1, child.StatementTemplate)
 		}
 	}
 
-	cmd.Println("\nNext steps:")
-	cmd.Println("  1. af status    - View the proof tree (root node '1' is your conjecture)")
-	cmd.Println("  2. af jobs      - See available work (root is now a verifier job)")
-	cmd.Println("  3. af claim 1   - Claim the root node to start working")
-	cmd.Println("")
-	cmd.Println("Workflow overview:")
-	cmd.Println("  - New nodes start as VERIFIER jobs (ready for review)")
-	cmd.Println("  - Verifiers either ACCEPT nodes or raise CHALLENGES")
-	cmd.Println("  - Challenged nodes become PROVER jobs (need refinement)")
-	cmd.Println("  - Provers use REFINE to break down claims into substeps")
-	cmd.Println("  - The cycle repeats until all nodes are accepted")
-	cmd.Println("")
-	cmd.Println("Quick reference:")
-	cmd.Println("  Verifier commands: af accept, af challenge")
-	cmd.Println("  Prover commands:   af refine, af amend, af resolve-challenge")
-	cmd.Println("  Info commands:     af get <id>, af schema, af inferences")
+	fmt.Fprintln(cmd.OutOrStdout(), "\nNext steps:")
+	fmt.Fprintln(cmd.OutOrStdout(), "  1. af status    - View the proof tree (root node '1' is your conjecture)")
+	fmt.Fprintln(cmd.OutOrStdout(), "  2. af jobs      - See available work (root is now a verifier job)")
+	fmt.Fprintln(cmd.OutOrStdout(), "  3. af claim 1   - Claim the root node to start working")
+	fmt.Fprintln(cmd.OutOrStdout(), "")
+	fmt.Fprintln(cmd.OutOrStdout(), "Workflow overview:")
+	fmt.Fprintln(cmd.OutOrStdout(), "  - New nodes start as VERIFIER jobs (ready for review)")
+	fmt.Fprintln(cmd.OutOrStdout(), "  - Verifiers either ACCEPT nodes or raise CHALLENGES")
+	fmt.Fprintln(cmd.OutOrStdout(), "  - Challenged nodes become PROVER jobs (need refinement)")
+	fmt.Fprintln(cmd.OutOrStdout(), "  - Provers use REFINE to break down claims into substeps")
+	fmt.Fprintln(cmd.OutOrStdout(), "  - The cycle repeats until all nodes are accepted")
+	fmt.Fprintln(cmd.OutOrStdout(), "")
+	fmt.Fprintln(cmd.OutOrStdout(), "Quick reference:")
+	fmt.Fprintln(cmd.OutOrStdout(), "  Verifier commands: af accept, af challenge")
+	fmt.Fprintln(cmd.OutOrStdout(), "  Prover commands:   af refine, af amend, af resolve-challenge")
+	fmt.Fprintln(cmd.OutOrStdout(), "  Info commands:     af get <id>, af schema, af inferences")
 
 	return nil
 }

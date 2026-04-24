@@ -98,9 +98,9 @@ func runGet(cmd *cobra.Command, nodeIDStr, dir, format string, ancestors, subtre
 	// Handle checklist flag - show verification checklist instead of normal output
 	if checklist {
 		if format == "json" {
-			cmd.Println(render.RenderVerificationChecklistJSON(targetNode, st))
+			fmt.Fprintln(cmd.OutOrStdout(), render.RenderVerificationChecklistJSON(targetNode, st))
 		} else {
-			cmd.Print(render.RenderVerificationChecklist(targetNode, st))
+			fmt.Fprint(cmd.OutOrStdout(), render.RenderVerificationChecklist(targetNode, st))
 		}
 		return nil
 	}
@@ -195,7 +195,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
-		cmd.Println(string(data))
+		fmt.Fprintln(cmd.OutOrStdout(), string(data))
 		return nil
 	}
 
@@ -212,7 +212,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
-		cmd.Println(string(data))
+		fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	} else {
 		jsonNodes := make([]map[string]interface{}, 0, len(nodes))
 		for _, n := range nodes {
@@ -222,7 +222,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
-		cmd.Println(string(data))
+		fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	}
 
 	return nil
@@ -338,37 +338,37 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 	if len(nodes) == 1 {
 		// Single node: always show full/verbose output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
-		cmd.Print(render.RenderNodeVerbose(nodes[0]))
+		fmt.Fprint(cmd.OutOrStdout(), render.RenderNodeVerbose(nodes[0]))
 		// Show challenges for this node
 		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)
 		if len(nodeChallenges) > 0 {
-			cmd.Printf("\nChallenges (%d):\n", len(nodeChallenges))
+			fmt.Fprintf(cmd.OutOrStdout(), "\nChallenges (%d):\n", len(nodeChallenges))
 			for _, c := range nodeChallenges {
-				cmd.Printf("  %s [%s] %s: %s\n", c.ID, c.Status, c.Target, c.Reason)
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s] %s: %s\n", c.ID, c.Status, c.Target, c.Reason)
 			}
 		}
 		// Show amendment history for this node
 		amendments := st.GetAmendmentHistory(nodes[0].ID)
 		if len(amendments) > 0 {
-			cmd.Printf("\nAmendment History (%d):\n", len(amendments))
+			fmt.Fprintf(cmd.OutOrStdout(), "\nAmendment History (%d):\n", len(amendments))
 			for i, a := range amendments {
-				cmd.Printf("  [%d] %s by %s\n", i+1, a.Timestamp.String(), a.Owner)
-				cmd.Printf("      Previous: %s\n", truncateForDisplay(a.PreviousStatement, 50))
-				cmd.Printf("      New:      %s\n", truncateForDisplay(a.NewStatement, 50))
+				fmt.Fprintf(cmd.OutOrStdout(), "  [%d] %s by %s\n", i+1, a.Timestamp.String(), a.Owner)
+				fmt.Fprintf(cmd.OutOrStdout(), "      Previous: %s\n", truncateForDisplay(a.PreviousStatement, 50))
+				fmt.Fprintf(cmd.OutOrStdout(), "      New:      %s\n", truncateForDisplay(a.NewStatement, 50))
 			}
 		}
 		// Show scope information
 		scopeInfo := st.GetScopeInfo(nodes[0].ID)
 		if scopeInfo != nil && scopeInfo.IsInAnyScope() {
-			cmd.Printf("\nScope Info:\n")
-			cmd.Printf("  Depth: %d\n", scopeInfo.Depth)
-			cmd.Println("  Containing scopes:")
+			fmt.Fprintf(cmd.OutOrStdout(), "\nScope Info:\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Depth: %d\n", scopeInfo.Depth)
+			fmt.Fprintln(cmd.OutOrStdout(), "  Containing scopes:")
 			for _, s := range scopeInfo.ContainingScopes {
 				status := "active"
 				if !s.IsActive() {
 					status = "closed"
 				}
-				cmd.Printf("    [%s] %s: %q\n", s.NodeID.String(), status, s.Statement)
+				fmt.Fprintf(cmd.OutOrStdout(), "    [%s] %s: %q\n", s.NodeID.String(), status, s.Statement)
 			}
 		}
 		return nil
@@ -378,44 +378,44 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 	if full {
 		for i, n := range nodes {
 			if i > 0 {
-				cmd.Println("---")
+				fmt.Fprintln(cmd.OutOrStdout(), "---")
 			}
-			cmd.Print(render.RenderNodeVerbose(n))
+			fmt.Fprint(cmd.OutOrStdout(), render.RenderNodeVerbose(n))
 			// Show challenges for this node
 			nodeChallenges := filterChallengesForNode(challenges, n.ID)
 			if len(nodeChallenges) > 0 {
-				cmd.Printf("\nChallenges (%d):\n", len(nodeChallenges))
+				fmt.Fprintf(cmd.OutOrStdout(), "\nChallenges (%d):\n", len(nodeChallenges))
 				for _, c := range nodeChallenges {
-					cmd.Printf("  %s [%s] %s: %s\n", c.ID, c.Status, c.Target, c.Reason)
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s] %s: %s\n", c.ID, c.Status, c.Target, c.Reason)
 				}
 			}
 			// Show amendment history for this node
 			amendments := st.GetAmendmentHistory(n.ID)
 			if len(amendments) > 0 {
-				cmd.Printf("\nAmendment History (%d):\n", len(amendments))
+				fmt.Fprintf(cmd.OutOrStdout(), "\nAmendment History (%d):\n", len(amendments))
 				for j, a := range amendments {
-					cmd.Printf("  [%d] %s by %s\n", j+1, a.Timestamp.String(), a.Owner)
-					cmd.Printf("      Previous: %s\n", truncateForDisplay(a.PreviousStatement, 50))
-					cmd.Printf("      New:      %s\n", truncateForDisplay(a.NewStatement, 50))
+					fmt.Fprintf(cmd.OutOrStdout(), "  [%d] %s by %s\n", j+1, a.Timestamp.String(), a.Owner)
+					fmt.Fprintf(cmd.OutOrStdout(), "      Previous: %s\n", truncateForDisplay(a.PreviousStatement, 50))
+					fmt.Fprintf(cmd.OutOrStdout(), "      New:      %s\n", truncateForDisplay(a.NewStatement, 50))
 				}
 			}
 			// Show scope information
 			scopeInfo := st.GetScopeInfo(n.ID)
 			if scopeInfo != nil && scopeInfo.IsInAnyScope() {
-				cmd.Printf("\nScope Info:\n")
-				cmd.Printf("  Depth: %d\n", scopeInfo.Depth)
-				cmd.Println("  Containing scopes:")
+				fmt.Fprintf(cmd.OutOrStdout(), "\nScope Info:\n")
+				fmt.Fprintf(cmd.OutOrStdout(), "  Depth: %d\n", scopeInfo.Depth)
+				fmt.Fprintln(cmd.OutOrStdout(), "  Containing scopes:")
 				for _, s := range scopeInfo.ContainingScopes {
 					status := "active"
 					if !s.IsActive() {
 						status = "closed"
 					}
-					cmd.Printf("    [%s] %s: %q\n", s.NodeID.String(), status, s.Statement)
+					fmt.Fprintf(cmd.OutOrStdout(), "    [%s] %s: %q\n", s.NodeID.String(), status, s.Statement)
 				}
 			}
 		}
 	} else {
-		cmd.Println(render.RenderNodeTree(nodes))
+		fmt.Fprintln(cmd.OutOrStdout(), render.RenderNodeTree(nodes))
 	}
 
 	return nil

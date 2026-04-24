@@ -83,7 +83,7 @@ func runDiff(cmd *cobra.Command, args []string) error {
 	amendments := st.GetAmendmentHistory(nodeID)
 
 	if len(amendments) == 0 {
-		cmd.Printf("Node %s: no amendments — statement is unchanged\n", nodeID)
+		fmt.Fprintf(cmd.OutOrStdout(), "Node %s: no amendments — statement is unchanged\n", nodeID)
 		return nil
 	}
 
@@ -182,7 +182,7 @@ func diffSinceChallenge(cmd *cobra.Command, st *service.State, nodeID service.No
 
 	currentVersion := len(versions) - 1
 	if versionAtChallenge == currentVersion {
-		cmd.Printf("Node %s: no changes since challenge %s was raised\n", nodeID, challengeID)
+		fmt.Fprintf(cmd.OutOrStdout(), "Node %s: no changes since challenge %s was raised\n", nodeID, challengeID)
 		return nil
 	}
 
@@ -192,7 +192,7 @@ func diffSinceChallenge(cmd *cobra.Command, st *service.State, nodeID service.No
 		return renderDiffJSON(cmd, nodeID, []diffResult{diff})
 	}
 
-	cmd.Printf("Changes to node %s since challenge %s:\n\n", nodeID, challengeID)
+	fmt.Fprintf(cmd.OutOrStdout(), "Changes to node %s since challenge %s:\n\n", nodeID, challengeID)
 	renderSingleDiff(cmd, diff)
 	return nil
 }
@@ -216,12 +216,12 @@ func renderDiffJSON(cmd *cobra.Command, nodeID service.NodeID, diffs []diffResul
 
 // renderDiffText renders diffs in human-readable text.
 func renderDiffText(cmd *cobra.Command, nodeID service.NodeID, diffs []diffResult) error {
-	cmd.Printf("Node %s: %d diff(s)\n\n", nodeID, len(diffs))
+	fmt.Fprintf(cmd.OutOrStdout(), "Node %s: %d diff(s)\n\n", nodeID, len(diffs))
 
 	for i, d := range diffs {
 		if i > 0 {
-			cmd.Println("---")
-			cmd.Println()
+			fmt.Fprintln(cmd.OutOrStdout(), "---")
+			fmt.Fprintln(cmd.OutOrStdout())
 		}
 		renderSingleDiff(cmd, d)
 	}
@@ -231,12 +231,12 @@ func renderDiffText(cmd *cobra.Command, nodeID service.NodeID, diffs []diffResul
 
 // renderSingleDiff renders one diff between two versions.
 func renderSingleDiff(cmd *cobra.Command, d diffResult) {
-	cmd.Printf("v%d → v%d", d.FromVersion, d.ToVersion)
+	fmt.Fprintf(cmd.OutOrStdout(), "v%d → v%d", d.FromVersion, d.ToVersion)
 	if !d.Changed {
-		cmd.Printf("  (no change)\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "  (no change)\n")
 		return
 	}
-	cmd.Println()
+	fmt.Fprintln(cmd.OutOrStdout())
 
 	// Line-by-line diff
 	fromLines := strings.Split(d.From, "\n")
@@ -246,10 +246,10 @@ func renderSingleDiff(cmd *cobra.Command, d diffResult) {
 	removed, added := diffLines(fromLines, toLines)
 
 	for _, line := range removed {
-		cmd.Printf("  - %s\n", line)
+		fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", line)
 	}
 	for _, line := range added {
-		cmd.Printf("  + %s\n", line)
+		fmt.Fprintf(cmd.OutOrStdout(), "  + %s\n", line)
 	}
 }
 

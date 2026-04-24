@@ -129,15 +129,15 @@ func runAmend(cmd *cobra.Command, nodeIDStr, owner, statement, dir, format strin
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
-		cmd.Println(string(jsonBytes))
+		fmt.Fprintln(cmd.OutOrStdout(), string(jsonBytes))
 	} else {
-		cmd.Printf("Node %s amended successfully.\n", nodeIDStr)
-		cmd.Printf("  Previous: %s\n", truncateString(originalStatement, 60))
-		cmd.Printf("  New:      %s\n", truncateString(statement, 60))
-		cmd.Printf("  Owner:    %s\n", owner)
-		cmd.Println("\nNext steps:")
-		cmd.Printf("  af get %s --full    - View node with amendment history\n", nodeIDStr)
-		cmd.Printf("  af status           - View proof status\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "Node %s amended successfully.\n", nodeIDStr)
+		fmt.Fprintf(cmd.OutOrStdout(), "  Previous: %s\n", truncateString(originalStatement, 60))
+		fmt.Fprintf(cmd.OutOrStdout(), "  New:      %s\n", truncateString(statement, 60))
+		fmt.Fprintf(cmd.OutOrStdout(), "  Owner:    %s\n", owner)
+		fmt.Fprintln(cmd.OutOrStdout(), "\nNext steps:")
+		fmt.Fprintf(cmd.OutOrStdout(), "  af get %s --full    - View node with amendment history\n", nodeIDStr)
+		fmt.Fprintf(cmd.OutOrStdout(), "  af status           - View proof status\n")
 	}
 
 	return nil

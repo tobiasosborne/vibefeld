@@ -309,7 +309,6 @@ is_actionable() {
             return 0
         fi
         # Non-leaf prover: actionable if it has open challenges to resolve
-        # Note: uses 'af challenges' not 'af get' due to af get JSON pipe bug (Bug 3)
         local open_challenges
         open_challenges=$($AF_CMD challenges -f json -d "$PROOF_DIR" 2>/dev/null \
             | jq "[.challenges[]? | select(.node_id == \"$node_id\" and .status == \"open\")] | length" 2>/dev/null)

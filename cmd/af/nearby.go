@@ -89,26 +89,26 @@ func runNearby(cmd *cobra.Command, args []string) error {
 
 	// Render
 	if parentNode != nil {
-		cmd.Printf("Parent:\n  %s\n\n", render.FormatNodeLine(parentNode, st))
+		fmt.Fprintf(cmd.OutOrStdout(), "Parent:\n  %s\n\n", render.FormatNodeLine(parentNode, st))
 	}
 
-	cmd.Printf("Node:\n  %s\n\n", render.FormatNodeLine(target, st))
+	fmt.Fprintf(cmd.OutOrStdout(), "Node:\n  %s\n\n", render.FormatNodeLine(target, st))
 
 	if len(siblings) > 0 {
-		cmd.Printf("Siblings (%d):\n", len(siblings))
+		fmt.Fprintf(cmd.OutOrStdout(), "Siblings (%d):\n", len(siblings))
 		for _, s := range siblings {
-			cmd.Printf("  %s\n", render.FormatNodeLine(s, st))
+			fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", render.FormatNodeLine(s, st))
 		}
-		cmd.Println()
+		fmt.Fprintln(cmd.OutOrStdout())
 	}
 
 	if len(children) > 0 {
-		cmd.Printf("Children (%d):\n", len(children))
+		fmt.Fprintf(cmd.OutOrStdout(), "Children (%d):\n", len(children))
 		for _, c := range children {
-			cmd.Printf("  %s\n", render.FormatNodeLine(c, st))
+			fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", render.FormatNodeLine(c, st))
 		}
 	} else {
-		cmd.Println("Children: (none — leaf node)")
+		fmt.Fprintln(cmd.OutOrStdout(), "Children: (none — leaf node)")
 	}
 
 	return nil

@@ -160,27 +160,27 @@ func formatMultiChildOutput(cmd *cobra.Command, format, parentIDStr string, spec
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
-		cmd.Println(string(jsonBytes))
+		fmt.Fprintln(cmd.OutOrStdout(), string(jsonBytes))
 		return nil
 	}
 
 	// Text format
-	cmd.Printf("Created %d child nodes under %s:\n", len(createdChildren), parentIDStr)
+	fmt.Fprintf(cmd.OutOrStdout(), "Created %d child nodes under %s:\n", len(createdChildren), parentIDStr)
 	for _, child := range createdChildren {
-		cmd.Printf("  %s [%s]: %s\n", child.ID, child.Type, child.Statement)
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s]: %s\n", child.ID, child.Type, child.Statement)
 	}
-	cmd.Println("\nNext steps:")
+	fmt.Fprintln(cmd.OutOrStdout(), "\nNext steps:")
 	if len(createdChildren) > 0 {
 		firstChildIDStr := createdChildren[0].ID
 		firstChildID, _ := service.ParseNodeID(firstChildIDStr)
 		if _, hasSiblingParent := firstChildID.Parent(); hasSiblingParent {
-			cmd.Printf("  af refine-sibling %s \"...\" - Add sibling (breadth)\n", firstChildIDStr)
-			cmd.Printf("  af refine %s \"...\"         - Add child (depth)\n", firstChildIDStr)
+			fmt.Fprintf(cmd.OutOrStdout(), "  af refine-sibling %s \"...\" - Add sibling (breadth)\n", firstChildIDStr)
+			fmt.Fprintf(cmd.OutOrStdout(), "  af refine %s \"...\"         - Add child (depth)\n", firstChildIDStr)
 		} else {
-			cmd.Printf("  af refine %s \"...\"         - Add child\n", firstChildIDStr)
+			fmt.Fprintf(cmd.OutOrStdout(), "  af refine %s \"...\"         - Add child\n", firstChildIDStr)
 		}
 	}
-	cmd.Printf("  af status                   - View proof status\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "  af status                   - View proof status\n")
 	return nil
 }
 
@@ -214,30 +214,30 @@ func formatRefineOutput(cmd *cobra.Command, format string, params refineOutputPa
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
-		cmd.Println(string(jsonBytes))
+		fmt.Fprintln(cmd.OutOrStdout(), string(jsonBytes))
 		return nil
 	}
 
 	// Text format
-	cmd.Printf("Node refined successfully.\n")
-	cmd.Printf("  Parent: %s\n", params.ParentIDStr)
-	cmd.Printf("  Child:  %s\n", params.ChildID.String())
-	cmd.Printf("  Type:   %s\n", params.NodeTypeStr)
-	cmd.Printf("  Statement: %s\n", params.Statement)
+	fmt.Fprintf(cmd.OutOrStdout(), "Node refined successfully.\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "  Parent: %s\n", params.ParentIDStr)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Child:  %s\n", params.ChildID.String())
+	fmt.Fprintf(cmd.OutOrStdout(), "  Type:   %s\n", params.NodeTypeStr)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Statement: %s\n", params.Statement)
 	if len(params.Dependencies) > 0 {
-		cmd.Printf("  Depends on: %s\n", strings.Join(service.ToStringSlice(params.Dependencies), ", "))
+		fmt.Fprintf(cmd.OutOrStdout(), "  Depends on: %s\n", strings.Join(service.ToStringSlice(params.Dependencies), ", "))
 	}
 	if len(params.ValidationDeps) > 0 {
-		cmd.Printf("  Requires validated: %s\n", strings.Join(service.ToStringSlice(params.ValidationDeps), ", "))
+		fmt.Fprintf(cmd.OutOrStdout(), "  Requires validated: %s\n", strings.Join(service.ToStringSlice(params.ValidationDeps), ", "))
 	}
-	cmd.Println("\nNext steps:")
+	fmt.Fprintln(cmd.OutOrStdout(), "\nNext steps:")
 	if _, hasSiblingParent := params.ChildID.Parent(); hasSiblingParent {
-		cmd.Printf("  af refine-sibling %s \"...\" - Add sibling (breadth)\n", params.ChildID.String())
-		cmd.Printf("  af refine %s \"...\"         - Add child (depth)\n", params.ChildID.String())
+		fmt.Fprintf(cmd.OutOrStdout(), "  af refine-sibling %s \"...\" - Add sibling (breadth)\n", params.ChildID.String())
+		fmt.Fprintf(cmd.OutOrStdout(), "  af refine %s \"...\"         - Add child (depth)\n", params.ChildID.String())
 	} else {
-		cmd.Printf("  af refine %s \"...\"         - Add child\n", params.ChildID.String())
+		fmt.Fprintf(cmd.OutOrStdout(), "  af refine %s \"...\"         - Add child\n", params.ChildID.String())
 	}
-	cmd.Printf("  af status                   - View proof status\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "  af status                   - View proof status\n")
 	return nil
 }
 
@@ -498,7 +498,7 @@ func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDSt
 			return err
 		}
 		if childResult.WarnDepth {
-			cmd.Printf("Warning: Creating node at depth %d. Consider adding siblings instead.\n\n", childResult.ChildID.Depth())
+			fmt.Fprintf(cmd.OutOrStdout(), "Warning: Creating node at depth %d. Consider adding siblings instead.\n\n", childResult.ChildID.Depth())
 		}
 
 		err = svc.Refine(service.RefineSpec{
