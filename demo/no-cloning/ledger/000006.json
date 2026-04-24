@@ -1,0 +1,1 @@
+{"type":"node_amended","timestamp":"2026-03-26T22:38:00.749938829Z","node_id":"1.1","previous_statement":"Assume the negation of the conjecture","new_statement":"Assume for contradiction that such a unitary U exists: U|psi\u003e|0\u003e = |psi\u003e|psi\u003e for all single-qubit states |psi\u003e.","owner":"Prover"}

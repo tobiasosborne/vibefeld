@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# auto-prove.sh - Automated proof development using headless Claude agents
+# auto-prove.sh - Automated proof development using headless AI agents
 #
 # Usage:
 #   ./scripts/auto-prove.sh [options]
@@ -11,6 +11,9 @@
 #   --delay-seconds N     Delay between agent calls (default: 5)
 #   --burst-limit N       Max consecutive calls before longer pause (default: 3)
 #   --burst-pause N       Seconds to pause after burst limit (default: 30)
+#   --agent-backend NAME  Agent backend to use: claude or codex (default: claude)
+#   --codex               Shortcut for --agent-backend codex
+#   --claude              Shortcut for --agent-backend claude
 #   --dry-run             Show what would be done without calling agents
 #   --proof-dir DIR       Directory containing the proof (default: current)
 #   --verbose             Show detailed output
@@ -46,6 +49,9 @@ BURST_PAUSE=30
 DRY_RUN=false
 PROOF_DIR="."
 VERBOSE=false
+AGENT_TIMEOUT=300  # 5 minute timeout per agent call
+PARALLEL=5         # number of agents to run concurrently
+AGENT_BACKEND="${AF_AGENT_BACKEND:-claude}"
 
 # Counters
 ITERATION=0
@@ -90,7 +96,11 @@ log_error() {
 }
 
 usage() {
-    grep '^#' "$0" | grep -v '#!/' | sed 's/^# \?//'
+    awk '
+        NR == 1 && /^#!/ { next }
+        /^#/ { sub(/^# ?/, "", $0); print; next }
+        { exit }
+    ' "$0"
     exit 0
 }
 
@@ -117,6 +127,22 @@ while [[ $# -gt 0 ]]; do
             BURST_PAUSE="$2"
             shift 2
             ;;
+        --agent-backend)
+            AGENT_BACKEND="$2"
+            shift 2
+            ;;
+        --codex)
+            AGENT_BACKEND="codex"
+            shift
+            ;;
+        --parallel)
+            PARALLEL="$2"
+            shift 2
+            ;;
+        --claude)
+            AGENT_BACKEND="claude"
+            shift
+            ;;
         --dry-run)
             DRY_RUN=true
             shift
@@ -139,6 +165,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+AGENT_BACKEND="${AGENT_BACKEND,,}"
+
+case "$AGENT_BACKEND" in
+    claude|codex)
+        ;;
+    *)
+        log_error "Unknown agent backend: $AGENT_BACKEND"
+        exit 4
+        ;;
+esac
+
 # Change to proof directory
 cd "$PROOF_DIR" || {
     log_error "Cannot change to proof directory: $PROOF_DIR"
@@ -157,6 +194,21 @@ if [[ ! -d "ledger" ]]; then
     log_error "No ledger/ directory found in $PROOF_DIR. Initialize a proof first: $AF_CMD init"
     exit 4
 fi
+
+case "$AGENT_BACKEND" in
+    claude)
+        if ! command -v claude &> /dev/null; then
+            log_error "claude command not found. Install Claude Code or rerun with --codex."
+            exit 4
+        fi
+        ;;
+    codex)
+        if ! command -v codex &> /dev/null; then
+            log_error "codex command not found. Install Codex CLI or rerun without --codex."
+            exit 4
+        fi
+        ;;
+esac
 
 # Check proof status - returns proof state
 check_proof_status() {
@@ -191,60 +243,190 @@ count_jobs() {
     echo "$((prover_count + verifier_count))"
 }
 
-# Select next job (prioritizes verifier jobs for breadth-first, then prover)
+# Track recently-attempted nodes to avoid churning
+declare -A RECENT_ATTEMPTS=()  # node_id -> attempt count
+RECENT_ATTEMPTS["__init__"]=0  # dummy entry to avoid set -u failures on empty array
+MAX_ATTEMPTS_PER_NODE=2     # skip node after this many consecutive failures
+
+# Subtree diversity — avoid drilling down a single branch
+LAST_SUBTREE=""
+SUBTREE_STREAK=0
+MAX_SUBTREE_STREAK=3  # rotate to a different subtree after this many consecutive iterations
+
+# Get the top-level subtree of a node (e.g., "1.10.4.2.1" → "1.10")
+get_subtree() {
+    echo "$1" | awk -F. '{if(NF>=2) print $1"."$2; else print $0}'
+}
+
+# Cache for proof tree structure (refreshed each iteration)
+TREE_JSON=""
+
+# Refresh the proof tree cache
+refresh_tree() {
+    TREE_JSON=$($AF_CMD status -f json 2>/dev/null) || TREE_JSON=""
+}
+
+# Check if a node is a leaf (has no children in the proof tree)
+is_leaf() {
+    local node_id="$1"
+    [[ -z "$TREE_JSON" ]] && return 1
+    # A child of node X has id "X.<something>" with exactly one more dot-level
+    local depth
+    depth=$(echo "$node_id" | awk -F. '{print NF}')
+    local child_depth=$((depth + 1))
+    local has_children
+    has_children=$(echo "$TREE_JSON" | jq -r \
+        --arg nid "$node_id" \
+        --argjson cdepth "$child_depth" \
+        '[.nodes[] | select(.id | startswith($nid + ".")) | select(.id | split(".") | length == $cdepth)] | length')
+    [[ "$has_children" == "0" ]]
+}
+
+# Check if all children of a node are validated/admitted
+all_children_validated() {
+    local node_id="$1"
+    [[ -z "$TREE_JSON" ]] && return 1
+    local depth
+    depth=$(echo "$node_id" | awk -F. '{print NF}')
+    local child_depth=$((depth + 1))
+    # Count children that are NOT validated or admitted
+    local pending_children
+    pending_children=$(echo "$TREE_JSON" | jq -r \
+        --arg nid "$node_id" \
+        --argjson cdepth "$child_depth" \
+        '[.nodes[] | select(.id | startswith($nid + ".")) | select(.id | split(".") | length == $cdepth) | select(.epistemic_state != "validated" and .epistemic_state != "admitted" and .epistemic_state != "archived")] | length')
+    [[ "$pending_children" == "0" ]]
+}
+
+# Check if a job is actionable given the current tree state
+is_actionable() {
+    local job_type="$1"
+    local node_id="$2"
+
+    if [[ "$job_type" == "prover" ]]; then
+        # Prover on a leaf: good — this is actual derivation work
+        if is_leaf "$node_id"; then
+            return 0
+        fi
+        # Non-leaf prover: actionable if it has open challenges to resolve
+        # Note: uses 'af challenges' not 'af get' due to af get JSON pipe bug (Bug 3)
+        local open_challenges
+        open_challenges=$($AF_CMD challenges -f json -d "$PROOF_DIR" 2>/dev/null \
+            | jq "[.challenges[]? | select(.node_id == \"$node_id\" and .status == \"open\")] | length" 2>/dev/null)
+        if [[ "${open_challenges:-0}" -gt 0 ]]; then
+            log_verbose "Non-leaf prover $node_id has $open_challenges open challenge(s) — actionable" >&2
+            return 0
+        fi
+        log_verbose "Skipping prover job on non-leaf $node_id (no open challenges)" >&2
+        return 1
+    else
+        # Verifier: only actionable if node is a leaf OR all children are validated
+        if is_leaf "$node_id"; then
+            return 0
+        fi
+        if all_children_validated "$node_id"; then
+            return 0
+        fi
+        log_verbose "Skipping verifier job on $node_id (children not all validated)" >&2
+        return 1
+    fi
+}
+
+# Select next job — leaves first, skip unactionable nodes and recently-failed ones
+# $2 = space-separated list of node IDs to exclude (already dispatched this batch)
 select_job() {
     local jobs_json="$1"
-    local job_type job_id job_statement
+    local exclude_list="${2:-}"
 
-    # First check for recommended verifier job
-    local verifier_rec
-    verifier_rec=$(echo "$jobs_json" | jq -r '.verifier_jobs[] | select(.recommended == true) | .node_id' | head -1)
+    # Refresh tree structure for filtering (only if not cached this batch)
+    [[ -z "$TREE_JSON" ]] && refresh_tree
 
-    if [[ -n "$verifier_rec" && "$verifier_rec" != "null" ]]; then
-        job_type="verifier"
-        job_id="$verifier_rec"
-        job_statement=$(echo "$jobs_json" | jq -r ".verifier_jobs[] | select(.node_id == \"$job_id\") | .statement")
-        echo "$job_type|$job_id|$job_statement"
-        return 0
+    # NOTE: this function's stdout is captured by the caller, so all log
+    # messages must go to stderr (>&2) to avoid corrupting the return value.
+
+    # 1. Prover leaf nodes first (the actual math work)
+    #    When subtree streak is high, sort different subtrees first
+    local prover_ids
+    if [[ $SUBTREE_STREAK -ge $MAX_SUBTREE_STREAK && -n "$LAST_SUBTREE" ]]; then
+        prover_ids=$(echo "$jobs_json" | jq -r '.prover_jobs[].node_id' | awk -F. -v last="$LAST_SUBTREE" '{
+            subtree = (NF>=2) ? $1"."$2 : $0
+            same = (subtree == last) ? 1 : 0
+            print same, $0
+        }' | sort -k1,1n | awk '{print $2}')
+    else
+        prover_ids=$(echo "$jobs_json" | jq -r '.prover_jobs[].node_id')
     fi
-
-    # Then check for recommended prover job
-    local prover_rec
-    prover_rec=$(echo "$jobs_json" | jq -r '.prover_jobs[] | select(.recommended == true) | .node_id' | head -1)
-
-    if [[ -n "$prover_rec" && "$prover_rec" != "null" ]]; then
-        job_type="prover"
-        job_id="$prover_rec"
-        job_statement=$(echo "$jobs_json" | jq -r ".prover_jobs[] | select(.node_id == \"$job_id\") | .statement")
-        echo "$job_type|$job_id|$job_statement"
+    while IFS= read -r nid; do
+        [[ -z "$nid" || "$nid" == "null" ]] && continue
+        [[ " $exclude_list " == *" $nid "* ]] && continue
+        local attempts=${RECENT_ATTEMPTS["$nid"]:-0}
+        if [[ $attempts -ge $MAX_ATTEMPTS_PER_NODE ]]; then
+            log_verbose "Skipping $nid ($attempts recent attempts without progress)" >&2
+            continue
+        fi
+        if ! is_actionable "prover" "$nid"; then
+            continue
+        fi
+        local stmt
+        stmt=$(echo "$jobs_json" | jq -r ".prover_jobs[] | select(.node_id == \"$nid\") | .statement")
+        echo "prover|$nid|$stmt"
         return 0
+    done <<< "$prover_ids"
+
+    # 2. Verifier nodes where all children are done
+    #    Sort deepest-first so leaf nodes (the actual math) get priority
+    local verifier_ids
+    if [[ $SUBTREE_STREAK -ge $MAX_SUBTREE_STREAK && -n "$LAST_SUBTREE" ]]; then
+        # Diversify: different subtrees first, then deepest-first within each group
+        log_verbose "Subtree diversity: deprioritising $LAST_SUBTREE (streak: $SUBTREE_STREAK)" >&2
+        verifier_ids=$(echo "$jobs_json" | jq -r '.verifier_jobs[].node_id' | awk -F. -v last="$LAST_SUBTREE" '{
+            subtree = (NF>=2) ? $1"."$2 : $0
+            same = (subtree == last) ? 1 : 0
+            print same, NF, $0
+        }' | sort -k1,1n -k2,2rn | awk '{print $3}')
+    else
+        verifier_ids=$(echo "$jobs_json" | jq -r '.verifier_jobs[].node_id' | awk -F. '{print NF, $0}' | sort -k1,1rn | cut -d' ' -f2)
     fi
-
-    # Fall back to first verifier job
-    local first_verifier
-    first_verifier=$(echo "$jobs_json" | jq -r '.verifier_jobs[0].node_id // empty')
-
-    if [[ -n "$first_verifier" ]]; then
-        job_type="verifier"
-        job_id="$first_verifier"
-        job_statement=$(echo "$jobs_json" | jq -r ".verifier_jobs[0].statement")
-        echo "$job_type|$job_id|$job_statement"
+    while IFS= read -r nid; do
+        [[ -z "$nid" || "$nid" == "null" ]] && continue
+        [[ " $exclude_list " == *" $nid "* ]] && continue
+        local attempts=${RECENT_ATTEMPTS["$nid"]:-0}
+        if [[ $attempts -ge $MAX_ATTEMPTS_PER_NODE ]]; then
+            log_verbose "Skipping $nid ($attempts recent attempts without progress)" >&2
+            continue
+        fi
+        if ! is_actionable "verifier" "$nid"; then
+            continue
+        fi
+        local stmt
+        stmt=$(echo "$jobs_json" | jq -r ".verifier_jobs[] | select(.node_id == \"$nid\") | .statement")
+        echo "verifier|$nid|$stmt"
         return 0
-    fi
+    done <<< "$verifier_ids"
 
-    # Fall back to first prover job
-    local first_prover
-    first_prover=$(echo "$jobs_json" | jq -r '.prover_jobs[0].node_id // empty')
-
-    if [[ -n "$first_prover" ]]; then
-        job_type="prover"
-        job_id="$first_prover"
-        job_statement=$(echo "$jobs_json" | jq -r ".prover_jobs[0].statement")
-        echo "$job_type|$job_id|$job_statement"
-        return 0
+    # 3. Everything skipped — reset and try once more
+    if [[ ${#RECENT_ATTEMPTS[@]} -gt 0 ]]; then
+        log "All actionable jobs skipped due to recent failures. Resetting attempt tracker." >&2
+        RECENT_ATTEMPTS=()
+        select_job "$jobs_json"
+        return $?
     fi
 
     return 1
+}
+
+# Record that we attempted a node (call after agent returns)
+record_attempt() {
+    local node_id="$1"
+    local success="$2"  # "true" if the agent made progress
+
+    if [[ "$success" == "true" ]]; then
+        # Reset on success
+        RECENT_ATTEMPTS["$node_id"]=0
+    else
+        local prev=${RECENT_ATTEMPTS["$node_id"]:-0}
+        RECENT_ATTEMPTS["$node_id"]=$((prev + 1))
+    fi
 }
 
 # Build agent prompt for a job
@@ -299,13 +481,28 @@ EOF
     fi
 }
 
-# Call Claude agent headlessly
+# Call agent headlessly
+run_claude_agent() {
+    local prompt_file="$1"
+    timeout "${AGENT_TIMEOUT:-300}" claude --print --dangerously-skip-permissions -p "$(cat "$prompt_file")"
+}
+
+run_codex_agent() {
+    local prompt_file="$1"
+    local output_file="$2"
+    timeout "${AGENT_TIMEOUT:-300}" codex exec \
+        --dangerously-bypass-approvals-and-sandbox \
+        -C "$PWD" \
+        -o "$output_file" \
+        - < "$prompt_file"
+}
+
 call_agent() {
     local prompt="$1"
     local job_type="$2"
     local job_id="$3"
 
-    log "Calling Claude agent ($job_type for node $job_id)..."
+    log "Calling $AGENT_BACKEND agent ($job_type for node $job_id)..."
 
     if [[ "$DRY_RUN" == "true" ]]; then
         log_verbose "DRY RUN: Would call agent with prompt (truncated):"
@@ -313,21 +510,37 @@ call_agent() {
         return 0
     fi
 
-    # Call Claude Code in headless mode
-    # Using --print to just output the result, -p for prompt
     local output
     local exit_code=0
 
-    # Create a temporary file for the prompt (handles special chars better)
     local prompt_file
+    local output_file
+    local log_file
     prompt_file=$(mktemp)
-    echo "$prompt" > "$prompt_file"
+    output_file=$(mktemp)
+    log_file=$(mktemp)
+    printf '%s\n' "$prompt" > "$prompt_file"
 
-    output=$(claude --print --dangerously-skip-permissions -p "$(cat "$prompt_file")" 2>&1) || exit_code=$?
+    case "$AGENT_BACKEND" in
+        claude)
+            run_claude_agent "$prompt_file" > "$log_file" 2>&1 || exit_code=$?
+            output=$(cat "$log_file")
+            ;;
+        codex)
+            run_codex_agent "$prompt_file" "$output_file" > "$log_file" 2>&1 || exit_code=$?
+            output=$(cat "$output_file" 2>/dev/null || true)
+            if [[ -z "$output" ]]; then
+                output=$(cat "$log_file")
+            fi
+            ;;
+    esac
 
-    rm -f "$prompt_file"
+    rm -f "$prompt_file" "$output_file" "$log_file"
 
-    if [[ $exit_code -ne 0 ]]; then
+    if [[ $exit_code -eq 124 ]]; then
+        log_warning "Agent TIMED OUT after ${AGENT_TIMEOUT}s — reaping stale locks"
+        $AF_CMD reap 2>/dev/null || true
+    elif [[ $exit_code -ne 0 ]]; then
         log_warning "Agent exited with code $exit_code"
         log_verbose "Output: $output"
     else
@@ -360,6 +573,8 @@ main() {
     log "  Max agent calls: $MAX_AGENTS"
     log "  Delay between calls: ${DELAY_SECONDS}s"
     log "  Burst limit: $BURST_LIMIT calls, then ${BURST_PAUSE}s pause"
+    log "  Agent backend: $AGENT_BACKEND"
+    log "  Parallel agents: $PARALLEL"
     log "  Dry run: $DRY_RUN"
     log ""
 
@@ -424,34 +639,83 @@ main() {
         log "Found $job_count available jobs"
         log_verbose "Jobs JSON: $jobs_json"
 
-        # Select next job
-        local job_info
-        if ! job_info=$(select_job "$jobs_json"); then
-            log_error "Failed to select job"
+        # Refresh tree once for this batch
+        refresh_tree
+
+        # Select up to PARALLEL jobs for this batch
+        local batch_pids=()
+        local batch_nodes=()
+        local exclude_list=""
+        local events_before
+        events_before=$($AF_CMD log 2>/dev/null | wc -l)
+
+        local batch_size=$PARALLEL
+        local remaining=$((MAX_AGENTS - AGENT_CALLS))
+        [[ $remaining -lt $batch_size ]] && batch_size=$remaining
+
+        for ((b=0; b < batch_size; b++)); do
+            local job_info
+            if ! job_info=$(select_job "$jobs_json" "$exclude_list"); then
+                [[ $b -eq 0 ]] && log_error "Failed to select any jobs"
+                break
+            fi
+
+            local job_type job_id job_statement
+            IFS='|' read -r job_type job_id job_statement <<< "$job_info"
+
+            log "Dispatching: $job_type for node $job_id"
+
+            # Track subtree for diversity
+            local selected_subtree
+            selected_subtree=$(get_subtree "$job_id")
+            if [[ "$selected_subtree" == "$LAST_SUBTREE" ]]; then
+                SUBTREE_STREAK=$((SUBTREE_STREAK + 1))
+            else
+                LAST_SUBTREE="$selected_subtree"
+                SUBTREE_STREAK=1
+            fi
+
+            exclude_list="${exclude_list:+$exclude_list }$job_id"
+
+            local prompt
+            prompt=$(build_agent_prompt "$job_type" "$job_id")
+
+            AGENT_CALLS=$((AGENT_CALLS + 1))
+
+            if [[ "$DRY_RUN" == "true" ]]; then
+                log_verbose "DRY RUN: Would call $job_type agent for $job_id"
+                batch_nodes+=("$job_id")
+            else
+                # Launch agent in background
+                call_agent "$prompt" "$job_type" "$job_id" &
+                batch_pids+=($!)
+                batch_nodes+=("$job_id")
+            fi
+        done
+
+        if [[ ${#batch_nodes[@]} -eq 0 ]]; then
             continue
         fi
 
-        local job_type job_id job_statement
-        IFS='|' read -r job_type job_id job_statement <<< "$job_info"
+        log "Waiting for ${#batch_nodes[@]} parallel agents: ${batch_nodes[*]}"
 
-        log "Selected: $job_type job for node $job_id"
-        log_verbose "Statement: $job_statement"
+        # Wait for all agents in this batch
+        for pid in "${batch_pids[@]}"; do
+            wait "$pid" || true
+        done
 
-        # Build and execute agent
-        local prompt
-        prompt=$(build_agent_prompt "$job_type" "$job_id")
+        # Check batch progress
+        local events_after
+        events_after=$($AF_CMD log 2>/dev/null | wc -l)
+        local new_events=$((events_after - events_before))
+        log_success "Batch complete: ${#batch_nodes[@]} agents, $new_events ledger events"
 
-        AGENT_CALLS=$((AGENT_CALLS + 1))
+        # Reap any stale locks from timed-out agents
+        $AF_CMD reap 2>/dev/null || true
 
-        if call_agent "$prompt" "$job_type" "$job_id"; then
-            log_success "Agent call $AGENT_CALLS completed"
-        else
-            log_warning "Agent call $AGENT_CALLS had issues (continuing anyway)"
-        fi
-
-        # Apply rate limiting
+        # Brief pause between batches
         if [[ $ITERATION -lt $MAX_ITERATIONS && $AGENT_CALLS -lt $MAX_AGENTS ]]; then
-            apply_rate_limit
+            sleep "$DELAY_SECONDS"
         fi
     done
 

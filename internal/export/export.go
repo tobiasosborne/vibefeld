@@ -3,6 +3,7 @@ package export
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -69,6 +70,8 @@ func ToMarkdown(s *state.State) string {
 }
 
 // ToLaTeX exports the proof state to LaTeX format.
+// The output uses an indented step format matching Lamport structured proofs,
+// with ket notation rendered in math mode.
 func ToLaTeX(s *state.State) string {
 	if s == nil {
 		return latexDocument("No proof data available to export.")
@@ -85,18 +88,42 @@ func ToLaTeX(s *state.State) string {
 	var sb strings.Builder
 	sb.WriteString("\\documentclass{article}\n")
 	sb.WriteString("\\usepackage[utf8]{inputenc}\n")
-	sb.WriteString("\\usepackage{amsmath}\n")
-	sb.WriteString("\\usepackage{amssymb}\n")
-	sb.WriteString("\\usepackage{enumitem}\n\n")
-	sb.WriteString("\\title{Proof Export}\n")
-	sb.WriteString("\\date{}\n\n")
-	sb.WriteString("\\begin{document}\n")
-	sb.WriteString("\\maketitle\n\n")
+	sb.WriteString("\\usepackage{amsmath,amssymb}\n")
+	sb.WriteString("\\usepackage[most]{tcolorbox}\n")
+	sb.WriteString("\\usepackage{geometry}\n")
+	sb.WriteString("\\geometry{margin=2.5cm}\n\n")
+
+	// Step macro: indented, numbered (3.5em accommodates IDs like 1.2.4)
+	sb.WriteString("\\newcommand{\\step}[1]{\\par\\noindent\\hangindent=3.5em\\hangafter=1%\n")
+	sb.WriteString("  \\makebox[3.5em][l]{\\textbf{#1.}}}\n")
+	sb.WriteString("\\newcommand{\\steptag}[1]{\\hfill{\\small\\textsf{[#1]}}}\n\n")
+
+	// Proof box
+	sb.WriteString("\\newtcolorbox{proofbox}[1]{\n")
+	sb.WriteString("  colback=gray!5, colframe=gray!60,\n")
+	sb.WriteString("  fonttitle=\\bfseries, title={#1},\n")
+	sb.WriteString("  breakable, enhanced,\n")
+	sb.WriteString("  left=4pt, right=4pt, top=4pt, bottom=4pt,\n")
+	sb.WriteString("  before skip=10pt, after skip=10pt\n")
+	sb.WriteString("}\n\n")
+
+	sb.WriteString("\\begin{document}\n\n")
 
 	// Build tree structure
 	root := buildTree(sortedNodes)
 	if root != nil {
-		renderLaTeXNode(&sb, root, 0)
+		// Title from root statement
+		title := "Proof"
+		if root.node != nil {
+			stmt := root.node.Statement
+			if len(stmt) > 60 {
+				stmt = stmt[:57] + "..."
+			}
+			title = escapeLatex(stmt)
+		}
+		sb.WriteString(fmt.Sprintf("\\begin{proofbox}{%s}\n", title))
+		renderLaTeXStep(&sb, root)
+		sb.WriteString("\\end{proofbox}\n")
 	}
 
 	sb.WriteString("\n\\end{document}\n")
@@ -210,82 +237,44 @@ func renderMarkdownNode(sb *strings.Builder, tn *treeNode, depth int) {
 // LaTeX Rendering
 // =============================================================================
 
-// renderLaTeXNode renders a node and its children in LaTeX format.
-func renderLaTeXNode(sb *strings.Builder, tn *treeNode, depth int) {
+// renderLaTeXStep renders a node and its children as indented \step lines.
+func renderLaTeXStep(sb *strings.Builder, tn *treeNode) {
 	if tn == nil || tn.node == nil {
 		return
 	}
 
 	n := tn.node
 
-	// Use sections for top-level, subsections for children
-	var sectionCmd string
-	switch depth {
-	case 0:
-		sectionCmd = "\\section*"
-	case 1:
-		sectionCmd = "\\subsection*"
-	case 2:
-		sectionCmd = "\\subsubsection*"
-	default:
-		sectionCmd = "\\paragraph*"
+	// Build the step line: \step{ID} [TYPE PREFIX] statement [status tag]
+	sb.WriteString(fmt.Sprintf("\\step{%s} ", n.ID.String()))
+
+	// Add type prefix for non-claim types
+	switch n.Type {
+	case schema.NodeTypeLocalAssume:
+		sb.WriteString("\\textsc{assume}: ")
+	case schema.NodeTypeLocalDischarge:
+		sb.WriteString("\\textsc{q.e.d.}: ")
+	case schema.NodeTypeCase:
+		sb.WriteString("\\textsc{case}: ")
 	}
 
-	// Write section header
-	sb.WriteString(fmt.Sprintf("%s{Node %s}\n\n", sectionCmd, escapeLatex(n.ID.String())))
+	// Statement text with ket notation converted to math mode
+	sb.WriteString(latexKetNotation(escapeLatex(n.Statement)))
 
-	// Write node content
-	sb.WriteString(fmt.Sprintf("\\textbf{Statement:} %s\n\n", escapeLatex(n.Statement)))
-	sb.WriteString(fmt.Sprintf("\\textbf{Type:} %s\n\n", escapeLatex(formatNodeType(n.Type))))
-	sb.WriteString(fmt.Sprintf("\\textbf{Inference:} %s\n\n", escapeLatex(formatInference(n.Inference))))
-	sb.WriteString(fmt.Sprintf("\\textbf{Status:} %s\n\n", escapeLatex(string(n.EpistemicState))))
+	// Status tag (only if not pending — pending is the default)
+	if n.EpistemicState != "" && n.EpistemicState != schema.EpistemicPending {
+		sb.WriteString(fmt.Sprintf(" \\steptag{%s}", escapeLatex(string(n.EpistemicState))))
+	}
 
-	if n.TaintState != "" {
-		sb.WriteString(fmt.Sprintf("\\textbf{Taint:} %s\n\n", escapeLatex(string(n.TaintState))))
+	if len(tn.children) > 0 {
+		sb.WriteString(" \\\\[6pt]\n")
+	} else {
+		sb.WriteString(" \\\\[4pt]\n")
 	}
 
 	// Render children
-	if len(tn.children) > 0 {
-		sb.WriteString("\\begin{enumerate}\n")
-		for _, child := range tn.children {
-			sb.WriteString("\\item ")
-			renderLaTeXNodeAsItem(sb, child, depth+1)
-		}
-		sb.WriteString("\\end{enumerate}\n")
-	}
-}
-
-// renderLaTeXNodeAsItem renders a node as a list item (for nested children).
-func renderLaTeXNodeAsItem(sb *strings.Builder, tn *treeNode, depth int) {
-	if tn == nil || tn.node == nil {
-		return
-	}
-
-	n := tn.node
-
-	// Write node content as item
-	sb.WriteString(fmt.Sprintf("\\textbf{Node %s:} %s\n\n",
-		escapeLatex(n.ID.String()),
-		escapeLatex(n.Statement)))
-
-	sb.WriteString(fmt.Sprintf("  Type: %s, Inference: %s, Status: %s",
-		escapeLatex(formatNodeType(n.Type)),
-		escapeLatex(formatInference(n.Inference)),
-		escapeLatex(string(n.EpistemicState))))
-
-	if n.TaintState != "" {
-		sb.WriteString(fmt.Sprintf(", Taint: %s", escapeLatex(string(n.TaintState))))
-	}
-	sb.WriteString("\n\n")
-
-	// Render children as nested list
-	if len(tn.children) > 0 {
-		sb.WriteString("\\begin{enumerate}\n")
-		for _, child := range tn.children {
-			sb.WriteString("\\item ")
-			renderLaTeXNodeAsItem(sb, child, depth+1)
-		}
-		sb.WriteString("\\end{enumerate}\n")
+	for _, child := range tn.children {
+		renderLaTeXStep(sb, child)
 	}
 }
 
@@ -326,6 +315,36 @@ func escapeLatex(s string) string {
 		result = strings.ReplaceAll(result, r.old, r.new)
 	}
 	return result
+}
+
+// ketPattern matches Dirac ket notation like |psi>, |0>, |00>, |+>, |Phi+>, etc.
+var ketPattern = regexp.MustCompile(`\|([A-Za-z0-9+\-\\^{}]+)>`)
+
+// greekLetters maps common Greek letter names to LaTeX commands.
+var greekLetters = map[string]string{
+	"alpha": "\\alpha", "beta": "\\beta", "gamma": "\\gamma", "delta": "\\delta",
+	"epsilon": "\\epsilon", "zeta": "\\zeta", "eta": "\\eta", "theta": "\\theta",
+	"iota": "\\iota", "kappa": "\\kappa", "lambda": "\\lambda", "mu": "\\mu",
+	"nu": "\\nu", "xi": "\\xi", "pi": "\\pi", "rho": "\\rho",
+	"sigma": "\\sigma", "tau": "\\tau", "upsilon": "\\upsilon", "phi": "\\phi",
+	"chi": "\\chi", "psi": "\\psi", "omega": "\\omega",
+	"Gamma": "\\Gamma", "Delta": "\\Delta", "Theta": "\\Theta", "Lambda": "\\Lambda",
+	"Xi": "\\Xi", "Pi": "\\Pi", "Sigma": "\\Sigma", "Upsilon": "\\Upsilon",
+	"Phi": "\\Phi", "Psi": "\\Psi", "Omega": "\\Omega",
+}
+
+// latexKetNotation converts |X> patterns to $|X\rangle$ in LaTeX text,
+// replacing Greek letter names with their LaTeX commands.
+func latexKetNotation(s string) string {
+	return ketPattern.ReplaceAllStringFunc(s, func(match string) string {
+		// Extract content between | and >
+		inner := match[1 : len(match)-1]
+		// Check if the content is a Greek letter name
+		if cmd, ok := greekLetters[inner]; ok {
+			return "$|" + cmd + "\\rangle$"
+		}
+		return "$|" + inner + "\\rangle$"
+	})
 }
 
 // formatNodeType returns a human-readable node type string.
