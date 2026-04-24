@@ -1,6 +1,63 @@
-# Handoff - 2026-02-15 (Session 234)
+# Handoff - 2026-04-24 (Session 235)
 
 ## What Was Accomplished This Session
+
+### Session 235 Summary: Beads v1.0.0 recovery, PR #1 merge, stdout routing fix
+
+Four strands of work this session:
+
+**1. Beads v1.0.0 migration recovery.** `bd` auto-upgraded from v0.55.1 → v1.0.0 on session start. The migration replaced SQLite+JSONL with embedded Dolt storage and reported 0 issues — but `issues.jsonl` (519KB, 639 issues) was intact. `bd import` restored everything. Also:
+- Updated `.beads/.gitignore` to cover the new runtime files: `dolt-server.{lock,log,pid,port}`, `embeddeddolt/`, `backup/`, `.beads-credential-key`
+- Removed obsolete `interactions.jsonl` (v1.0.0 no longer writes it)
+- Reinstalled git hooks (`bd hooks install`) — old shims called `bd hook` which v1.0.0 renamed to `bd hooks run`
+- Commit `09947d4`
+
+**2. PR #1 merged (Jonathan Oppenheim, first-time contributor).** Six commits, +2449/−155. All 6 kept with their authorship via `git merge --no-ff`.
+- `scripts/auto-prove.sh` overhaul: prover-first dispatch, smart actionability gate (non-leaf provers allowed only with open challenges, fixes the ~88% stall), churn detection with bounded retries + global reset, subtree diversity rotation, parallel dispatch (`--parallel N`, default 5), agent timeout with lock reaping, codex backend
+- `internal/export/export.go` LaTeX rewrite: Lamport `\step{ID}` in tcolorbox, ket notation with Greek letter map, type prefixes for assume/case/q.e.d.
+- `ralph.sh` codex/claude switch + `set -euo pipefail`
+- `demo/no-cloning/`: full Lamport tree + Lean 4 formalisation
+- Merge commit `e5e4156`
+
+Follow-up cleanup commit `4c07bf2`:
+- Stripped 6 LaTeX build artefacts (.aux, .log, 0-byte .pdf) from `demo/no-cloning/` (~1500 lines of compiler noise)
+- Added `demo/.gitignore` for `*.aux`, `*.log`, `*.pdf`, etc.
+- Widened ket regex to allow `_` so subscripted kets like `|psi_0>` render
+- Added `TestToLaTeX_KetNotationSubscripted`
+- Filed `vibefeld-ld1e` for the "af get JSON pipe bug" the PR worked around in `is_actionable`
+- Decided NOT to restore LaTeX inference/taint metadata — the cleaner Lamport output is the right call
+
+**3. MaxChildren pain point: no code change needed.** User hit repeated child-limit errors. Investigation:
+- Repo source default is already 100 (bumped from 20 in `38f844e`, 2026-03-04)
+- Validation cap is 100
+- Every real-world meta.json has `max_children` unset, so the running binary's compiled-in default applies
+- **Installed binary at `/home/tobiasosborne/go/bin/af` was from Feb 15** — between the 20→100 bump. Its compiled default was 20.
+- Fix was `go install ./cmd/af`. No commit.
+
+**4. Fixed `vibefeld-ld1e` — stdout routing bug (commit `d8269b3`).** The bug is broader than the title suggests. 13 CLI commands used cobra's `cmd.Print/Println/Printf`, which default to **stderr**. Text output still looked right on a terminal, so nobody noticed — but piping to `jq`, `grep`, `wc`, or any filter captured zero bytes.
+
+Concrete repro (before fix):
+```
+af get 1.1.1 -f json 2>/dev/null | jq .   # printed nothing
+af get 1.1.1 -f json 2>/tmp/err >/tmp/out # stdout 0 bytes, stderr 1181 bytes
+```
+
+Fix: replaced 178 `cmd.Print*` calls with `fmt.Fprint*(cmd.OutOrStdout(), …)` across 13 files (`amend`, `amendments`, `claim`, `deps`, `diff`, `extend-claim`, `get`, `init`, `nearby`, `path`, `refine`, `scope`, `submit`). Matches the pattern already used by `challenges` and the rest of the package. `OutOrStdout()` still honours `SetOut(buf)` in tests.
+
+Also removed the now-stale "Bug 3" workaround comment in `scripts/auto-prove.sh`. The `is_actionable` implementation itself was left alone — calling `af challenges` once and filtering is reasonable regardless of the pipe bug.
+
+**Files changed across session (17 files):**
+- `.beads/.gitignore` — bd v1.0.0 runtime files
+- `handoff.md` — this file
+- `demo/.gitignore` — NEW
+- `internal/export/export.go`, `internal/export/export_test.go` — ket regex + test
+- `scripts/auto-prove.sh` — stale comment removal
+- `cmd/af/{amend,amendments,claim,deps,diff,extend_claim,get,init,nearby,path,refine,scope,submit}.go` — cmd.Print → fmt.Fprint(cmd.OutOrStdout(), …)
+- Plus the merged PR diff (already landed)
+
+**Testing**: all 27 packages pass, clean build. Live smoke-tested `af get ... | jq .` end-to-end.
+
+---
 
 ### Session 234 Summary: Version bump 0.1.1 + changelog command
 
