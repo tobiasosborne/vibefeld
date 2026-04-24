@@ -328,6 +328,18 @@ func TestToLaTeX_KetNotation(t *testing.T) {
 	}
 }
 
+// TestToLaTeX_KetNotationSubscripted tests that subscripted kets like |psi_n> match.
+func TestToLaTeX_KetNotationSubscripted(t *testing.T) {
+	s := state.NewState()
+	addTestNode(t, s, "1", "Consider |psi_0> and |phi_n>", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicPending, node.TaintClean)
+
+	result := ToLaTeX(s)
+
+	if !strings.Contains(result, "psi\\_0\\rangle") {
+		t.Errorf("LaTeX output should preserve subscripted kets (|psi_0>); got: %s", result)
+	}
+}
+
 // TestToLaTeX_NodeTypePrefixes tests that ASSUME/CASE/QED get prefixes.
 func TestToLaTeX_NodeTypePrefixes(t *testing.T) {
 	s := state.NewState()

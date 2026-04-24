@@ -1,0 +1,9 @@
+# LaTeX build artefacts — produced by `af export` then compiled; do not commit
+*.aux
+*.log
+*.pdf
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk

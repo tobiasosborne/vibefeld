@@ -317,8 +317,8 @@ func escapeLatex(s string) string {
 	return result
 }
 
-// ketPattern matches Dirac ket notation like |psi>, |0>, |00>, |+>, |Phi+>, etc.
-var ketPattern = regexp.MustCompile(`\|([A-Za-z0-9+\-\\^{}]+)>`)
+// ketPattern matches Dirac ket notation like |psi>, |0>, |00>, |+>, |Phi+>, |psi_n>, etc.
+var ketPattern = regexp.MustCompile(`\|([A-Za-z0-9+\-_\\^{}]+)>`)
 
 // greekLetters maps common Greek letter names to LaTeX commands.
 var greekLetters = map[string]string{
