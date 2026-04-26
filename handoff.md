@@ -1,6 +1,32 @@
-# Handoff - 2026-04-24 (Session 235)
+# Handoff - 2026-04-26 (Session 236)
 
 ## What Was Accomplished This Session
+
+### Session 236 Summary: Archived children no longer block parent acceptance (vibefeld-0mt0), version 0.1.2
+
+User-reported bug: when a sub-tree was archived because its strategy was superseded and replaced by a fresh validated chain of new children, the parent could not be re-validated. `af accept` rejected with "children not yet validated", and the only escape was `af admit`, which incorrectly stamped rigorously verified work as taint-introducing.
+
+Root cause was at `internal/service/proof.go:846`: the children-completeness check inside `AcceptNodeWithNote` only allowed `validated || admitted`, even though `archived` is `IsFinal: true` per `schema/epistemic.go` and is treated as a terminal verdict everywhere else (critical-path command, accept-bulk, veto). The documented invariant at `internal/node/validate_invariant.go:49` had the same gap.
+
+**Fix.** Extended both allowlists to include `EpistemicArchived`. Refuted intentionally NOT included: refuted means "this step is *false*", which is a real obstacle to the parent (vs. archived = "branch abandoned, parent no longer relies on it"). Error message ("children not yet validated") kept as-is — only fires now when children are pending/draft/needs_refinement, which is accurate.
+
+**Files changed (6 files, +178/-6):**
+- `internal/service/proof.go` — runtime check at line 846, with WHY comment
+- `internal/node/validate_invariant.go` — invariant function + docstring
+- `internal/node/validate_invariant_test.go` — 4 new MixedChildStates table cases (validated+archived OK, admitted+archived OK, all archived OK, archived+pending still errors)
+- `internal/service/proof_test.go` — 2 new regression tests: `RevalidateAfterRefinement_ArchivedChild` and `RevalidateAfterRefinement_ValidatedAndArchivedChildren` (the real deployment scenario from the bug report). Both live next to `RevalidateAfterRefinement_AdmittedChild`, which means they're under `//go:build integration`.
+- `cmd/af/main.go` — version 0.1.1 → 0.1.2
+- `cmd/af/changelog.go` — 0.1.2 entry covering this fix and the stdout routing fix from session 235
+
+**Smoke test.** Built `/tmp/af-archived-bug-smoke` proof, refined root with two children, archived 1.1, validated 1.2, accepted parent 1 → succeeded. Final tree: `1 [validated/clean]` with `1.1 [archived/clean]` and `1.2 [validated/clean]`. Before the fix this last accept would have errored with "children not yet validated: 1.1".
+
+**Note on test gating discovered en route.** `internal/service/proof_test.go` is gated `//go:build integration` and shares test function names with `internal/service/service_test.go` (untagged). Running with `-tags=integration` errors with duplicate-test redeclarations (pre-existing; not introduced this session). Standard `go test ./...` passes; integration tests are not exercised by the default suite. Worth filing a follow-up if integration-tagged tests should ever run in CI.
+
+**bd issue:** vibefeld-0mt0 (P1, closed).
+
+**Quality gates:** `go test ./...` all 27 packages pass, clean build, `af --version` reports 0.1.2.
+
+---
 
 ### Session 235 Summary: Beads v1.0.0 recovery, PR #1 merge, stdout routing fix
 

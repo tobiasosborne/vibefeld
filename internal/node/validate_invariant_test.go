@@ -157,6 +157,30 @@ func TestCheckValidationInvariant_MixedChildStates(t *testing.T) {
 			expectError:  false,
 			description:  "mixed validated and admitted is OK",
 		},
+		{
+			name:         "one validated one archived",
+			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicArchived},
+			expectError:  false,
+			description:  "archived sibling is a terminal-cleared verdict (branch abandoned)",
+		},
+		{
+			name:         "one admitted one archived",
+			childStates:  []schema.EpistemicState{schema.EpistemicAdmitted, schema.EpistemicArchived},
+			expectError:  false,
+			description:  "admitted plus archived is OK",
+		},
+		{
+			name:         "all archived",
+			childStates:  []schema.EpistemicState{schema.EpistemicArchived, schema.EpistemicArchived},
+			expectError:  false,
+			description:  "all archived branches are abandoned, parent doesn't rely on them",
+		},
+		{
+			name:         "one archived one pending",
+			childStates:  []schema.EpistemicState{schema.EpistemicArchived, schema.EpistemicPending},
+			expectError:  true,
+			description:  "pending child is still open even if a sibling is archived",
+		},
 	}
 
 	for _, tt := range tests {

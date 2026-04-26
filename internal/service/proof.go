@@ -842,8 +842,12 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 			continue // not a child of this node
 		}
 		children = append(children, child)
-		// Child must be validated or admitted
-		if child.EpistemicState != schema.EpistemicValidated && child.EpistemicState != schema.EpistemicAdmitted {
+		// Child must reach a terminal-cleared verdict: validated, admitted, or archived.
+		// Archived = branch abandoned, parent no longer relies on it. Refuted is intentionally
+		// excluded — refuted means the step is false, which is a real obstacle to the parent.
+		if child.EpistemicState != schema.EpistemicValidated &&
+			child.EpistemicState != schema.EpistemicAdmitted &&
+			child.EpistemicState != schema.EpistemicArchived {
 			unvalidatedChildren = append(unvalidatedChildren, child.ID.String())
 		}
 	}

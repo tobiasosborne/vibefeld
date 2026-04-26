@@ -16,7 +16,10 @@ const ChallengeStatusSuperseded ChallengeStatus = "superseded"
 
 // CheckValidationInvariant verifies the validation invariant for a node.
 // The validation invariant states:
-//  1. All children must be validated OR admitted (admitted is the escape hatch).
+//  1. All children must reach a terminal-cleared verdict: validated, admitted, or
+//     archived. Admitted is the escape hatch (introduces taint); archived means the
+//     branch was abandoned and the parent no longer relies on it. Refuted is NOT
+//     acceptable — refuted means the step is false, which obstructs the parent.
 //  2. All challenges on the node must have state in {resolved, withdrawn, superseded}.
 //
 // Parameters:
@@ -42,11 +45,14 @@ func CheckValidationInvariant(n *Node, getChildren func(types.NodeID) []*Node, g
 		return nil
 	}
 
-	// Get direct children and check they are all validated or admitted
+	// Get direct children and check they all reach a terminal-cleared verdict
+	// (validated, admitted, or archived). See function docstring for rationale.
 	children := getChildren(n.ID)
 	var invalidChildren []string
 	for _, child := range children {
-		if child.EpistemicState != schema.EpistemicValidated && child.EpistemicState != schema.EpistemicAdmitted {
+		if child.EpistemicState != schema.EpistemicValidated &&
+			child.EpistemicState != schema.EpistemicAdmitted &&
+			child.EpistemicState != schema.EpistemicArchived {
 			invalidChildren = append(invalidChildren, fmt.Sprintf("%s (%s)", child.ID.String(), child.EpistemicState))
 		}
 	}

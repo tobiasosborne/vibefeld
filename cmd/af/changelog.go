@@ -9,6 +9,14 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version: "0.1.2",
+		Date:    "2026-04-26",
+		Items: []string{
+			"Fix: af accept now treats archived children as terminal-cleared, so an abandoned sub-tree no longer blocks parent re-validation",
+			"Fix: 13 CLI commands (get, refine, claim, deps, diff, etc.) now write to stdout instead of stderr — pipes like `af get | jq` work again",
+		},
+	},
+	{
 		Version: "0.1.1",
 		Date:    "2026-02-15",
 		Items: []string{

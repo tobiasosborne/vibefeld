@@ -3380,3 +3380,133 @@ func TestProofService_RevalidateAfterRefinement_AdmittedChild(t *testing.T) {
 		t.Errorf("Node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
 	}
 }
+
+// TestProofService_RevalidateAfterRefinement_ArchivedChild verifies that an
+// archived child does not block parent re-validation. Archived is a terminal
+// verdict — the branch was abandoned, so the parent no longer relies on it.
+// Regression test for the "archived children block parent acceptance" bug
+// (vibefeld-0mt0).
+func TestProofService_RevalidateAfterRefinement_ArchivedChild(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	if err := svc.Init("Test conjecture", "agent-001"); err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+
+	if err := svc.AcceptNode(nodeID); err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+	if err := svc.RequestRefinement(nodeID, "Need more detail", "verifier-001"); err != nil {
+		t.Fatalf("RequestRefinement() unexpected error: %v", err)
+	}
+
+	childID, err := nodeID.Child(1)
+	if err != nil {
+		t.Fatalf("Child() unexpected error: %v", err)
+	}
+	if err := svc.Refine(RefineSpec{
+		ParentID:  nodeID,
+		Owner:     "prover-001",
+		ChildID:   childID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "Abandoned branch",
+		Inference: schema.InferenceAssumption,
+	}); err != nil {
+		t.Fatalf("Refine() unexpected error: %v", err)
+	}
+
+	if err := svc.ArchiveNode(childID); err != nil {
+		t.Fatalf("ArchiveNode(child) unexpected error: %v", err)
+	}
+
+	if err := svc.AcceptNode(nodeID); err != nil {
+		t.Fatalf("AcceptNode(re-validate with archived child) unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	if got := st.GetNode(nodeID).EpistemicState; got != schema.EpistemicValidated {
+		t.Errorf("Node EpistemicState = %q, want %q", got, schema.EpistemicValidated)
+	}
+}
+
+// TestProofService_RevalidateAfterRefinement_ValidatedAndArchivedChildren
+// covers the real deployment scenario from the bug report: one sub-tree was
+// archived because its strategy was superseded, and a fresh validated chain
+// replaces it. The parent must be acceptable.
+func TestProofService_RevalidateAfterRefinement_ValidatedAndArchivedChildren(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	if err := svc.Init("Test conjecture", "agent-001"); err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	parentID := mustParseNodeID(t, "1")
+	if err := svc.AcceptNode(parentID); err != nil {
+		t.Fatalf("AcceptNode(root) unexpected error: %v", err)
+	}
+	if err := svc.RequestRefinement(parentID, "Add proof steps", "verifier-001"); err != nil {
+		t.Fatalf("RequestRefinement() unexpected error: %v", err)
+	}
+
+	abandonedID, err := parentID.Child(1)
+	if err != nil {
+		t.Fatalf("Child(1) unexpected error: %v", err)
+	}
+	replacementID, err := parentID.Child(2)
+	if err != nil {
+		t.Fatalf("Child(2) unexpected error: %v", err)
+	}
+
+	if err := svc.Refine(RefineSpec{
+		ParentID:  parentID,
+		Owner:     "prover-001",
+		ChildID:   abandonedID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "Abandoned strategy",
+		Inference: schema.InferenceAssumption,
+	}); err != nil {
+		t.Fatalf("Refine(abandoned) unexpected error: %v", err)
+	}
+	if err := svc.Refine(RefineSpec{
+		ParentID:  parentID,
+		Owner:     "prover-001",
+		ChildID:   replacementID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "Replacement strategy",
+		Inference: schema.InferenceAssumption,
+	}); err != nil {
+		t.Fatalf("Refine(replacement) unexpected error: %v", err)
+	}
+
+	if err := svc.ArchiveNode(abandonedID); err != nil {
+		t.Fatalf("ArchiveNode(abandoned) unexpected error: %v", err)
+	}
+	if err := svc.AcceptNode(replacementID); err != nil {
+		t.Fatalf("AcceptNode(replacement) unexpected error: %v", err)
+	}
+
+	if err := svc.AcceptNode(parentID); err != nil {
+		t.Fatalf("AcceptNode(parent with validated+archived children) unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	if got := st.GetNode(parentID).EpistemicState; got != schema.EpistemicValidated {
+		t.Errorf("parent EpistemicState = %q, want %q", got, schema.EpistemicValidated)
+	}
+}
