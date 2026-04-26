@@ -235,16 +235,24 @@ func TestValidateEpistemicTransition_ValidatedToOther(t *testing.T) {
 	}
 }
 
-func TestValidateEpistemicTransition_AdmittedToAny(t *testing.T) {
-	targets := []EpistemicState{
-		EpistemicPending,
+func TestValidateEpistemicTransition_AdmittedToPending(t *testing.T) {
+	// admitted → pending is the unadmit transition: revoke admission once
+	// the underlying claim has been rigorously verified.
+	if err := ValidateEpistemicTransition(EpistemicAdmitted, EpistemicPending); err != nil {
+		t.Errorf("ValidateEpistemicTransition(admitted, pending) returned error: %v", err)
+	}
+}
+
+func TestValidateEpistemicTransition_AdmittedToOthers(t *testing.T) {
+	// admitted has only one outgoing transition (→ pending). Everything else errors.
+	invalidTargets := []EpistemicState{
 		EpistemicValidated,
 		EpistemicAdmitted,
 		EpistemicRefuted,
 		EpistemicArchived,
 	}
 
-	for _, target := range targets {
+	for _, target := range invalidTargets {
 		t.Run(string(target), func(t *testing.T) {
 			err := ValidateEpistemicTransition(EpistemicAdmitted, target)
 			if err == nil {

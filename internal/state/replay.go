@@ -156,6 +156,7 @@ var eventFactories = map[ledger.EventType]eventFactory{
 	ledger.EventRefinementRequested:  func() ledger.Event { return &ledger.RefinementRequested{} },
 	ledger.EventNodeSubmitted:       func() ledger.Event { return &ledger.NodeSubmitted{} },
 	ledger.EventNodeUnvalidated:     func() ledger.Event { return &ledger.NodeUnvalidated{} },
+	ledger.EventNodeUnadmitted:      func() ledger.Event { return &ledger.NodeUnadmitted{} },
 	ledger.EventApproachTried:       func() ledger.Event { return &ledger.ApproachTried{} },
 	ledger.EventEvidenceAttached:    func() ledger.Event { return &ledger.EvidenceAttached{} },
 	ledger.EventOutlineSet:          func() ledger.Event { return &ledger.OutlineSet{} },
@@ -244,6 +245,8 @@ func derefEvent(eventPtr ledger.Event) ledger.Event {
 	case *ledger.NodeSubmitted:
 		return *e
 	case *ledger.NodeUnvalidated:
+		return *e
+	case *ledger.NodeUnadmitted:
 		return *e
 	case *ledger.ApproachTried:
 		return *e

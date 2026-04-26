@@ -72,6 +72,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyNodeSubmitted(s, e)
 	case ledger.NodeUnvalidated:
 		return applyNodeUnvalidated(s, e)
+	case ledger.NodeUnadmitted:
+		return applyNodeUnadmitted(s, e)
 	case ledger.ApproachTried:
 		return applyApproachTried(s, e)
 	case ledger.EvidenceAttached:
@@ -503,6 +505,27 @@ func applyNodeUnvalidated(s *State, e ledger.NodeUnvalidated) error {
 	n.EpistemicState = schema.EpistemicPending
 
 	// Auto-trigger taint recomputation after epistemic state change
+	recomputeTaintForNode(s, n)
+
+	return nil
+}
+
+// applyNodeUnadmitted handles the NodeUnadmitted event.
+// This reverts an admitted node back to pending so it can be properly accepted
+// (e.g., once the underlying claim has been rigorously verified).
+func applyNodeUnadmitted(s *State, e ledger.NodeUnadmitted) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	// Validate the state transition is legal (only admitted nodes can be unadmitted)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
+		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
+	}
+	n.EpistemicState = schema.EpistemicPending
+
+	// Auto-trigger taint recomputation: the self_admitted source is gone,
+	// so this node and any descendants that inherited its taint move to unresolved.
 	recomputeTaintForNode(s, n)
 
 	return nil

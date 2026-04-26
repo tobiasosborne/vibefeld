@@ -309,6 +309,7 @@ func TestEventFactoriesCompleteness(t *testing.T) {
 		ledger.EventRefinementRequested,
 		ledger.EventNodeSubmitted,
 		ledger.EventNodeUnvalidated,
+		ledger.EventNodeUnadmitted,
 		ledger.EventApproachTried,
 		ledger.EventEvidenceAttached,
 		ledger.EventHintAdded,

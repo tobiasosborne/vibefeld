@@ -2,7 +2,39 @@
 
 ## What Was Accomplished This Session
 
-### Session 236 Summary: Archived children no longer block parent acceptance (vibefeld-0mt0), version 0.1.2
+### Session 236 Summary: Two related epistemic-state fixes (vibefeld-0mt0, vibefeld-b812), versions 0.1.2 and 0.1.3
+
+Same external consumer flagged two adjacent gaps in the same workflow: archived children blocking parent acceptance, and admit being one-way with no revocation path. Both shipped in one session.
+
+---
+
+### Fix 2: af unadmit — admitted is no longer terminal (vibefeld-b812, 0.1.3)
+
+`schema/epistemic.go` had no outgoing transition from `EpistemicAdmitted`, making admit a permanent stamp. Asymmetric with validated, which has had `unvalidate` since session 232. Worse: admit explicitly means "accepted without full verification" — exactly the state a verifier would want to revoke once the underlying claim has been rigorously verified. Once you used admit to bypass a temporary blocker (including the now-fixed archived-children blocker above), the taint stuck forever and `af accept` rejected the node permanently.
+
+**Fix.** Mirrored the unvalidate pattern end-to-end: schema transition `admitted → pending`, `NodeUnadmitted` ledger event, `applyNodeUnadmitted` state handler, `UnadmitNode` service method, `af unadmit <node-id>` CLI command. Refuted and archived stay terminal as agreed.
+
+**Taint behavior.** Unadmit recomputes taint downward — node becomes `pending`/`unresolved`; descendants that were `tainted` from the admission move to `unresolved` (lineage no longer carries an admission, but isn't re-verified yet). After the user re-validates the node properly with `af accept`, taint propagates back to clean naturally.
+
+**Files changed (10 files):**
+- `internal/schema/epistemic.go` — new transition + docstring (admitted → pending; refuted/archived remain terminal)
+- `internal/schema/epistemic_test.go` — split `AdmittedToAny` into `AdmittedToPending` (success) + `AdmittedToOthers` (errors)
+- `internal/ledger/event.go` — `EventNodeUnadmitted` constant, `NodeUnadmitted` struct, `NewNodeUnadmitted` factory
+- `internal/state/apply.go` — `applyNodeUnadmitted` handler + dispatch
+- `internal/state/replay.go` — factory entry + deref case
+- `internal/state/replay_unit_test.go` — factory completeness for `EventNodeUnadmitted`
+- `internal/service/proof.go` — `UnadmitNode(nodeID, reason, revokedBy)` mirroring `UnvalidateNode`
+- `cmd/af/unadmit.go` — NEW CLI command (mirrors `unvalidate.go`, verifier group, `--reason`/`--agent`/`--format`/`-y` flags)
+- `cmd/af/unadmit_test.go` — NEW integration tests (Success, WithReason, JSONFormat, NotAdmitted, NonExistent, InvalidNodeID, RoundTripToAccept)
+- `cmd/af/main.go` + `cmd/af/changelog.go` — version 0.1.2 → 0.1.3, changelog entry
+
+**Smoke test.** Round-trip in `/tmp/af-unadmit-smoke`: admit → `[admitted/self_admitted]` → unadmit → `[pending/unresolved]` → accept → `[validated/clean]`. Taint transitions correctly at each step.
+
+**bd issue:** vibefeld-b812 (P1, closed).
+
+---
+
+### Fix 1: Archived children no longer block parent acceptance (vibefeld-0mt0, 0.1.2)
 
 User-reported bug: when a sub-tree was archived because its strategy was superseded and replaced by a fresh validated chain of new children, the parent could not be re-validated. `af accept` rejected with "children not yet validated", and the only escape was `af admit`, which incorrectly stamped rigorously verified work as taint-introducing.
 

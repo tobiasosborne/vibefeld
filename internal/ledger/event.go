@@ -35,6 +35,7 @@ const (
 	EventRefinementRequested  EventType = "refinement_requested"
 	EventNodeSubmitted        EventType = "node_submitted"
 	EventNodeUnvalidated      EventType = "node_unvalidated"
+	EventNodeUnadmitted       EventType = "node_unadmitted"
 	EventApproachTried        EventType = "approach_tried"
 	EventEvidenceAttached     EventType = "evidence_attached"
 	EventOutlineSet           EventType = "outline_set"
@@ -538,6 +539,17 @@ type NodeUnvalidated struct {
 	RevokedBy string       `json:"revoked_by,omitempty"`
 }
 
+// NodeUnadmitted is emitted when a verifier revokes an admission on a node,
+// reverting it from admitted back to pending. Admit is a temporary, taint-
+// introducing escape hatch — once the underlying claim has been rigorously
+// verified, unadmit clears the admission so the node can be properly accepted.
+type NodeUnadmitted struct {
+	BaseEvent
+	NodeID    types.NodeID `json:"node_id"`
+	Reason    string       `json:"reason,omitempty"`
+	RevokedBy string       `json:"revoked_by,omitempty"`
+}
+
 // ApproachTried is emitted when a prover records a failed proof approach,
 // preventing other agents from re-attempting the same dead end.
 type ApproachTried struct {
@@ -711,6 +723,19 @@ func NewNodeUnvalidated(nodeID types.NodeID, reason, revokedBy string) NodeUnval
 	return NodeUnvalidated{
 		BaseEvent: BaseEvent{
 			EventType: EventNodeUnvalidated,
+			EventTime: types.Now(),
+		},
+		NodeID:    nodeID,
+		Reason:    reason,
+		RevokedBy: revokedBy,
+	}
+}
+
+// NewNodeUnadmitted creates a NodeUnadmitted event.
+func NewNodeUnadmitted(nodeID types.NodeID, reason, revokedBy string) NodeUnadmitted {
+	return NodeUnadmitted{
+		BaseEvent: BaseEvent{
+			EventType: EventNodeUnadmitted,
 			EventTime: types.Now(),
 		},
 		NodeID:    nodeID,

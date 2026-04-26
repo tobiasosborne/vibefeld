@@ -9,6 +9,13 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version: "0.1.3",
+		Date:    "2026-04-26",
+		Items: []string{
+			"af unadmit — revoke an admission and revert a node to pending. Symmetric with af unvalidate. Use when admit was a temporary escape hatch and the claim has now been rigorously verified.",
+		},
+	},
+	{
 		Version: "0.1.2",
 		Date:    "2026-04-26",
 		Items: []string{

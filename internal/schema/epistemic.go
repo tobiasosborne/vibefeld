@@ -110,13 +110,14 @@ func AllEpistemicStates() []EpistemicStateInfo {
 // - pending → archived (proof path abandoned)
 // - validated → needs_refinement (refinement request)
 // - validated → pending (unvalidate: revert validation for re-examination)
+// - admitted → pending (unadmit: revoke admission once claim is rigorously verified)
 // - needs_refinement → validated (re-validation after children validated)
 // - needs_refinement → admitted (verifier admits without proof)
 // - needs_refinement → refuted (verifier rejects)
 // - needs_refinement → archived (proof path abandoned)
 // - draft → pending (prover submits for verification)
 // - draft → archived (abandon draft)
-// - admitted/refuted/archived are terminal (no transitions out)
+// - refuted/archived are terminal (no transitions out)
 func ValidateEpistemicTransition(from, to EpistemicState) error {
 	// Validate both states exist
 	if err := ValidateEpistemicState(string(from)); err != nil {
@@ -137,6 +138,9 @@ func ValidateEpistemicTransition(from, to EpistemicState) error {
 		EpistemicValidated: {
 			EpistemicNeedsRefinement,
 			EpistemicPending, // unvalidate: revert validation for re-examination
+		},
+		EpistemicAdmitted: {
+			EpistemicPending, // unadmit: revoke admission once the claim is rigorously verified
 		},
 		EpistemicNeedsRefinement: {
 			EpistemicValidated,

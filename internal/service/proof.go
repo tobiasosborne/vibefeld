@@ -2202,6 +2202,52 @@ func (s *ProofService) UnvalidateNode(nodeID types.NodeID, reason, revokedBy str
 	return s.emitTaintRecomputedEvents(ldg, nodeID)
 }
 
+// UnadmitNode revokes an admission on a node, reverting it from admitted back
+// to pending. Admit is a temporary, taint-introducing escape hatch — once the
+// underlying claim has been rigorously verified, unadmit clears the admission
+// so the node can be properly accepted with af accept.
+//
+// Returns ErrNodeNotFound if the node doesn't exist.
+// Returns ErrInvalidState if the node is not in admitted state.
+// Returns ErrConcurrentModification if the proof was modified by another process.
+func (s *ProofService) UnadmitNode(nodeID types.NodeID, reason, revokedBy string) error {
+	// Load current state and capture sequence for CAS
+	st, err := s.LoadState()
+	if err != nil {
+		return err
+	}
+	expectedSeq := st.LatestSeq()
+
+	// Check if node exists
+	n := st.GetNode(nodeID)
+	if n == nil {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	// Validate epistemic state transition (only admitted -> pending allowed)
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
+		return fmt.Errorf("%w: node %s is in %s state, must be %s to unadmit",
+			ErrInvalidState, nodeID.String(), n.EpistemicState, schema.EpistemicAdmitted)
+	}
+
+	// Get ledger and append event with CAS
+	ldg, err := s.getLedger()
+	if err != nil {
+		return err
+	}
+
+	event := ledger.NewNodeUnadmitted(nodeID, reason, revokedBy)
+	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	if err != nil {
+		return wrapSequenceMismatch(err, "UnadmitNode")
+	}
+
+	// Emit taint recomputation — node becomes pending (TaintUnresolved),
+	// the self_admitted source is gone so descendants that inherited it move
+	// to unresolved.
+	return s.emitTaintRecomputedEvents(ldg, nodeID)
+}
+
 // RecordApproachTried records a failed proof approach for a node.
 // This prevents other agents from re-attempting the same dead end.
 //
