@@ -176,6 +176,10 @@ var (
 	GetChallengeSeverityInfo    = schema.GetChallengeSeverityInfo
 	AllChallengeSeverities      = schema.AllChallengeSeverities
 	DefaultChallengeSeverity    = schema.DefaultChallengeSeverity
+	ValidateChallengeCategory     = schema.ValidateChallengeCategory
+	GetChallengeCategoryInfo      = schema.GetChallengeCategoryInfo
+	AllChallengeCategories        = schema.AllChallengeCategories
+	ValidChallengeCategoryStrings = schema.ValidChallengeCategoryStrings
 )
 
 // Info types re-exported from internal/schema.
@@ -186,6 +190,8 @@ type (
 	WorkflowStateInfo     = schema.WorkflowStateInfo
 	ChallengeTargetInfo   = schema.ChallengeTargetInfo
 	ChallengeSeverityInfo = schema.ChallengeSeverityInfo
+	ChallengeCategory     = schema.ChallengeCategory
+	ChallengeCategoryInfo = schema.ChallengeCategoryInfo
 )
 
 // Re-exported types from internal/node to reduce cmd/af import count.
@@ -545,6 +551,11 @@ var FindProverJobs = jobs.FindProverJobs
 // FindVerifierJobs returns nodes ready for verifier review.
 // Re-export of jobs.FindVerifierJobs.
 var FindVerifierJobs = jobs.FindVerifierJobs
+
+// FilterReadyVerifierJobs narrows verifier jobs to those whose children are all
+// cleared (accept would not be blocked by children).
+// Re-export of jobs.FilterReadyVerifierJobs.
+var FilterReadyVerifierJobs = jobs.FilterReadyVerifierJobs
 
 // Re-exported functions from internal/cli to reduce cmd/af import count.
 // Consumers should use service.MustString, service.MustBool, etc. instead of

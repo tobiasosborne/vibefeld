@@ -9,6 +9,15 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version: "0.1.5",
+		Date:    "2026-07-02",
+		Items: []string{
+			"af jobs --ready — list only verifier jobs whose children are all cleared (validated/admitted/archived), i.e. acceptable now. Server-side bottom-up-ready filter that orchestration drivers otherwise re-implement each round.",
+			"af init now writes a workspace .gitignore covering runtime/rebuildable state (locks/, .af/, nodes/, defs/, lemmas/) while keeping ledger/, assumptions/, externals/, and meta.json tracked.",
+			"af challenge --category — optional typed classification (gap, missing, dependency, incorrect, unclear, other) so tooling can classify challenges exactly instead of grepping the reason text. af challenges gains a --category filter and includes category in JSON output.",
+		},
+	},
+	{
 		Version: "0.1.4",
 		Date:    "2026-07-02",
 		Items: []string{

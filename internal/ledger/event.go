@@ -107,8 +107,9 @@ type ChallengeRaised struct {
 	NodeID      types.NodeID `json:"node_id"`
 	Target      string       `json:"target"`
 	Reason      string       `json:"reason"`
-	Severity    string       `json:"severity"`  // "critical", "major", "minor", or "note"
-	RaisedBy    string       `json:"raised_by"` // Agent ID of the verifier who raised this challenge
+	Severity    string       `json:"severity"`           // "critical", "major", "minor", or "note"
+	RaisedBy    string       `json:"raised_by"`          // Agent ID of the verifier who raised this challenge
+	Category    string       `json:"category,omitempty"` // Optional typed classification (gap, missing, dependency, ...)
 }
 
 // ChallengeResolved is emitted when a challenge is resolved (answered).
@@ -262,6 +263,12 @@ func NewChallengeRaised(challengeID string, nodeID types.NodeID, target, reason 
 
 // NewChallengeRaisedWithSeverity creates a ChallengeRaised event with the specified severity and raisedBy agent ID.
 func NewChallengeRaisedWithSeverity(challengeID string, nodeID types.NodeID, target, reason, severity, raisedBy string) ChallengeRaised {
+	return NewChallengeRaisedFull(challengeID, nodeID, target, reason, severity, raisedBy, "")
+}
+
+// NewChallengeRaisedFull creates a ChallengeRaised event with severity, raisedBy
+// agent ID, and an optional typed category. An empty category means uncategorised.
+func NewChallengeRaisedFull(challengeID string, nodeID types.NodeID, target, reason, severity, raisedBy, category string) ChallengeRaised {
 	return ChallengeRaised{
 		BaseEvent: BaseEvent{
 			EventType: EventChallengeRaised,
@@ -273,6 +280,7 @@ func NewChallengeRaisedWithSeverity(challengeID string, nodeID types.NodeID, tar
 		Reason:      reason,
 		Severity:    severity,
 		RaisedBy:    raisedBy,
+		Category:    category,
 	}
 }
 

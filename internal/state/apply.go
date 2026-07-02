@@ -309,6 +309,11 @@ func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
 		return fmt.Errorf("invalid challenge severity: %w", err)
 	}
 
+	// Validate category (empty is allowed — category is optional)
+	if err := schema.ValidateChallengeCategory(e.Category); err != nil {
+		return fmt.Errorf("invalid challenge category: %w", err)
+	}
+
 	c := &Challenge{
 		ID:       e.ChallengeID,
 		NodeID:   e.NodeID,
@@ -316,6 +321,7 @@ func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
 		Reason:   e.Reason,
 		Status:   ChallengeStatusOpen,
 		Severity: severity,
+		Category: e.Category,
 		RaisedBy: e.RaisedBy,
 		Created:  e.EventTime,
 	}

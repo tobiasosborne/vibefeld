@@ -2,7 +2,58 @@
 
 ## What Was Accomplished This Session
 
-### Session 237 Summary: Fixed --dry-run global no-op (vibefeld-52ff, 0.1.4)
+Worked the af-binary section of the aism campaign feedback
+(`../almost-idempotent-stochastic-maps/docs/tooling-feedback/AF-FEEDBACK.md`) end to end: the P0
+dry-run bug (0.1.4) plus all three P2 feature requests (0.1.5). All four struck in that file.
+
+### Session 237 Part 2: AF-FEEDBACK P2 items #2/#3/#4 (0.1.5)
+
+**#2 — `af jobs --ready` (vibefeld-r0k9).** Server-side bottom-up-ready verifier filter: only
+verifier jobs whose direct children are all cleared (validated/admitted/archived — the same
+allowlist `af accept` uses). Predicate `AllChildrenCleared` + `FilterReadyVerifierJobs` in
+`internal/jobs/verifier.go` (unit-tested, default gate), re-exported via `service`, wired to a
+`--ready` flag in `cmd/af/jobs.go`. `--ready` drops prover jobs; `--ready --role prover` errors as
+contradictory. Live-verified: root excluded while children pending; becomes the sole ready job once
+both children validated.
+
+**#3 — `af init` writes a workspace `.gitignore` (vibefeld-kf3o).** Implemented in
+`internal/fs/init.go` (`workspaceGitignore`, idempotent like meta.json — never clobbers a user
+file). **Correctness catch:** the feedback said "track only ledger/ + externals/ + meta.json", but
+`AddAssumption` is filesystem-primary (writes `assumptions/`, no ledger event, read from disk in
+`LoadState`), so assumptions/ MUST be tracked — ignoring it would drop assumption data. Verified via
+`grep` of write-callers: `WriteNode`/`WriteDefinition`/`WriteLemma` have ZERO callers (nodes/, defs/,
+lemmas/ are always-empty vestigial dirs), `WriteAssumption`/`WriteExternal` are live. Final gitignore:
+ignore `locks/ .af/ nodes/ defs/ lemmas/`; track `ledger/ assumptions/ externals/ meta.json`.
+
+**#4 — machine-readable challenge `category` (vibefeld-twdf).** Typed, optional field threaded
+through all layers: new `internal/schema/category.go` (enum: gap/missing/dependency/incorrect/
+unclear/other; empty allowed; validated), `ChallengeRaised.Category` + `NewChallengeRaisedFull`
+factory (WithSeverity delegates with empty category — backward compatible), `state.Challenge.Category`,
+`applyChallengeRaised` validates + sets it, service re-exports, `af challenge --category` (validated,
+shown in text/JSON), `af challenges --category <x>` filter + `category` in JSON. Live-verified:
+raise/persist, invalid rejected, JSON carries it, filter narrows correctly.
+
+**Files changed (Part 2):**
+- `internal/jobs/verifier.go` + `internal/jobs/verifier_test.go` — ready predicate + tests
+- `internal/fs/init.go` + `internal/fs/init_test.go` — workspace .gitignore + tests
+- `internal/schema/category.go` + `internal/schema/category_test.go` — NEW category enum
+- `internal/ledger/event.go` — `ChallengeRaised.Category` + `NewChallengeRaisedFull`
+- `internal/state/state.go`, `internal/state/apply.go` — Category field + validate/set
+- `internal/service/exports.go` — re-export category validators + ready filter
+- `cmd/af/challenge.go`, `cmd/af/challenges.go` — `--category` on both, JSON, filter, help
+- `cmd/af/jobs.go` + `cmd/af/jobs_ready_test.go` — `--ready` flag + wiring test
+- `cmd/af/challenge_category_test.go` — NEW category integration tests
+- `cmd/af/main.go` + `cmd/af/changelog.go` — version 0.1.4 → 0.1.5, changelog
+
+**Quality gates:** all 27 packages pass, clean build + vet, `af --version` = 0.1.5, installed.
+**bd issues:** vibefeld-r0k9, vibefeld-kf3o, vibefeld-twdf (all P2, closed).
+
+**Remaining AF-FEEDBACK items:** only the in-repo driver-script items (#5-#10) targeting
+`scripts/af-orchestrate.py` in the aism repo — NOT this repo. The entire af-binary section is now done.
+
+---
+
+### Session 237 Part 1: Fixed --dry-run global no-op (vibefeld-52ff, 0.1.4)
 
 Field feedback from the aism campaign (`../almost-idempotent-stochastic-maps/docs/tooling-feedback/AF-FEEDBACK.md`, P0 #1) reported `af def-add --dry-run` writing a duplicate definition. Investigation showed the bug was **far broader than def-add**.
 

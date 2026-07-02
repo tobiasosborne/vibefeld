@@ -17,7 +17,7 @@ import (
 )
 
 // Version is the current version of the af CLI tool.
-const Version = "0.1.4"
+const Version = "0.1.5"
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {

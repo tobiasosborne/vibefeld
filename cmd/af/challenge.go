@@ -99,6 +99,7 @@ Common mistakes:
 	cmd.Flags().StringP("target", "t", "statement", "Challenge target aspect")
 	cmd.Flags().StringP("reason", "r", "", "Reason for the challenge (required)")
 	cmd.Flags().StringP("severity", "s", "major", "Challenge severity (critical, major, minor, note)")
+	cmd.Flags().StringP("category", "c", "", "Optional typed classification (gap, missing, dependency, incorrect, unclear, other)")
 
 	return cmd
 }
@@ -120,6 +121,7 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 	target := cli.MustString(cmd, "target")
 	reason := cli.MustString(cmd, "reason")
 	severity := cli.MustString(cmd, "severity")
+	category := cli.MustString(cmd, "category")
 
 	// Validate reason is provided and not empty/whitespace
 	if strings.TrimSpace(reason) == "" {
@@ -136,6 +138,11 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 	// Validate severity
 	if err := service.ValidateChallengeSeverity(severity); err != nil {
 		return render.InvalidValueError("af challenge", "severity", severity, []string{"critical", "major", "minor", "note"}, examples)
+	}
+
+	// Validate category (optional — empty is allowed)
+	if err := service.ValidateChallengeCategory(category); err != nil {
+		return render.InvalidValueError("af challenge", "category", category, service.ValidChallengeCategoryStrings(), examples)
 	}
 
 	// Create proof service to check state
@@ -169,8 +176,8 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 	// Get agent ID from environment variable (if set)
 	agentID := os.Getenv("AF_AGENT_ID")
 
-	// Append challenge raised event with severity and agent ID
-	event := ledger.NewChallengeRaisedWithSeverity(challengeID, nodeID, target, reason, severity, agentID)
+	// Append challenge raised event with severity, agent ID, and optional category
+	event := ledger.NewChallengeRaisedFull(challengeID, nodeID, target, reason, severity, agentID, category)
 	_, err = ldg.Append(event)
 	if err != nil {
 		return fmt.Errorf("error raising challenge: %w", err)
@@ -179,14 +186,14 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 	// Output result based on format
 	switch strings.ToLower(format) {
 	case "json":
-		return outputChallengeJSON(cmd, nodeID, challengeID, target, reason, severity)
+		return outputChallengeJSON(cmd, nodeID, challengeID, target, reason, severity, category)
 	default:
-		return outputChallengeText(cmd, nodeID, challengeID, target, reason, severity)
+		return outputChallengeText(cmd, nodeID, challengeID, target, reason, severity, category)
 	}
 }
 
 // outputChallengeJSON outputs the challenge result in JSON format.
-func outputChallengeJSON(cmd *cobra.Command, nodeID service.NodeID, challengeID, target, reason, severity string) error {
+func outputChallengeJSON(cmd *cobra.Command, nodeID service.NodeID, challengeID, target, reason, severity, category string) error {
 	result := map[string]interface{}{
 		"node_id":      nodeID.String(),
 		"challenge_id": challengeID,
@@ -194,6 +201,9 @@ func outputChallengeJSON(cmd *cobra.Command, nodeID service.NodeID, challengeID,
 		"reason":       reason,
 		"severity":     severity,
 		"status":       "raised",
+	}
+	if category != "" {
+		result["category"] = category
 	}
 
 	data, err := json.Marshal(result)
@@ -206,11 +216,14 @@ func outputChallengeJSON(cmd *cobra.Command, nodeID service.NodeID, challengeID,
 }
 
 // outputChallengeText outputs the challenge result in human-readable text format.
-func outputChallengeText(cmd *cobra.Command, nodeID service.NodeID, challengeID, target, reason, severity string) error {
+func outputChallengeText(cmd *cobra.Command, nodeID service.NodeID, challengeID, target, reason, severity, category string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "Challenge raised against node %s\n", nodeID.String())
 	fmt.Fprintf(cmd.OutOrStdout(), "  Challenge ID: %s\n", challengeID)
 	fmt.Fprintf(cmd.OutOrStdout(), "  Target:       %s\n", target)
 	fmt.Fprintf(cmd.OutOrStdout(), "  Severity:     %s\n", severity)
+	if category != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "  Category:     %s\n", category)
+	}
 	fmt.Fprintf(cmd.OutOrStdout(), "  Reason:       %s\n", reason)
 
 	// Add note about whether this blocks acceptance

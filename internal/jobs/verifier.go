@@ -68,6 +68,44 @@ func isVerifierJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool
 	return !hasBlockingChallenges(n, challengeMap)
 }
 
+// AllChildrenCleared reports whether every direct child of n is in a
+// terminal-cleared epistemic state (validated, admitted, or archived) — the
+// same allowlist af accept uses for its children-completeness gate. Such
+// children no longer block acceptance of n. A leaf node (no children) is
+// trivially cleared. nodeMap maps node ID strings to nodes.
+//
+// Refuted children are NOT cleared: refuted means the step is false, an
+// obstacle to the parent (mirrors node.CheckValidationInvariant).
+func AllChildrenCleared(n *node.Node, nodeMap map[string]*node.Node) bool {
+	for _, c := range nodeMap {
+		parent, ok := c.ID.Parent()
+		if !ok || parent.String() != n.ID.String() {
+			continue
+		}
+		switch c.EpistemicState {
+		case schema.EpistemicValidated, schema.EpistemicAdmitted, schema.EpistemicArchived:
+			// cleared — no obstacle to the parent
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// FilterReadyVerifierJobs returns the subset of the given verifier jobs whose
+// children are all cleared (AllChildrenCleared) — i.e. accept would not be
+// blocked by their children. This is the server-side "bottom-up-ready" filter
+// that drivers otherwise re-implement each round. Order is preserved.
+func FilterReadyVerifierJobs(verifierJobs []*node.Node, nodeMap map[string]*node.Node) []*node.Node {
+	var result []*node.Node
+	for _, n := range verifierJobs {
+		if AllChildrenCleared(n, nodeMap) {
+			result = append(result, n)
+		}
+	}
+	return result
+}
+
 // hasOpenChallenges returns true if the node has any open (unresolved) challenges.
 // Deprecated: Use hasBlockingChallenges for severity-aware checking.
 func hasOpenChallenges(n *node.Node, challengeMap map[string][]*node.Challenge) bool {

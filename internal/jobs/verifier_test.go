@@ -601,3 +601,80 @@ func TestVerifierJob_MixedSeverities_ResolvedCriticalAndOpenMinor(t *testing.T) 
 		t.Errorf("FindVerifierJobs() returned %d nodes, want 1 (resolved critical + open minor should not block)", len(result))
 	}
 }
+
+// =============================================================================
+// Ready filter tests (vibefeld-r0k9): all-live-children-cleared gate.
+// =============================================================================
+
+// TestAllChildrenCleared_Leaf verifies a node with no children is ready.
+func TestAllChildrenCleared_Leaf(t *testing.T) {
+	n := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	nodeMap := buildNodeMap([]*node.Node{n})
+	if !jobs.AllChildrenCleared(n, nodeMap) {
+		t.Error("leaf node (no children) should be cleared")
+	}
+}
+
+// TestAllChildrenCleared_ClearedStates verifies validated/admitted/archived
+// children all count as cleared, while pending/refuted do not.
+func TestAllChildrenCleared_ClearedStates(t *testing.T) {
+	tests := []struct {
+		name  string
+		child schema.EpistemicState
+		want  bool
+	}{
+		{"validated child", schema.EpistemicValidated, true},
+		{"admitted child", schema.EpistemicAdmitted, true},
+		{"archived child", schema.EpistemicArchived, true},
+		{"pending child", schema.EpistemicPending, false},
+		{"refuted child", schema.EpistemicRefuted, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+			child := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, tc.child)
+			nodeMap := buildNodeMap([]*node.Node{parent, child})
+			if got := jobs.AllChildrenCleared(parent, nodeMap); got != tc.want {
+				t.Errorf("AllChildrenCleared with %s child = %v, want %v", tc.child, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAllChildrenCleared_MixedChildren verifies that one uncleared child among
+// cleared ones makes the parent not ready.
+func TestAllChildrenCleared_MixedChildren(t *testing.T) {
+	parent := createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending)
+	c1 := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
+	c2 := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicArchived)
+	c3 := createVerifierTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	// validated + archived only -> cleared
+	if !jobs.AllChildrenCleared(parent, buildNodeMap([]*node.Node{parent, c1, c2})) {
+		t.Error("validated + archived children should be cleared")
+	}
+	// add a pending child -> not cleared
+	if jobs.AllChildrenCleared(parent, buildNodeMap([]*node.Node{parent, c1, c2, c3})) {
+		t.Error("a pending child should make the parent not cleared")
+	}
+}
+
+// TestFilterReadyVerifierJobs filters a job list down to ready nodes.
+func TestFilterReadyVerifierJobs(t *testing.T) {
+	// not ready: parent 1.1 with a pending child 1.1.1
+	parent := createVerifierTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending)
+	child := createVerifierTestNode(t, "1.1.1", schema.WorkflowAvailable, schema.EpistemicPending)
+	// ready: leaf 1.2 (no children)
+	leaf := createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending)
+
+	nodeMap := buildNodeMap([]*node.Node{parent, child, leaf})
+	jobList := []*node.Node{parent, leaf}
+
+	ready := jobs.FilterReadyVerifierJobs(jobList, nodeMap)
+	if len(ready) != 1 {
+		t.Fatalf("expected 1 ready job, got %d", len(ready))
+	}
+	if ready[0].ID.String() != "1.2" {
+		t.Errorf("expected leaf node 1.2 to be ready, got %s", ready[0].ID.String())
+	}
+}

@@ -27,6 +27,7 @@ Filter options:
   --node       Show only challenges targeting a specific node
   --status     Filter by challenge status (open, resolved, withdrawn, superseded)
   --severity   Filter by severity (critical, major, minor, note)
+  --category   Filter by category (gap, missing, dependency, incorrect, unclear, other)
   --active-only  Show only open challenges (shorthand for --status open)
   --summary    Show aggregate counts by node and severity instead of individual challenges
 
@@ -36,8 +37,9 @@ Examples:
   af challenges --status open           Only open challenges
   af challenges --active-only           Same as --status open
   af challenges --severity critical     Only critical challenges
+  af challenges --category missing      Only "missing fact" challenges
   af challenges --summary               Aggregate view by node
-  af challenges --format json           Machine-readable output`,
+  af challenges --format json           Machine-readable output (includes category)`,
 		RunE: runChallenges,
 	}
 
@@ -46,6 +48,7 @@ Examples:
 	cmd.Flags().StringP("node", "n", "", "Filter by target node ID")
 	cmd.Flags().StringP("status", "s", "", "Filter by status (open, resolved, withdrawn, superseded)")
 	cmd.Flags().String("severity", "", "Filter by severity (critical, major, minor, note)")
+	cmd.Flags().String("category", "", "Filter by category (gap, missing, dependency, incorrect, unclear, other)")
 	cmd.Flags().Bool("active-only", false, "Show only open challenges")
 	cmd.Flags().Bool("summary", false, "Show aggregate summary by node and severity")
 
@@ -60,6 +63,7 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 	nodeFilter, _ := cmd.Flags().GetString("node")
 	statusFilter, _ := cmd.Flags().GetString("status")
 	severityFilter, _ := cmd.Flags().GetString("severity")
+	categoryFilter, _ := cmd.Flags().GetString("category")
 	activeOnly, _ := cmd.Flags().GetBool("active-only")
 	summary, _ := cmd.Flags().GetBool("summary")
 
@@ -87,6 +91,12 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 	severityFilter = strings.ToLower(severityFilter)
 	if severityFilter != "" && severityFilter != "critical" && severityFilter != "major" && severityFilter != "minor" && severityFilter != "note" {
 		return fmt.Errorf("invalid severity %q: must be 'critical', 'major', 'minor', or 'note'", severityFilter)
+	}
+
+	// Validate category if provided
+	categoryFilter = strings.ToLower(categoryFilter)
+	if err := service.ValidateChallengeCategory(categoryFilter); err != nil {
+		return fmt.Errorf("invalid category %q: must be one of %s", categoryFilter, strings.Join(service.ValidChallengeCategoryStrings(), ", "))
 	}
 
 	// Parse node filter if provided
@@ -124,7 +134,7 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 	challenges := st.AllChallenges()
 
 	// Apply filters
-	filtered := filterChallenges(challenges, nodeID, nodeFilter != "", statusFilter, severityFilter)
+	filtered := filterChallenges(challenges, nodeID, nodeFilter != "", statusFilter, severityFilter, categoryFilter)
 
 	// Sort challenges by node ID then by challenge ID
 	sortChallenges(filtered)
@@ -167,8 +177,8 @@ func runChallenges(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// filterChallenges filters challenges based on node ID, status, and severity.
-func filterChallenges(challenges []*service.Challenge, nodeID service.NodeID, filterByNode bool, statusFilter, severityFilter string) []*service.Challenge {
+// filterChallenges filters challenges based on node ID, status, severity, and category.
+func filterChallenges(challenges []*service.Challenge, nodeID service.NodeID, filterByNode bool, statusFilter, severityFilter, categoryFilter string) []*service.Challenge {
 	var result []*service.Challenge
 
 	for _, c := range challenges {
@@ -191,6 +201,11 @@ func filterChallenges(challenges []*service.Challenge, nodeID service.NodeID, fi
 			if sev != severityFilter {
 				continue
 			}
+		}
+
+		// Apply category filter (challenges with no category never match a category filter)
+		if categoryFilter != "" && c.Category != categoryFilter {
+			continue
 		}
 
 		result = append(result, c)
@@ -258,6 +273,7 @@ type challengeJSON struct {
 	NodeID   string `json:"node_id"`
 	Status   string `json:"status"`
 	Severity string `json:"severity"`
+	Category string `json:"category,omitempty"`
 	Target   string `json:"target"`
 	Reason   string `json:"reason"`
 	Created  string `json:"created,omitempty"`
@@ -287,6 +303,7 @@ func renderChallengesJSON(challenges []*service.Challenge) string {
 			NodeID:   c.NodeID.String(),
 			Status:   c.Status,
 			Severity: severity,
+			Category: c.Category,
 			Target:   c.Target,
 			Reason:   c.Reason,
 			Created:  c.Created.String(),

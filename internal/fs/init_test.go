@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -40,6 +41,74 @@ func TestInitProofDir_CreatesAllDirectories(t *testing.T) {
 		if !info.IsDir() {
 			t.Errorf("expected %s to be a directory, got file", sub)
 		}
+	}
+}
+
+// TestInitProofDir_WritesGitignore verifies that InitProofDir drops a
+// .gitignore covering runtime/rebuildable state while keeping the
+// filesystem-primary stores tracked (vibefeld-kf3o).
+func TestInitProofDir_WritesGitignore(t *testing.T) {
+	dir := t.TempDir()
+	proofDir := filepath.Join(dir, "proof")
+
+	if err := InitProofDir(proofDir); err != nil {
+		t.Fatalf("InitProofDir failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(proofDir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("expected .gitignore to be written: %v", err)
+	}
+	content := string(data)
+
+	// Runtime / rebuildable state must be ignored.
+	for _, ignored := range []string{"locks/", ".af/"} {
+		if !strings.Contains(content, ignored) {
+			t.Errorf(".gitignore should ignore %q, got:\n%s", ignored, content)
+		}
+	}
+
+	// Filesystem-primary stores and the ledger must NOT be ignored, or their
+	// content would silently drop out of version control.
+	for _, tracked := range []string{"ledger", "assumptions", "externals", "meta.json"} {
+		for _, line := range strings.Split(content, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") || trimmed == "" {
+				continue
+			}
+			if trimmed == tracked+"/" || trimmed == tracked {
+				t.Errorf(".gitignore must NOT ignore %q (it is source-of-truth or filesystem-primary):\n%s", tracked, content)
+			}
+		}
+	}
+}
+
+// TestInitProofDir_GitignoreNotClobbered verifies a user-customised .gitignore
+// is preserved across re-init (idempotent, like meta.json).
+func TestInitProofDir_GitignoreNotClobbered(t *testing.T) {
+	dir := t.TempDir()
+	proofDir := filepath.Join(dir, "proof")
+
+	if err := InitProofDir(proofDir); err != nil {
+		t.Fatalf("first InitProofDir failed: %v", err)
+	}
+
+	gitignorePath := filepath.Join(proofDir, ".gitignore")
+	custom := "# my custom rules\nsecret.txt\n"
+	if err := os.WriteFile(gitignorePath, []byte(custom), 0644); err != nil {
+		t.Fatalf("failed to write custom .gitignore: %v", err)
+	}
+
+	if err := InitProofDir(proofDir); err != nil {
+		t.Fatalf("second InitProofDir failed: %v", err)
+	}
+
+	data, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatalf("failed to read .gitignore: %v", err)
+	}
+	if string(data) != custom {
+		t.Errorf("re-init clobbered a user .gitignore:\nwant: %q\ngot:  %q", custom, string(data))
 	}
 }
 

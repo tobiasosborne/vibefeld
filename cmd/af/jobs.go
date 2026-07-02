@@ -37,7 +37,13 @@ Examples:
   af jobs                     List all available jobs
   af jobs --role prover       List only prover jobs
   af jobs --role verifier     List only verifier jobs
+  af jobs --ready             Only verifier jobs whose children are all cleared
   af jobs --format json       Output in JSON format
+
+The --ready filter returns only verifier jobs that can be accepted now: every
+direct child is in a terminal-cleared state (validated, admitted, or archived),
+so acceptance will not be blocked by an incomplete child. This is the
+bottom-up-ready gate drivers otherwise re-implement each round.
 
 Workflow:
   To start working on a job, use 'af claim <node-id>' to claim it first.
@@ -51,6 +57,7 @@ Workflow:
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
 	cmd.Flags().StringP("role", "r", "", "Filter by role (prover or verifier)")
+	cmd.Flags().Bool("ready", false, "Only verifier jobs whose children are all cleared (acceptable now)")
 
 	return cmd
 }
@@ -122,6 +129,22 @@ func runJobs(cmd *cobra.Command, args []string) error {
 		jobResult = &service.JobResult{
 			ProverJobs:   nil,
 			VerifierJobs: jobResult.VerifierJobs,
+		}
+	}
+
+	// Apply --ready filter: verifier jobs whose children are all cleared.
+	// This is a verifier-only concept, so it drops prover jobs; combining it
+	// with --role prover is contradictory.
+	if cmd.Flags().Changed("ready") {
+		ready, _ := cmd.Flags().GetBool("ready")
+		if ready {
+			if roleSet && role == "prover" {
+				return fmt.Errorf("--ready applies to verifier jobs and cannot be combined with --role prover")
+			}
+			jobResult = &service.JobResult{
+				ProverJobs:   nil,
+				VerifierJobs: service.FilterReadyVerifierJobs(jobResult.VerifierJobs, nodeMap),
+			}
 		}
 	}
 

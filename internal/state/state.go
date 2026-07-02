@@ -28,6 +28,7 @@ type Challenge struct {
 	Reason     string          // Explanation of the challenge
 	Status     string          // One of ChallengeStatusOpen, ChallengeStatusResolved, or ChallengeStatusWithdrawn
 	Severity   string          // "critical", "major", "minor", or "note"
+	Category   string          // Optional typed classification (gap, missing, dependency, ...); "" if uncategorised
 	Created    types.Timestamp // When the challenge was raised
 	Resolution string          // Resolution text (populated when status is "resolved")
 	RaisedBy   string          // Agent ID who raised the challenge
