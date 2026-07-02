@@ -17,7 +17,7 @@ import (
 )
 
 // Version is the current version of the af CLI tool.
-const Version = "0.1.3"
+const Version = "0.1.4"
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -166,6 +166,45 @@ func init() {
 	// Note: -v is already used by Cobra for --version, so verbose has no shorthand
 	rootCmd.PersistentFlags().Bool("verbose", false, "Enable verbose output for debugging")
 	rootCmd.PersistentFlags().Bool("dry-run", false, "Preview changes without making them")
+
+	// Guard --dry-run globally so it can never be silently ignored (vibefeld-52ff).
+	rootCmd.PersistentPreRunE = dryRunGuard
+}
+
+// dryRunSupportAnnotation marks a command as implementing genuine --dry-run
+// semantics. Commands opt in via markDryRunSupported.
+const dryRunSupportAnnotation = "af.dryRunSupport"
+
+// supportsDryRun reports whether cmd has opted in to handling --dry-run itself.
+func supportsDryRun(cmd *cobra.Command) bool {
+	return cmd.Annotations[dryRunSupportAnnotation] == "true"
+}
+
+// markDryRunSupported flags cmd as implementing a real --dry-run preview so the
+// global guard lets it run instead of rejecting the flag.
+func markDryRunSupported(cmd *cobra.Command) {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[dryRunSupportAnnotation] = "true"
+}
+
+// dryRunGuard rejects --dry-run for any command that has not opted in.
+//
+// Previously --dry-run was a registered global persistent flag advertised in
+// `af --help`, but no command called isDryRun, so every mutating command
+// silently ignored the flag and wrote to the workspace anyway (vibefeld-52ff).
+// Refusing the flag loudly is strictly safer than the old silent mutation:
+// scripted orchestration gets a clear error instead of an unexpected write.
+// Commands that implement a genuine preview opt in via markDryRunSupported.
+func dryRunGuard(cmd *cobra.Command, _ []string) error {
+	if isDryRun(cmd) && !supportsDryRun(cmd) {
+		return fmt.Errorf(
+			"--dry-run is not supported by %q: it would still modify the workspace, "+
+				"so it is refused rather than silently ignored; re-run without --dry-run",
+			cmd.CommandPath())
+	}
+	return nil
 }
 
 // isVerbose returns true if verbose mode is enabled.

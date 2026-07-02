@@ -1,6 +1,40 @@
-# Handoff - 2026-04-26 (Session 236)
+# Handoff - 2026-07-02 (Session 237)
 
 ## What Was Accomplished This Session
+
+### Session 237 Summary: Fixed --dry-run global no-op (vibefeld-52ff, 0.1.4)
+
+Field feedback from the aism campaign (`../almost-idempotent-stochastic-maps/docs/tooling-feedback/AF-FEEDBACK.md`, P0 #1) reported `af def-add --dry-run` writing a duplicate definition. Investigation showed the bug was **far broader than def-add**.
+
+**Root cause.** `--dry-run` and `--verbose` were registered as global persistent flags (`cmd/af/main.go:167-168`) and advertised in `af --help` (`main.go:129-130`), with helpers `isDryRun()`/`isVerbose()` — but **neither helper was called by any command**. Both flags were dead across the entire CLI. Every mutating command (`def-add`, `refine`, `accept`, `admit`, `challenge`, `archive`, …) silently accepted `--dry-run` and wrote anyway. A correctness footgun for scripted orchestration.
+
+**Fix (opt-in guard + real preview).**
+- `dryRunGuard` on `rootCmd.PersistentPreRunE` (`main.go`): if `--dry-run` is set and the command has not opted in, it **errors loudly before any write** ("--dry-run is not supported by \"af refine\": it would still modify the workspace…") instead of silently mutating. Refusing the flag is strictly safer than the old silent-ignore.
+- Opt-in via `markDryRunSupported(cmd)` / `supportsDryRun(cmd)` (annotation `af.dryRunSupport`).
+- `def-add` opts in and implements a genuine preview (`previewDefAdd` in `cmd/af/def_add.go`): validates inputs, then prints `[dry-run] Would add definition '<name>' (no changes written)` and **skips `svc.AddDefinition`**. Also loads state and **warns when the name already exists** (the exact duplicate-key symptom reported). Supports `--format json` (`{"added":false,"dry_run":true,"existing":<bool>,"name":...}`).
+
+**Design decision.** The guard rejects `--dry-run` for ALL non-opted commands (including read-only ones) rather than trying to classify "mutating" — honest and simple. Extending real dry-run to other mutating commands (`refine`, `accept`, …) is a clean follow-up; each just opts in and adds a preview branch. `--verbose` is likewise still a dead flag (not a correctness bug since it doesn't mutate) — deferred.
+
+**Files changed (4):**
+- `cmd/af/main.go` — `dryRunGuard`, `supportsDryRun`, `markDryRunSupported`, `dryRunSupportAnnotation`; wired `PersistentPreRunE`; version 0.1.3 → 0.1.4
+- `cmd/af/def_add.go` — `markDryRunSupported(cmd)` in constructor; dry-run branch + `previewDefAdd`
+- `cmd/af/dry_run_test.go` — NEW: 6 tests (guard blocks unsupported / allows supported / inert without flag; def-add supports flag / doesn't write / warns duplicate). Non-integration, run by default `go test ./...`.
+- `cmd/af/changelog.go` — 0.1.4 entry
+
+**Also:** struck AF-FEEDBACK.md P0 #1 as fixed (note the fix version) per that file's update policy. Reinstalled binary (`go install`) → `/home/tobias/go/bin/af` now 0.1.4.
+
+**Live smoke test** (`/tmp/af-dryrun-smoke`): def-add --dry-run previews + doesn't write (`defs` shows "No definitions found"); real add then --dry-run same name warns duplicate and count stays 1; `refine 1 --dry-run` errors with exit 1 and adds no children.
+
+**Quality gates:** all 27 packages pass, clean build, clean vet, `af --version` = 0.1.4.
+
+**Remaining AF-FEEDBACK af-binary items (not yet done, P2):** #2 `af jobs --ready` (all-live-children-validated filter), #3 `af init` should drop a workspace `.gitignore`, #4 machine-readable challenge `category` field. Items 5-10 target their in-repo driver script, not us.
+
+**Session-start note:** beads DB was empty again (v1.0.0 Dolt wipe recurred); restored via `bd import .beads/issues.jsonl` (639 issues). Uncommitted `.claude/docs/lean4/*` edits present at session start are unrelated to AF and left alone.
+
+**bd issue:** vibefeld-52ff (P0, closed).
+
+---
+
 
 ### Session 236 Summary: Two related epistemic-state fixes (vibefeld-0mt0, vibefeld-b812), versions 0.1.2 and 0.1.3
 

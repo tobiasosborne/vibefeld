@@ -39,6 +39,10 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
 	cmd.Flags().String("file", "", "Read definition content from file")
 
+	// def-add implements a real --dry-run preview (see runDefAdd); opt in so the
+	// global guard permits the flag instead of rejecting it (vibefeld-52ff).
+	markDryRunSupported(cmd)
+
 	return cmd
 }
 
@@ -88,6 +92,11 @@ func runDefAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error accessing proof directory: %w", err)
 	}
 
+	// In dry-run mode, preview without writing anything to the ledger.
+	if isDryRun(cmd) {
+		return previewDefAdd(cmd, svc, name, format)
+	}
+
 	// Add the definition via service
 	defID, err := svc.AddDefinition(name, content)
 	if err != nil {
@@ -101,6 +110,39 @@ func runDefAdd(cmd *cobra.Command, args []string) error {
 	default:
 		return outputDefAddText(cmd, name, defID)
 	}
+}
+
+// previewDefAdd reports what def-add would do without mutating the workspace.
+// It flags when the name already exists so a scripted caller can see the
+// duplicate-key outcome before committing to a real write.
+func previewDefAdd(cmd *cobra.Command, svc *service.ProofService, name, format string) error {
+	duplicate := false
+	if st, err := svc.LoadState(); err == nil {
+		duplicate = st.GetDefinitionByName(name) != nil
+	}
+
+	if strings.ToLower(format) == "json" {
+		result := map[string]interface{}{
+			"name":     name,
+			"added":    false,
+			"dry_run":  true,
+			"existing": duplicate,
+		}
+		data, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("error marshaling JSON: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(data))
+		return nil
+	}
+
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "[dry-run] Would add definition '%s' (no changes written).\n", name)
+	if duplicate {
+		fmt.Fprintf(out, "[dry-run] Warning: a definition named '%s' already exists; "+
+			"a real run would create a duplicate key.\n", name)
+	}
+	return nil
 }
 
 // outputDefAddJSON outputs the def-add result in JSON format.

@@ -9,6 +9,13 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version: "0.1.4",
+		Date:    "2026-07-02",
+		Items: []string{
+			"Fix: --dry-run is no longer silently ignored. It was a global no-op — every mutating command (def-add, refine, accept, ...) accepted the flag and wrote anyway. Commands that don't implement dry-run now refuse the flag loudly instead of mutating; af def-add --dry-run previews without writing and warns on duplicate names.",
+		},
+	},
+	{
 		Version: "0.1.3",
 		Date:    "2026-04-26",
 		Items: []string{
