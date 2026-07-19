@@ -98,6 +98,18 @@ func TestExitCodes(t *testing.T) {
 		// Exit code 4 = corruption errors
 		{"CONTENT_HASH_MISMATCH is corruption", CONTENT_HASH_MISMATCH, 4},
 		{"LEDGER_INCONSISTENT is corruption", LEDGER_INCONSISTENT, 4},
+
+		// Exit code 3 = logic error (verdict file itself is malformed)
+		{"VERDICTS_FILE_INVALID is logic error", VERDICTS_FILE_INVALID, 3},
+
+		// Exit code 5 = verdict batch partially applied
+		{"VERDICTS_PARTIALLY_APPLIED is exit 5", VERDICTS_PARTIALLY_APPLIED, 5},
+
+		// Exit code 6 = verdict batch, nothing applied
+		{"VERDICTS_NONE_APPLIED is exit 6", VERDICTS_NONE_APPLIED, 6},
+
+		// Exit code 7 = unvalidate --batch, batch id not found
+		{"UNVALIDATE_BATCH_NOT_FOUND is exit 7", UNVALIDATE_BATCH_NOT_FOUND, 7},
 	}
 
 	for _, tt := range tests {

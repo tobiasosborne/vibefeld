@@ -60,6 +60,21 @@ const (
 
 	// Extraction errors (logic = exit 3)
 	EXTRACTION_INVALID
+
+	// Batch verdict outcomes (rk PRD C3 / af verdicts apply + af unvalidate
+	// --batch, items V2/V3). A verdict batch is neither a plain success nor
+	// a plain error: it can partially apply. These add new exit-code tiers
+	// beyond the original 1-4 taxonomy (see ExitCode) so a driver can
+	// distinguish "everything applied" from "some blocked/rejected" from
+	// "nothing applied" from "the file itself was invalid" without parsing
+	// text — self-teaching CLI contract (see docs/verdicts-apply.md).
+	VERDICTS_FILE_INVALID      // exit 3 — malformed/schema-invalid verdict file; nothing was attempted
+	VERDICTS_PARTIALLY_APPLIED // exit 5 — at least one item applied, at least one blocked or rejected
+	VERDICTS_NONE_APPLIED      // exit 6 — file was valid but zero items applied
+
+	// af unvalidate --batch: the batch id named on the command line matches
+	// no currently-validated node (exit 7 — clean no-op, not an error).
+	UNVALIDATE_BATCH_NOT_FOUND
 )
 
 // errorCodeNames maps error codes to their string representations.
@@ -91,6 +106,10 @@ var errorCodeNames = map[ErrorCode]string{
 	CHALLENGE_LIMIT_EXCEEDED:    "CHALLENGE_LIMIT_EXCEEDED",
 	REFINEMENT_LIMIT_EXCEEDED:   "REFINEMENT_LIMIT_EXCEEDED",
 	EXTRACTION_INVALID:          "EXTRACTION_INVALID",
+	VERDICTS_FILE_INVALID:       "VERDICTS_FILE_INVALID",
+	VERDICTS_PARTIALLY_APPLIED:  "VERDICTS_PARTIALLY_APPLIED",
+	VERDICTS_NONE_APPLIED:       "VERDICTS_NONE_APPLIED",
+	UNVALIDATE_BATCH_NOT_FOUND:  "UNVALIDATE_BATCH_NOT_FOUND",
 }
 
 // String returns the string representation of an ErrorCode.
@@ -107,6 +126,9 @@ func (c ErrorCode) String() string {
 // - 2 = blocked errors
 // - 3 = logic errors
 // - 4 = corruption errors
+// - 5 = verdict batch partially applied (rk PRD C3, af verdicts apply)
+// - 6 = verdict batch: nothing applied (rk PRD C3, af verdicts apply)
+// - 7 = unvalidate --batch: batch id not found (clean no-op)
 func (c ErrorCode) ExitCode() int {
 	switch c {
 	// Exit 1: retriable
@@ -121,7 +143,19 @@ func (c ErrorCode) ExitCode() int {
 	case CONTENT_HASH_MISMATCH, LEDGER_INCONSISTENT:
 		return 4
 
-	// Exit 3: logic errors (all others)
+	// Exit 5: verdict batch partially applied
+	case VERDICTS_PARTIALLY_APPLIED:
+		return 5
+
+	// Exit 6: verdict batch, nothing applied
+	case VERDICTS_NONE_APPLIED:
+		return 6
+
+	// Exit 7: unvalidate --batch, batch id not found
+	case UNVALIDATE_BATCH_NOT_FOUND:
+		return 7
+
+	// Exit 3: logic errors (all others, including VERDICTS_FILE_INVALID)
 	default:
 		return 3
 	}
