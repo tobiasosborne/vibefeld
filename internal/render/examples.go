@@ -31,6 +31,14 @@ var CommandExamples = map[string][]string{
 	"af withdraw-challenge": {
 		"af withdraw-challenge ch-abc123",
 	},
+	"af verdicts apply": {
+		"af verdicts apply batch-1.json",
+		"af verdicts apply batch-1.json --format json",
+	},
+	"af unvalidate": {
+		"af unvalidate 1.2",
+		"af unvalidate --batch batch-1",
+	},
 	"af admit": {
 		"af admit 1 --reason \"Accepted as axiom\"",
 		"af admit 1.2 -r \"Well-known result\"",
