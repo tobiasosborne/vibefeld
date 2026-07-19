@@ -189,14 +189,12 @@ func verifyAgentChallenges(svc *service.ProofService, nodeIDs []service.NodeID, 
 	return nil
 }
 
-// performSingleAcceptance handles acceptance of a single node.
-func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format string) error {
-	var acceptErr error
-	if withNote != "" {
-		acceptErr = svc.AcceptNodeWithNote(nodeID, withNote)
-	} else {
-		acceptErr = svc.AcceptNode(nodeID)
-	}
+// performSingleAcceptance handles acceptance of a single node. agent, if
+// non-empty, is recorded as the verifier identity on the resulting
+// NodeValidated event (driver-supplied provenance — see
+// service.AcceptNodeWithVerifier).
+func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format, agent string) error {
+	acceptErr := svc.AcceptNodeWithVerifier(nodeID, withNote, agent, "")
 	if acceptErr != nil {
 		if strings.Contains(acceptErr.Error(), "claim-test") {
 			return fmt.Errorf("node %s is marked as crux and has no passing claim-test.\nRun 'af claim-test %s --script <path>' first", nodeID.String(), nodeID.String())
@@ -259,9 +257,11 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote,
 	return nil
 }
 
-// performBulkAcceptance handles acceptance of multiple nodes.
-func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format string) error {
-	if err := svc.AcceptNodeBulk(nodeIDs); err != nil {
+// performBulkAcceptance handles acceptance of multiple nodes. agent, if
+// non-empty, is recorded as the verifier identity on every resulting
+// NodeValidated event, same convention as performSingleAcceptance.
+func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format, agent string) error {
+	if err := svc.AcceptNodeBulkWithVerifier(nodeIDs, agent, ""); err != nil {
 		if strings.Contains(err.Error(), "claim-test") {
 			return fmt.Errorf("a crux node has no passing claim-test: %w\nRun 'af claim-test <node-id> --script <path>' first", err)
 		}
@@ -372,9 +372,9 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 	warnTaintedDeps(cmd, svc, nodeIDs)
 
 	if len(nodeIDs) == 1 {
-		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format)
+		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format, agent)
 	}
-	return performBulkAcceptance(cmd, svc, nodeIDs, format)
+	return performBulkAcceptance(cmd, svc, nodeIDs, format, agent)
 }
 
 // handleBlockingChallengesError displays blocking challenges that prevent acceptance.

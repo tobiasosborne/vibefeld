@@ -1629,6 +1629,55 @@ func TestAcceptCommand_NoConfirmNeededIfChallengeRaised(t *testing.T) {
 	}
 }
 
+// TestAcceptCommand_AgentFlagRecordsVerifiedBy covers rk-9pk / PRD C3 V1:
+// `af accept --agent <id>` (a flag that already existed for the challenge
+// check above) must now also record that agent as the node's ValidatedBy
+// (driver-supplied verifier identity), not just use it for the
+// verifyAgentChallenges check.
+func TestAcceptCommand_AgentFlagRecordsVerifiedBy(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir, "--agent", "verifier-1", "--confirm")
+	if err != nil {
+		t.Fatalf("accept failed: %v\nOutput: %s", err, output)
+	}
+
+	svc, _ := service.NewProofService(tmpDir)
+	st, _ := svc.LoadState()
+	n := st.GetNode(nodeID)
+	if n == nil {
+		t.Fatal("node not found after accept")
+	}
+	if n.ValidatedBy != "verifier-1" {
+		t.Errorf("node ValidatedBy = %q, want %q", n.ValidatedBy, "verifier-1")
+	}
+}
+
+// TestAcceptCommand_NoAgentFlagLeavesValidatedByEmpty proves omitting
+// --agent still works exactly as before this change: ValidatedBy stays
+// empty, matching every historical `af accept` invocation with no agent.
+func TestAcceptCommand_NoAgentFlagLeavesValidatedByEmpty(t *testing.T) {
+	tmpDir, cleanup := setupAcceptTestWithNode(t)
+	defer cleanup()
+
+	nodeID := mustParseNodeID(t, "1")
+
+	output, err := executeAcceptCommand(t, "1", "-d", tmpDir)
+	if err != nil {
+		t.Fatalf("accept failed: %v\nOutput: %s", err, output)
+	}
+
+	svc, _ := service.NewProofService(tmpDir)
+	st, _ := svc.LoadState()
+	n := st.GetNode(nodeID)
+	if n.ValidatedBy != "" {
+		t.Errorf("node ValidatedBy = %q, want empty string when --agent omitted", n.ValidatedBy)
+	}
+}
+
 // TestAcceptCommand_AgentFlagInHelp tests that --agent flag appears in help output.
 func TestAcceptCommand_AgentFlagInHelp(t *testing.T) {
 	cmd := newAcceptCmd()

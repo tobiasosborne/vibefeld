@@ -2643,3 +2643,178 @@ func TestRequestRefinement_InvalidState(t *testing.T) {
 		t.Error("RequestRefinement() expected error for pending node, got nil")
 	}
 }
+
+// =============================================================================
+// Author / verifier identity tests (rk-9pk, PRD C3 item V1)
+//
+// These duplicate the intent of the (currently `-tags integration`-gated,
+// pre-existing-broken) tests of the same name in proof_test.go, so the
+// guarantee is exercised under the actual acceptance bar: `go test ./...`.
+// =============================================================================
+
+// TestProofService_Init_RecordsAuthorOnRootNode covers rk-9pk / PRD C3 V1:
+// the root node's Author is recorded from Init's author parameter.
+func TestProofService_Init_RecordsAuthorOnRootNode(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	root := st.GetNode(parseNodeID(t, "1"))
+	if root == nil {
+		t.Fatal("root node not found")
+	}
+	if root.Author != "test-author" {
+		t.Errorf("root node Author = %q, want %q", root.Author, "test-author")
+	}
+}
+
+// TestProofService_Refine_RecordsAuthorAsOwner covers rk-9pk / PRD C3 V1: a
+// refined child node's Author is the claiming owner who authored it.
+func TestProofService_Refine_RecordsAuthorAsOwner(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	nodeID := parseNodeID(t, "1")
+	owner := "prover-42"
+	if err := svc.ClaimNode(nodeID, owner, 5*time.Minute); err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	childID := parseNodeID(t, "1.1")
+	if err := svc.RefineNode(nodeID, owner, childID, schema.NodeTypeClaim, "Child statement", schema.InferenceModusPonens); err != nil {
+		t.Fatalf("RefineNode() unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	child := st.GetNode(childID)
+	if child == nil {
+		t.Fatal("Refined child node not found in state")
+	}
+	if child.Author != owner {
+		t.Errorf("child node Author = %q, want %q (the claiming owner)", child.Author, owner)
+	}
+}
+
+// TestProofService_RefineNodeBulk_RecordsAuthorAsOwner covers the bulk
+// refine path's identical Author convention.
+func TestProofService_RefineNodeBulk_RecordsAuthorAsOwner(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	nodeID := parseNodeID(t, "1")
+	owner := "prover-bulk"
+	if err := svc.ClaimNode(nodeID, owner, 5*time.Minute); err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	childIDs, err := svc.RefineNodeBulk(nodeID, owner, []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "child A", Inference: schema.InferenceModusPonens},
+	})
+	if err != nil {
+		t.Fatalf("RefineNodeBulk() unexpected error: %v", err)
+	}
+	if len(childIDs) != 1 {
+		t.Fatalf("expected 1 child id, got %d", len(childIDs))
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	child := st.GetNode(childIDs[0])
+	if child == nil {
+		t.Fatal("bulk-refined child node not found in state")
+	}
+	if child.Author != owner {
+		t.Errorf("child node Author = %q, want %q (the claiming owner)", child.Author, owner)
+	}
+}
+
+// TestProofService_AcceptNodeWithVerifier_RecordsVerifierAndBatchID covers
+// rk-9pk / PRD C3 V1: AcceptNodeWithVerifier is the kernel surface for
+// verifier identity + batch id, the groundwork for rk's batch verification
+// mode (`af verdicts apply`, item V2 — not implemented here).
+func TestProofService_AcceptNodeWithVerifier_RecordsVerifierAndBatchID(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	nodeID := parseNodeID(t, "1")
+	if err := svc.AcceptNodeWithVerifier(nodeID, "", "verifier-7", "batch-42"); err != nil {
+		t.Fatalf("AcceptNodeWithVerifier() unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	n := st.GetNode(nodeID)
+	if n == nil {
+		t.Fatal("Node not found after accept")
+	}
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Errorf("Node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+	if n.ValidatedBy != "verifier-7" {
+		t.Errorf("ValidatedBy = %q, want %q", n.ValidatedBy, "verifier-7")
+	}
+	if n.ValidationBatchID != "batch-42" {
+		t.Errorf("ValidationBatchID = %q, want %q", n.ValidationBatchID, "batch-42")
+	}
+}
+
+// TestProofService_AcceptNode_LeavesVerifierAndBatchIDEmpty proves the
+// plain, pre-existing AcceptNode entrypoint is unaffected: it must still
+// leave ValidatedBy/ValidationBatchID empty, exactly as it did before this
+// field existed.
+func TestProofService_AcceptNode_LeavesVerifierAndBatchIDEmpty(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	nodeID := parseNodeID(t, "1")
+	if err := svc.AcceptNode(nodeID); err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	n := st.GetNode(nodeID)
+	if n.ValidatedBy != "" || n.ValidationBatchID != "" {
+		t.Errorf("plain AcceptNode should leave ValidatedBy/ValidationBatchID empty, got %q/%q", n.ValidatedBy, n.ValidationBatchID)
+	}
+}
+
+// TestProofService_AcceptNodeBulkWithVerifier_RecordsVerifierAndBatchID
+// covers the bulk-accept path's identical verifier+batch convention —
+// relevant because rk's batch composer accepts N nodes per batch, not one.
+func TestProofService_AcceptNodeBulkWithVerifier_RecordsVerifierAndBatchID(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	nodeID := parseNodeID(t, "1")
+	owner := "prover-1"
+	if err := svc.ClaimNode(nodeID, owner, 5*time.Minute); err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+	childID := parseNodeID(t, "1.1")
+	if err := svc.RefineNode(nodeID, owner, childID, schema.NodeTypeClaim, "Child statement", schema.InferenceModusPonens); err != nil {
+		t.Fatalf("RefineNode() unexpected error: %v", err)
+	}
+
+	if err := svc.AcceptNodeBulkWithVerifier([]types.NodeID{childID}, "verifier-batch", "batch-99"); err != nil {
+		t.Fatalf("AcceptNodeBulkWithVerifier() unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	n := st.GetNode(childID)
+	if n.ValidatedBy != "verifier-batch" {
+		t.Errorf("ValidatedBy = %q, want %q", n.ValidatedBy, "verifier-batch")
+	}
+	if n.ValidationBatchID != "batch-99" {
+		t.Errorf("ValidationBatchID = %q, want %q", n.ValidationBatchID, "batch-99")
+	}
+}

@@ -267,7 +267,9 @@ func Init(proofDir, conjecture, author string) error {
 		return err
 	}
 
-	rootNode, err := node.NewNode(rootID, schema.NodeTypeClaim, conjecture, schema.InferenceAssumption)
+	// The root node's Author is the proof's author (recorded at creation),
+	// same driver-supplied-provenance convention as any other node's Author.
+	rootNode, err := node.NewNodeWithOptions(rootID, schema.NodeTypeClaim, conjecture, schema.InferenceAssumption, node.NodeOptions{Author: author})
 	if err != nil {
 		return err
 	}
@@ -725,12 +727,15 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 		}
 	}
 
-	// Create the child node with both dependency types
+	// Create the child node with both dependency types. Author is recorded
+	// as the claiming owner who is authoring this refinement — the same
+	// driver-supplied-provenance convention as Node.Author generally.
 	opts := node.NodeOptions{
 		Dependencies:   spec.Dependencies,
 		ValidationDeps: spec.ValidationDeps,
 		Draft:          spec.Draft,
 		Crux:           spec.Crux,
+		Author:         spec.Owner,
 	}
 	child, err := node.NewNodeWithOptions(spec.ChildID, spec.NodeType, spec.Statement, spec.Inference, opts)
 	if err != nil {
@@ -787,6 +792,33 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
+	return s.AcceptNodeWithVerifier(id, note, "", "")
+}
+
+// AcceptNodeWithVerifier validates a node with an optional acceptance note,
+// verifier identity, and batch id. It is the full-featured form of
+// AcceptNode/AcceptNodeWithNote (both of which call this with empty
+// verifiedBy/batchID) and is the kernel surface rk's C3 batch verification
+// mode (`af verdicts apply`, item V2 — not implemented in this package) is
+// expected to call directly, passing the batch's own id so every node it
+// validates carries the same batchID.
+//
+// verifiedBy and batchID are DRIVER-SUPPLIED PROVENANCE: recorded on the
+// NodeValidated event and on the node's ValidatedBy/ValidationBatchID
+// fields, mechanically checkable (e.g. by comparing against the node's
+// Author for a reviewer≠author check), but never verified against any
+// external credential — the trust anchor remains the driver's process
+// discipline, same as it always has been for ClaimedBy.
+//
+// Returns an error if the node doesn't exist.
+// Returns ErrBlockingChallenges if the node has unresolved critical or major challenges.
+//
+// After validation, automatically recomputes and emits taint state changes
+// for the node and any affected descendants.
+//
+// Returns ErrConcurrentModification if the proof was modified by another process
+// since state was loaded. Callers should retry after reloading state.
+func (s *ProofService) AcceptNodeWithVerifier(id types.NodeID, note, verifiedBy, batchID string) error {
 	// Load current state and capture sequence for CAS
 	st, err := s.LoadState()
 	if err != nil {
@@ -873,7 +905,7 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 		return err
 	}
 
-	event := ledger.NewNodeValidatedWithNote(id, note)
+	event := ledger.NewNodeValidatedFull(id, note, verifiedBy, batchID)
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
 	if err != nil {
 		return wrapSequenceMismatch(err, "AcceptNodeWithNote")
@@ -900,6 +932,16 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
+	return s.AcceptNodeBulkWithVerifier(ids, "", "")
+}
+
+// AcceptNodeBulkWithVerifier is AcceptNodeBulk with verifier identity and an
+// optional batch id recorded on every resulting NodeValidated event. See
+// AcceptNodeWithVerifier for the provenance caveats (driver-supplied,
+// recorded-and-checkable, not adversary-proof) — the same apply here. This
+// is the kernel surface rk's C3 batch verification mode is expected to use
+// when a batch's verdict list accepts more than one item at once.
+func (s *ProofService) AcceptNodeBulkWithVerifier(ids []types.NodeID, verifiedBy, batchID string) error {
 	if len(ids) == 0 {
 		return nil // Nothing to do
 	}
@@ -944,7 +986,7 @@ func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
 	// Create events for all nodes
 	events := make([]ledger.Event, len(ids))
 	for i, id := range ids {
-		events[i] = ledger.NewNodeValidated(id)
+		events[i] = ledger.NewNodeValidatedFull(id, "", verifiedBy, batchID)
 	}
 
 	// Append all events with CAS on first event (see appendBulkIfSequence ATOMICITY NOTE)
@@ -1712,8 +1754,9 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		}
 		childIDs[i] = childID
 
-		// Create the child node
-		childNode, err := node.NewNodeWithOptions(childID, spec.NodeType, spec.Statement, spec.Inference, node.NodeOptions{Draft: spec.Draft, Crux: spec.Crux})
+		// Create the child node. Author is the claiming owner authoring
+		// this batch of refinements (see Refine's identical convention).
+		childNode, err := node.NewNodeWithOptions(childID, spec.NodeType, spec.Statement, spec.Inference, node.NodeOptions{Draft: spec.Draft, Crux: spec.Crux, Author: owner})
 		if err != nil {
 			return nil, fmt.Errorf("child %d: %w", i+1, err)
 		}

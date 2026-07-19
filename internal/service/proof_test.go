@@ -823,6 +823,69 @@ func TestProofService_RefineNode_Success(t *testing.T) {
 	}
 }
 
+// TestProofService_Init_RecordsAuthorOnRootNode covers rk-9pk / PRD C3 V1:
+// the root node's Author is recorded from Init's author parameter, the same
+// driver-supplied-provenance convention as any other node's Author.
+func TestProofService_Init_RecordsAuthorOnRootNode(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+
+	if err := svc.Init("Test conjecture", "author-alice"); err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	root := st.GetNode(mustParseNodeID(t, "1"))
+	if root == nil {
+		t.Fatal("root node not found")
+	}
+	if root.Author != "author-alice" {
+		t.Errorf("root node Author = %q, want %q", root.Author, "author-alice")
+	}
+}
+
+// TestProofService_Refine_RecordsAuthorAsOwner covers rk-9pk / PRD C3 V1:
+// a refined child node's Author is the claiming owner who authored it.
+func TestProofService_Refine_RecordsAuthorAsOwner(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+	if err := svc.Init("Test conjecture", "agent-001"); err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+	owner := "prover-42"
+	if err := svc.ClaimNode(nodeID, owner, 5*time.Minute); err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
+	childID := mustParseNodeID(t, "1.1")
+	if err := svc.RefineNode(nodeID, owner, childID, schema.NodeTypeClaim, "Child statement", schema.InferenceModusPonens); err != nil {
+		t.Fatalf("RefineNode() unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	child := st.GetNode(childID)
+	if child == nil {
+		t.Fatal("Refined child node not found in state")
+	}
+	if child.Author != owner {
+		t.Errorf("child node Author = %q, want %q (the claiming owner)", child.Author, owner)
+	}
+}
+
 // TestProofService_RefineNode_NotOwner verifies error when refining with wrong owner.
 // Note: Uses root node "1" created by Init()
 func TestProofService_RefineNode_NotOwner(t *testing.T) {
@@ -1072,6 +1135,68 @@ func TestProofService_AcceptNode_Success(t *testing.T) {
 
 	if n.EpistemicState != schema.EpistemicValidated {
 		t.Errorf("Node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+}
+
+// TestProofService_AcceptNodeWithVerifier_RecordsVerifierAndBatchID covers
+// rk-9pk / PRD C3 V1: AcceptNodeWithVerifier is the kernel surface for
+// verifier identity + batch id, the groundwork for rk's batch verification
+// mode (`af verdicts apply`, item V2 — not implemented here). It must
+// record both on the resulting node exactly like AcceptNode/
+// AcceptNodeWithNote record epistemic state, and both must be reachable
+// through the same reader used elsewhere (LoadState / GetNode).
+func TestProofService_AcceptNodeWithVerifier_RecordsVerifierAndBatchID(t *testing.T) {
+	proofDir := setupInitializedProof(t)
+	svc, err := NewProofService(proofDir)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+	if err := svc.Init("Test conjecture", "agent-001"); err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+
+	nodeID := mustParseNodeID(t, "1")
+	if err := svc.AcceptNodeWithVerifier(nodeID, "", "verifier-7", "batch-42"); err != nil {
+		t.Fatalf("AcceptNodeWithVerifier() unexpected error: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	n := st.GetNode(nodeID)
+	if n == nil {
+		t.Fatal("Node not found after accept")
+	}
+	if n.EpistemicState != schema.EpistemicValidated {
+		t.Errorf("Node EpistemicState = %q, want %q", n.EpistemicState, schema.EpistemicValidated)
+	}
+	if n.ValidatedBy != "verifier-7" {
+		t.Errorf("ValidatedBy = %q, want %q", n.ValidatedBy, "verifier-7")
+	}
+	if n.ValidationBatchID != "batch-42" {
+		t.Errorf("ValidationBatchID = %q, want %q", n.ValidationBatchID, "batch-42")
+	}
+
+	// AcceptNode (the plain, pre-existing entrypoint) must still leave both empty.
+	proofDir2 := setupInitializedProof(t)
+	svc2, err := NewProofService(proofDir2)
+	if err != nil {
+		t.Fatalf("NewProofService() unexpected error: %v", err)
+	}
+	if err := svc2.Init("Test conjecture 2", "agent-001"); err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+	if err := svc2.AcceptNode(nodeID); err != nil {
+		t.Fatalf("AcceptNode() unexpected error: %v", err)
+	}
+	st2, err := svc2.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() unexpected error: %v", err)
+	}
+	n2 := st2.GetNode(nodeID)
+	if n2.ValidatedBy != "" || n2.ValidationBatchID != "" {
+		t.Errorf("plain AcceptNode should leave ValidatedBy/ValidationBatchID empty, got %q/%q", n2.ValidatedBy, n2.ValidationBatchID)
 	}
 }
 
