@@ -1,3 +1,82 @@
+# Handoff - 2026-07-19 (rk V0/V1: author + verifier identity)
+
+## What Was Accomplished This Session
+
+Subagented from `../rk` (research-workflows IMPLEMENTATION_PLAN.md vibefeld
+table, items V0 and V1) — kernel schema groundwork rk's M3.4 batch
+verification needs. `V2` (`af verdicts apply`) and `V3` (`af unvalidate
+--batch`) are explicitly NOT done here; they consume what this session
+built.
+
+**V0 (struck, documented).** `../firstproof` no longer exists locally, no
+configured git remote references it. Corpus is AISM's 44 workspaces,
+read-only at `../almost-idempotent-stochastic-maps/proofs/`. Recorded in
+`CONTRIBUTING.md`'s new "Historical replay corpus" section.
+
+**V1 (done).** Real schema addition, not an optional-fields patch:
+- `node.Node.Author` (`internal/node/node.go`) — driver-supplied identity
+  recorded at creation. Root node: from `Init`'s `--author`. Refined
+  children: the claiming `Owner` (`Refine`/`RefineNodeBulk`).
+- `ledger.NodeValidated.VerifiedBy` + `.BatchID`, `ledger.ChallengeRaised.BatchID`
+  (`internal/ledger/event.go`) — new `NewNodeValidatedFull` /
+  `NewChallengeRaisedWithBatch` constructors; existing constructors
+  unchanged (empty verifier/batch).
+- `state.apply.go` projects these onto `Node.ValidatedBy` /
+  `Node.ValidationBatchID` (cleared on unvalidate) and
+  `state.Challenge.BatchID`.
+- `service.AcceptNodeWithVerifier` / `AcceptNodeBulkWithVerifier` — the
+  kernel surface V2 should call directly with a batch's id.
+  `AcceptNode`/`AcceptNodeWithNote`/`AcceptNodeBulk` now thin wrappers.
+- `cmd/af/accept.go`'s pre-existing `--agent` flag now also records
+  `VerifiedBy` (previously used only for the challenge check).
+- `af export --graph json`: `author`/`validated_by`/`validation_batch_id`
+  added to `GraphNode`, additive under `docs/export-graph-v1.md`'s existing
+  future-additive rule — `schema_version` unchanged at `"1"`.
+
+All three new fields are explicitly documented as DRIVER-SUPPLIED
+PROVENANCE (recorded, mechanically checkable) — NOT adversary-proof
+enforcement, everywhere they're touched.
+
+**Replay-regression evidence:** built `af` before and after, ran
+`af replay --dir <ws> --verify --format json` and
+`af export --graph json --dir <ws>` against all 44 AISM workspaces both
+times, `diff -rq` the two output trees — **zero bytes differ**. Content
+hash exclusion of the new fields (`ComputeContentHash` untouched) plus
+`omitempty` on every new field is why: old ledgers replay to identical
+node/challenge state and re-export byte-identically.
+
+**Tests:** red-green with mutation-proving (perturb → RED confirmed →
+restore → GREEN) on: `TestNode_ContentHash_ExcludesAuthorAndVerifierFields`,
+`TestApplyNodeValidated_RecordsVerifierAndBatchID`,
+`TestNodeValidated_WireFieldNames`,
+`TestProofService_Refine_RecordsAuthorAsOwner`. Full list of new tests in
+the three commits below. `go build ./... && go vet ./... && go test ./...`
+all green.
+
+**Known issue not touched (per instruction):** `-tags integration` suite
+remains broken (`vibefeld-hitt`). Several files I added tests to have
+untagged counterparts already in that broken suite
+(`internal/ledger/event_test.go`, `internal/service/proof_test.go`,
+`cmd/af/accept_test.go`) — I added matching assertions there too (dead
+under the current tag, live if it's ever fixed) AND separately in files
+that already run under the default `go test ./...` bar
+(`internal/ledger/identity_events_test.go` — new,
+`internal/service/service_test.go`, `internal/export/graph_test.go`).
+
+**Commits:** `9581b68` (node/ledger/state schema),
+`41a2379` (service + accept.go wiring), `c781fcd` (export additive
+fields), `2a21c6e` (V0 docs).
+
+**Next steps for rk / a future session:** V2 (`af verdicts apply`) should
+call `AcceptNodeWithVerifier`/`AcceptNodeBulkWithVerifier` with the batch's
+own id for every accept, and `NewChallengeRaisedWithBatch` for every
+challenge in a mixed verdict list, so a batch's entire verdict set shares
+one `BatchID` regardless of per-item outcome. V3 (`af unvalidate --batch
+<id>`) can find affected nodes via `Node.ValidationBatchID` in current
+state, no ledger rescan needed.
+
+---
+
 # Handoff - 2026-07-02 (Session 237)
 
 ## What Was Accomplished This Session
