@@ -1,3 +1,128 @@
+# Handoff - 2026-07-19 (rk V2/V3: af verdicts apply + af unvalidate --batch)
+
+## What Was Accomplished This Session
+
+Subagented from `../rk` (research-workflows IMPLEMENTATION_PLAN.md vibefeld
+table, items V2 and V3, queued as `vibefeld-lzop`/`vibefeld-h4ad`) — the two
+items the previous V0/V1 session (below) explicitly left for a future
+session. Both closed.
+
+**V2 (`af verdicts apply <file>`).** New pure schema package
+`internal/verdicts` (File/Item types, `ParseFile`/`Validate`): schema_version
++ batch_id + verified_by + an ordered item list, each item
+`accept|challenge(target,severity,reason)` with a MANDATORY non-empty
+`reason` on every item regardless of verdict — the file-schema enforcement
+of "no blanket accepts." Versioned independently of rk's own
+(concurrently-drafted) `schemas/verdict.v1.json`; aligned in spirit, not
+wire-identical — see `docs/verdicts-apply.md`'s seam note.
+
+Application lives in `internal/service/verdicts_apply.go`
+(`ProofService.ApplyVerdicts`): applies items in **file order**, never
+reordering — that order is what makes "children before parent" accepts a
+real constraint rather than an assumption. Every item becomes a normal
+per-node event (`AcceptNodeWithVerifier` / the new CAS-protected
+`RaiseChallengeWithBatch`, both carrying `f.VerifiedBy`/`f.BatchID`) — never
+a wholesale subtree accept. Per-item outcome is exactly one of `applied` /
+`blocked-by:<reason>` / `rejected:<reason>`; the batch applies what it can
+and only hard-aborts on a genuine concurrent-modification race (remaining
+items recorded `blocked-by:batch-aborted`, never silently dropped — every
+item in the file always gets exactly one report entry).
+**Reviewer≠author**: an accept item whose `verified_by` equals the target
+node's recorded `Author` is rejected per-item
+(`rejected:reviewer-equals-author`) before the kernel path even runs — PRD
+C3 scopes this to accepts only, not challenges. Same provenance caveat as
+V1: recorded-and-checkable, not adversary-proof; an empty `Author` (legacy
+node) can never falsely trigger it.
+
+Aggregate outcome selects new exit codes: 0 (all-applied), 5
+(`VERDICTS_PARTIALLY_APPLIED`), 6 (`VERDICTS_NONE_APPLIED`); the file itself
+being invalid or unreadable is 3 (`VERDICTS_FILE_INVALID`), joining the
+existing logic-error tier — nothing is attempted from a file that fails
+`ParseFile`.
+
+**V3 (`af unvalidate --batch <id>`).** Added `--batch` to the existing
+`af unvalidate` command (mutually exclusive with the node-id positional
+arg). `ProofService.UnvalidateBatch` finds affected nodes via a **state
+scan** (`Node.ValidationBatchID`, set by V1) — not a ledger rescan — and
+revokes each through the existing `UnvalidateNode` path (normal, attributed
+`NodeUnvalidated` events, `ValidatedBy`/`ValidationBatchID` cleared exactly
+as the single-node form already did). A batch id matching no
+currently-validated node is a clean no-op (`ErrUnvalidateBatchNotFound`,
+exit 7), not a crash or silent success.
+
+**Real bug found and fixed via red-green** (not a pre-existing issue, one I
+introduced and caught before it landed): `ErrClaimTestRequired` and
+`ErrBlockingChallenges` both carry the same underlying `NODE_BLOCKED`
+`aferrors` code, and `AFError.Is` compares codes only — so
+`errors.Is(err, ErrBlockingChallenges)` matches a claim-test error too.
+Classification now checks the claim-test message substring first (same
+technique `cmd/af/accept.go` already uses), `errors.Is(ErrBlockingChallenges)`
+only as the fallback once claim-test is ruled out.
+
+**Tests, all red-green, several mutation-proven** (perturb → RED confirmed
+→ restore → GREEN — done live for the reviewer≠author check and the
+mandatory-justification parse rule): order-dependence (parent-before-child
+blocks; child-before-parent both apply), mid-batch challenge blocking a
+later accept (both the collateral children-not-validated path and a direct
+pre-existing blocking-challenge), reviewer==author rejection (and its
+negative: a genuinely different reviewer succeeds), node-not-found,
+aggregate all/partial/none-applied selection, file-invalid parsing
+(missing/wrong schema_version, missing batch_id/verified_by, empty items,
+blanket-accept and empty-challenge-reason rejection, invalid
+verdict/target/severity, duplicate node in one file, unknown fields,
+trailing content), and the V3 round-trip (apply a batch, unvalidate it,
+derived state returns exactly to pre-batch — including
+`ValidatedBy`/`ValidationBatchID` cleared; a second unvalidate of the same
+id is the clean no-op). CLI-level tests cover flag wiring, exit codes, and
+JSON report shape for both commands. `go build ./... && go vet ./... &&
+go test ./...` all green (one flaky, pre-existing, unrelated
+`internal/fs` concurrency test observed and reproduced-clean on rerun — not
+touched by this session).
+
+**Replay-regression evidence**, same method as the V1 session: built `af`
+from HEAD before this session's commits and from the finished tree, ran
+`af replay --dir <ws> --verify --format json` and
+`af export --graph json --dir <ws>` against all 44 AISM workspaces both
+times, `diff -rq` the two output trees — **zero bytes differ** (no new
+ledger event schema was added; V2/V3 only reuse V1's existing
+`VerifiedBy`/`BatchID` fields). Also live-fired end-to-end against a real
+AISM-derived workspace copy (never touching the read-only original): built
+a real verdict file, ran `af verdicts apply` against it, confirmed
+`validated_by`/`validation_batch_id` in `af export --graph json`, ran
+`af unvalidate --batch` to revoke it, confirmed the node returned to
+pending with both fields cleared, and confirmed a second `--batch` call on
+the same id is a clean exit-7 no-op.
+
+**Docs**: `docs/verdicts-apply.md` (new) is the file schema + partial-
+failure-semantics + exit-code reference rk's M3.4 driver needs, plus a
+driver checklist. `docs/cli-reference.md` gains `verdicts apply` and
+(previously wholly undocumented) `unvalidate` sections including `--batch`,
+plus the exit-codes table extended to 5-7. `docs/contributing.md`'s
+error-code table likewise extended.
+
+**Known pre-existing gap, not touched**: `af get <node>` (single-node
+display) does not surface `validated_by`/`validation_batch_id` — only
+`af export --graph json` does (a V1 addition). Confirmed during live-fire
+testing; filed as a follow-up, not blocking, since the graph export is the
+authoritative machine-readable surface these fields were built for.
+
+**Commits**: `7bdaf85` (exit codes 5-7), `ee5e6e8` (`internal/verdicts`
+schema), `598d331` (`ApplyVerdicts`/`UnvalidateBatch` kernel surface),
+`eb20a75` (CLI wiring), `658eb99` (docs).
+
+**Next steps for rk**: nothing outstanding on the af side for M3.4's kernel
+half. rk's own driver (C9, TS) needs to: compose batches respecting the cap
+(~10) and independence/critical-path-exclusion guardrails (af does not
+enforce these — driver responsibility per the plan); order `items` so every
+accept's dependencies already appear earlier in the file or in
+already-cleared state; query authorship before composing a batch to avoid
+burning a slot on a guaranteed `rejected:reviewer-equals-author`; and use
+`af verdicts apply --format json` / `af unvalidate --batch --format json`
+for machine consumption rather than parsing text. Full checklist in
+`docs/verdicts-apply.md`'s final section.
+
+---
+
 # Handoff - 2026-07-19 (rk V0/V1: author + verifier identity)
 
 ## What Was Accomplished This Session
