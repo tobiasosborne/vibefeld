@@ -12,40 +12,40 @@ import (
 type EventType string
 
 const (
-	EventProofInitialized     EventType = "proof_initialized"
-	EventNodeCreated          EventType = "node_created"
-	EventNodesClaimed         EventType = "nodes_claimed"
-	EventNodesReleased        EventType = "nodes_released"
-	EventChallengeRaised      EventType = "challenge_raised"
-	EventChallengeResolved    EventType = "challenge_resolved"
-	EventChallengeWithdrawn   EventType = "challenge_withdrawn"
-	EventChallengeSuperseded  EventType = "challenge_superseded"
-	EventNodeValidated        EventType = "node_validated"
-	EventNodeAdmitted         EventType = "node_admitted"
-	EventNodeRefuted          EventType = "node_refuted"
-	EventNodeArchived         EventType = "node_archived"
-	EventNodeAmended          EventType = "node_amended"
-	EventTaintRecomputed      EventType = "taint_recomputed"
-	EventDefAdded             EventType = "def_added"
-	EventLemmaExtracted       EventType = "lemma_extracted"
-	EventLockReaped           EventType = "lock_reaped"
-	EventScopeOpened          EventType = "scope_opened"
-	EventScopeClosed          EventType = "scope_closed"
-	EventClaimRefreshed       EventType = "claim_refreshed"
-	EventRefinementRequested  EventType = "refinement_requested"
-	EventNodeSubmitted        EventType = "node_submitted"
-	EventNodeUnvalidated      EventType = "node_unvalidated"
-	EventNodeUnadmitted       EventType = "node_unadmitted"
-	EventApproachTried        EventType = "approach_tried"
-	EventEvidenceAttached     EventType = "evidence_attached"
-	EventOutlineSet           EventType = "outline_set"
-	EventOutlineStageLinked   EventType = "outline_stage_linked"
-	EventHintAdded            EventType = "hint_added"
-	EventNodeVetoed           EventType = "node_vetoed"
-	EventStrategyProposed     EventType = "strategy_proposed"
-	EventPatternAdded         EventType = "pattern_added"
-	EventClaimTested          EventType = "claim_tested"
-	EventDefChecked           EventType = "def_checked"
+	EventProofInitialized    EventType = "proof_initialized"
+	EventNodeCreated         EventType = "node_created"
+	EventNodesClaimed        EventType = "nodes_claimed"
+	EventNodesReleased       EventType = "nodes_released"
+	EventChallengeRaised     EventType = "challenge_raised"
+	EventChallengeResolved   EventType = "challenge_resolved"
+	EventChallengeWithdrawn  EventType = "challenge_withdrawn"
+	EventChallengeSuperseded EventType = "challenge_superseded"
+	EventNodeValidated       EventType = "node_validated"
+	EventNodeAdmitted        EventType = "node_admitted"
+	EventNodeRefuted         EventType = "node_refuted"
+	EventNodeArchived        EventType = "node_archived"
+	EventNodeAmended         EventType = "node_amended"
+	EventTaintRecomputed     EventType = "taint_recomputed"
+	EventDefAdded            EventType = "def_added"
+	EventLemmaExtracted      EventType = "lemma_extracted"
+	EventLockReaped          EventType = "lock_reaped"
+	EventScopeOpened         EventType = "scope_opened"
+	EventScopeClosed         EventType = "scope_closed"
+	EventClaimRefreshed      EventType = "claim_refreshed"
+	EventRefinementRequested EventType = "refinement_requested"
+	EventNodeSubmitted       EventType = "node_submitted"
+	EventNodeUnvalidated     EventType = "node_unvalidated"
+	EventNodeUnadmitted      EventType = "node_unadmitted"
+	EventApproachTried       EventType = "approach_tried"
+	EventEvidenceAttached    EventType = "evidence_attached"
+	EventOutlineSet          EventType = "outline_set"
+	EventOutlineStageLinked  EventType = "outline_stage_linked"
+	EventHintAdded           EventType = "hint_added"
+	EventNodeVetoed          EventType = "node_vetoed"
+	EventStrategyProposed    EventType = "strategy_proposed"
+	EventPatternAdded        EventType = "pattern_added"
+	EventClaimTested         EventType = "claim_tested"
+	EventDefChecked          EventType = "def_checked"
 )
 
 // Event is the base interface for all ledger events.
@@ -101,6 +101,14 @@ type NodesReleased struct {
 }
 
 // ChallengeRaised is emitted when a verifier raises a challenge against a node.
+//
+// BatchID mirrors NodeValidated.BatchID: it marks this challenge as raised
+// as part of a batch verification run (`af verdicts apply`, rk item V2, not
+// yet implemented here), so a batch's mixed accept/challenge verdict list
+// can be traced back to one batch id regardless of which event kind each
+// item produced. RaisedBy (verifier identity) already existed before this
+// change; both fields are the same driver-supplied-provenance kind as
+// NodeValidated's — recorded and checkable, not adversary-proof.
 type ChallengeRaised struct {
 	BaseEvent
 	ChallengeID string       `json:"challenge_id"`
@@ -110,6 +118,7 @@ type ChallengeRaised struct {
 	Severity    string       `json:"severity"`           // "critical", "major", "minor", or "note"
 	RaisedBy    string       `json:"raised_by"`          // Agent ID of the verifier who raised this challenge
 	Category    string       `json:"category,omitempty"` // Optional typed classification (gap, missing, dependency, ...)
+	BatchID     string       `json:"batch_id,omitempty"` // Batch identifier, if raised as part of a batch (af verdicts apply)
 }
 
 // ChallengeResolved is emitted when a challenge is resolved (answered).
@@ -133,10 +142,22 @@ type ChallengeSuperseded struct {
 }
 
 // NodeValidated is emitted when a verifier validates a node as correct.
+//
+// VerifiedBy and BatchID are rk PRD C3's kernel-side groundwork for batched
+// verification: VerifiedBy is the verifier's identity, and BatchID (if
+// non-empty) marks this validation as applied as part of a batch by `af
+// verdicts apply` (rk item V2, not yet implemented here). Both are
+// DRIVER-SUPPLIED PROVENANCE — recorded and mechanically checkable (e.g. a
+// reviewer≠author check against node.Author), never adversary-proof
+// enforcement. Both are optional and omitted for events that don't supply
+// them, so old ledgers (and any code that doesn't care about batching)
+// replay identically.
 type NodeValidated struct {
 	BaseEvent
-	NodeID types.NodeID `json:"node_id"`
-	Note   string       `json:"note,omitempty"` // Optional acceptance note (partial acceptance)
+	NodeID     types.NodeID `json:"node_id"`
+	Note       string       `json:"note,omitempty"`        // Optional acceptance note (partial acceptance)
+	VerifiedBy string       `json:"verified_by,omitempty"` // Agent ID of the verifier who validated this node
+	BatchID    string       `json:"batch_id,omitempty"`    // Batch identifier, if validated as part of a batch (af verdicts apply)
 }
 
 // NodeAdmitted is emitted when a verifier admits a node without full verification.
@@ -160,8 +181,8 @@ type NodeArchived struct {
 // TaintRecomputed is emitted when a node's taint state is recalculated.
 type TaintRecomputed struct {
 	BaseEvent
-	NodeID   types.NodeID     `json:"node_id"`
-	NewTaint node.TaintState  `json:"new_taint"`
+	NodeID   types.NodeID    `json:"node_id"`
+	NewTaint node.TaintState `json:"new_taint"`
 }
 
 // Definition represents a definition added to the proof.
@@ -268,7 +289,18 @@ func NewChallengeRaisedWithSeverity(challengeID string, nodeID types.NodeID, tar
 
 // NewChallengeRaisedFull creates a ChallengeRaised event with severity, raisedBy
 // agent ID, and an optional typed category. An empty category means uncategorised.
+// BatchID is empty (not part of a batch); use NewChallengeRaisedWithBatch for
+// challenges raised as part of a batch verification run.
 func NewChallengeRaisedFull(challengeID string, nodeID types.NodeID, target, reason, severity, raisedBy, category string) ChallengeRaised {
+	return NewChallengeRaisedWithBatch(challengeID, nodeID, target, reason, severity, raisedBy, category, "")
+}
+
+// NewChallengeRaisedWithBatch creates a ChallengeRaised event with severity,
+// raisedBy agent ID, optional typed category, and an optional batch id. The
+// batch id marks this challenge as raised as part of a batch verification
+// run (`af verdicts apply`, rk item V2); pass "" for singly-raised
+// challenges, which is exactly what NewChallengeRaisedFull does.
+func NewChallengeRaisedWithBatch(challengeID string, nodeID types.NodeID, target, reason, severity, raisedBy, category, batchID string) ChallengeRaised {
 	return ChallengeRaised{
 		BaseEvent: BaseEvent{
 			EventType: EventChallengeRaised,
@@ -281,6 +313,7 @@ func NewChallengeRaisedFull(challengeID string, nodeID types.NodeID, target, rea
 		Severity:    severity,
 		RaisedBy:    raisedBy,
 		Category:    category,
+		BatchID:     batchID,
 	}
 }
 
@@ -326,15 +359,28 @@ func NewNodeValidated(nodeID types.NodeID) NodeValidated {
 
 // NewNodeValidatedWithNote creates a NodeValidated event with an optional acceptance note.
 // The note is used for partial acceptance where the verifier accepts the node
-// but wants to record a minor issue or clarification.
+// but wants to record a minor issue or clarification. VerifiedBy and BatchID
+// are empty; use NewNodeValidatedFull to record verifier identity and/or a
+// batch id.
 func NewNodeValidatedWithNote(nodeID types.NodeID, note string) NodeValidated {
+	return NewNodeValidatedFull(nodeID, note, "", "")
+}
+
+// NewNodeValidatedFull creates a NodeValidated event with an optional
+// acceptance note, verifier identity, and batch id. verifiedBy and batchID
+// are DRIVER-SUPPLIED PROVENANCE (see NodeValidated doc comment) — pass ""
+// for either when not applicable (e.g. a manual, non-batched `af accept`
+// with no --agent given).
+func NewNodeValidatedFull(nodeID types.NodeID, note, verifiedBy, batchID string) NodeValidated {
 	return NodeValidated{
 		BaseEvent: BaseEvent{
 			EventType: EventNodeValidated,
 			EventTime: types.Now(),
 		},
-		NodeID: nodeID,
-		Note:   note,
+		NodeID:     nodeID,
+		Note:       note,
+		VerifiedBy: verifiedBy,
+		BatchID:    batchID,
 	}
 }
 
@@ -562,10 +608,10 @@ type NodeUnadmitted struct {
 // preventing other agents from re-attempting the same dead end.
 type ApproachTried struct {
 	BaseEvent
-	NodeID      types.NodeID `json:"node_id"`
-	Approach    string       `json:"approach"`
-	Outcome     string       `json:"outcome,omitempty"`
-	TriedBy     string       `json:"tried_by,omitempty"`
+	NodeID   types.NodeID `json:"node_id"`
+	Approach string       `json:"approach"`
+	Outcome  string       `json:"outcome,omitempty"`
+	TriedBy  string       `json:"tried_by,omitempty"`
 }
 
 // NewApproachTried creates an ApproachTried event.
@@ -659,9 +705,9 @@ func NewOutlineStageLinked(label string, nodeID types.NodeID) OutlineStageLinked
 // HintAdded is emitted when a domain expert adds a directional hint to a node.
 type HintAdded struct {
 	BaseEvent
-	NodeID  types.NodeID `json:"node_id"`
-	Text    string       `json:"text"`
-	HintBy  string       `json:"hint_by,omitempty"`
+	NodeID types.NodeID `json:"node_id"`
+	Text   string       `json:"text"`
+	HintBy string       `json:"hint_by,omitempty"`
 }
 
 // NewHintAdded creates a HintAdded event.
@@ -785,7 +831,7 @@ func NewPatternAdded(name, description, indicators, remediation, addedBy string)
 type ClaimTested struct {
 	BaseEvent
 	NodeID     types.NodeID `json:"node_id"`
-	Engine     string       `json:"engine"`               // "script", "sympy"
+	Engine     string       `json:"engine"` // "script", "sympy"
 	ScriptPath string       `json:"script_path,omitempty"`
 	Expression string       `json:"expression,omitempty"`
 	Passed     bool         `json:"passed"`

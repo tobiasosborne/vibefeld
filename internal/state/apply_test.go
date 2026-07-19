@@ -270,6 +270,48 @@ func TestApplyNodeValidated(t *testing.T) {
 	}
 }
 
+// TestApplyNodeValidated_RecordsVerifierAndBatchID covers rk-9pk / PRD C3
+// V1: applying a NodeValidated event with VerifiedBy/BatchID must project
+// them onto the node's ValidatedBy/ValidationBatchID fields, and a
+// subsequent NodeUnvalidated must clear them (mirroring how NodesReleased
+// clears ClaimedBy).
+func TestApplyNodeValidated_RecordsVerifierAndBatchID(t *testing.T) {
+	s := NewState()
+
+	nodeID := mustParseNodeID(t, "1")
+	n, err := node.NewNode(nodeID, schema.NodeTypeClaim, "Test claim", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatalf("Failed to create test node: %v", err)
+	}
+	s.AddNode(n)
+
+	event := ledger.NewNodeValidatedFull(nodeID, "", "verifier-9", "batch-3")
+	if err := Apply(s, event); err != nil {
+		t.Fatalf("Apply NodeValidated failed: %v", err)
+	}
+
+	got := s.GetNode(nodeID)
+	if got.ValidatedBy != "verifier-9" {
+		t.Errorf("ValidatedBy: got %q, want %q", got.ValidatedBy, "verifier-9")
+	}
+	if got.ValidationBatchID != "batch-3" {
+		t.Errorf("ValidationBatchID: got %q, want %q", got.ValidationBatchID, "batch-3")
+	}
+
+	// Unvalidate must clear both.
+	unvalidate := ledger.NewNodeUnvalidated(nodeID, "needs re-review", "verifier-9")
+	if err := Apply(s, unvalidate); err != nil {
+		t.Fatalf("Apply NodeUnvalidated failed: %v", err)
+	}
+	got = s.GetNode(nodeID)
+	if got.ValidatedBy != "" {
+		t.Errorf("ValidatedBy after unvalidate: got %q, want empty string", got.ValidatedBy)
+	}
+	if got.ValidationBatchID != "" {
+		t.Errorf("ValidationBatchID after unvalidate: got %q, want empty string", got.ValidationBatchID)
+	}
+}
+
 // TestApplyNodeAdmitted verifies that NodeAdmitted event updates epistemic state.
 func TestApplyNodeAdmitted(t *testing.T) {
 	s := NewState()
@@ -589,6 +631,26 @@ func TestApplyChallengeRaised(t *testing.T) {
 	}
 	if c.Status != "open" {
 		t.Errorf("Challenge Status: got %q, want %q", c.Status, "open")
+	}
+}
+
+// TestApplyChallengeRaised_RecordsBatchID covers the symmetric batch-id
+// addition on ChallengeRaised (rk-9pk / PRD C3 V1).
+func TestApplyChallengeRaised_RecordsBatchID(t *testing.T) {
+	s := NewState()
+	nodeID := mustParseNodeID(t, "1")
+
+	event := ledger.NewChallengeRaisedWithBatch("chal-batch", nodeID, "statement", "reason", "major", "verifier-1", "", "batch-5")
+	if err := Apply(s, event); err != nil {
+		t.Fatalf("Apply ChallengeRaised failed: %v", err)
+	}
+
+	c := s.GetChallenge("chal-batch")
+	if c == nil {
+		t.Fatal("Challenge was not added to state")
+	}
+	if c.BatchID != "batch-5" {
+		t.Errorf("Challenge BatchID: got %q, want %q", c.BatchID, "batch-5")
 	}
 }
 

@@ -78,6 +78,33 @@ type Node struct {
 	// Crux marks this node as critical path — it cannot be validated
 	// without a passing claim-test.
 	Crux bool `json:"crux,omitempty"`
+
+	// Author is the identity of the agent that authored this node's content,
+	// recorded at creation time (or, for the root node, the proof's --author).
+	// This is DRIVER-SUPPLIED PROVENANCE, not adversary-proof enforcement: af
+	// records whatever identity string the caller passes and never verifies
+	// it against any external credential. It exists so that reviewer≠author
+	// checks (rk PRD C3, `af verdicts apply`) have something recorded and
+	// mechanically checkable to compare against — the actual trust anchor
+	// remains the driver's process discipline, same as ClaimedBy always was.
+	// Empty for nodes created before this field existed, or created without
+	// an author supplied; old ledgers replay identically (this is read as a
+	// zero value, never required).
+	Author string `json:"author,omitempty"`
+
+	// ValidatedBy is the identity of the verifier who validated this node
+	// (recorded from the NodeValidated event that moved it to the validated
+	// epistemic state). Same provenance caveat as Author: driver-supplied,
+	// recorded-and-checkable, not adversary-proof. Cleared if the node is
+	// later unvalidated. Empty for nodes validated before this field existed.
+	ValidatedBy string `json:"validated_by,omitempty"`
+
+	// ValidationBatchID is the batch identifier recorded on the NodeValidated
+	// event that validated this node, if the validation was applied as part
+	// of a batch (rk PRD C3's batched verification mode, `af verdicts
+	// apply`). Empty for singly-validated nodes and for nodes validated
+	// before this field existed. Cleared if the node is later unvalidated.
+	ValidationBatchID string `json:"validation_batch_id,omitempty"`
 }
 
 // NewNode creates a new Node with the given parameters.
@@ -101,6 +128,11 @@ type NodeOptions struct {
 	Scope          []string
 	Draft          bool // If true, node starts in draft state instead of pending
 	Crux           bool // If true, node requires passing claim-test before acceptance
+
+	// Author records the identity of the agent authoring this node's
+	// content, if the caller supplies one. Driver-supplied provenance, not
+	// adversary-proof enforcement; see Node.Author.
+	Author string
 }
 
 // NewNodeWithOptions creates a new Node with the given parameters and options.
@@ -143,6 +175,7 @@ func NewNodeWithOptions(
 		TaintState:     TaintUnresolved,
 		Created:        types.Now(),
 		Scope:          opts.Scope,
+		Author:         opts.Author,
 	}
 
 	if opts.Draft {
@@ -162,6 +195,15 @@ func NewNodeWithOptions(
 // The hash is computed from: type, statement, latex, inference, context, dependencies.
 // Context and dependencies are sorted for deterministic ordering.
 // Returns an empty string if the node is nil.
+//
+// Deliberately excluded: WorkflowState, EpistemicState, TaintState,
+// ClaimedBy/ClaimedAt, Crux, Scope, and (as of the author/verifier-identity
+// schema addition) Author, ValidatedBy, ValidationBatchID. These are
+// workflow/provenance metadata, not mathematical content — the same
+// exclusion rationale that already applied to ClaimedBy. Excluding them
+// keeps ComputeContentHash, and therefore VerifyContentHash and `af replay
+// --verify`, byte-identical on the historical ledger corpus regardless of
+// whether these new fields are populated.
 func (n *Node) ComputeContentHash() string {
 	if n == nil {
 		return ""

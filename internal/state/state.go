@@ -32,6 +32,7 @@ type Challenge struct {
 	Created    types.Timestamp // When the challenge was raised
 	Resolution string          // Resolution text (populated when status is "resolved")
 	RaisedBy   string          // Agent ID who raised the challenge
+	BatchID    string          // Batch identifier, if raised as part of a batch (af verdicts apply); "" otherwise
 }
 
 // Amendment represents a single amendment to a node's statement.

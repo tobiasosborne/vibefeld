@@ -186,6 +186,8 @@ func applyNodeValidated(s *State, e ledger.NodeValidated) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicValidated
+	n.ValidatedBy = e.VerifiedBy
+	n.ValidationBatchID = e.BatchID
 
 	// Auto-trigger taint recomputation after epistemic state change
 	recomputeTaintForNode(s, n)
@@ -323,6 +325,7 @@ func applyChallengeRaised(s *State, e ledger.ChallengeRaised) error {
 		Severity: severity,
 		Category: e.Category,
 		RaisedBy: e.RaisedBy,
+		BatchID:  e.BatchID,
 		Created:  e.EventTime,
 	}
 	s.AddChallenge(c)
@@ -509,6 +512,8 @@ func applyNodeUnvalidated(s *State, e ledger.NodeUnvalidated) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicPending
+	n.ValidatedBy = ""
+	n.ValidationBatchID = ""
 
 	// Auto-trigger taint recomputation after epistemic state change
 	recomputeTaintForNode(s, n)

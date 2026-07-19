@@ -219,6 +219,56 @@ func TestNewNodeWithOptions(t *testing.T) {
 	}
 }
 
+// TestNewNodeWithOptions_RecordsAuthor covers rk-9pk / PRD C3 V1:
+// author identity recorded at node creation, driver-supplied provenance.
+func TestNewNodeWithOptions_RecordsAuthor(t *testing.T) {
+	id, _ := types.Parse("1.2")
+
+	n, err := node.NewNodeWithOptions(id, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens, node.NodeOptions{Author: "prover-1"})
+	if err != nil {
+		t.Fatalf("NewNodeWithOptions() unexpected error: %v", err)
+	}
+	if n.Author != "prover-1" {
+		t.Errorf("Author = %q, want %q", n.Author, "prover-1")
+	}
+
+	// No Author supplied -> empty, not an error. Nodes created without an
+	// author (e.g. template-scaffolded nodes) are legitimate.
+	n2, err := node.NewNode(id, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatalf("NewNode() unexpected error: %v", err)
+	}
+	if n2.Author != "" {
+		t.Errorf("Author = %q, want empty string when not supplied", n2.Author)
+	}
+}
+
+// TestNode_ContentHash_ExcludesAuthorAndVerifierFields is the mutation-
+// proving guard for the backward-compat requirement: Author, ValidatedBy,
+// and ValidationBatchID must never affect ComputeContentHash, or `af replay
+// --verify` would start failing on the historical ledger corpus the moment
+// any node picked up one of these new fields.
+func TestNode_ContentHash_ExcludesAuthorAndVerifierFields(t *testing.T) {
+	id, _ := types.Parse("1.2")
+
+	plain, err := node.NewNodeWithOptions(id, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens, node.NodeOptions{})
+	if err != nil {
+		t.Fatalf("NewNodeWithOptions() unexpected error: %v", err)
+	}
+
+	withIdentity, err := node.NewNodeWithOptions(id, schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens, node.NodeOptions{Author: "prover-1"})
+	if err != nil {
+		t.Fatalf("NewNodeWithOptions() unexpected error: %v", err)
+	}
+	withIdentity.ValidatedBy = "verifier-1"
+	withIdentity.ValidationBatchID = "batch-1"
+
+	if plain.ComputeContentHash() != withIdentity.ComputeContentHash() {
+		t.Errorf("ComputeContentHash differs when only Author/ValidatedBy/ValidationBatchID differ: %q vs %q",
+			plain.ComputeContentHash(), withIdentity.ComputeContentHash())
+	}
+}
+
 // TestNode_ContentHash_Deterministic tests that content hash is deterministic.
 func TestNode_ContentHash_Deterministic(t *testing.T) {
 	id, _ := types.Parse("1")

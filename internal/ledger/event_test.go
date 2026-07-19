@@ -340,6 +340,63 @@ func TestChallengeRaisedEvent(t *testing.T) {
 			t.Errorf("RaisedBy mismatch: got %q, want %q", decoded.RaisedBy, original.RaisedBy)
 		}
 	})
+
+	// rk-9pk / PRD C3 V1: batch id on ChallengeRaised, symmetric with
+	// NodeValidated's BatchID (both are how `af verdicts apply`, item V2,
+	// will attribute a batch's mixed accept/challenge verdicts).
+	t.Run("NewChallengeRaisedWithBatch records batch id", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.5")
+		event := NewChallengeRaisedWithBatch("chal-batch-1", nodeID, "statement", "reason", "major", "verifier-9", "gap", "batch-7")
+
+		if event.BatchID != "batch-7" {
+			t.Errorf("BatchID = %q, want %q", event.BatchID, "batch-7")
+		}
+		if event.RaisedBy != "verifier-9" {
+			t.Errorf("RaisedBy = %q, want %q", event.RaisedBy, "verifier-9")
+		}
+	})
+
+	t.Run("NewChallengeRaisedFull leaves batch id empty", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.6")
+		event := NewChallengeRaisedFull("chal-nobatch", nodeID, "statement", "reason", "major", "verifier-1", "")
+
+		if event.BatchID != "" {
+			t.Errorf("BatchID = %q, want empty string for a non-batch challenge", event.BatchID)
+		}
+	})
+
+	t.Run("JSON roundtrip with batch id", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.7")
+		original := NewChallengeRaisedWithBatch("chal-batch-2", nodeID, "target", "reason", "critical", "verifier-2", "", "batch-3")
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		var decoded ChallengeRaised
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if decoded.BatchID != original.BatchID {
+			t.Errorf("BatchID mismatch: got %q, want %q", decoded.BatchID, original.BatchID)
+		}
+	})
+
+	// Backward compatibility: an old-shape ChallengeRaised event (no
+	// batch_id key) must decode with BatchID zero-valued.
+	t.Run("decodes old-shape JSON without batch_id", func(t *testing.T) {
+		oldJSON := `{"type":"challenge_raised","timestamp":"2026-01-01T00:00:00Z","challenge_id":"chal-old","node_id":"1.1","target":"statement","reason":"r","severity":"major","raised_by":"v1"}`
+
+		var decoded ChallengeRaised
+		if err := json.Unmarshal([]byte(oldJSON), &decoded); err != nil {
+			t.Fatalf("Unmarshal of old-shape event failed: %v", err)
+		}
+		if decoded.BatchID != "" {
+			t.Errorf("BatchID = %q, want empty string for old-shape event", decoded.BatchID)
+		}
+	})
 }
 
 // TestChallengeResolvedEvent tests ChallengeResolved event creation and serialization.
@@ -436,6 +493,65 @@ func TestNodeValidatedEvent(t *testing.T) {
 
 		if decoded.NodeID.String() != original.NodeID.String() {
 			t.Errorf("NodeID mismatch: got %q, want %q", decoded.NodeID.String(), original.NodeID.String())
+		}
+	})
+
+	// rk-9pk / PRD C3 V1: verifier identity + batch id on NodeValidated.
+	t.Run("NewNodeValidatedFull records verifier and batch id", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.1")
+		event := NewNodeValidatedFull(nodeID, "minor clarification", "verifier-7", "batch-42")
+
+		if event.VerifiedBy != "verifier-7" {
+			t.Errorf("VerifiedBy = %q, want %q", event.VerifiedBy, "verifier-7")
+		}
+		if event.BatchID != "batch-42" {
+			t.Errorf("BatchID = %q, want %q", event.BatchID, "batch-42")
+		}
+		if event.Note != "minor clarification" {
+			t.Errorf("Note = %q, want %q", event.Note, "minor clarification")
+		}
+	})
+
+	t.Run("JSON roundtrip with verifier and batch id", func(t *testing.T) {
+		nodeID, _ := types.Parse("1.4")
+		original := NewNodeValidatedFull(nodeID, "", "verifier-alpha", "batch-9")
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		var decoded NodeValidated
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if decoded.VerifiedBy != original.VerifiedBy {
+			t.Errorf("VerifiedBy mismatch: got %q, want %q", decoded.VerifiedBy, original.VerifiedBy)
+		}
+		if decoded.BatchID != original.BatchID {
+			t.Errorf("BatchID mismatch: got %q, want %q", decoded.BatchID, original.BatchID)
+		}
+	})
+
+	// Backward compatibility: an old-shape NodeValidated event (no
+	// verified_by/batch_id keys at all, as every historical ledger has)
+	// must decode with those fields zero-valued, not error.
+	t.Run("decodes old-shape JSON without verifier/batch fields", func(t *testing.T) {
+		oldJSON := `{"type":"node_validated","timestamp":"2026-01-01T00:00:00Z","node_id":"1.1","note":""}`
+
+		var decoded NodeValidated
+		if err := json.Unmarshal([]byte(oldJSON), &decoded); err != nil {
+			t.Fatalf("Unmarshal of old-shape event failed: %v", err)
+		}
+		if decoded.VerifiedBy != "" {
+			t.Errorf("VerifiedBy = %q, want empty string for old-shape event", decoded.VerifiedBy)
+		}
+		if decoded.BatchID != "" {
+			t.Errorf("BatchID = %q, want empty string for old-shape event", decoded.BatchID)
+		}
+		if decoded.NodeID.String() != "1.1" {
+			t.Errorf("NodeID = %q, want %q", decoded.NodeID.String(), "1.1")
 		}
 	})
 }
