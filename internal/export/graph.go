@@ -64,6 +64,20 @@ type GraphNode struct {
 	// export-time timestamp; it is part of the node's identity-bearing
 	// content and reproduces byte-identically across repeated exports.
 	Created string `json:"created"`
+	// Author is the driver-supplied identity of the agent that authored
+	// this node's content (rk PRD C3's author-identity kernel surface),
+	// omitted if never recorded. Added under v1's future-additive rule
+	// (docs/export-graph-v1.md): a purely additive optional field, no
+	// schema_version bump.
+	Author string `json:"author,omitempty"`
+	// ValidatedBy is the driver-supplied identity of the verifier who
+	// validated this node, omitted if the node isn't validated or was
+	// validated before this field existed.
+	ValidatedBy string `json:"validated_by,omitempty"`
+	// ValidationBatchID is the batch id recorded when this node was
+	// validated as part of a batch (`af verdicts apply`), omitted for
+	// singly-validated nodes.
+	ValidationBatchID string `json:"validation_batch_id,omitempty"`
 }
 
 // GraphValidation summarizes validation-relevant events cheaply derivable
@@ -131,17 +145,20 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 	ge.Nodes = make([]GraphNode, 0, len(nodes))
 	for _, n := range nodes {
 		gn := GraphNode{
-			ID:             n.ID.String(),
-			Type:           string(n.Type),
-			Statement:      n.Statement,
-			Latex:          n.Latex,
-			Inference:      string(n.Inference),
-			ContentHash:    n.ContentHash,
-			WorkflowState:  string(n.WorkflowState),
-			EpistemicState: string(n.EpistemicState),
-			TaintState:     string(n.TaintState),
-			Crux:           n.Crux,
-			Created:        n.Created.String(),
+			ID:                n.ID.String(),
+			Type:              string(n.Type),
+			Statement:         n.Statement,
+			Latex:             n.Latex,
+			Inference:         string(n.Inference),
+			ContentHash:       n.ContentHash,
+			WorkflowState:     string(n.WorkflowState),
+			EpistemicState:    string(n.EpistemicState),
+			TaintState:        string(n.TaintState),
+			Crux:              n.Crux,
+			Created:           n.Created.String(),
+			Author:            n.Author,
+			ValidatedBy:       n.ValidatedBy,
+			ValidationBatchID: n.ValidationBatchID,
 		}
 		if parentID, ok := n.ID.Parent(); ok {
 			gn.ParentID = parentID.String()

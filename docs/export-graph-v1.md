@@ -45,12 +45,26 @@ One entry per node in the proof tree, `nodes[]`.
 | `taint_state` | string | One of the three recorded state axes: `clean`, `self_admitted`, `tainted`, `unresolved`. |
 | `crux` | bool, omitted if false | True if the node is marked critical-path (requires a passing claim-test before acceptance; relevant to rk's batch-composer critical-path exclusion rule, PRD C9). |
 | `created` | string | ISO8601 timestamp of when the node was **created in the ledger** — historical, content-bearing data, not an export-time timestamp. Reproduces byte-identically across repeated exports of unchanged state. |
+| `author` | string, omitted if empty | The driver-supplied identity of the agent that authored this node's content (rk PRD C3's author-identity kernel surface, item V1). Added additively after v1 shipped — see the "Additive fields" note below; never populated for nodes created before the field existed. |
+| `validated_by` | string, omitted if empty | The driver-supplied identity of the verifier who validated this node, if any. Same additive-field note applies. |
+| `validation_batch_id` | string, omitted if empty | The batch id recorded when this node was validated as part of a batch (`af verdicts apply`, item V2 — not yet implemented); omitted for singly-validated nodes. |
 
 Fields deliberately **not** included in v1: `claimed_by`/`claimed_at` (ephemeral
 workflow metadata, not identity-bearing contract content), `context`,
 `dependencies`, `validation_deps`, `scope` (cross-reference metadata not
 requested by the C5 join; may be added in a future schema version without
 breaking v1 consumers, since new optional fields are additive).
+
+### Additive fields (author/validated_by/validation_batch_id)
+
+`author`, `validated_by`, and `validation_batch_id` were added to `nodes[]`
+after v1 first shipped, under the additive-fields rule stated above: they
+are optional (`omitempty`), no existing field changed shape or meaning, and
+`schema_version` stayed `"1"`. Consumers written against the original v1
+table should simply ignore keys they don't recognize. A proof replayed from
+a ledger that predates author/verifier-identity provenance omits all three
+fields for every node, so re-exporting an old, unmodified proof is still
+byte-identical to before this addition.
 
 ## Validation
 

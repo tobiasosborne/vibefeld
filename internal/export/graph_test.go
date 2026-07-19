@@ -165,6 +165,87 @@ func TestExportGraph_NodesIncludeAllAxesAndContract(t *testing.T) {
 	}
 }
 
+// TestExportGraph_IncludesAuthorAndVerifierFields covers rk-9pk / PRD C3 V1:
+// author/validated_by/validation_batch_id are additive fields on GraphNode
+// (docs/export-graph-v1.md's future-additive rule — no schema_version bump)
+// that round-trip through `af export --graph json` when set, and are
+// omitted (not just empty-string) when not.
+func TestExportGraph_IncludesAuthorAndVerifierFields(t *testing.T) {
+	s := buildFixtureState(t)
+	root := s.GetNode(mustParseGraphNodeID(t, "1"))
+	root.Author = "prover-1"
+	child1 := s.GetNode(mustParseGraphNodeID(t, "1.1"))
+	child1.Author = "prover-2"
+	child1.ValidatedBy = "verifier-3"
+	child1.ValidationBatchID = "batch-9"
+
+	out, err := ExportGraph(s, "ws", nil)
+	if err != nil {
+		t.Fatalf("ExportGraph unexpected error: %v", err)
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		t.Fatalf("failed to unmarshal to map: %v", err)
+	}
+	if raw["schema_version"] != "1" {
+		t.Errorf("schema_version = %v, want \"1\" (additive fields must not bump it)", raw["schema_version"])
+	}
+
+	var doc GraphExport
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	byID := make(map[string]GraphNode)
+	for _, n := range doc.Nodes {
+		byID[n.ID] = n
+	}
+
+	if byID["1"].Author != "prover-1" {
+		t.Errorf("root author = %q, want %q", byID["1"].Author, "prover-1")
+	}
+	n11 := byID["1.1"]
+	if n11.Author != "prover-2" {
+		t.Errorf("1.1 author = %q, want %q", n11.Author, "prover-2")
+	}
+	if n11.ValidatedBy != "verifier-3" {
+		t.Errorf("1.1 validated_by = %q, want %q", n11.ValidatedBy, "verifier-3")
+	}
+	if n11.ValidationBatchID != "batch-9" {
+		t.Errorf("1.1 validation_batch_id = %q, want %q", n11.ValidationBatchID, "batch-9")
+	}
+
+	// Node "1.2" never had any of these set: the fields must be omitted
+	// from the wire JSON entirely (omitempty), not merely empty, so a proof
+	// replayed from a ledger that predates this addition re-exports
+	// byte-identically to before.
+	rawNodes, _ := raw["nodes"].([]interface{})
+	var n12Raw map[string]interface{}
+	for _, rn := range rawNodes {
+		m := rn.(map[string]interface{})
+		if m["id"] == "1.2" {
+			n12Raw = m
+		}
+	}
+	if n12Raw == nil {
+		t.Fatal("node 1.2 missing from raw output")
+	}
+	for _, key := range []string{"author", "validated_by", "validation_batch_id"} {
+		if _, present := n12Raw[key]; present {
+			t.Errorf("node 1.2 raw JSON has key %q, want omitted (omitempty)", key)
+		}
+	}
+}
+
+func mustParseGraphNodeID(t *testing.T, s string) types.NodeID {
+	t.Helper()
+	id, err := types.Parse(s)
+	if err != nil {
+		t.Fatalf("failed to parse node id %q: %v", s, err)
+	}
+	return id
+}
+
 func TestExportGraph_ValidationSummary(t *testing.T) {
 	s := buildFixtureState(t)
 	out, err := ExportGraph(s, "ws", nil)
