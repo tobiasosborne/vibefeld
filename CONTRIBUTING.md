@@ -49,6 +49,37 @@ go test -v ./internal/errors -run TestErrorCodesExist
 go test ./e2e/...
 ```
 
+### Historical replay corpus (rk item V0)
+
+rk's implementation plan (`../research-workflows/IMPLEMENTATION_PLAN.md`,
+item V0) called for vendoring the firstproof ledgers into this repo's test
+corpus, if recoverable. As of the rk PRD C3/V1 work (author identity +
+verifier identity/batch id on validation events), the `../firstproof`
+checkout no longer exists locally and no locally-configured git remote
+references it — confirmed by `ls ../firstproof` (missing) and a check of
+this repo's own `git remote -v` (only `origin`, pointing at this repo
+itself). Per the plan's stated fallback, the firstproof ledgers are struck
+from the corpus.
+
+**The replay/regression corpus is AISM's 44 proof workspaces**, read-only
+at `../almost-idempotent-stochastic-maps/proofs/*/ledger`. They are not
+vendored into this repo (AISM is a live, separate research campaign, not a
+vibefeld fixture); replay-regression checks run directly against that path:
+
+```bash
+for d in ../almost-idempotent-stochastic-maps/proofs/*/; do
+  ./af replay --dir "$d" --verify --format json
+  ./af export --graph json --dir "$d"
+done
+```
+
+Any change to ledger event shapes, node schema, or replay/apply logic
+should byte-diff this command's output before and after the change — that
+is the acceptance bar the rk plan's "replay regression on the historical
+corpus" language refers to (identical derived state + a passing `af replay
+--verify` content-hash check, not byte-stable `af replay` text output,
+which is a stats summary, not a canonical dump).
+
 ## Building
 
 ```bash
