@@ -466,8 +466,11 @@ exitCode := errors.ExitCode(err)
 |-----------|----------|----------|
 | 1 | Retriable | `ALREADY_CLAIMED`, `NOT_CLAIM_HOLDER` |
 | 2 | Blocked | `NODE_BLOCKED` |
-| 3 | Logic Error | `INVALID_PARENT`, `SCOPE_VIOLATION`, `DEPTH_EXCEEDED` |
+| 3 | Logic Error | `INVALID_PARENT`, `SCOPE_VIOLATION`, `DEPTH_EXCEEDED`, `VERDICTS_FILE_INVALID` |
 | 4 | Corruption | `CONTENT_HASH_MISMATCH`, `LEDGER_INCONSISTENT` |
+| 5 | Batch partially applied | `VERDICTS_PARTIALLY_APPLIED` (`af verdicts apply`) |
+| 6 | Batch nothing applied | `VERDICTS_NONE_APPLIED` (`af verdicts apply`) |
+| 7 | Batch not found | `UNVALIDATE_BATCH_NOT_FOUND` (`af unvalidate --batch`) |
 
 ### Adding a New Error Code
 

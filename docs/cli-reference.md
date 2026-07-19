@@ -20,6 +20,8 @@ Multiple AI agents work concurrently as adversarial provers and verifiers, refin
 | `resolve-challenge` | Resolve a challenge with a response |
 | `refine-sibling` | Add sibling node (breadth expansion) |
 | `accept` | Accept/validate proof nodes |
+| `verdicts apply` | Apply a schema-validated batch verdict file |
+| `unvalidate` | Revoke validation on a node, or bulk-revoke a whole batch (`--batch`) |
 | `admit` | Admit a node without full verification (introduces taint) |
 | `refute` | Refute a proof node (mark as disproven) |
 | `archive` | Archive a proof node (abandon the branch) |
@@ -94,8 +96,16 @@ These flags apply to all commands:
 | 0 | Success | Command completed successfully |
 | 1 | Retriable | Race conditions, transient failures (e.g., ALREADY_CLAIMED, NOT_CLAIM_HOLDER) |
 | 2 | Blocked | Work cannot proceed (e.g., NODE_BLOCKED) |
-| 3 | Logic Error | Invalid input, not found, scope violations |
+| 3 | Logic Error | Invalid input, not found, scope violations (also: `af verdicts apply` file schema-invalid) |
 | 4 | Corruption | Data integrity failures (e.g., CONTENT_HASH_MISMATCH) |
+| 5 | Batch partially applied | `af verdicts apply`: some items applied, some blocked or rejected |
+| 6 | Batch nothing applied | `af verdicts apply`: file valid, zero items applied |
+| 7 | Batch not found | `af unvalidate --batch`: batch id matches no validated node (clean no-op) |
+
+Codes 5-7 are specific to the batch-verdict verbs
+([`docs/verdicts-apply.md`](verdicts-apply.md)) — a verdict batch is neither
+a plain success nor a plain error, so it needs outcomes beyond the original
+1-4 taxonomy.
 
 ---
 
@@ -717,6 +727,48 @@ af accept 1 --agent v1 --confirm  # Accept without having raised challenges
 
 ---
 
+### `verdicts apply`
+
+Apply a schema-validated batch verdict file — the kernel side of rk PRD C3's
+batched verification mode (one fresh hostile verifier reviewing N
+verification-ready items at once, instead of one node per verifier
+session). Full file schema, order-dependence rules, outcome vocabulary, and
+exit-code contract: [`docs/verdicts-apply.md`](verdicts-apply.md).
+
+**Syntax:**
+```
+af verdicts apply <file> [flags]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `file` | Yes | Path to a verdict file (JSON) |
+
+**Flags:**
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--dir` | `-d` | string | "." | Proof directory path |
+| `--format` | `-f` | string | "text" | Output format (text\|json) |
+
+**Exit codes:** `0` every item applied · `3` file schema-invalid or
+unreadable (nothing attempted) · `5` some items applied, some
+blocked/rejected · `6` file valid, zero items applied.
+
+**Examples:**
+```bash
+af verdicts apply batch-1.json
+af verdicts apply batch-1.json --format json
+af verdicts apply batch-1.json -d ./proof
+```
+
+**Next Steps:** Read the per-item report (`--format json` for machine
+consumption); a blocked or rejected item explains why in its `status` field.
+
+---
+
 ### `request-refinement`
 
 Request deeper refinement for a validated node that needs more detail.
@@ -786,6 +838,56 @@ af withdraw-challenge ch-abc123 -d ./proof
 ```
 
 **Note:** Use this when a challenge was raised in error or is no longer relevant.
+
+---
+
+### `unvalidate`
+
+Revoke validation on a previously validated node, reverting it to pending —
+or, with `--batch`, bulk-revoke every node validated under a given batch id
+(the inverse of `af verdicts apply`; see
+[`docs/verdicts-apply.md`](verdicts-apply.md)). Each revocation is a normal,
+attributed `NodeUnvalidated` event; unvalidating a node with validated
+children propagates taint to those children.
+
+**Syntax:**
+```
+af unvalidate [node-id] [flags]
+af unvalidate --batch <batch-id> [flags]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `node-id` | Yes, unless `--batch` given | Node to unvalidate. Mutually exclusive with `--batch`. |
+
+**Flags:**
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--batch` | | string | "" | Batch id: unvalidate every node currently validated under this batch |
+| `--reason` | | string | "" | Reason for revoking validation |
+| `--agent` | | string | "" | Agent ID (verifier identity) |
+| `--yes` | `-y` | bool | false | Skip confirmation prompt |
+| `--dir` | `-d` | string | "." | Proof directory path |
+| `--format` | `-f` | string | "text" | Output format (text\|json) |
+
+**Exit codes (`--batch` form):** `0` at least one node revoked · `7` the
+batch id matches no currently-validated node (clean no-op, not an error).
+
+**Examples:**
+```bash
+af unvalidate 1.2
+af unvalidate 1.2 --reason "Formula error in step 3"
+af unvalidate 1.2 --agent verifier-001
+af unvalidate 1.2 -f json -y
+af unvalidate --batch batch-1 --reason "Batch review overturned"
+af unvalidate --batch batch-1 -y
+```
+
+**Next Steps:** A verifier should re-examine the affected node(s) with `af
+get <node-id>`.
 
 ---
 
