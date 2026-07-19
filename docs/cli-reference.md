@@ -1952,6 +1952,7 @@ af export [flags]
 | `--format` | `-f` | string | "markdown" | Output format: markdown, md, latex, tex |
 | `--output` | `-o` | string | | Output file path (default: stdout) |
 | `--dir` | `-d` | string | "." | Proof directory path |
+| `--graph` | | string | "" | Export the graph projection instead (json); ignores `--format` |
 
 **Examples:**
 ```bash
@@ -1959,7 +1960,19 @@ af export                           # Markdown to stdout
 af export --format latex            # LaTeX to stdout
 af export -o proof.md               # Markdown to file
 af export --format latex -o proof.tex  # LaTeX to file
+af export --graph json              # Graph projection (schema_version, nodes, validation) to stdout
+af export --graph json -o graph.json  # Graph projection to a file
 ```
+
+**`--graph json`:** a separate, read-only, deterministic export consumed by
+external tooling (rk's projection layer, PRD C5). Emits a single JSON
+document: `schema_version`, `workspace` (id/title/conjecture), `nodes` (id,
+statement/contract text, all three recorded state axes — workflow/
+epistemic/taint — parent/child structure, content hash), and `validation`
+(cheap node/challenge status counts). Node order is stable (hierarchical
+ID); running it twice against an unchanged proof produces byte-identical
+output. Never mutates the ledger. Full field-by-field schema:
+[`docs/export-graph-v1.md`](export-graph-v1.md).
 
 ---
 

@@ -281,6 +281,28 @@ func ExportProof(s *state.State, format string) (string, error) {
 	return export.Export(s, format)
 }
 
+// GraphSchemaVersion is the schema_version string carried by every
+// `af export --graph json` document. Re-export of export.GraphSchemaVersion.
+const GraphSchemaVersion = export.GraphSchemaVersion
+
+// GraphExport is the top-level document produced by `af export --graph
+// json`. Re-export of export.GraphExport.
+type GraphExport = export.GraphExport
+
+// ValidateGraphFormat checks if the given graph export format string is
+// valid. Valid formats: json (case-insensitive).
+// Re-export of export.ValidateGraphFormat.
+var ValidateGraphFormat = export.ValidateGraphFormat
+
+// ExportGraph renders the proof state as a deterministic graph projection
+// JSON document (workspace id, nodes with parent/child structure and all
+// recorded epistemic axes, and a cheap validation summary), for `af export
+// --graph json`. This is a read-only projection: it never mutates the
+// ledger or state. Re-export of export.ExportGraph.
+func ExportGraph(s *state.State, workspaceID string, cfg *config.Config) (string, error) {
+	return export.ExportGraph(s, workspaceID, cfg)
+}
+
 // Re-exported types and functions from internal/metrics to reduce cmd/af import count.
 // Consumers should use service.QualityReport, service.OverallQuality, and
 // service.SubtreeQuality instead of importing the metrics package directly.
