@@ -1726,6 +1726,78 @@ func resolveChildDeps(raw []string, childIndex int, allocatedIDs []types.NodeID,
 	return deps, nil
 }
 
+// buildChildEvents validates a batch of ChildSpecs against the current state
+// and produces the NodeCreated events plus the allocated child IDs, WITHOUT
+// touching the ledger or checking the parent's workflow/claim state (each
+// caller applies its own workflow gate first). Shared by RefineNodeBulk (which
+// requires the parent claimed by owner) and RecordProof (rk B1/FU3, which
+// gates on prover-job classification instead). Enforces max-children, sequential
+// child-ID allocation, non-empty statements, external citations, and per-child
+// dependency resolution (rk B2). owner is recorded as each child's Author.
+func (s *ProofService) buildChildEvents(st *State, parentID types.NodeID, owner string, children []ChildSpec) ([]ledger.Event, []types.NodeID, error) {
+	cfg, err := s.Config()
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading config: %w", err)
+	}
+	existingChildCount := 0
+	for _, n := range st.AllNodes() {
+		p, hasParent := n.ID.Parent()
+		if hasParent && p.String() == parentID.String() {
+			existingChildCount++
+		}
+	}
+	if existingChildCount+len(children) > cfg.MaxChildren {
+		return nil, nil, fmt.Errorf("%w: node %s has %d children, adding %d would exceed max %d",
+			ErrMaxChildrenExceeded, parentID.String(), existingChildCount, len(children), cfg.MaxChildren)
+	}
+
+	// Find next available child number
+	childNum := 1
+	for {
+		candidateID, err := parentID.Child(childNum)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to generate child ID: %w", err)
+		}
+		if st.GetNode(candidateID) == nil {
+			break
+		}
+		childNum++
+	}
+
+	childIDs := make([]types.NodeID, len(children))
+	events := make([]ledger.Event, len(children))
+
+	for i, spec := range children {
+		if strings.TrimSpace(spec.Statement) == "" {
+			return nil, nil, fmt.Errorf("child %d: statement cannot be empty", i+1)
+		}
+		if err := lemma.ValidateExtCitations(spec.Statement, st); err != nil {
+			return nil, nil, fmt.Errorf("child %d: %w", i+1, err)
+		}
+
+		childID, err := parentID.Child(childNum + i)
+		if err != nil {
+			return nil, nil, fmt.Errorf("child %d: failed to generate child ID: %w", i+1, err)
+		}
+		childIDs[i] = childID
+
+		// Resolve per-child dependencies (rk B2): "#N" is a backward sibling
+		// ref into THIS batch (only known now, at allocation), anything else an
+		// existing node id.
+		deps, err := resolveChildDeps(spec.Dependencies, i, childIDs, st)
+		if err != nil {
+			return nil, nil, fmt.Errorf("child %d: %w", i+1, err)
+		}
+
+		childNode, err := node.NewNodeWithOptions(childID, spec.NodeType, spec.Statement, spec.Inference, node.NodeOptions{Dependencies: deps, Draft: spec.Draft, Crux: spec.Crux, Author: owner})
+		if err != nil {
+			return nil, nil, fmt.Errorf("child %d: %w", i+1, err)
+		}
+		events[i] = ledger.NewNodeCreated(*childNode)
+	}
+	return events, childIDs, nil
+}
+
 func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, children []ChildSpec) ([]types.NodeID, error) {
 	if len(children) == 0 {
 		return nil, fmt.Errorf("%w: at least one child specification is required", ErrEmptyInput)
@@ -1760,76 +1832,9 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		return nil, ErrOwnerMismatch
 	}
 
-	// Count existing children and validate that we can add all new children
-	cfg, err := s.Config()
+	events, childIDs, err := s.buildChildEvents(st, parentID, owner, children)
 	if err != nil {
-		return nil, fmt.Errorf("loading config: %w", err)
-	}
-	existingChildCount := 0
-	for _, n := range st.AllNodes() {
-		p, hasParent := n.ID.Parent()
-		if hasParent && p.String() == parentID.String() {
-			existingChildCount++
-		}
-	}
-	if existingChildCount+len(children) > cfg.MaxChildren {
-		return nil, fmt.Errorf("%w: node %s has %d children, adding %d would exceed max %d",
-			ErrMaxChildrenExceeded, parentID.String(), existingChildCount, len(children), cfg.MaxChildren)
-	}
-
-	// Find next available child number
-	childNum := 1
-	for {
-		candidateID, err := parentID.Child(childNum)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate child ID: %w", err)
-		}
-		if st.GetNode(candidateID) == nil {
-			break
-		}
-		childNum++
-	}
-
-	// Prepare all child nodes and their IDs
-	childIDs := make([]types.NodeID, len(children))
-	events := make([]ledger.Event, len(children))
-
-	for i, spec := range children {
-		// Validate statement is not empty
-		if strings.TrimSpace(spec.Statement) == "" {
-			return nil, fmt.Errorf("child %d: statement cannot be empty", i+1)
-		}
-
-		// Validate external citations in the statement
-		if err := lemma.ValidateExtCitations(spec.Statement, st); err != nil {
-			return nil, fmt.Errorf("child %d: %w", i+1, err)
-		}
-
-		// Generate child ID
-		childID, err := parentID.Child(childNum + i)
-		if err != nil {
-			return nil, fmt.Errorf("child %d: failed to generate child ID: %w", i+1, err)
-		}
-		childIDs[i] = childID
-
-		// Resolve this child's per-child dependencies (rk B2). A "#N" entry is
-		// a backward sibling reference into THIS batch (0-based, strictly
-		// earlier than i); anything else must be an existing node id. Resolved
-		// here because sibling ids are only known now, at allocation time.
-		deps, err := resolveChildDeps(spec.Dependencies, i, childIDs, st)
-		if err != nil {
-			return nil, fmt.Errorf("child %d: %w", i+1, err)
-		}
-
-		// Create the child node. Author is the claiming owner authoring
-		// this batch of refinements (see Refine's identical convention).
-		childNode, err := node.NewNodeWithOptions(childID, spec.NodeType, spec.Statement, spec.Inference, node.NodeOptions{Dependencies: deps, Draft: spec.Draft, Crux: spec.Crux, Author: owner})
-		if err != nil {
-			return nil, fmt.Errorf("child %d: %w", i+1, err)
-		}
-
-		// Create the event
-		events[i] = ledger.NewNodeCreated(*childNode)
+		return nil, err
 	}
 
 	// Get ledger

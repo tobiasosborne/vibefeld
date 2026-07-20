@@ -39,6 +39,15 @@ func FindProverJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challenge
 	return result
 }
 
+// IsProverJob reports whether the node currently qualifies as a prover job
+// under af's own classifier (the exported form of isProverJob). External
+// callers (e.g. the service's atomic record-proof kernel op) use it to enforce
+// that a prover write targets a node af actually classifies as prover work,
+// matching the export's prover_ready flag exactly.
+func IsProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
+	return isProverJob(n, challengeMap)
+}
+
 // isProverJob checks if a single node qualifies as a prover job.
 // A prover job is a node that needs prover attention:
 //   - WorkflowState != "blocked" (can be available or claimed)
