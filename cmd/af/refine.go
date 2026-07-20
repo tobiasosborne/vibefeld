@@ -17,6 +17,11 @@ type childSpec struct {
 	Statement string `json:"statement"`
 	Type      string `json:"type"`
 	Inference string `json:"inference"`
+	// Depends carries this child's per-child reference dependencies (rk B2 /
+	// rk-2zj): raw strings, each either an existing node id or a backward
+	// sibling reference "#N" (0-based index into this batch's children).
+	// Resolved and validated by service.RefineNodeBulk at allocation time.
+	Depends []string `json:"depends,omitempty"`
 }
 
 // validateNodeTypeAndInference validates node type and inference strings,
@@ -271,6 +276,11 @@ Provide statements as positional arguments:
 For complex cases with different types per child, use --children with JSON:
   af refine 1 --children '[{"statement":"Case 1","type":"case"},{"statement":"Case 2","type":"case"}]' -o agent1
 
+Each --children entry may carry its own "depends": a list of reference
+dependencies, each either an existing node id or "#N" (0-based index of an
+EARLIER child in this same batch, resolved to the id af allocates it):
+  af refine 1 --children '[{"statement":"Lemma A"},{"statement":"Uses A","depends":["#0"]}]' -o agent1
+
 Use --depends to declare logical dependencies on other nodes.
 Use --requires-validated for validation dependencies.
 
@@ -433,11 +443,12 @@ func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, ow
 		}
 
 		specs[i] = service.ChildSpec{
-			NodeType:  nodeType,
-			Statement: child.Statement,
-			Inference: inferenceType,
-			Draft:     draft,
-			Crux:      crux,
+			NodeType:     nodeType,
+			Statement:    child.Statement,
+			Inference:    inferenceType,
+			Draft:        draft,
+			Crux:         crux,
+			Dependencies: child.Depends,
 		}
 	}
 

@@ -92,6 +92,31 @@ func TestExportGraph_Closed_ChildNotClosedBubblesUp(t *testing.T) {
 	}
 }
 
+// B2: a node's recorded reference dependencies are emitted in the export so a
+// verifier sees the prover's exact dependency set (not a children proxy).
+func TestExportGraph_NodeDependencies(t *testing.T) {
+	s := state.NewState()
+	root := addTestNode(t, s, "1", "Root", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicPending, node.TaintClean)
+	root.WorkflowState = schema.WorkflowAvailable
+	c1 := addTestNode(t, s, "1.1", "Lemma A", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicPending, node.TaintClean)
+	c1.WorkflowState = schema.WorkflowAvailable
+	c2 := addTestNode(t, s, "1.2", "Uses A", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicPending, node.TaintClean)
+	c2.WorkflowState = schema.WorkflowAvailable
+	c2.Dependencies = []types.NodeID{c1.ID}
+
+	out, err := ExportGraph(s, "/tmp/ws", &config.Config{})
+	if err != nil {
+		t.Fatalf("ExportGraph: %v", err)
+	}
+	deps, ok := nodeByID(t, out, "1.2")["dependencies"].([]interface{})
+	if !ok || len(deps) != 1 || deps[0] != "1.1" {
+		t.Errorf("node 1.2 dependencies = %v, want [1.1]", nodeByID(t, out, "1.2")["dependencies"])
+	}
+	if _, present := nodeByID(t, out, "1.1")["dependencies"]; present {
+		t.Errorf("node 1.1 has no deps; dependencies key must be omitted")
+	}
+}
+
 // FU5: the export always advertises a features[] capability list, and it names
 // the closure-flag and readiness-flag capabilities an rk driver preflights.
 func TestExportGraph_FeaturesCapabilityList(t *testing.T) {

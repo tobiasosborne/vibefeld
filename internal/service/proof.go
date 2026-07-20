@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1579,6 +1580,16 @@ type ChildSpec struct {
 	Inference schema.InferenceType
 	Draft     bool
 	Crux      bool
+	// Dependencies are this child's reference dependency IDs, in RAW,
+	// unresolved form (rk B2 / rk-2zj: a prover's declared per-child depends).
+	// Each entry is EITHER an existing node id (e.g. "1.2", validated to
+	// exist) OR a backward sibling reference "#N" (0-based index into THIS
+	// batch's children, strictly earlier than the current child — children
+	// don't have IDs until this bulk op allocates them, so a sibling is named
+	// by its position and resolved at creation to the allocated id).
+	// Resolution + validation happen inside RefineNodeBulk. Empty for a child
+	// with no dependencies.
+	Dependencies []string
 }
 
 // RefineSpec specifies parameters for refining a node with a child.
@@ -1668,6 +1679,53 @@ func (s *ProofService) AllocateChildID(parentID types.NodeID) (types.NodeID, err
 // Returns ErrMaxChildrenExceeded if adding all children would exceed config.MaxChildren.
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
+// resolveChildDeps resolves one bulk-refine child's raw dependency strings
+// (rk B2) into concrete node IDs. childIndex is this child's 0-based position
+// in the batch; allocatedIDs holds the ids assigned to every child in the
+// batch (entries at positions >= childIndex are not yet meaningful). st is the
+// current state, used to validate real (non-sibling) node ids exist.
+//
+// Each raw entry is one of:
+//   - "#N": a backward sibling reference (0 <= N < childIndex). A forward or
+//     self reference (N >= childIndex) is rejected — a prover must order
+//     children so each depends only on earlier ones. A non-numeric or
+//     out-of-range N is rejected.
+//   - anything else: parsed as an existing node id, which must exist in st.
+//
+// Nothing is ever silently dropped: an unresolvable entry is an error.
+func resolveChildDeps(raw []string, childIndex int, allocatedIDs []types.NodeID, st *State) ([]types.NodeID, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	deps := make([]types.NodeID, 0, len(raw))
+	for _, entry := range raw {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if strings.HasPrefix(entry, "#") {
+			n, err := strconv.Atoi(entry[1:])
+			if err != nil {
+				return nil, fmt.Errorf("invalid sibling dependency reference %q: not a %q + integer index", entry, "#")
+			}
+			if n < 0 || n >= childIndex {
+				return nil, fmt.Errorf("sibling dependency reference %q out of range: only earlier children (#0..#%d) may be referenced", entry, childIndex-1)
+			}
+			deps = append(deps, allocatedIDs[n])
+			continue
+		}
+		depID, err := types.Parse(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid dependency id %q: %w", entry, err)
+		}
+		if st.GetNode(depID) == nil {
+			return nil, fmt.Errorf("dependency node %s does not exist", entry)
+		}
+		deps = append(deps, depID)
+	}
+	return deps, nil
+}
+
 func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, children []ChildSpec) ([]types.NodeID, error) {
 	if len(children) == 0 {
 		return nil, fmt.Errorf("%w: at least one child specification is required", ErrEmptyInput)
@@ -1754,9 +1812,18 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		}
 		childIDs[i] = childID
 
+		// Resolve this child's per-child dependencies (rk B2). A "#N" entry is
+		// a backward sibling reference into THIS batch (0-based, strictly
+		// earlier than i); anything else must be an existing node id. Resolved
+		// here because sibling ids are only known now, at allocation time.
+		deps, err := resolveChildDeps(spec.Dependencies, i, childIDs, st)
+		if err != nil {
+			return nil, fmt.Errorf("child %d: %w", i+1, err)
+		}
+
 		// Create the child node. Author is the claiming owner authoring
 		// this batch of refinements (see Refine's identical convention).
-		childNode, err := node.NewNodeWithOptions(childID, spec.NodeType, spec.Statement, spec.Inference, node.NodeOptions{Draft: spec.Draft, Crux: spec.Crux, Author: owner})
+		childNode, err := node.NewNodeWithOptions(childID, spec.NodeType, spec.Statement, spec.Inference, node.NodeOptions{Dependencies: deps, Draft: spec.Draft, Crux: spec.Crux, Author: owner})
 		if err != nil {
 			return nil, fmt.Errorf("child %d: %w", i+1, err)
 		}
