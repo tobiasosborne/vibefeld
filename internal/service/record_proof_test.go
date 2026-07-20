@@ -68,6 +68,89 @@ func TestRecordProof_RefinesDisposesChallengeAndCycles(t *testing.T) {
 	}
 }
 
+// GAP 9: record-proof stamps the DECOMPOSED PARENT with the acting prover's
+// identity as its proof-of-record author (ProofAuthor), symmetric with the
+// author stamp its children already get. This is what a cross-vendor check
+// reads for a decomposed node whose own Author is an unparseable init stamp.
+func TestRecordProof_StampsProofAuthorOnParent(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	challengeRoot(t, svc)
+
+	_, err := svc.RecordProof(RecordProofSpec{
+		ParentID:   parseNodeID(t, "1"),
+		Owner:      "prover-x",
+		ExpectHash: rootHash(t, svc),
+		Children:   []ChildSpec{{NodeType: schema.NodeTypeClaim, Statement: "the proof step", Inference: schema.InferenceModusPonens}},
+	})
+	if err != nil {
+		t.Fatalf("RecordProof: %v", err)
+	}
+
+	st, _ := svc.LoadState()
+	root := st.GetNode(parseNodeID(t, "1"))
+	if root.ProofAuthor != "prover-x" {
+		t.Errorf("root ProofAuthor = %q, want %q (the prover that decomposed it)", root.ProofAuthor, "prover-x")
+	}
+}
+
+// GAP 9: the proof-author stamp records ONLY ProofAuthor — the node's own
+// content Author (here the "test-author" from init) must never be clobbered.
+func TestRecordProof_DoesNotClobberExistingAuthor(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	challengeRoot(t, svc)
+
+	_, err := svc.RecordProof(RecordProofSpec{
+		ParentID:   parseNodeID(t, "1"),
+		Owner:      "prover-x",
+		ExpectHash: rootHash(t, svc),
+		Children:   []ChildSpec{{NodeType: schema.NodeTypeClaim, Statement: "the proof step", Inference: schema.InferenceModusPonens}},
+	})
+	if err != nil {
+		t.Fatalf("RecordProof: %v", err)
+	}
+
+	st, _ := svc.LoadState()
+	root := st.GetNode(parseNodeID(t, "1"))
+	if root.Author != "test-author" {
+		t.Errorf("root Author = %q, want %q unchanged (record-proof must not clobber the content author)", root.Author, "test-author")
+	}
+}
+
+// GAP 9: a re-decomposition after a LATER challenge updates ProofAuthor to the
+// new decomposer (the field reflects the current prover-of-record, not the
+// first one).
+func TestRecordProof_ReDecompositionUpdatesProofAuthor(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	challengeRoot(t, svc)
+	if _, err := svc.RecordProof(RecordProofSpec{
+		ParentID:   parseNodeID(t, "1"),
+		Owner:      "prover-x",
+		ExpectHash: rootHash(t, svc),
+		Children:   []ChildSpec{{NodeType: schema.NodeTypeClaim, Statement: "first decomposition", Inference: schema.InferenceModusPonens}},
+	}); err != nil {
+		t.Fatalf("first RecordProof: %v", err)
+	}
+
+	// A later challenge reopens the root as a prover job; a different prover re-proves it.
+	if err := svc.RaiseChallengeWithBatch(parseNodeID(t, "1"), "ch-root-2", "statement", "still needs work", "major", "verifier-2", "gap", "b1"); err != nil {
+		t.Fatalf("second RaiseChallenge: %v", err)
+	}
+	if _, err := svc.RecordProof(RecordProofSpec{
+		ParentID:   parseNodeID(t, "1"),
+		Owner:      "prover-y",
+		ExpectHash: rootHash(t, svc),
+		Children:   []ChildSpec{{NodeType: schema.NodeTypeClaim, Statement: "second decomposition", Inference: schema.InferenceModusPonens}},
+	}); err != nil {
+		t.Fatalf("second RecordProof: %v", err)
+	}
+
+	st, _ := svc.LoadState()
+	root := st.GetNode(parseNodeID(t, "1"))
+	if root.ProofAuthor != "prover-y" {
+		t.Errorf("root ProofAuthor = %q, want %q (re-decomposition must update to the new decomposer)", root.ProofAuthor, "prover-y")
+	}
+}
+
 // B1: a node that is NOT a prover job (fresh conjecture, no challenge) must be
 // refused — a stale-role prover write.
 func TestRecordProof_RejectsNonProverJob(t *testing.T) {

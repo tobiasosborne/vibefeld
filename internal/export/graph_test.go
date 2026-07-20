@@ -230,10 +230,60 @@ func TestExportGraph_IncludesAuthorAndVerifierFields(t *testing.T) {
 	if n12Raw == nil {
 		t.Fatal("node 1.2 missing from raw output")
 	}
-	for _, key := range []string{"author", "validated_by", "validation_batch_id"} {
+	for _, key := range []string{"author", "validated_by", "validation_batch_id", "proof_author"} {
 		if _, present := n12Raw[key]; present {
 			t.Errorf("node 1.2 raw JSON has key %q, want omitted (omitempty)", key)
 		}
+	}
+}
+
+// TestExportGraph_IncludesProofAuthor covers rk GAP 9: proof_author (the
+// prover-of-record that decomposed a node) is an additive GraphNode field
+// exposed via the FeatureProofAuthor capability — it round-trips when set and
+// is omitted (not empty) when not, and never bumps schema_version.
+func TestExportGraph_IncludesProofAuthor(t *testing.T) {
+	s := buildFixtureState(t)
+	root := s.GetNode(mustParseGraphNodeID(t, "1"))
+	root.Author = "orchestrator-init" // content author: the (unparseable) init stamp
+	root.ProofAuthor = "gpt|codex|gpt-5.6-sol|s1"
+
+	out, err := ExportGraph(s, "ws", nil)
+	if err != nil {
+		t.Fatalf("ExportGraph unexpected error: %v", err)
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		t.Fatalf("failed to unmarshal to map: %v", err)
+	}
+	if raw["schema_version"] != "1" {
+		t.Errorf("schema_version = %v, want \"1\" (proof_author is additive)", raw["schema_version"])
+	}
+
+	var doc GraphExport
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	byID := make(map[string]GraphNode)
+	for _, n := range doc.Nodes {
+		byID[n.ID] = n
+	}
+	if byID["1"].ProofAuthor != "gpt|codex|gpt-5.6-sol|s1" {
+		t.Errorf("root proof_author = %q, want the decomposer seam", byID["1"].ProofAuthor)
+	}
+	if byID["1"].Author != "orchestrator-init" {
+		t.Errorf("root author = %q, want the init stamp unchanged (author and proof_author are distinct)", byID["1"].Author)
+	}
+
+	// The capability token must be advertised so a driver can detect an af too old to emit it.
+	var found bool
+	for _, f := range doc.Features {
+		if f == FeatureProofAuthor {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("features %v does not advertise %q", doc.Features, FeatureProofAuthor)
 	}
 }
 

@@ -101,6 +101,17 @@ func (s *ProofService) RecordProof(spec RecordProofSpec) (*RecordProofResult, er
 		return nil, err
 	}
 
+	// (4a) rk GAP 9: stamp the DECOMPOSED PARENT with the acting prover as its
+	// proof-of-record author. The decomposition IS this prover's proof of the
+	// parent, symmetric with the author stamp buildChildEvents just put on the
+	// CHILDREN — so a cross-vendor check has a family-tagged prover identity to
+	// read for THIS node's own validation, not just its children's. Records
+	// ProofAuthor only (never touches the node's content Author); part of the
+	// SAME atomic append batch as the children/challenge/release below, so the
+	// stamp lands iff the proof does. A later re-decomposition emits it again,
+	// updating the field to the new decomposer.
+	events = append(events, ledger.NewNodeProofAuthored(spec.ParentID, spec.Owner))
+
 	// (5) rk FU3: dispose every open challenge on the parent. Resolving the
 	// challenge(s) plus adding children returns the node to verifier territory
 	// once its new children clear (bottom-up). We resolve ALL open challenges

@@ -94,6 +94,8 @@ func Apply(s *State, event ledger.Event) error {
 		return applyClaimTested(s, e)
 	case ledger.DefChecked:
 		return applyDefChecked(s, e)
+	case ledger.NodeProofAuthored:
+		return applyNodeProofAuthored(s, e)
 	case ledger.LockReaped:
 		return nil // lock reaping is informational, no state change needed
 	default:
@@ -424,6 +426,21 @@ func recomputeTaintForNode(s *State, n *node.Node) {
 
 	// Propagate taint to descendants
 	taint.PropagateTaint(n, allNodes)
+}
+
+// applyNodeProofAuthored handles the NodeProofAuthored event.
+// This stamps the decomposed parent node with the prover-of-record identity
+// (the prover that proved it by decomposition). It records ONLY ProofAuthor —
+// the node's own Author (content authorship) is deliberately never touched, so
+// an existing author can never be clobbered. It always overwrites ProofAuthor
+// so a re-decomposition after a later challenge records the new decomposer.
+func applyNodeProofAuthored(s *State, e ledger.NodeProofAuthored) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	n.ProofAuthor = e.Author
+	return nil
 }
 
 // applyNodeAmended handles the NodeAmended event.

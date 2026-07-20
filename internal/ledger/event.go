@@ -46,6 +46,7 @@ const (
 	EventPatternAdded        EventType = "pattern_added"
 	EventClaimTested         EventType = "claim_tested"
 	EventDefChecked          EventType = "def_checked"
+	EventNodeProofAuthored   EventType = "node_proof_authored"
 )
 
 // Event is the base interface for all ledger events.
@@ -228,6 +229,35 @@ type NodeAmended struct {
 	PreviousStatement string       `json:"previous_statement"`
 	NewStatement      string       `json:"new_statement"`
 	Owner             string       `json:"owner"`
+}
+
+// NodeProofAuthored is emitted when a prover records a proof of a node by
+// decomposing it into children (`af record-proof`). It stamps the DECOMPOSED
+// PARENT with the acting prover's identity as its proof-of-record author,
+// symmetric with the author stamp record-proof already puts on the CHILDREN it
+// creates. Author (who authored the node's content) is left untouched; this is
+// the separate "who proved this node" fact a cross-vendor check reads for a
+// decomposed node (rk PRD C9 / GAP 9). Same DRIVER-SUPPLIED PROVENANCE kind as
+// NodeValidated.VerifiedBy — recorded and checkable, not adversary-proof. Part
+// of record-proof's single atomic append batch (refine + stamp + dispose +
+// release), so the stamp lands iff the proof does.
+type NodeProofAuthored struct {
+	BaseEvent
+	NodeID types.NodeID `json:"node_id"`
+	Author string       `json:"author"` // Prover identity that decomposed (proved) this node
+}
+
+// NewNodeProofAuthored creates a NodeProofAuthored event stamping nodeID's
+// proof-of-record author as author (the acting prover in `af record-proof`).
+func NewNodeProofAuthored(nodeID types.NodeID, author string) NodeProofAuthored {
+	return NodeProofAuthored{
+		BaseEvent: BaseEvent{
+			EventType: EventNodeProofAuthored,
+			EventTime: types.Now(),
+		},
+		NodeID: nodeID,
+		Author: author,
+	}
 }
 
 // NewProofInitialized creates a ProofInitialized event.

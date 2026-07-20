@@ -105,6 +105,30 @@ type Node struct {
 	// apply`). Empty for singly-validated nodes and for nodes validated
 	// before this field existed. Cleared if the node is later unvalidated.
 	ValidationBatchID string `json:"validation_batch_id,omitempty"`
+
+	// ProofAuthor is the identity of the prover that RECORDED THE PROOF of this
+	// node — i.e. decomposed it into children via `af record-proof` (recorded
+	// from the NodeProofAuthored event that fires as part of record-proof's
+	// atomic write). It is DELIBERATELY DISTINCT from Author: Author records who
+	// authored the node's own content (for a root, the `af init` --author; for a
+	// child, the prover that CREATED it), whereas ProofAuthor records who proved
+	// THIS node by decomposing it. The two coincide for a prover-created child it
+	// later re-proves, but diverge for the ROOT: a root's Author is the init
+	// author (often an unparseable orchestration stamp), while its ProofAuthor is
+	// the prover-of-record that actually decomposed it.
+	//
+	// It exists so a reviewer≠author / cross-vendor check (rk PRD C9,
+	// `af verdicts apply`) can compare the DECOMPOSER's family against the
+	// verifier's when validating a decomposed node — the decomposition IS the
+	// prover's proof of the parent, symmetric with the family stamp its children
+	// already carry (rk GAP 9). Same DRIVER-SUPPLIED PROVENANCE caveat as Author:
+	// recorded-and-checkable, not adversary-proof. record-proof sets it to the
+	// acting prover on every decomposition (a later re-decomposition after a
+	// challenge updates it to the new decomposer); it NEVER touches Author.
+	// Empty for nodes never decomposed, and for nodes decomposed before this
+	// field existed — old ledgers replay identically (read as a zero value,
+	// never required).
+	ProofAuthor string `json:"proof_author,omitempty"`
 }
 
 // NewNode creates a new Node with the given parameters.
@@ -200,7 +224,7 @@ func NewNodeWithOptions(
 //
 // Deliberately excluded: WorkflowState, EpistemicState, TaintState,
 // ClaimedBy/ClaimedAt, Crux, Scope, and (as of the author/verifier-identity
-// schema addition) Author, ValidatedBy, ValidationBatchID. These are
+// schema addition) Author, ValidatedBy, ValidationBatchID, ProofAuthor. These are
 // workflow/provenance metadata, not mathematical content — the same
 // exclusion rationale that already applied to ClaimedBy. Excluding them
 // keeps ComputeContentHash, and therefore VerifyContentHash and `af replay

@@ -279,9 +279,10 @@ func TestNode_ContentHash_ExcludesAuthorAndVerifierFields(t *testing.T) {
 	}
 	withIdentity.ValidatedBy = "verifier-1"
 	withIdentity.ValidationBatchID = "batch-1"
+	withIdentity.ProofAuthor = "prover-2"
 
 	if plain.ComputeContentHash() != withIdentity.ComputeContentHash() {
-		t.Errorf("ComputeContentHash differs when only Author/ValidatedBy/ValidationBatchID differ: %q vs %q",
+		t.Errorf("ComputeContentHash differs when only Author/ValidatedBy/ValidationBatchID/ProofAuthor differ: %q vs %q",
 			plain.ComputeContentHash(), withIdentity.ComputeContentHash())
 	}
 }

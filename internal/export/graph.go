@@ -80,6 +80,16 @@ type GraphNode struct {
 	// validated as part of a batch (`af verdicts apply`), omitted for
 	// singly-validated nodes.
 	ValidationBatchID string `json:"validation_batch_id,omitempty"`
+	// ProofAuthor is the driver-supplied identity of the prover that PROVED
+	// this node by decomposing it (`af record-proof`), distinct from Author
+	// (who authored the node's content). Omitted if the node was never
+	// decomposed. An external driver's cross-vendor check (rk PRD C9) reads
+	// this as the prover-of-record for a decomposed node — a root's Author is
+	// its `af init` stamp, but its ProofAuthor is the prover that decomposed it
+	// (rk GAP 9). Added under v1's future-additive rule (advertised via the
+	// FeatureProofAuthor capability token): a purely additive optional field,
+	// no schema_version bump.
+	ProofAuthor string `json:"proof_author,omitempty"`
 	// ProverReady is true iff af's OWN job detection (internal/jobs.FindJobs,
 	// the same classifier `af jobs --role prover` uses) marks this node as a
 	// prover job: not blocked, and either pending with an open blocking
@@ -226,6 +236,7 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 			Author:            n.Author,
 			ValidatedBy:       n.ValidatedBy,
 			ValidationBatchID: n.ValidationBatchID,
+			ProofAuthor:       n.ProofAuthor,
 			ProverReady:       proverReadySet[n.ID.String()],
 			VerifierReady:     verifierReadySet[n.ID.String()],
 			Closed:            closedSet[n.ID.String()],

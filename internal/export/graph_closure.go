@@ -23,6 +23,11 @@ const (
 	// emitted, so a verifier sees the exact dependency graph the prover
 	// produced rather than a children-substitution proxy.
 	FeatureNodeDependencies = "node-dependencies"
+	// FeatureProofAuthor: per-node proof_author (the prover-of-record that
+	// decomposed the node via `af record-proof`) is emitted, distinct from
+	// author, so a driver's cross-vendor check can compare the decomposer's
+	// family for a decomposed node (rk GAP 9).
+	FeatureProofAuthor = "proof-author"
 )
 
 // GraphFeatures is the fixed capability list this af build advertises. Always
@@ -33,6 +38,7 @@ var GraphFeatures = []string{
 	FeatureReadinessFlags,
 	FeatureClosureFlag,
 	FeatureNodeDependencies,
+	FeatureProofAuthor,
 }
 
 // isEpistemicallyCleared reports whether a node's own epistemic state is one
