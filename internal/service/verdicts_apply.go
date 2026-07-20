@@ -9,6 +9,7 @@ import (
 
 	aferrors "github.com/tobias/vibefeld/internal/errors"
 	"github.com/tobias/vibefeld/internal/ledger"
+	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/types"
 	"github.com/tobias/vibefeld/internal/verdicts"
 )
@@ -172,6 +173,23 @@ func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Ite
 		return "rejected:node-not-found", fmt.Sprintf("node %s does not exist", item.Node), nil
 	}
 
+	// rk B1: atomic readiness/hash re-check under this state read. When the
+	// item carries the hash it was authored against, reject a stale accept —
+	// the node was edited (hash changed) or is no longer verifier-ready
+	// (claimed/blocked) since the verifier dispatched. This closes the race a
+	// driver-side second export cannot: the check and the append share one
+	// CAS-protected state read.
+	if item.ExpectHash != "" {
+		if n.ContentHash != item.ExpectHash {
+			return "rejected:content-hash-mismatch",
+				fmt.Sprintf("node %s content hash changed since the verdict was authored (expected %s, current %s)", item.Node, item.ExpectHash, n.ContentHash), nil
+		}
+		if n.WorkflowState != schema.WorkflowAvailable {
+			return "rejected:not-verifier-ready",
+				fmt.Sprintf("node %s is no longer verifier-ready: workflow_state is %q, not %q", item.Node, n.WorkflowState, schema.WorkflowAvailable), nil
+		}
+	}
+
 	// Reviewer != author, honestly stated: recorded-and-checkable provenance
 	// (PRD C3), not adversary-proof enforcement. Both identities are
 	// driver-supplied; if Author was never recorded (legacy node, or none
@@ -222,8 +240,18 @@ func (s *ProofService) applyChallengeVerdict(nodeID types.NodeID, item verdicts.
 	if err != nil {
 		return "rejected:state-load-failed", err.Error(), nil
 	}
-	if st.GetNode(nodeID) == nil {
+	n := st.GetNode(nodeID)
+	if n == nil {
 		return "rejected:node-not-found", fmt.Sprintf("node %s does not exist", item.Node), nil
+	}
+
+	// rk B1: a challenge authored against a specific content hash is discarded
+	// if the node's bytes changed since dispatch — the verifier challenged a
+	// version that no longer exists. (No availability gate on a challenge: a
+	// challenge may legitimately target a claimed node.)
+	if item.ExpectHash != "" && n.ContentHash != item.ExpectHash {
+		return "rejected:content-hash-mismatch",
+			fmt.Sprintf("node %s content hash changed since the challenge was authored (expected %s, current %s)", item.Node, item.ExpectHash, n.ContentHash), nil
 	}
 
 	challengeID := generateVerdictChallengeID()

@@ -68,6 +68,7 @@ rk's schema.
 | `target` | challenge only | One of af's challenge targets (`statement`, `inference`, `context`, `dependencies`, `scope`, `gap`, `type_error`, `domain`, `completeness`). Defaults to `"statement"` if omitted. Must be empty on an accept item (a mixed item is file-invalid). |
 | `severity` | challenge only | `critical`, `major`, `minor`, or `note`. Defaults to `"major"` if omitted. Must be empty on an accept item. |
 | `category` | challenge only | Optional typed classification (`gap`, `missing`, `dependency`, `incorrect`, `unclear`, `other`). Must be empty on an accept item. |
+| `expect_hash` | optional | The node's `content_hash` this verdict was authored against (rk B1). When present, `apply` re-reads the node under its own state read and enforces it atomically: **any item** whose node's current `content_hash` differs is `rejected:content-hash-mismatch` (the node was edited since dispatch); additionally an **accept** whose node is no longer `available` (claimed/blocked) is `rejected:not-verifier-ready`. Omit it to keep the legacy behavior (no hash/availability gate). A driver that bound its verdict to a specific hash should always set this — it is what makes the readiness re-check a kernel guarantee rather than a racy second export. |
 
 ### What makes a file invalid (exit code 3, `VERDICTS_FILE_INVALID`)
 
@@ -134,6 +135,10 @@ one of:
   state:
   - `rejected:node-not-found`
   - `rejected:reviewer-equals-author` (accept only — see below)
+  - `rejected:content-hash-mismatch` (the item's `expect_hash` no longer
+    matches the node's current `content_hash` — accept or challenge)
+  - `rejected:not-verifier-ready` (accept only, with `expect_hash`: the node
+    is no longer `available`, e.g. claimed or blocked, since dispatch)
   - `rejected:concurrent-modification` (also triggers the abort)
   - `rejected:apply-error` (catch-all for an unclassified kernel error)
 

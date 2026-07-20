@@ -65,6 +65,16 @@ type Item struct {
 	Target   string  `json:"target,omitempty"`
 	Severity string  `json:"severity,omitempty"`
 	Category string  `json:"category,omitempty"`
+	// ExpectHash is the node content hash this verdict was authored against
+	// (rk B1). Optional and additive: when non-empty, `af verdicts apply`
+	// re-reads the node under its own state read and REJECTS the item if the
+	// node's current content hash differs (the node was edited between the
+	// verifier's dispatch and this apply) or, for an accept, if the node is no
+	// longer verifier-ready (workflow_state != available). This makes the
+	// readiness/hash re-check atomic in af's kernel rather than a racy
+	// second export on the driver side. An empty ExpectHash preserves the
+	// legacy behavior (no hash/availability gate).
+	ExpectHash string `json:"expect_hash,omitempty"`
 }
 
 // File is the top-level verdict-file document accepted by
