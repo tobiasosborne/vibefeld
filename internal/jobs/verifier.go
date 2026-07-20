@@ -122,6 +122,15 @@ func hasOpenChallenges(n *node.Node, challengeMap map[string][]*node.Challenge) 
 	return false
 }
 
+// HasBlockingChallenges reports whether the node has any open challenge with
+// blocking severity (critical or major). It is the exported form of the same
+// predicate af's job classifiers use, so other packages (e.g. export's
+// closure computation) can ask af's authoritative "is this node blocked by an
+// open challenge" question instead of re-deriving it.
+func HasBlockingChallenges(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
+	return hasBlockingChallenges(n, challengeMap)
+}
+
 // hasBlockingChallenges returns true if the node has any open challenges with
 // blocking severity (critical or major). Minor and note challenges do not block.
 func hasBlockingChallenges(n *node.Node, challengeMap map[string][]*node.Challenge) bool {

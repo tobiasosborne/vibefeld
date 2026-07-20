@@ -14,6 +14,7 @@ and `--graph` are independent flags on `af export`.
 | Field | Type | Description |
 |---|---|---|
 | `schema_version` | string | Currently `"1"`. Consumers must check this before parsing the rest of the document; a version bump accompanies any incompatible shape change, per a new fixture in `internal/export/graph_test.go`. |
+| `features` | array of string | **Always present** (never omitted). The capability tokens this af build advertises (`internal/export.GraphFeatures`): currently `readiness-flags`, `closure-flag`, `node-dependencies`. Additive-only in spirit but structurally non-optional so a consumer can detect an af too old to emit a capability it depends on — an older af omits the whole `features` array, and the consumer should fail loudly at preflight rather than misread an absent `omitempty` flag as "false / nothing ready". A driver requires `schema_version == "1"` AND every token it depends on to be present in `features`. |
 | `workspace` | object | See [Workspace](#workspace). |
 | `nodes` | array of object | Every node in the proof tree. See [Node](#node). Ordered by hierarchical ID (`1`, `1.1`, `1.2`, `1.1.1`, ...), never map/ledger-append order. |
 | `validation` | object | Cheap validation summary. See [Validation](#validation). |
@@ -48,14 +49,18 @@ One entry per node in the proof tree, `nodes[]`.
 | `author` | string, omitted if empty | The driver-supplied identity of the agent that authored this node's content (rk PRD C3's author-identity kernel surface, item V1). Added additively after v1 shipped — see the "Additive fields" note below; never populated for nodes created before the field existed. |
 | `validated_by` | string, omitted if empty | The driver-supplied identity of the verifier who validated this node, if any. Same additive-field note applies. |
 | `validation_batch_id` | string, omitted if empty | The batch id recorded when this node was validated as part of a batch (`af verdicts apply`, item V2 — not yet implemented); omitted for singly-validated nodes. |
+| `dependencies` | array of string, omitted if none | This node's reference dependency IDs (the nodes its reasoning cites, e.g. "by step 1.2"), in hierarchical-ID order — exactly `node.Node.Dependencies`. Emitted so an external verifier judges a node against the SAME dependency set the prover recorded, rather than substituting the node's children as a proxy. Additive field (`node-dependencies` capability); `content_hash` already covers dependencies, so a verdict bound to `content_hash` is invalidated if this set changes. |
+| `closed` | bool, omitted if false | True iff the subtree rooted at this node is **settled**: its own epistemic state is cleared (`validated`/`admitted`/`archived`), it is not `blocked`, it carries no open blocking (critical/major) challenge, AND every descendant is itself closed (bottom-up, `internal/export.computeClosedSet`). This is the authoritative convergence signal a driver reads on the ROOT — unlike the bare `epistemic_state` axis, it goes false the instant a blocking challenge lands on an already-`validated` node, or any descendant falls out of a closed state. A driver treats a claim as converged only when its root is `closed` (and, to distinguish success from an abandoned/`archived` root, additionally checks the root's `epistemic_state == "validated"`). Additive field (`closure-flag` capability). |
 | `prover_ready` | bool, omitted if false | True iff af's OWN job detection (`internal/jobs.FindProverJobs`, the same classifier `af jobs --role prover` uses) marks this node a prover job: not blocked, and either pending with an open blocking (critical/major) challenge, or in draft/needs_refinement. Lets an external driver read af's job classification instead of re-deriving af's state machine from the raw axes. Additive field (see below). |
 | `verifier_ready` | bool, omitted if false | True iff af's OWN job detection marks this node ready for verifier review AND all its children are epistemically cleared — exactly `internal/jobs.FilterReadyVerifierJobs` (`af jobs --role verifier --ready`): a statement, pending, available (not claimed/blocked), no open blocking challenge, every child validated/admitted/archived. A driver dispatches a verifier turn on these and only these (bottom-up-ready). Note this is af's authoritative classifier; the `af status` "Prover/Verifier jobs" summary line uses a separate, cruder workflow-only heuristic (`internal/render/status.go`) that can disagree — external drivers must read these export flags, not parse `af status`. Additive field. |
 
 Fields deliberately **not** included in v1: `claimed_by`/`claimed_at` (ephemeral
 workflow metadata, not identity-bearing contract content), `context`,
-`dependencies`, `validation_deps`, `scope` (cross-reference metadata not
-requested by the C5 join; may be added in a future schema version without
-breaking v1 consumers, since new optional fields are additive).
+`validation_deps`, `scope` (cross-reference metadata not requested by the C5
+join; may be added in a future schema version without breaking v1 consumers,
+since new optional fields are additive). (`dependencies` WAS in this list; it
+is now emitted additively — see the `dependencies` row above — because the
+verifier needs the prover's exact dependency set.)
 
 ### Additive fields (author/validated_by/validation_batch_id)
 

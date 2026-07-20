@@ -96,6 +96,22 @@ type GraphNode struct {
 	// driver dispatches a verifier turn on these and only these. Same additive-
 	// field note. Omitted (false) when the node is not review-ready.
 	VerifierReady bool `json:"verifier_ready,omitempty"`
+	// Dependencies lists this node's reference dependency IDs (the nodes its
+	// reasoning cites, e.g. "by step 1.2") in hierarchical-ID order, exactly
+	// node.Node.Dependencies. Emitted so an external verifier judges a node
+	// against the SAME dependency set the prover recorded, rather than a
+	// children-substitution proxy. Additive field (omitempty), no
+	// schema_version bump; omitted for a node with no recorded dependencies.
+	Dependencies []string `json:"dependencies,omitempty"`
+	// Closed is true iff the subtree rooted at this node is settled — its own
+	// epistemic state is cleared (validated/admitted/archived), it is not
+	// blocked, it carries no open blocking challenge, and every descendant is
+	// itself closed (see computeClosedSet). This is the authoritative
+	// convergence signal a driver reads on the ROOT: it goes false the instant
+	// a blocking challenge lands on an already-validated node, which the bare
+	// epistemic_state axis does not reflect. Additive field (omitempty), no
+	// schema_version bump; omitted (false) for any not-yet-closed node.
+	Closed bool `json:"closed,omitempty"`
 }
 
 // GraphValidation summarizes validation-relevant events cheaply derivable
@@ -114,9 +130,15 @@ type GraphValidation struct {
 // reader checks this field before parsing the rest of the document.
 type GraphExport struct {
 	SchemaVersion string          `json:"schema_version"`
-	Workspace     GraphWorkspace  `json:"workspace"`
-	Nodes         []GraphNode     `json:"nodes"`
-	Validation    GraphValidation `json:"validation"`
+	// Features is the fixed capability list this af build advertises
+	// (GraphFeatures). Always present (never omitempty) so an external driver
+	// can detect an af too old to emit a capability it depends on: an older af
+	// omits this array entirely, and the driver fails loudly at preflight
+	// rather than misreading an absent omitempty flag as "nothing ready".
+	Features   []string        `json:"features"`
+	Workspace  GraphWorkspace  `json:"workspace"`
+	Nodes      []GraphNode     `json:"nodes"`
+	Validation GraphValidation `json:"validation"`
 }
 
 // BuildGraphExport builds the deterministic in-memory GraphExport document
@@ -127,6 +149,7 @@ type GraphExport struct {
 func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) GraphExport {
 	ge := GraphExport{
 		SchemaVersion: GraphSchemaVersion,
+		Features:      GraphFeatures,
 		Workspace:     GraphWorkspace{ID: workspaceID},
 		Nodes:         []GraphNode{},
 		Validation: GraphValidation{
@@ -172,6 +195,10 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 		verifierReadySet[n.ID.String()] = true
 	}
 
+	// Per-node bottom-up closure (the authoritative convergence signal); built
+	// once over the full node set from the same challengeMap, deterministic.
+	closedSet := computeClosedSet(nodes, nodeMap, challengeMap)
+
 	// child_ids per parent, built from the already-sorted node list so each
 	// parent's children slice comes out in hierarchical-ID order too.
 	childrenOf := make(map[string][]string, len(nodes))
@@ -201,6 +228,14 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 			ValidationBatchID: n.ValidationBatchID,
 			ProverReady:       proverReadySet[n.ID.String()],
 			VerifierReady:     verifierReadySet[n.ID.String()],
+			Closed:            closedSet[n.ID.String()],
+		}
+		if len(n.Dependencies) > 0 {
+			deps := make([]string, len(n.Dependencies))
+			for i, d := range n.Dependencies {
+				deps[i] = d.String()
+			}
+			gn.Dependencies = deps
 		}
 		if parentID, ok := n.ID.Parent(); ok {
 			gn.ParentID = parentID.String()
