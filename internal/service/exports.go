@@ -148,6 +148,7 @@ const (
 var (
 	ValidateNodeType          = schema.ValidateNodeType
 	ValidateInference         = schema.ValidateInference
+	ValidateJustification     = schema.ValidateJustification
 	ValidateEpistemicState    = schema.ValidateEpistemicState
 	ValidateWorkflowState     = schema.ValidateWorkflowState
 	ValidateChallengeTarget   = schema.ValidateChallengeTarget

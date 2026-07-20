@@ -107,12 +107,41 @@ var inferenceRegistry = map[InferenceType]InferenceInfo{
 	},
 }
 
-// ValidateInference validates that the given string is a valid inference type.
-// Returns an error if the inference type is not recognized.
+// ValidateInference validates that the given string is one of the known
+// registry inference types. This is the STRICT check, used for validating a
+// schema definition's declared inference_types list — the canonical closed
+// enum of named logical rules. It is NOT used to gate a prover's per-node
+// justification; see ValidateJustification for that.
 func ValidateInference(s string) error {
 	_, ok := inferenceRegistry[InferenceType(s)]
 	if !ok {
 		return fmt.Errorf("unknown inference type: %q", s)
+	}
+	return nil
+}
+
+// ValidateJustification validates a per-node justification/inference LABEL as
+// supplied by a prover (via `af refine -j` / `af record-proof --children`).
+//
+// Unlike ValidateInference — which enforces the closed registry for schema
+// definitions — a justification is a free-text derivation label: ANY non-blank
+// string is accepted and stored VERBATIM with NO rule semantics attached. Real
+// mathematical decompositions routinely justify a step with a domain label such
+// as "multiplication_by_positive" or "monotonicity" that has no member in a
+// pure-logic enum; forcing the closest logical rule would mis-record the actual
+// inference (a provenance lie), so free text is a first-class recorded label.
+//
+// The registry values (modus_ponens … contradiction) keep their exact identity:
+// they remain recognized, carry name/form metadata via GetInferenceInfo, and are
+// suggested by SuggestInference. A free-text label is NEVER coerced to a registry
+// value, and in particular a free-text-justified node is NOT "assumption" (the
+// omitted-justification default and the value rk's proofless-root predicate keys
+// on). Scope semantics are carried by the node TYPE (local_assume/local_discharge),
+// never by this field, so free text cannot perturb scope closure. Blank or
+// whitespace-only is rejected.
+func ValidateJustification(s string) error {
+	if strings.TrimSpace(s) == "" {
+		return fmt.Errorf("justification/inference cannot be blank")
 	}
 	return nil
 }

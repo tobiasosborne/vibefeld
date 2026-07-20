@@ -60,7 +60,7 @@ Examples:
 	cmd.Flags().StringVarP(&owner, "owner", "o", "", "Prover identity (required; recorded as each child's author)")
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "Proof directory")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format (text/json)")
-	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of child specs (required): [{\"statement\":...,\"type\"?:...,\"justification\"?:...,\"depends\"?:[...]}]")
+	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of child specs (required): [{\"statement\":...,\"type\"?:...,\"inference\"?:...,\"depends\"?:[...]}]. \"inference\" is a free-text derivation label (any non-blank string; recognized rules like modus_ponens keep their meaning); omitted defaults to \"assumption\"")
 	cmd.Flags().StringVar(&expectHash, "expect-hash", "", "Content hash the proof was authored against; refused if the node changed since")
 
 	return cmd

@@ -30,8 +30,12 @@ func validateNodeTypeAndInference(cmdName, nodeTypeStr, inferenceStr string, exa
 	if err := service.ValidateNodeType(nodeTypeStr); err != nil {
 		return "", "", render.InvalidValueError(cmdName, "type", nodeTypeStr, render.ValidNodeTypes, examples)
 	}
-	if err := service.ValidateInference(inferenceStr); err != nil {
-		return "", "", render.InvalidValueError(cmdName, "justification", inferenceStr, render.ValidInferenceTypes, examples)
+	// Justification is a free-text derivation label: any non-blank string is
+	// accepted and stored verbatim (see schema.ValidateJustification). The
+	// registry values in render.ValidInferenceTypes stay recognized but are not
+	// required; only blank is rejected.
+	if err := service.ValidateJustification(inferenceStr); err != nil {
+		return "", "", render.NewUsageError(cmdName, "justification cannot be blank; provide a short derivation label (e.g. modus_ponens, by_definition, or a domain label like multiplication_by_positive)", examples)
 	}
 	return service.NodeType(nodeTypeStr), service.InferenceType(inferenceStr), nil
 }
@@ -311,11 +315,14 @@ Workflow:
 	cmd.Flags().StringVarP(&owner, "owner", "o", "", "Agent/owner name (required, must match claim owner)")
 	cmd.Flags().StringVarP(&nodeType, "type", "t", "claim", "Child node type (claim/local_assume/local_discharge/case/qed)")
 	cmd.Flags().StringVarP(&inference, "justification", "j", "assumption",
-		"Justification/inference type\n"+
-			"Valid: modus_ponens, modus_tollens, by_definition,\n"+
+		"Justification/inference: a short free-text derivation label (any\n"+
+			"non-blank string; stored verbatim). Recognized logical rules keep\n"+
+			"their meaning: modus_ponens, modus_tollens, by_definition,\n"+
 			"assumption, local_assume, local_discharge, contradiction,\n"+
 			"universal_instantiation, existential_instantiation,\n"+
-			"universal_generalization, existential_generalization")
+			"universal_generalization, existential_generalization. Domain\n"+
+			"steps (e.g. multiplication_by_positive, monotonicity) are also\n"+
+			"accepted; omitted defaults to assumption")
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "Proof directory")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format (text/json)")
 	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of child specs for complex cases (different types per child)")

@@ -155,9 +155,11 @@ func NewNodeWithOptions(
 		return nil, errors.New("invalid node type")
 	}
 
-	// Validate inference type
-	if _, ok := schema.GetInferenceInfo(inference); !ok {
-		return nil, errors.New("invalid inference type")
+	// Validate inference/justification: a free-text derivation label; any
+	// non-blank string is accepted and stored verbatim (registry values keep
+	// their identity but are not required). Blank is rejected.
+	if strings.TrimSpace(string(inference)) == "" {
+		return nil, errors.New("node inference cannot be blank")
 	}
 
 	// Create the node
@@ -276,9 +278,10 @@ func (n *Node) Validate() error {
 		return errors.New("invalid node type")
 	}
 
-	// Check inference type
-	if _, ok := schema.GetInferenceInfo(n.Inference); !ok {
-		return errors.New("invalid inference type")
+	// Check inference/justification: free-text label, non-blank required
+	// (registry membership not required; see schema.ValidateJustification).
+	if strings.TrimSpace(string(n.Inference)) == "" {
+		return errors.New("node inference cannot be blank")
 	}
 
 	// Check workflow state

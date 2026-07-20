@@ -33,6 +33,53 @@ func TestValidateInference_AllValid(t *testing.T) {
 	}
 }
 
+// TestValidateJustification_FreeTextAccepted tests that a per-node justification
+// accepts any non-blank free-text label, including labels outside the registry
+// (real math steps), AND every registry value.
+func TestValidateJustification_FreeTextAccepted(t *testing.T) {
+	accepted := []string{
+		"multiplication_by_positive", // the live GAP-6 label
+		"monotonicity",
+		"Cauchy-Schwarz",
+		"algebraic manipulation",
+		"modus_ponens",   // registry values still accepted
+		"contradiction",  // registry values still accepted
+		"local_assume",   // special-scope value still accepted as a label
+		"assumption",     // the default value still accepted
+	}
+	for _, s := range accepted {
+		if err := ValidateJustification(s); err != nil {
+			t.Errorf("ValidateJustification(%q) returned error: %v, want nil", s, err)
+		}
+	}
+}
+
+// TestValidateJustification_BlankRejected tests that only blank/whitespace-only
+// justifications are rejected.
+func TestValidateJustification_BlankRejected(t *testing.T) {
+	for _, s := range []string{"", "   ", "\t", "\n", " \t\n "} {
+		if err := ValidateJustification(s); err == nil {
+			t.Errorf("ValidateJustification(%q) returned nil, want error (blank)", s)
+		}
+	}
+}
+
+// TestValidateJustification_NotCoercedToRegistry documents that a free-text
+// justification is stored as-is and is NOT the special "assumption" value that
+// rk's proofless-root predicate keys on.
+func TestValidateJustification_NotCoercedToRegistry(t *testing.T) {
+	label := "multiplication_by_positive"
+	if err := ValidateJustification(label); err != nil {
+		t.Fatalf("ValidateJustification(%q) error: %v", label, err)
+	}
+	if _, known := GetInferenceInfo(InferenceType(label)); known {
+		t.Errorf("free-text label %q must NOT be a known registry value", label)
+	}
+	if label == string(InferenceAssumption) {
+		t.Errorf("free-text label must not equal the assumption default")
+	}
+}
+
 // TestValidateInference_Invalid tests that invalid inference types fail validation
 func TestValidateInference_Invalid(t *testing.T) {
 	tests := []struct {

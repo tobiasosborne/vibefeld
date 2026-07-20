@@ -15,12 +15,14 @@ func newInferencesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "inferences",
 		GroupID: GroupQuery,
-		Short:   "List all valid inference types",
-		Long: `List all valid inference types for use with 'af refine -j TYPE'.
+		Short:   "List the recognized inference types",
+		Long: `List the recognized inference types for use with 'af refine -j TYPE'.
 
-Inference types are the logical rules used to justify proof steps. Each
-inference type has an ID (used with -j flag), a human-readable name, and
-a logical form showing its structure.
+These are the named logical rules af recognizes and annotates with a
+human-readable name and logical form. A justification is NOT restricted to
+this list: any non-blank free-text derivation label (e.g. a domain step like
+multiplication_by_positive) is accepted and stored verbatim. The rules below
+are the ones that carry extra metadata; use them where they genuinely apply.
 
 Examples:
   af inferences                    List all inference types

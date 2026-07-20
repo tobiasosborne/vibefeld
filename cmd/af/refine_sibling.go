@@ -63,11 +63,13 @@ Workflow:
 	cmd.Flags().StringVarP(&owner, "owner", "o", "", "Agent/owner name (required, must match claim owner)")
 	cmd.Flags().StringVarP(&nodeType, "type", "t", "claim", "Node type (claim/local_assume/local_discharge/case/qed)")
 	cmd.Flags().StringVarP(&inference, "justification", "j", "assumption",
-		"Justification/inference type\n"+
-			"Valid: modus_ponens, modus_tollens, by_definition,\n"+
-			"assumption, local_assume, local_discharge, contradiction,\n"+
-			"universal_instantiation, existential_instantiation,\n"+
-			"universal_generalization, existential_generalization")
+		"Justification/inference: a short free-text derivation label (any\n"+
+			"non-blank string; stored verbatim). Recognized rules keep their\n"+
+			"meaning: modus_ponens, modus_tollens, by_definition, assumption,\n"+
+			"local_assume, local_discharge, contradiction, universal_instantiation,\n"+
+			"existential_instantiation, universal_generalization,\n"+
+			"existential_generalization. Domain steps are also accepted;\n"+
+			"omitted defaults to assumption")
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "Proof directory")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format (text/json)")
 	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of sibling specs for complex cases")

@@ -108,7 +108,14 @@ Node types interact with the scope system:
 
 ### Inference Types
 
-Each node must declare the inference rule that justifies it. AF supports a rich set of inference types:
+Each node declares a justification/inference: a short free-text derivation label
+(any non-blank string, stored verbatim; an omitted justification defaults to
+`assumption`). Real mathematical decompositions routinely use domain steps —
+`multiplication_by_positive`, `monotonicity`, `algebraic manipulation` — that
+have no member in a pure-logic enum, and these are first-class labels. The tables
+below are the *recognized* rules that AF annotates with a name and logical form;
+prefer them where they genuinely apply. Scope semantics come from the node TYPE
+(`local_assume`/`local_discharge`), never from this label.
 
 **Logical Inference Rules:**
 | Inference | Form | Description |

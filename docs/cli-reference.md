@@ -495,7 +495,8 @@ af refine <parent-id> [statement]... [flags]
 
 **Note:** Prefer positional arguments over `--statement`. The `--statement` flag is deprecated.
 
-**Inference Types:**
+**Inference / justification:** a `--justification` (and per-child `"inference"`) is a free-text derivation label — any non-blank string is accepted and stored verbatim; an omitted justification defaults to `assumption`. The following are the *recognized* logical rules that carry extra name/form metadata (use them where they genuinely apply); domain steps such as `multiplication_by_positive` or `monotonicity` are equally valid:
+
 `modus_ponens`, `modus_tollens`, `by_definition`, `assumption`, `local_assume`, `local_discharge`, `contradiction`, `universal_instantiation`, `existential_instantiation`, `universal_generalization`, `existential_generalization`
 
 **Examples:**

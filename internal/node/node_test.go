@@ -174,12 +174,29 @@ func TestNewNode_InvalidNodeType(t *testing.T) {
 	}
 }
 
-// TestNewNode_InvalidInferenceType tests that invalid inference type is rejected.
-func TestNewNode_InvalidInferenceType(t *testing.T) {
+// TestNewNode_FreeTextInferenceAccepted tests that a free-text justification
+// label outside the known registry (e.g. a real math step like
+// "multiplication_by_positive") is accepted and stored verbatim. Justification
+// is a free-text derivation label, not a closed enum (schema.ValidateJustification).
+func TestNewNode_FreeTextInferenceAccepted(t *testing.T) {
 	id, _ := types.Parse("1")
-	_, err := node.NewNode(id, schema.NodeTypeClaim, "Valid statement", schema.InferenceType("invalid_inference"))
-	if err == nil {
-		t.Error("NewNode() with invalid inference type should return error")
+	n, err := node.NewNode(id, schema.NodeTypeClaim, "Valid statement", schema.InferenceType("multiplication_by_positive"))
+	if err != nil {
+		t.Fatalf("NewNode() with free-text inference should succeed, got error: %v", err)
+	}
+	if string(n.Inference) != "multiplication_by_positive" {
+		t.Errorf("Inference = %q, want verbatim %q", n.Inference, "multiplication_by_positive")
+	}
+}
+
+// TestNewNode_BlankInferenceRejected tests that a blank/whitespace-only
+// justification is still rejected.
+func TestNewNode_BlankInferenceRejected(t *testing.T) {
+	id, _ := types.Parse("1")
+	for _, blank := range []string{"", "   ", "\t"} {
+		if _, err := node.NewNode(id, schema.NodeTypeClaim, "Valid statement", schema.InferenceType(blank)); err == nil {
+			t.Errorf("NewNode() with blank inference %q should return error", blank)
+		}
 	}
 }
 
@@ -441,18 +458,33 @@ func TestNode_Validate(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid inference type", func(t *testing.T) {
+	t.Run("free-text inference accepted", func(t *testing.T) {
 		n := &node.Node{
 			ID:             id,
 			Type:           schema.NodeTypeClaim,
 			Statement:      "Valid statement",
-			Inference:      schema.InferenceType("invalid"),
+			Inference:      schema.InferenceType("multiplication_by_positive"),
+			WorkflowState:  schema.WorkflowAvailable,
+			EpistemicState: schema.EpistemicPending,
+		}
+
+		if err := n.Validate(); err != nil {
+			t.Errorf("Validate() should accept free-text inference, got error: %v", err)
+		}
+	})
+
+	t.Run("blank inference rejected", func(t *testing.T) {
+		n := &node.Node{
+			ID:             id,
+			Type:           schema.NodeTypeClaim,
+			Statement:      "Valid statement",
+			Inference:      schema.InferenceType("   "),
 			WorkflowState:  schema.WorkflowAvailable,
 			EpistemicState: schema.EpistemicPending,
 		}
 
 		if err := n.Validate(); err == nil {
-			t.Error("Validate() should return error for invalid inference type")
+			t.Error("Validate() should return error for blank inference")
 		}
 	})
 }

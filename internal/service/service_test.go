@@ -387,13 +387,23 @@ func TestCreateNode_InvalidNodeType(t *testing.T) {
 	}
 }
 
-func TestCreateNode_InvalidInference(t *testing.T) {
+func TestCreateNode_FreeTextInference(t *testing.T) {
+	svc, _ := setupTestProof(t)
+
+	// A free-text justification label (a real math step outside the known
+	// registry) is accepted and stored verbatim; see schema.ValidateJustification.
+	childID := parseNodeID(t, "1.1")
+	if err := svc.CreateNode(childID, schema.NodeTypeClaim, "Statement", schema.InferenceType("multiplication_by_positive")); err != nil {
+		t.Errorf("CreateNode() with free-text inference should succeed, got: %v", err)
+	}
+}
+
+func TestCreateNode_BlankInferenceRejected(t *testing.T) {
 	svc, _ := setupTestProof(t)
 
 	childID := parseNodeID(t, "1.1")
-	err := svc.CreateNode(childID, schema.NodeTypeClaim, "Statement", schema.InferenceType("invalid"))
-	if err == nil {
-		t.Error("CreateNode() expected error for invalid inference type, got nil")
+	if err := svc.CreateNode(childID, schema.NodeTypeClaim, "Statement", schema.InferenceType("   ")); err == nil {
+		t.Error("CreateNode() expected error for blank inference, got nil")
 	}
 }
 

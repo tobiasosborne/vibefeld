@@ -75,6 +75,90 @@ func TestRecordProofCmd_RefinesAndDisposesChallenge(t *testing.T) {
 	}
 }
 
+// TestRecordProofCmd_FreeTextJustification is the GAP-6 live reproduction: a
+// prover decomposes a challenged node and justifies a child with a real math
+// label ("multiplication_by_positive") that is NOT in af's known inference
+// registry. record-proof must accept it, store it VERBATIM, and it must survive
+// `af export --graph json` unchanged. (Previously exited 1: invalid --justification.)
+func TestRecordProofCmd_FreeTextJustification(t *testing.T) {
+	tmpDir, cleanup := setupChallengedRoot(t)
+	defer cleanup()
+
+	cmd := newRecordProofTestCmd()
+	_, err := executeCommand(cmd, "record-proof", "1",
+		"--owner", "prover-1",
+		"--children", `[{"statement":"weighted step","inference":"multiplication_by_positive"}]`,
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("record-proof with free-text justification should succeed, got: %v", err)
+	}
+
+	// Stored verbatim on the recorded node.
+	svc, _ := service.NewProofService(tmpDir)
+	st, _ := svc.LoadState()
+	childID, _ := service.ParseNodeID("1.1")
+	child := st.GetNode(childID)
+	if child == nil {
+		t.Fatal("child 1.1 was not recorded")
+	}
+	if string(child.Inference) != "multiplication_by_positive" {
+		t.Errorf("recorded inference = %q, want verbatim %q", child.Inference, "multiplication_by_positive")
+	}
+
+	// Survives export verbatim, and does not break export/closure.
+	exportCmd := newTestRootCmd()
+	exportCmd.AddCommand(newExportCmd())
+	out, err := executeCommand(exportCmd, "export", "--graph", "json", "--dir", tmpDir)
+	if err != nil {
+		t.Fatalf("export --graph json failed on free-text inference: %v", err)
+	}
+	if !strings.Contains(out, "multiplication_by_positive") {
+		t.Errorf("free-text inference did not survive export verbatim; export:\n%s", out)
+	}
+}
+
+// TestRecordProofCmd_BlankJustificationRejected: an explicitly blank
+// (whitespace-only) justification is still rejected — the default only applies
+// to an OMITTED justification, which becomes "assumption" (unchanged).
+func TestRecordProofCmd_BlankJustificationRejected(t *testing.T) {
+	tmpDir, cleanup := setupChallengedRoot(t)
+	defer cleanup()
+
+	cmd := newRecordProofTestCmd()
+	_, err := executeCommand(cmd, "record-proof", "1",
+		"--owner", "prover-1",
+		"--children", `[{"statement":"x","inference":"   "}]`,
+		"--dir", tmpDir,
+	)
+	if err == nil {
+		t.Fatal("record-proof with a blank (whitespace) justification should be rejected")
+	}
+}
+
+// TestRecordProofCmd_OmittedJustificationDefaultsAssumption: an OMITTED
+// justification still defaults to "assumption" — the value rk's proofless-root
+// predicate keys on. A free-text-justified node is never coerced to this.
+func TestRecordProofCmd_OmittedJustificationDefaultsAssumption(t *testing.T) {
+	tmpDir, cleanup := setupChallengedRoot(t)
+	defer cleanup()
+
+	cmd := newRecordProofTestCmd()
+	if _, err := executeCommand(cmd, "record-proof", "1",
+		"--owner", "prover-1",
+		"--children", `[{"statement":"no justification given"}]`,
+		"--dir", tmpDir,
+	); err != nil {
+		t.Fatalf("record-proof error: %v", err)
+	}
+	svc, _ := service.NewProofService(tmpDir)
+	st, _ := svc.LoadState()
+	childID, _ := service.ParseNodeID("1.1")
+	if got := string(st.GetNode(childID).Inference); got != "assumption" {
+		t.Errorf("omitted justification defaulted to %q, want \"assumption\"", got)
+	}
+}
+
 func TestRecordProofCmd_RejectsNonProverJob(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "af-recordproof-nojob-*")
 	if err != nil {
