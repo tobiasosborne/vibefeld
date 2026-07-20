@@ -48,6 +48,8 @@ One entry per node in the proof tree, `nodes[]`.
 | `author` | string, omitted if empty | The driver-supplied identity of the agent that authored this node's content (rk PRD C3's author-identity kernel surface, item V1). Added additively after v1 shipped — see the "Additive fields" note below; never populated for nodes created before the field existed. |
 | `validated_by` | string, omitted if empty | The driver-supplied identity of the verifier who validated this node, if any. Same additive-field note applies. |
 | `validation_batch_id` | string, omitted if empty | The batch id recorded when this node was validated as part of a batch (`af verdicts apply`, item V2 — not yet implemented); omitted for singly-validated nodes. |
+| `prover_ready` | bool, omitted if false | True iff af's OWN job detection (`internal/jobs.FindProverJobs`, the same classifier `af jobs --role prover` uses) marks this node a prover job: not blocked, and either pending with an open blocking (critical/major) challenge, or in draft/needs_refinement. Lets an external driver read af's job classification instead of re-deriving af's state machine from the raw axes. Additive field (see below). |
+| `verifier_ready` | bool, omitted if false | True iff af's OWN job detection marks this node ready for verifier review AND all its children are epistemically cleared — exactly `internal/jobs.FilterReadyVerifierJobs` (`af jobs --role verifier --ready`): a statement, pending, available (not claimed/blocked), no open blocking challenge, every child validated/admitted/archived. A driver dispatches a verifier turn on these and only these (bottom-up-ready). Note this is af's authoritative classifier; the `af status` "Prover/Verifier jobs" summary line uses a separate, cruder workflow-only heuristic (`internal/render/status.go`) that can disagree — external drivers must read these export flags, not parse `af status`. Additive field. |
 
 Fields deliberately **not** included in v1: `claimed_by`/`claimed_at` (ephemeral
 workflow metadata, not identity-bearing contract content), `context`,
@@ -65,6 +67,13 @@ table should simply ignore keys they don't recognize. A proof replayed from
 a ledger that predates author/verifier-identity provenance omits all three
 fields for every node, so re-exporting an old, unmodified proof is still
 byte-identical to before this addition.
+
+`prover_ready` and `verifier_ready` were added later under the same rule:
+both are `omitempty` bools computed from already-derived state (af's own
+`internal/jobs` classifier), no existing field changed, and `schema_version`
+stayed `"1"`. They are derived — not stored in the ledger — so they never
+affect replay byte-identity of node content; a node needing neither prover
+nor verifier work omits both keys.
 
 ## Validation
 

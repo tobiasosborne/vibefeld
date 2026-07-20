@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/tobias/vibefeld/internal/config"
+	"github.com/tobias/vibefeld/internal/jobs"
+	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/state"
 )
 
@@ -78,6 +80,22 @@ type GraphNode struct {
 	// validated as part of a batch (`af verdicts apply`), omitted for
 	// singly-validated nodes.
 	ValidationBatchID string `json:"validation_batch_id,omitempty"`
+	// ProverReady is true iff af's OWN job detection (internal/jobs.FindJobs,
+	// the same classifier `af jobs --role prover` uses) marks this node as a
+	// prover job: not blocked, and either pending with an open blocking
+	// (critical/major) challenge, or in draft/needs_refinement. An external
+	// driver (rk) reads this instead of re-deriving af's job state machine.
+	// Added under v1's additive-fields rule: optional (omitempty), no
+	// schema_version bump. Omitted (false) for nodes needing no prover work.
+	ProverReady bool `json:"prover_ready,omitempty"`
+	// VerifierReady is true iff af's OWN job detection marks this node ready
+	// for verifier review AND all its children are epistemically cleared —
+	// exactly internal/jobs.FilterReadyVerifierJobs, the bottom-up-ready filter
+	// `af jobs --role verifier --ready` uses (a statement, pending, available,
+	// no open blocking challenge, every child validated/admitted/archived). A
+	// driver dispatches a verifier turn on these and only these. Same additive-
+	// field note. Omitted (false) when the node is not review-ready.
+	VerifierReady bool `json:"verifier_ready,omitempty"`
 }
 
 // GraphValidation summarizes validation-relevant events cheaply derivable
@@ -132,6 +150,28 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 	// determinism.
 	nodes := sortNodesByID(s.AllNodes())
 
+	// Per-node readiness from af's OWN job detection (internal/jobs) — the same
+	// classifier `af jobs` uses, so an external driver never re-derives af's
+	// job state machine. proverReadySet = FindProverJobs; verifierReadySet =
+	// FilterReadyVerifierJobs (verifier jobs whose children are all cleared, the
+	// bottom-up-ready set a driver dispatches on). Built once over the full node
+	// set; determinism is unaffected (these only set already-deterministic bool
+	// fields on nodes already emitted in stable ID order).
+	nodeMap := make(map[string]*node.Node, len(nodes))
+	for _, n := range nodes {
+		nodeMap[n.ID.String()] = n
+	}
+	challengeMap := s.ChallengeMapForJobs()
+	jr := jobs.FindJobs(nodes, nodeMap, challengeMap)
+	proverReadySet := make(map[string]bool, len(jr.ProverJobs))
+	for _, n := range jr.ProverJobs {
+		proverReadySet[n.ID.String()] = true
+	}
+	verifierReadySet := make(map[string]bool, len(jr.VerifierJobs))
+	for _, n := range jobs.FilterReadyVerifierJobs(jr.VerifierJobs, nodeMap) {
+		verifierReadySet[n.ID.String()] = true
+	}
+
 	// child_ids per parent, built from the already-sorted node list so each
 	// parent's children slice comes out in hierarchical-ID order too.
 	childrenOf := make(map[string][]string, len(nodes))
@@ -159,6 +199,8 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 			Author:            n.Author,
 			ValidatedBy:       n.ValidatedBy,
 			ValidationBatchID: n.ValidationBatchID,
+			ProverReady:       proverReadySet[n.ID.String()],
+			VerifierReady:     verifierReadySet[n.ID.String()],
 		}
 		if parentID, ok := n.ID.Parent(); ok {
 			gn.ParentID = parentID.String()

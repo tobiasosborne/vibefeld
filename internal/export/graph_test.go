@@ -237,6 +237,85 @@ func TestExportGraph_IncludesAuthorAndVerifierFields(t *testing.T) {
 	}
 }
 
+// TestExportGraph_ReadinessFlags_FreshConjectureIsVerifierReady pins the
+// additive prover_ready/verifier_ready fields to af's OWN job classifier
+// (internal/jobs). A fresh, childless pending conjecture with a statement and
+// no challenge is VERIFIER-ready (breadth-first: the verifier looks first and
+// will challenge an unproven claim), NOT prover-ready — the exact case the
+// `af status` summary's cruder classifier reported as a prover job. An external
+// driver (rk) reads these flags instead of re-deriving af's job state machine.
+func TestExportGraph_ReadinessFlags_FreshConjectureIsVerifierReady(t *testing.T) {
+	s := state.NewState()
+	fresh := addTestNode(t, s, "1", "Fresh conjecture", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicPending, node.TaintUnresolved)
+	fresh.WorkflowState = schema.WorkflowAvailable
+
+	out, err := ExportGraph(s, "ws", nil)
+	if err != nil {
+		t.Fatalf("ExportGraph unexpected error: %v", err)
+	}
+	var doc GraphExport
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if len(doc.Nodes) != 1 {
+		t.Fatalf("want 1 node, got %d", len(doc.Nodes))
+	}
+	n := doc.Nodes[0]
+	if !n.VerifierReady {
+		t.Errorf("fresh conjecture verifier_ready = false, want true (af internal/jobs, breadth-first)")
+	}
+	if n.ProverReady {
+		t.Errorf("fresh conjecture prover_ready = true, want false")
+	}
+}
+
+// TestExportGraph_ReadinessFlags_BlockingChallengeIsProverJob pins the flip
+// side: a pending node with an OPEN blocking (major) challenge is a prover job
+// (needs the challenge addressed), never a verifier job — matching
+// internal/jobs.isProverJob / isVerifierJob exactly.
+func TestExportGraph_ReadinessFlags_BlockingChallengeIsProverJob(t *testing.T) {
+	s := state.NewState()
+	n := addTestNode(t, s, "1", "Challenged step", schema.NodeTypeClaim, schema.InferenceModusPonens, schema.EpistemicPending, node.TaintUnresolved)
+	n.WorkflowState = schema.WorkflowAvailable
+	s.AddChallenge(&state.Challenge{
+		ID:       "ch-1",
+		NodeID:   n.ID,
+		Target:   "gap",
+		Reason:   "no proof given",
+		Status:   state.ChallengeStatusOpen,
+		Severity: "major",
+		Created:  types.Now(),
+		RaisedBy: "verifier-1",
+	})
+
+	out, err := ExportGraph(s, "ws", nil)
+	if err != nil {
+		t.Fatalf("ExportGraph unexpected error: %v", err)
+	}
+	var doc GraphExport
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	got := doc.Nodes[0]
+	if !got.ProverReady {
+		t.Errorf("challenged node prover_ready = false, want true")
+	}
+	if got.VerifierReady {
+		t.Errorf("challenged node verifier_ready = true, want false (blocking challenge)")
+	}
+
+	// omitempty: a false flag must be absent from the wire JSON, so an old
+	// consumer and a replayed pre-flag ledger stay byte-compatible.
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		t.Fatalf("unmarshal raw: %v", err)
+	}
+	rn := raw["nodes"].([]interface{})[0].(map[string]interface{})
+	if _, present := rn["verifier_ready"]; present {
+		t.Errorf("false verifier_ready present in raw JSON, want omitted (omitempty)")
+	}
+}
+
 func mustParseGraphNodeID(t *testing.T, s string) types.NodeID {
 	t.Helper()
 	id, err := types.Parse(s)
