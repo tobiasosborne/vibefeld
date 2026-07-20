@@ -46,7 +46,7 @@ rk's schema.
 | Field | Required | Notes |
 |---|---|---|
 | `schema_version` | yes | Must equal `"1"` (`internal/verdicts.CurrentSchemaVersion`). Any other value is a file-invalid parse error. |
-| `batch_id` | yes | Non-empty. Recorded on every event this file produces (`NodeValidated.BatchID`, `ChallengeRaised.BatchID`). This is what `af unvalidate --batch <id>` later scans for. |
+| `batch_id` | multi-item only | Required and non-empty when `items` has **more than one** entry (a genuine batch needs a shared id so `af unvalidate --batch <id>` can revoke it as a unit). **Optional for a single-item, non-batch apply** (rk's per-node verdict): when absent or empty on a one-item file, the apply proceeds and records **no** batch provenance — `NodeValidated.BatchID` / `ChallengeRaised.BatchID` and the node's `ValidationBatchID` all stay empty (so a per-node accept never carries a batch id that rk's critical-path guard would reject). When present, it is recorded on every event this file produces, exactly as before. |
 | `verified_by` | yes | Non-empty. The verifier identity, recorded on every event (`NodeValidated.VerifiedBy`, `ChallengeRaised.RaisedBy`) and checked against each node's recorded `Author` for the reviewer≠author rule (see below). Driver-supplied, not adversary-proof — see the caveat below. |
 | `items` | yes | Non-empty array. **Order is significant** — see "Order-dependence" below. One verdict per node per file; a node appearing twice in the same file is a file-invalid error. |
 
@@ -79,7 +79,9 @@ nothing is attempted from a file that fails here:
 - Unknown fields (`DisallowUnknownFields` — a typo'd field name is a schema
   violation, not a silently-ignored no-op).
 - Wrong or missing `schema_version`.
-- Missing or empty `batch_id` / `verified_by`.
+- Missing or empty `verified_by`.
+- Missing or empty `batch_id` **on a multi-item file** (a single-item,
+  non-batch apply may omit it — see the `batch_id` row above).
 - Empty `items`.
 - Any item: missing/invalid `node` id, missing/invalid `verdict`, empty
   `reason`, an accept item carrying `target`/`severity`/`category`, an

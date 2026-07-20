@@ -242,6 +242,60 @@ func TestApplyVerdicts_DifferentReviewerCanAccept(t *testing.T) {
 	}
 }
 
+// rk-qxp: a single-item, non-batch verdict file (no batch_id) applies normally
+// and records NO batch provenance on the node — ValidationBatchID stays empty.
+// This is the per-node apply rk's driver emits; recording a (sentinel) batch id
+// here would trip rk's critical-path Check 13, so af must record none.
+func TestApplyVerdicts_NoBatchID_AppliesWithoutBatchProvenance(t *testing.T) {
+	svc, _ := setupVerdictTestProof(t)
+
+	data := `{
+		"schema_version": "1", "verified_by": "verifier-1",
+		"items": [
+			{"node": "1.1", "verdict": "accept", "reason": "per-node apply, no batch"}
+		]
+	}`
+	report, err := svc.ApplyVerdicts(mustParseFile(t, data))
+	if err != nil {
+		t.Fatalf("expected all-applied for a no-batch single item, got error: %v", err)
+	}
+	if report.Items[0].Status != "applied" {
+		t.Errorf("status = %q, want applied", report.Items[0].Status)
+	}
+
+	st, loadErr := svc.LoadState()
+	if loadErr != nil {
+		t.Fatalf("LoadState() failed: %v", loadErr)
+	}
+	child := st.GetNode(parseNodeID(t, "1.1"))
+	if child.ValidatedBy != "verifier-1" {
+		t.Errorf("ValidatedBy = %q, want verifier-1", child.ValidatedBy)
+	}
+	if child.ValidationBatchID != "" {
+		t.Errorf("ValidationBatchID = %q, want empty (no batch provenance for a non-batch apply)", child.ValidationBatchID)
+	}
+}
+
+// rk-qxp: a no-batch single-item CHALLENGE likewise applies and records no
+// batch id on the raised challenge event.
+func TestApplyVerdicts_NoBatchID_ChallengeApplies(t *testing.T) {
+	svc, _ := setupVerdictTestProof(t)
+
+	data := `{
+		"schema_version": "1", "verified_by": "verifier-1",
+		"items": [
+			{"node": "1.1", "verdict": "challenge", "target": "completeness", "severity": "major", "reason": "missing case"}
+		]
+	}`
+	report, err := svc.ApplyVerdicts(mustParseFile(t, data))
+	if err != nil {
+		t.Fatalf("expected all-applied for a no-batch challenge, got error: %v", err)
+	}
+	if report.Items[0].Status != "applied" {
+		t.Errorf("status = %q, want applied", report.Items[0].Status)
+	}
+}
+
 // =============================================================================
 // Node not found / aggregate outcome classification
 // =============================================================================

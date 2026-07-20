@@ -130,8 +130,15 @@ func (f *File) Validate() error {
 	if f.SchemaVersion != CurrentSchemaVersion {
 		return fmt.Errorf("unsupported schema_version %q (expected %q)", f.SchemaVersion, CurrentSchemaVersion)
 	}
-	if strings.TrimSpace(f.BatchID) == "" {
-		return fmt.Errorf("batch_id is required")
+	// batch_id is REQUIRED for a multi-item (genuine batch) file: a batch needs
+	// a shared id so `af unvalidate --batch <id>` can revoke it as a unit. It is
+	// OPTIONAL for a single-item, non-batch apply (rk's per-node verdict): an
+	// absent/empty batch_id then records NO batch provenance on the node (the
+	// event's BatchID and the node's ValidationBatchID are both omitempty), so a
+	// per-node apply never carries a batch id that would trip rk's critical-path
+	// Check 13. rk-qxp / rk-mq2.
+	if strings.TrimSpace(f.BatchID) == "" && len(f.Items) > 1 {
+		return fmt.Errorf("batch_id is required for a multi-item verdict file (a single-item non-batch apply may omit it)")
 	}
 	if strings.TrimSpace(f.VerifiedBy) == "" {
 		return fmt.Errorf("verified_by is required")

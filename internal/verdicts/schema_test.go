@@ -96,11 +96,45 @@ func TestParseFile_RejectsWrongSchemaVersion(t *testing.T) {
 	}
 }
 
-func TestParseFile_RejectsMissingBatchID(t *testing.T) {
-	data := `{"schema_version": "1", "verified_by": "v1", "items": [{"node":"1","verdict":"accept","reason":"x"}]}`
+// rk-qxp: a MULTI-item verdict file still REQUIRES batch_id — a genuine batch
+// needs a shared id so `af unvalidate --batch <id>` can revoke it as a unit
+// (the multi-item batch contract is preserved).
+func TestParseFile_RejectsMissingBatchIDForMultiItemFile(t *testing.T) {
+	data := `{"schema_version": "1", "verified_by": "v1", "items": [
+		{"node":"1.1","verdict":"accept","reason":"x"},
+		{"node":"1.2","verdict":"accept","reason":"y"}
+	]}`
 	_, err := ParseFile([]byte(data))
 	if err == nil || !strings.Contains(err.Error(), "batch_id") {
-		t.Fatalf("expected batch_id error, got: %v", err)
+		t.Fatalf("expected batch_id error for a multi-item file, got: %v", err)
+	}
+}
+
+// rk-qxp: a SINGLE-item, non-batch verdict file may OMIT batch_id — this is
+// the per-node apply rk's driver emits. An absent batch_id parses cleanly with
+// an empty BatchID (which records NO batch provenance on the node at apply
+// time), unblocking every per-node apply the driver sends.
+func TestParseFile_AllowsMissingBatchIDForSingleItemFile(t *testing.T) {
+	data := `{"schema_version": "1", "verified_by": "v1", "items": [{"node":"1","verdict":"accept","reason":"x"}]}`
+	f, err := ParseFile([]byte(data))
+	if err != nil {
+		t.Fatalf("expected a single-item file with no batch_id to parse, got: %v", err)
+	}
+	if f.BatchID != "" {
+		t.Errorf("BatchID = %q, want empty for a non-batch apply", f.BatchID)
+	}
+}
+
+// rk-qxp: an explicitly-empty batch_id on a single-item file is likewise
+// accepted (rk's driver may serialize the key as "" rather than omit it).
+func TestParseFile_AllowsEmptyBatchIDForSingleItemFile(t *testing.T) {
+	data := `{"schema_version": "1", "batch_id": "", "verified_by": "v1", "items": [{"node":"1","verdict":"accept","reason":"x"}]}`
+	f, err := ParseFile([]byte(data))
+	if err != nil {
+		t.Fatalf("expected a single-item file with empty batch_id to parse, got: %v", err)
+	}
+	if f.BatchID != "" {
+		t.Errorf("BatchID = %q, want empty", f.BatchID)
 	}
 }
 
