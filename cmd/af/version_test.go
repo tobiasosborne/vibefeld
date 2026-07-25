@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -251,6 +252,59 @@ func TestVersionVariables_Defaults(t *testing.T) {
 
 	if BuildDate == "" {
 		t.Error("expected BuildDate to have a default value")
+	}
+}
+
+// =============================================================================
+// Version Hygiene Tests
+//
+// Guards against the exact bug found 2026-07-25: `af version --json` reported
+// {"version":"dev",...} on an unstamped build, so rk's `rk doctor` (the D6
+// stale-binary detector) could not parse a version at all and was blind to a
+// stale af install. Root cause was two disconnected version sources: main.go's
+// hardcoded `const Version` (used for `af --version`) drifted from version.go's
+// ldflags-only VersionInfo default "dev" (used for `af version --json`), and
+// neither one moved when 16 behavior-changing commits landed after the last
+// hand bump. Both surfaces must now report the SAME real, parseable, current
+// version even for a plain unstamped `go build` — never "dev".
+// =============================================================================
+
+var semverRE = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+// TestVersionInfo_DefaultIsRealSemver ensures an unstamped build (no ldflags,
+// e.g. a plain `go build ./cmd/af` or `go run`) still reports a real,
+// parseable X.Y.Z version — never the placeholder "dev". This is the case an
+// academic user's local build hits every time; it must be self-teaching, not
+// a dead end for rk doctor's version probe.
+func TestVersionInfo_DefaultIsRealSemver(t *testing.T) {
+	if VersionInfo == "dev" {
+		t.Fatalf("VersionInfo default is the unstamped placeholder %q — an unstamped build must still report a real version", VersionInfo)
+	}
+	if !semverRE.MatchString(VersionInfo) {
+		t.Errorf("VersionInfo default %q is not a parseable X.Y.Z semver", VersionInfo)
+	}
+}
+
+// TestVersionInfo_MatchesLatestChangelogEntry pins VersionInfo's default to
+// the changelog's newest entry so the two cannot silently drift apart again
+// (that drift, compounded across 16 unversioned commits, is exactly what
+// broke rk doctor's stale-binary detection).
+func TestVersionInfo_MatchesLatestChangelogEntry(t *testing.T) {
+	if len(changelog) == 0 {
+		t.Fatal("changelog is empty")
+	}
+	latest := changelog[0].Version
+	if VersionInfo != latest {
+		t.Errorf("VersionInfo default %q does not match changelog[0].Version %q — bump one to match the other", VersionInfo, latest)
+	}
+}
+
+// TestRootCmd_VersionFlag_MatchesVersionSubcommand ensures `af --version` and
+// `af version --json` report the identical number. Before this fix they were
+// two independent hardcoded/ldflags sources that could (and did) diverge.
+func TestRootCmd_VersionFlag_MatchesVersionSubcommand(t *testing.T) {
+	if rootCmd.Version != VersionInfo {
+		t.Errorf("rootCmd.Version (used by `af --version`) is %q, VersionInfo (used by `af version --json`) is %q — must be the same source", rootCmd.Version, VersionInfo)
 	}
 }
 

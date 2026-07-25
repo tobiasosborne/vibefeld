@@ -11,7 +11,10 @@ AF (Adversarial Proof Framework) is a CLI tool for collaborative construction of
 ## Quick Commands
 
 ```bash
-# Build
+# Build (stamped version/commit/build-date — use this when installing for real use)
+./scripts/build.sh install    # -> $GOBIN or ~/go/bin/af
+
+# Quick unstamped build for iteration (still reports a correct version, no commit/date)
 go build ./cmd/af
 
 # Test

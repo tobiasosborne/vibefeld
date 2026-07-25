@@ -71,12 +71,13 @@ Unlike traditional proof assistants that rely on formal logic kernels, Vibefeld 
 ### Installation
 
 ```bash
-# Build from source
+# Build from source, with version/commit/build-date stamped in
 git clone https://github.com/tobias/vibefeld.git
-cd vibefeld && go build ./cmd/af
+cd vibefeld && ./scripts/build.sh install   # -> $GOBIN or ~/go/bin/af
 
-# Or install directly
-go install github.com/tobias/vibefeld/cmd/af@latest
+# Quick unstamped build (still reports a correct version — see cmd/af/version.go —
+# just without commit/build-date provenance)
+go build ./cmd/af
 ```
 
 ### Your First Proof

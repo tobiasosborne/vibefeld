@@ -16,9 +16,6 @@ import (
 	"github.com/tobias/vibefeld/internal/service"
 )
 
-// Version is the current version of the af CLI tool.
-const Version = "0.1.5"
-
 func main() {
 	if err := rootCmd.Execute(); err != nil {
 		// Enhance error with usage examples if this is an unknown command error
@@ -128,7 +125,10 @@ Typical Workflow:
 Global flags:
   --verbose       Enable verbose output for debugging
   --dry-run       Preview changes without making them`,
-	Version: Version,
+	// VersionInfo (cmd/af/version.go) is the single source of truth for af's
+	// version — see the comment there. `af --version` and `af version --json`
+	// must always agree.
+	Version: VersionInfo,
 }
 
 // Command group IDs for organizing help output

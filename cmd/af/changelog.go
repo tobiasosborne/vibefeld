@@ -9,6 +9,14 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version: "0.1.6",
+		Date:    "2026-07-25",
+		Items: []string{
+			"Version stamping fixed: af version's ldflags-backed VersionInfo/GitCommit/BuildDate is now the single source of truth for both `af --version` and `af version --json` (the old hardcoded main.go const had drifted from it, and the unstamped-build default was the unparseable placeholder \"dev\" — that broke rk doctor's D6 stale-binary detection outright). scripts/build.sh stamps version, commit, and build date via ldflags for both build and install.",
+			"Consolidates 16 previously unversioned commits since 0.1.5: af record-proof (atomic prover write: refine + dispose challenge + release, with proof_author stamping and free-text justification/inference labels), af verdicts apply (atomic expect_hash + verifier-ready re-check, batch_id optional for single-item applies) and af unvalidate --batch, internal/verdicts batch verdict-file schema with exit codes 5-7 for batch outcomes, af export --graph json gaining a schema_version, author/validated_by/validation_batch_id, per-node closed flag, always-present features capability list and prover_ready/verifier_ready flags, author/verifier identity wired into init/refine/accept, and per-child dependency recording through RefineNodeBulk.",
+		},
+	},
+	{
 		Version: "0.1.5",
 		Date:    "2026-07-02",
 		Items: []string{

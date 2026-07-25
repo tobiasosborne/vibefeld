@@ -9,12 +9,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version information, set at build time via ldflags.
-// Example build command:
+// Version information. VersionInfo is the single source of truth for af's
+// version — it backs both `af --version` (rootCmd.Version, main.go) and
+// `af version --json`. Its default below is baked into source and MUST be
+// bumped alongside the changelog (see TestVersionInfo_MatchesLatestChangelogEntry)
+// so that even a plain unstamped `go build ./cmd/af` reports a real, current
+// version — never the old "dev" placeholder, which left rk's `rk doctor`
+// (the D6 stale-binary detector) unable to parse a version at all.
 //
-//	go build -ldflags "-X main.VersionInfo=1.0.0 -X main.GitCommit=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+// GitCommit/BuildDate are ldflags-only (no source default makes sense for
+// them); scripts/build.sh stamps all three at build/install time:
+//
+//	go build -ldflags "-X main.VersionInfo=0.1.6 -X main.GitCommit=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 var (
-	VersionInfo = "dev"
+	VersionInfo = "0.1.6"
 	GitCommit   = "unknown"
 	BuildDate   = "unknown"
 )

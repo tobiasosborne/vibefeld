@@ -42,7 +42,7 @@ Key principles:
   - Append-only ledger as source of truth
   - Filesystem concurrency with POSIX atomics
   - Self-documenting CLI for agent workflows`,
-		Version: Version,
+		Version: VersionInfo,
 	}
 	cmd.SetVersionTemplate("af version {{.Version}}\n")
 
@@ -119,7 +119,7 @@ func TestRootCmd_Version(t *testing.T) {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	expected := "af version " + Version
+	expected := "af version " + VersionInfo
 	if !strings.Contains(output, expected) {
 		t.Errorf("expected output to contain %q, got: %q", expected, output)
 	}
@@ -279,7 +279,7 @@ func TestRootCmd_VersionShortFlag(t *testing.T) {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	expected := "af version " + Version
+	expected := "af version " + VersionInfo
 	if !strings.Contains(output, expected) {
 		t.Errorf("expected version output to contain %q, got: %q", expected, output)
 	}
