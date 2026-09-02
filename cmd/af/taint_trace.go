@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -20,16 +21,18 @@ func newTaintTraceCmd() *cobra.Command {
 		Short:   "Show taint propagation path for a node",
 		Long: `Trace the source of taint for a proof node.
 
-Walks the ancestry chain from the target node to the root, showing each
-node's taint state and identifying the exact source of taint propagation.
+Shows the target's ancestry chain and identifies the nearest source of taint
+or unresolved state in either its ancestor chain or active descendant subtree.
 
 Taint rules:
   - Archived/refuted nodes are always clean (severed from proof)
-  - Pending/draft nodes are unresolved (not yet verified)
+  - Pending/draft/needs_refinement nodes are unresolved
   - Admitted nodes are self_admitted (accepted without full proof)
-  - Descendants of tainted/self_admitted nodes inherit taint
-  - Descendants of unresolved ancestors are unresolved
-  - Validated nodes with clean ancestry are clean
+  - Pending/draft/needs_refinement ancestors or descendants make a node unresolved
+  - Admitted ancestors or descendants taint a validated node
+  - An admitted node ignores its own subtree
+  - Descendant-derived taint never contaminates validated siblings
+  - Validated nodes with no active source are clean
 
 Examples:
   af taint-trace 1.6.4      Show why node 1.6.4 is tainted
@@ -46,11 +49,24 @@ Examples:
 
 // traceEntry represents one node in the taint trace.
 type traceEntry struct {
+	NodeID            string             `json:"node_id"`
+	EpistemicState    string             `json:"epistemic_state"`
+	TaintState        string             `json:"taint_state"`
+	Reason            string             `json:"reason"`
+	IsSource          bool               `json:"is_source"`
+	DescendantSources []descendantSource `json:"descendant_sources,omitempty"`
+}
+
+type descendantSource struct {
 	NodeID         string `json:"node_id"`
 	EpistemicState string `json:"epistemic_state"`
 	TaintState     string `json:"taint_state"`
-	Reason         string `json:"reason"`
-	IsSource       bool   `json:"is_source"`
+}
+
+type taintTraceIndex struct {
+	nodes    map[string]*node.Node
+	parent   map[string]*node.Node
+	children map[string][]*node.Node
 }
 
 func runTaintTrace(cmd *cobra.Command, args []string) error {
@@ -78,21 +94,13 @@ func runTaintTrace(cmd *cobra.Command, args []string) error {
 	if target == nil {
 		return fmt.Errorf("node %s not found", nodeID.String())
 	}
+	allNodes := st.AllNodes()
+	index := newTaintTraceIndex(allNodes)
 
 	// Build ancestry chain (root first, target last)
 	var chain []*node.Node
-	current := nodeID
-	for {
-		n := st.GetNode(current)
-		if n == nil {
-			break
-		}
+	for n := target; n != nil; n = index.parent[n.ID.String()] {
 		chain = append([]*node.Node{n}, chain...)
-		parent, hasParent := current.Parent()
-		if !hasParent {
-			break
-		}
-		current = parent
 	}
 
 	// Compute trace: for each node in the chain, determine its taint reason
@@ -104,7 +112,7 @@ func runTaintTrace(cmd *cobra.Command, args []string) error {
 			TaintState:     string(n.TaintState),
 		}
 
-		entry.Reason, entry.IsSource = taintReason(n, chain[:i])
+		entry.Reason, entry.IsSource, entry.DescendantSources = taintReason(n, chain[:i], index)
 		entries[i] = entry
 	}
 
@@ -116,53 +124,186 @@ func runTaintTrace(cmd *cobra.Command, args []string) error {
 	}
 }
 
-// taintReason determines why a node has its current taint state.
-// ancestors is the ancestry chain BEFORE this node (root to parent).
-func taintReason(n *node.Node, ancestors []*node.Node) (reason string, isSource bool) {
+// taintReason determines why a node has its current taint state. ancestors is
+// the ancestry chain before this node (root to parent).
+func taintReason(n *node.Node, ancestors []*node.Node, index *taintTraceIndex) (reason string, isSource bool, descendants []descendantSource) {
 	// Rule 0: Archived/refuted
 	if n.EpistemicState == schema.EpistemicArchived {
-		return "archived — severed from proof tree", false
+		return "archived — severed from proof tree", false, nil
 	}
 	if n.EpistemicState == schema.EpistemicRefuted {
-		return "refuted — severed from proof tree", false
+		return "refuted — severed from proof tree", false, nil
 	}
 
-	// Rule 1: Pending/draft → unresolved (self-caused)
+	// Rule 1: Pending/draft/needs_refinement → unresolved (self-caused)
 	if n.EpistemicState == schema.EpistemicPending {
-		return "node is pending verification", true
+		return "node is pending verification", true, nil
 	}
 	if n.EpistemicState == schema.EpistemicDraft {
-		return "node is in draft state", true
+		return "node is in draft state", true, nil
+	}
+	if n.EpistemicState == schema.EpistemicNeedsRefinement {
+		return "node is reopened for refinement", true, nil
 	}
 
 	// Rule 2: Ancestor unresolved → propagated
-	for _, a := range ancestors {
-		if a.TaintState == node.TaintUnresolved {
-			return fmt.Sprintf("ancestor %s is unresolved", a.ID.String()), false
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		a := ancestors[i]
+		if !traceSevered(a) && traceUnresolvedState(a.EpistemicState) {
+			if a.EpistemicState == schema.EpistemicNeedsRefinement {
+				return fmt.Sprintf("ancestor %s is reopened for refinement", a.ID.String()), false, nil
+			}
+			return fmt.Sprintf("ancestor %s is %s", a.ID.String(), a.EpistemicState), false, nil
 		}
 	}
 
 	// Rule 3: Self-admitted
 	if schema.IntroducesTaint(n.EpistemicState) {
-		return fmt.Sprintf("node is %s — accepted without full proof", n.EpistemicState), true
+		return fmt.Sprintf("node is %s — accepted without full proof", n.EpistemicState), true, nil
 	}
 
-	// Rule 4: Ancestor tainted/self_admitted
-	for _, a := range ancestors {
-		if a.TaintState == node.TaintTainted || a.TaintState == node.TaintSelfAdmitted {
-			return fmt.Sprintf("ancestor %s is %s", a.ID.String(), a.TaintState), false
+	// Rule 4: Pending/draft/needs_refinement descendant → unresolved.
+	if sources := nearestDescendantSources(n, index.children, node.TaintUnresolved); len(sources) > 0 {
+		return descendantReason(sources), false, sources
+	}
+
+	// Rule 5: Admitted ancestor → tainted.
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		a := ancestors[i]
+		if !traceSevered(a) && schema.IntroducesTaint(a.EpistemicState) {
+			return fmt.Sprintf("ancestor %s is %s", a.ID.String(), a.EpistemicState), false, nil
 		}
 	}
 
-	// Rule 5: Clean
-	return "all ancestors verified, no taint sources", false
+	// Rule 6: Admitted descendant → tainted.
+	if sources := nearestDescendantSources(n, index.children, node.TaintTainted); len(sources) > 0 {
+		return descendantReason(sources), false, sources
+	}
+
+	return "ancestor chain and active subtree contain no taint sources", false, nil
+}
+
+func newTaintTraceIndex(allNodes []*node.Node) *taintTraceIndex {
+	index := &taintTraceIndex{
+		nodes:    make(map[string]*node.Node, len(allNodes)),
+		parent:   make(map[string]*node.Node, len(allNodes)),
+		children: make(map[string][]*node.Node),
+	}
+	for _, candidate := range allNodes {
+		if candidate == nil {
+			continue
+		}
+		index.nodes[candidate.ID.String()] = candidate
+	}
+
+	nearestCache := make(map[string]*node.Node)
+	for _, candidate := range allNodes {
+		if candidate == nil {
+			continue
+		}
+		parent := nearestTraceParent(candidate, index.nodes, nearestCache)
+		index.parent[candidate.ID.String()] = parent
+		if parent != nil {
+			index.children[parent.ID.String()] = append(index.children[parent.ID.String()], candidate)
+		}
+	}
+	return index
+}
+
+func nearestTraceParent(n *node.Node, nodeMap map[string]*node.Node, cache map[string]*node.Node) *node.Node {
+	parentID, hasParent := n.ID.Parent()
+	var missing []string
+	for hasParent {
+		key := parentID.String()
+		if parent, ok := nodeMap[key]; ok {
+			for _, missingKey := range missing {
+				cache[missingKey] = parent
+			}
+			return parent
+		}
+		if parent, ok := cache[key]; ok {
+			for _, missingKey := range missing {
+				cache[missingKey] = parent
+			}
+			return parent
+		}
+		missing = append(missing, key)
+		parentID, hasParent = parentID.Parent()
+	}
+	for _, missingKey := range missing {
+		cache[missingKey] = nil
+	}
+	return nil
+}
+
+func nearestDescendantSources(target *node.Node, children map[string][]*node.Node, wanted node.TaintState) []descendantSource {
+	queue := append([]*node.Node(nil), children[target.ID.String()]...)
+	for len(queue) > 0 {
+		levelSize := len(queue)
+		var found []descendantSource
+		for i := 0; i < levelSize; i++ {
+			candidate := queue[0]
+			queue = queue[1:]
+			if traceSevered(candidate) {
+				continue
+			}
+
+			matches := wanted == node.TaintUnresolved && traceUnresolvedState(candidate.EpistemicState)
+			matches = matches || wanted == node.TaintTainted && schema.IntroducesTaint(candidate.EpistemicState)
+			if matches {
+				found = append(found, descendantSource{
+					NodeID:         candidate.ID.String(),
+					EpistemicState: string(candidate.EpistemicState),
+					TaintState:     string(candidate.TaintState),
+				})
+				continue
+			}
+
+			// Unresolved and admitted nodes terminate subtree inspection even
+			// when looking for the other contribution type.
+			if traceUnresolvedState(candidate.EpistemicState) || schema.IntroducesTaint(candidate.EpistemicState) {
+				continue
+			}
+			queue = append(queue, children[candidate.ID.String()]...)
+		}
+		if len(found) > 0 {
+			sort.Slice(found, func(i, j int) bool { return found[i].NodeID < found[j].NodeID })
+			return found
+		}
+	}
+	return nil
+}
+
+func descendantReason(sources []descendantSource) string {
+	if len(sources) == 1 {
+		if sources[0].EpistemicState == string(schema.EpistemicNeedsRefinement) {
+			return fmt.Sprintf("descendant %s is reopened for refinement", sources[0].NodeID)
+		}
+		return fmt.Sprintf("descendant %s is %s", sources[0].NodeID, sources[0].EpistemicState)
+	}
+	ids := make([]string, len(sources))
+	for i, source := range sources {
+		ids[i] = source.NodeID
+	}
+	return fmt.Sprintf("descendants %s include %s nodes", strings.Join(ids, ", "), sources[0].EpistemicState)
+}
+
+func traceUnresolvedState(state schema.EpistemicState) bool {
+	return state == schema.EpistemicPending ||
+		state == schema.EpistemicDraft ||
+		state == schema.EpistemicNeedsRefinement
+}
+
+func traceSevered(n *node.Node) bool {
+	return n.EpistemicState == schema.EpistemicArchived || n.EpistemicState == schema.EpistemicRefuted
 }
 
 func outputTaintTraceJSON(cmd *cobra.Command, target *node.Node, entries []traceEntry) error {
 	result := map[string]interface{}{
-		"node_id":     target.ID.String(),
-		"taint_state": string(target.TaintState),
-		"trace":       entries,
+		"node_id":            target.ID.String(),
+		"taint_state":        string(target.TaintState),
+		"trace":              entries,
+		"descendant_sources": entries[len(entries)-1].DescendantSources,
 	}
 	output, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -179,7 +320,7 @@ func outputTaintTraceText(cmd *cobra.Command, target *node.Node, entries []trace
 	fmt.Fprintf(w, "Current taint: %s\n\n", render.ColorTaintState(target.TaintState))
 
 	if target.TaintState == node.TaintClean {
-		fmt.Fprintln(w, "This node is clean — no taint in ancestry chain.")
+		fmt.Fprintln(w, "This node is clean — no taint in its ancestor chain or active subtree.")
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Ancestry:")
 		for _, e := range entries {
@@ -202,6 +343,14 @@ func outputTaintTraceText(cmd *cobra.Command, target *node.Node, entries []trace
 		fmt.Fprintln(w, "Taint source(s):")
 		for _, s := range sources {
 			fmt.Fprintf(w, "  %s — %s\n", s.NodeID, s.Reason)
+		}
+		fmt.Fprintln(w)
+	}
+
+	if len(entries) > 0 && len(entries[len(entries)-1].DescendantSources) > 0 {
+		fmt.Fprintln(w, "Descendant source(s):")
+		for _, source := range entries[len(entries)-1].DescendantSources {
+			fmt.Fprintf(w, "  %s — %s (%s)\n", source.NodeID, source.EpistemicState, source.TaintState)
 		}
 		fmt.Fprintln(w)
 	}

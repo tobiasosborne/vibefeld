@@ -50,10 +50,10 @@ type TaintStateInfo struct {
 // allTaintStates returns information about all taint states.
 func allTaintStates() []TaintStateInfo {
 	return []TaintStateInfo{
-		{ID: node.TaintClean, Description: "No taint - all dependencies are clean"},
+		{ID: node.TaintClean, Description: "No uncertainty in the ancestor chain or active subtree"},
 		{ID: node.TaintSelfAdmitted, Description: "This node itself was admitted without proof"},
-		{ID: node.TaintTainted, Description: "Depends on an admitted node"},
-		{ID: node.TaintUnresolved, Description: "Taint status not yet computed"},
+		{ID: node.TaintTainted, Description: "Depends on an admitted ancestor or active descendant"},
+		{ID: node.TaintUnresolved, Description: "Self, ancestor, or active descendant is pending/draft/needs_refinement"},
 	}
 }
 
@@ -69,7 +69,7 @@ The schema command shows valid values for:
   - Inference types (modus_ponens, universal_instantiation, etc.)
   - Node types (claim, local_assume, local_discharge, case, qed)
   - Workflow states (available, claimed, blocked)
-  - Epistemic states (pending, validated, admitted, refuted, archived)
+  - Epistemic states (draft, pending, validated, needs_refinement, admitted, refuted, archived)
   - Taint states (clean, self_admitted, tainted, unresolved)
   - Challenge targets (statement, inference, gap, etc.)
 

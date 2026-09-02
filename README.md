@@ -145,7 +145,7 @@ For a complete walkthrough, run `af tutorial`.
 2. **Verifiers challenge** -- Raise objections targeting specific aspects (inference, scope, gaps, ...)
 3. **Provers address** -- Refine nodes to answer challenges or admit defeat
 4. **Verifiers accept** -- When all challenges resolved and children validated, node becomes validated
-5. **Proof completes** -- When the root node reaches `validated` state
+5. **Proof completes** -- When the root node is `validated` with `clean` taint
 
 The **ledger** records every event. State is always derived from history. Full audit trail preserved.
 
@@ -164,10 +164,14 @@ The **ledger** records every event. State is always derived from history. Full a
 
 | Taint State | Meaning |
 |-------------|---------|
-| `clean` | No epistemic uncertainty in ancestry |
+| `clean` | No epistemic uncertainty in its ancestor chain or active subtree |
 | `self_admitted` | This node was admitted |
-| `tainted` | Depends on admitted/tainted ancestor |
-| `unresolved` | Taint not yet computed |
+| `tainted` | Depends on an admitted ancestor or descendant |
+| `unresolved` | This node, an ancestor, or an active descendant is pending/draft/needs_refinement |
+
+Taint flows down from epistemically uncertain ancestors and up from admitted,
+pending, draft, or needs-refinement descendants. Upward-derived taint never flows back down into validated
+siblings, and archived/refuted child branches are severed from upward propagation.
 
 ---
 
@@ -203,6 +207,7 @@ af status --dir examples/dobinski-proof
 | [Advanced Tutorial](docs/tutorial-advanced.md) | Complex proof patterns and workflows |
 | [CLI Reference](docs/cli-reference.md) | Complete command documentation |
 | [Concepts](docs/concepts.md) | Core concepts: states, taint, scope |
+| [Trust Model](docs/trust-model.md) | Where an agent can "win" without rigor, what is closed, what to audit |
 | [Architecture](docs/architecture.md) | System design and data model |
 | [Workflow](docs/workflow.md) | Agent workflows and patterns |
 | [PRD](docs/prd.md) | Full product requirements document |
@@ -271,7 +276,7 @@ Or just run `af --help` -- the CLI is fully self-documenting.
 |---------|-------------|
 | `af export` | Export to Markdown/LaTeX |
 | `af replay` | Rebuild state from ledger |
-| `af recompute-taint` | Force taint recalculation |
+| `af recompute-taint` | Re-sync derived taint audit records |
 | `af shell` | Interactive shell mode |
 
 ---

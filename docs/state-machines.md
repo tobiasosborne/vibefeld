@@ -226,70 +226,38 @@ Source: `internal/node/node.go`, `internal/taint/compute.go`, `internal/taint/pr
 
 | State | Description |
 |-------|-------------|
-| `clean` | Node and all ancestors are validated |
+| `clean` | No uncertainty in the ancestor chain or active descendant subtree |
 | `self_admitted` | This node was admitted (introduced taint) |
-| `tainted` | Node inherits taint from an ancestor |
-| `unresolved` | Node or an ancestor is still pending |
+| `tainted` | A non-severed ancestor or active descendant is admitted |
+| `unresolved` | Node, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
 
 ### Computation Rules
 
-Unlike workflow and epistemic states, taint is **computed** (not directly transitioned) based on the node's epistemic state and its ancestors' taint states. The rules are applied in priority order:
+Unlike workflow and epistemic states, taint is **computed** (not directly transitioned) from epistemic states in both directions. Stored ancestor taint is not an input. The rules are applied in priority order:
 
 ```
-1. IF node.epistemic_state == 'pending' THEN taint = 'unresolved'
-2. IF any ancestor.taint == 'unresolved' THEN taint = 'unresolved'
-3. IF node.epistemic_state == 'admitted' THEN taint = 'self_admitted'
-4. IF any ancestor.taint IN ('tainted', 'self_admitted') THEN taint = 'tainted'
-5. OTHERWISE taint = 'clean'
-```
-
-### Computation Flow Diagram
-
-```
-                          +---------------------------+
-                          | Is node pending?          |
-                          +---------------------------+
-                                       |
-                           +-----------+-----------+
-                          Yes                      No
-                           |                       |
-                           v                       v
-                     +------------+    +---------------------------+
-                     | unresolved |    | Any ancestor unresolved?  |
-                     +------------+    +---------------------------+
-                                                    |
-                                        +-----------+-----------+
-                                       Yes                      No
-                                        |                       |
-                                        v                       v
-                                  +------------+    +---------------------------+
-                                  | unresolved |    | Is node admitted?         |
-                                  +------------+    +---------------------------+
-                                                                 |
-                                                     +-----------+-----------+
-                                                    Yes                      No
-                                                     |                       |
-                                                     v                       v
-                                               +--------------+  +-------------------------------+
-                                               | self_admitted|  | Ancestor tainted/self_admitted?|
-                                               +--------------+  +-------------------------------+
-                                                                              |
-                                                                  +-----------+-----------+
-                                                                 Yes                      No
-                                                                  |                       |
-                                                                  v                       v
-                                                            +---------+            +-------+
-                                                            | tainted |            | clean |
-                                                            +---------+            +-------+
+0. IF node is archived/refuted THEN taint = 'clean'
+1. IF node is pending/draft/needs_refinement THEN taint = 'unresolved'
+2. IF any non-severed ancestor is pending/draft/needs_refinement THEN taint = 'unresolved'
+3. IF node is admitted THEN taint = 'self_admitted'
+4. IF any active descendant is pending/draft/needs_refinement THEN taint = 'unresolved'
+5. IF any non-severed ancestor is admitted THEN taint = 'tainted'
+6. IF any active descendant is admitted THEN taint = 'tainted'
+7. OTHERWISE taint = 'clean'
 ```
 
 ### Taint Propagation
 
 When a node's epistemic state changes, taint must be recomputed for:
 1. The node itself
-2. All descendant nodes (in depth-first order, shallower first)
+2. Its ancestors
+3. Its descendants
 
-This propagation is automatic and happens in `internal/state/apply.go` after any epistemic state change.
+The upward subtree component is computed deepest-first. Archived/refuted child
+branches are skipped, and admitted nodes ignore their subtrees. The downward
+ancestor component uses epistemic states only, which prevents an admitted child
+from contaminating its validated siblings. Replay finishes with the same full
+recompute, making derived taint authoritative over historical audit events.
 
 ### Taint Events
 
@@ -301,7 +269,7 @@ This propagation is automatic and happens in `internal/state/apply.go` after any
 
 Consider a proof tree:
 ```
-1 (validated, clean)
+1 (validated, tainted)  <- tainted because active descendant 1.1 is admitted
   1.1 (admitted, self_admitted)
     1.1.1 (pending, unresolved)
     1.1.2 (validated, tainted)  <- tainted because 1.1 is self_admitted
@@ -319,11 +287,14 @@ After:  1.1.1 (validated, tainted)  <- now tainted from parent 1.1
 ```go
 import "github.com/tobias/vibefeld/internal/taint"
 
-// Compute taint for a single node
-taintState := taint.ComputeTaint(node, ancestors)
+// Compute complete taint for a single node in its tree
+taintState := taint.ComputeTaintInTree(node, allNodes)
 
-// Propagate taint to all descendants
+// Recompute the changed node, ancestors, and descendants
 changedNodes := taint.PropagateTaint(root, allNodes)
+
+// Authoritatively recompute every node (used by replay and repair)
+changedNodes = taint.RecomputeAll(allNodes)
 
 // Propagate and generate events
 changedNodes, events := taint.PropagateAndGenerateEvents(root, allNodes)
@@ -468,11 +439,11 @@ Epistemic state changes automatically trigger taint recomputation:
 
 | Epistemic Transition | Taint Effect |
 |---------------------|--------------|
-| `pending` -> `validated` | Taint may change from `unresolved` to `clean` (if no tainted ancestors) |
+| `pending` -> `validated` | Taint may become clean, tainted, or remain unresolved based on both directions |
 | `pending` -> `admitted` | Taint changes to `self_admitted` |
-| `pending` -> `refuted`/`archived` | Taint remains `unresolved` (node is invalid anyway) |
+| `pending` -> `refuted`/`archived` | Taint becomes `clean`; its subtree is severed upward |
 
-Taint then propagates to all descendants.
+Taint then recomputes for the node, ancestors, and descendants.
 
 ### Epistemic + Challenge
 
@@ -513,7 +484,7 @@ Node Created
 | or tainted*   | | admitted      | |               |
 +---------------+ +---------------+ +---------------+
 
-* taint depends on ancestors
+* taint depends on non-severed ancestors and active descendants
 ```
 
 ### Invariants
@@ -528,7 +499,7 @@ The following invariants must always hold:
 ### Edge Cases
 
 1. **Orphaned challenges**: If a node is archived/refuted, all open challenges become superseded
-2. **Taint with archived ancestors**: Archived nodes don't propagate taint (they're not valid)
+2. **Severed child branches**: Archived/refuted children and their subtrees do not contribute upward
 3. **Concurrent claims**: Only one agent can claim a node at a time
 4. **Claim timeout**: Stale claims are reaped, returning nodes to available state
 

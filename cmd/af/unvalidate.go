@@ -28,8 +28,8 @@ Use this when:
 - A later finding invalidates an earlier accepted step
 - Additional scrutiny is needed on a previously accepted node
 
-Note: Unvalidating a node with validated children will cause taint to
-propagate — those children will become taint-unresolved.
+Note: Unvalidating makes the node pending and can make its non-severed ancestors
+and descendants unresolved. Validated siblings are not contaminated.
 
 BULK REVOCATION (--batch): every node whose current validation carries the
 given batch id is unvalidated (rk PRD C3's batch verification mode, item
@@ -90,7 +90,7 @@ func runUnvalidate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Confirmation prompt
-	msg := fmt.Sprintf("Unvalidate node %s? This reverts it to pending and may propagate taint to descendants.", nodeID.String())
+	msg := fmt.Sprintf("Unvalidate node %s? This reverts it to pending and may make ancestors and descendants unresolved.", nodeID.String())
 	confirmed, err := cli.ConfirmAction(cmd.OutOrStdout(), msg, yes)
 	if err != nil {
 		return err
@@ -116,7 +116,7 @@ func runUnvalidate(cmd *cobra.Command, args []string) error {
 // runUnvalidateBatch handles `af unvalidate --batch <id>` (rk PRD C3, item
 // V3): bulk-revokes validation on every node currently carrying batchID.
 func runUnvalidateBatch(cmd *cobra.Command, dir, batchID, reason, agent, format string, yes bool) error {
-	msg := fmt.Sprintf("Unvalidate every node in batch %s? This reverts them to pending and may propagate taint to descendants.", batchID)
+	msg := fmt.Sprintf("Unvalidate every node in batch %s? This reverts them to pending and may make ancestors and descendants unresolved.", batchID)
 	confirmed, err := cli.ConfirmAction(cmd.OutOrStdout(), msg, yes)
 	if err != nil {
 		return err

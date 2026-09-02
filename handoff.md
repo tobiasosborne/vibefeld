@@ -1,3 +1,66 @@
+# Handoff - 2026-09-02 (0.1.7: taint propagates upward; trust model; v0.2 target)
+
+## What Was Accomplished
+
+**Bug (vibefeld-0zk7, reported by Thomas via email after running af 0.1.6 on
+MIP*=RE):** admitting a child left the validated root's taint `clean`. Root
+cause: `internal/taint.ComputeTaint` only read ancestors (top-down only)
+while docs and the `af accept` warning promised bottom-up propagation.
+
+**Fix (0.1.7):** taint is now two separate components — an ancestor-chain
+component derived from ancestors' *epistemic* states (never their stored
+taint) and a subtree component walked deepest-first (archived/refuted
+children sever the branch, admitted children contribute `tainted` without
+descending, pending/draft/needs_refinement contribute `unresolved`). Keeping
+the components separate means a validated sibling of an admitted node stays
+`clean`. Rule order 0-7 is in `docs/concepts.md`. Replay ends with one
+authoritative `taint.RecomputeAll`, so 0.1.6 workspaces self-heal on load;
+per-event recompute in `state.Apply` was removed (it had made replay 4x
+slower). `af recompute-taint` now re-syncs the ledger's TaintRecomputed
+audit trail against derived state. `af taint-trace` names descendant sources.
+`needs_refinement` now counts as unresolved (Tobias-approved semantic change).
+
+**Process:** implemented by codex exec (gpt-5.6-sol, xhigh) from a written
+brief; two Opus review rounds (differential fuzz vs an independent spec
+implementation over 3000 + 5000 random trees, zero mismatches; end-to-end
+checks on the built binary). Review findings and reports are in
+`~/.local/state/vibefeld/taint-fix/`.
+
+**Also:** `docs/trust-model.md` (where an agent can "win" without rigor:
+archive-the-hard-step, cross-references carry no taint, roles unenforced,
+ledger not hash-chained; each with a beads issue). `docs/prd.md` gained a
+"v0.2 Target: Trust at Scale" section (LCF-style trusted kernel / untrusted
+shell; executable spec + differential fuzz; TLA+ model of ledger + locks;
+kernel boundary; assurance/language decision deferred) tracked as epic
+vibefeld-w2mt.
+
+## Current State
+- `gofmt -l .` clean, `go vet ./...` clean, `go build ./cmd/af` ok,
+  `go test ./...` all 28 packages green.
+- `go test -tags=integration ./e2e`: the taint/replay tests pass (8 of them
+  were failing at the previous HEAD); 16 lock/reap/concurrency tests fail
+  identically at the previous HEAD (pre-existing, environmental).
+- Two commits: whitespace-only gofmt drift in 65 files (separate), then the fix.
+
+## Next Steps (prioritized)
+1. Load Tobias's ~200-lemma DAG under 0.1.7: `af status` / `af taint-trace 1`
+   will reveal any admitted lemmas that were invisible on 0.1.6.
+2. vibefeld-0ry1 (P1): taint along reference dependencies / external refs —
+   the biggest gap for DAG-shaped arguments. Candidate 0.1.8.
+3. vibefeld-a7p5 (P1): refuse/flag archiving a node with an open challenge.
+4. vibefeld-5qrx: read-only `af audit` script.
+5. Review nits filed as P3 tasks (snapshot hoisting, taint-trace helper
+   reuse, replay perf guard test).
+6. v0.2 epic vibefeld-w2mt when ready.
+
+## Key Files Changed
+internal/taint/{compute,propagate}.go, internal/state/{apply,replay}.go,
+internal/service/proof.go (+ lastAuditedTaintStates), cmd/af/{taint_trace,
+recompute_taint,accept,schema,changelog,version}.go, internal/render legends,
+docs/{concepts,prd,cli-reference,state-machines,trust-model}.md, README.md.
+
+---
+
 # Handoff - 2026-07-19 (rk V2/V3: af verdicts apply + af unvalidate --batch)
 
 ## What Was Accomplished This Session

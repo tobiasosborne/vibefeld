@@ -2,147 +2,256 @@
 package taint
 
 import (
-	"sort"
-
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobias/vibefeld/internal/schema"
 )
 
-// PropagateTaint updates taint for a node and all its descendants.
-// It uses ComputeTaint to calculate the correct taint state for each descendant
-// based on their epistemic state and ancestors.
+type taintComponent uint8
+
+const (
+	componentClean taintComponent = iota
+	componentTainted
+	componentUnresolved
+)
+
+type treeTaints struct {
+	nodes    []*node.Node
+	children map[string][]*node.Node
+	down     map[string]taintComponent
+	up       map[string]taintComponent
+	final    map[string]node.TaintState
+}
+
+// PropagateTaint recomputes taint for root, its ancestors, and its descendants.
+// Descendant-derived taint is used only while walking upward, so it cannot leak
+// back down into siblings. The complete tree is inspected in linear time so an
+// ancestor's subtree contribution includes every relevant branch.
 //
 // Returns list of nodes whose taint actually changed.
-// The root node itself is never included in the returned list.
+// Root is included when its taint changed.
 //
 // Returns nil/empty slice if:
 // - root is nil
 // - allNodes is nil or empty
-// - root has no descendants in allNodes
+// - no affected node changed
 func PropagateTaint(root *node.Node, allNodes []*node.Node) []*node.Node {
 	if root == nil || len(allNodes) == 0 {
 		return nil
 	}
 
-	// Build a map for quick lookup by node ID string
-	nodeMap := make(map[string]*node.Node)
-	for _, n := range allNodes {
-		if n != nil {
-			nodeMap[n.ID.String()] = n
-		}
-	}
-
-	// Find all descendants of root
-	var descendants []*node.Node
-	for _, n := range allNodes {
-		if n != nil && root.ID.IsAncestorOf(n.ID) {
-			descendants = append(descendants, n)
-		}
-	}
-
-	// Sort descendants by depth (shallower first) to process in order
-	// This ensures parent taint is updated before children
-	sortByDepth(descendants)
-
+	computed := computeTreeTaints(allNodes)
 	var changed []*node.Node
-
-	// Optimization: Build ancestors incrementally as we process nodes.
-	// Since nodes are sorted by depth (shallower first), when we process a node,
-	// its parent has already been processed. We cache: node -> ancestors list.
-	// Each node's ancestors = parent's ancestors + parent.
-	// This reduces complexity from O(N*D) to O(N) where D is tree depth.
-	ancestorCache := make(map[string][]*node.Node)
-
-	// Pre-populate cache with root's ancestors (computed once)
-	rootAncestors := getAncestors(root, nodeMap)
-	ancestorCache[root.ID.String()] = rootAncestors
-
-	for _, desc := range descendants {
-		// Get ancestors from cache using parent lookup
-		ancestors := getAncestorsCached(desc, nodeMap, ancestorCache)
-
-		// Compute correct taint
-		newTaint := ComputeTaint(desc, ancestors)
-
-		// If taint changed, update and record
-		if desc.TaintState != newTaint {
-			desc.TaintState = newTaint
-			changed = append(changed, desc)
+	for _, n := range computed.nodes {
+		if !n.ID.Equal(root.ID) && !root.ID.IsAncestorOf(n.ID) && !n.ID.IsAncestorOf(root.ID) {
+			continue
+		}
+		newTaint := computed.final[n.ID.String()]
+		if n.TaintState != newTaint {
+			n.TaintState = newTaint
+			changed = append(changed, n)
 		}
 	}
 
 	return changed
 }
 
-// getAncestors returns all ancestor nodes for the given node from the nodeMap.
-// This walks the tree from node to root - O(D) where D is depth.
-// Used for initial computation or when cache is not available.
-func getAncestors(n *node.Node, nodeMap map[string]*node.Node) []*node.Node {
-	var ancestors []*node.Node
-	parentID, hasParent := n.ID.Parent()
-	for hasParent {
-		if parent, ok := nodeMap[parentID.String()]; ok {
-			ancestors = append(ancestors, parent)
-		}
-		parentID, hasParent = parentID.Parent()
-	}
-	return ancestors
-}
-
-// getAncestorsCached returns ancestors for a node using cached results.
-// Since nodes are processed in depth order (shallower first), the parent's
-// ancestors are always computed before the child's.
-//
-// Algorithm: node's ancestors = [parent] + parent's ancestors
-// This gives O(1) lookup per node after parent is cached.
-//
-// Falls back to getAncestors if parent not in cache (handles sparse trees).
-func getAncestorsCached(n *node.Node, nodeMap map[string]*node.Node, cache map[string][]*node.Node) []*node.Node {
-	nodeKey := n.ID.String()
-
-	// Check if already computed
-	if cached, ok := cache[nodeKey]; ok {
-		return cached
-	}
-
-	parentID, hasParent := n.ID.Parent()
-	if !hasParent {
-		// Node is a root, no ancestors
-		cache[nodeKey] = nil
+// RecomputeAll recomputes and applies taint for every node in a proof tree.
+// It returns every node whose stored taint changed. Both the shallow ancestor
+// pass and deepest-first subtree pass are linear in the number of nodes (plus
+// the size of sparse node-ID paths).
+func RecomputeAll(allNodes []*node.Node) []*node.Node {
+	if len(allNodes) == 0 {
 		return nil
 	}
 
-	parentKey := parentID.String()
-	parent, parentInNodeMap := nodeMap[parentKey]
-
-	// If parent's ancestors are cached, build from them
-	if parentAncestors, parentCached := cache[parentKey]; parentCached {
-		var ancestors []*node.Node
-		if parentInNodeMap {
-			// ancestors = [parent] + parent's ancestors
-			ancestors = make([]*node.Node, 0, len(parentAncestors)+1)
-			ancestors = append(ancestors, parent)
-			ancestors = append(ancestors, parentAncestors...)
-		} else {
-			// Parent not in nodeMap, just use parent's ancestors
-			ancestors = parentAncestors
+	computed := computeTreeTaints(allNodes)
+	var changed []*node.Node
+	for _, n := range computed.nodes {
+		newTaint := computed.final[n.ID.String()]
+		if n.TaintState != newTaint {
+			n.TaintState = newTaint
+			changed = append(changed, n)
 		}
-		cache[nodeKey] = ancestors
-		return ancestors
 	}
-
-	// Fallback: parent not cached (shouldn't happen with depth-order processing)
-	// Compute directly and cache
-	ancestors := getAncestors(n, nodeMap)
-	cache[nodeKey] = ancestors
-	return ancestors
+	return changed
 }
 
-// sortByDepth sorts nodes by their ID depth (shallower first).
-func sortByDepth(nodes []*node.Node) {
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].ID.Depth() < nodes[j].ID.Depth()
-	})
+func computeTreeTaints(allNodes []*node.Node) treeTaints {
+	result := treeTaints{
+		children: make(map[string][]*node.Node),
+		down:     make(map[string]taintComponent),
+		up:       make(map[string]taintComponent),
+		final:    make(map[string]node.TaintState),
+	}
+
+	nodeMap := make(map[string]*node.Node, len(allNodes))
+	seen := make(map[string]bool, len(allNodes))
+	maxDepth := 0
+	for _, n := range allNodes {
+		if n == nil {
+			continue
+		}
+		key := n.ID.String()
+		nodeMap[key] = n
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result.nodes = append(result.nodes, n)
+		if depth := n.ID.Depth(); depth > maxDepth {
+			maxDepth = depth
+		}
+	}
+
+	// If distinct pointers with the same ID were supplied, consistently use the
+	// map winner while preserving the first-seen ID order.
+	for i, n := range result.nodes {
+		result.nodes[i] = nodeMap[n.ID.String()]
+	}
+
+	byDepth := make([][]*node.Node, maxDepth+1)
+	for _, n := range result.nodes {
+		byDepth[n.ID.Depth()] = append(byDepth[n.ID.Depth()], n)
+	}
+
+	nearestCache := make(map[string]*node.Node)
+	parentFor := make(map[string]*node.Node, len(result.nodes))
+	for depth := 1; depth <= maxDepth; depth++ {
+		for _, n := range byDepth[depth] {
+			parent := nearestExistingParent(n, nodeMap, nearestCache)
+			parentFor[n.ID.String()] = parent
+			if parent != nil {
+				result.children[parent.ID.String()] = append(result.children[parent.ID.String()], n)
+			}
+		}
+	}
+
+	// Compute the ancestor-chain component shallowest-first. chain includes the
+	// current node's epistemic contribution and is inherited by its children.
+	chain := make(map[string]taintComponent, len(result.nodes))
+	for depth := 1; depth <= maxDepth; depth++ {
+		for _, n := range byDepth[depth] {
+			key := n.ID.String()
+			down := componentClean
+			if parent := parentFor[key]; parent != nil {
+				down = chain[parent.ID.String()]
+			}
+			result.down[key] = down
+			chain[key] = combineComponents(down, epistemicContribution(n.EpistemicState))
+		}
+	}
+
+	// Compute the subtree component deepest-first. An admitted child contributes
+	// tainted without inspecting its subtree; a severed child cuts off its branch.
+	for depth := maxDepth; depth >= 1; depth-- {
+		for _, n := range byDepth[depth] {
+			up := componentClean
+			for _, child := range result.children[n.ID.String()] {
+				if isSevered(child) {
+					continue
+				}
+				if isUnresolvedState(child.EpistemicState) {
+					up = combineComponents(up, componentUnresolved)
+				} else if schema.IntroducesTaint(child.EpistemicState) {
+					up = combineComponents(up, componentTainted)
+				} else {
+					up = combineComponents(up, result.up[child.ID.String()])
+				}
+				if up == componentUnresolved {
+					break
+				}
+			}
+			result.up[n.ID.String()] = up
+		}
+	}
+
+	for _, n := range result.nodes {
+		key := n.ID.String()
+		result.final[key] = finalTaint(n, result.down[key], result.up[key])
+	}
+	return result
+}
+
+func nearestExistingParent(n *node.Node, nodeMap map[string]*node.Node, cache map[string]*node.Node) *node.Node {
+	parentID, hasParent := n.ID.Parent()
+	var missing []string
+	for hasParent {
+		key := parentID.String()
+		if parent, ok := nodeMap[key]; ok {
+			for _, missingKey := range missing {
+				cache[missingKey] = parent
+			}
+			return parent
+		}
+		if parent, ok := cache[key]; ok {
+			for _, missingKey := range missing {
+				cache[missingKey] = parent
+			}
+			return parent
+		}
+		missing = append(missing, key)
+		parentID, hasParent = parentID.Parent()
+	}
+	for _, missingKey := range missing {
+		cache[missingKey] = nil
+	}
+	return nil
+}
+
+func isSevered(n *node.Node) bool {
+	return n.EpistemicState == schema.EpistemicArchived || n.EpistemicState == schema.EpistemicRefuted
+}
+
+func epistemicContribution(state schema.EpistemicState) taintComponent {
+	if isUnresolvedState(state) {
+		return componentUnresolved
+	}
+	if schema.IntroducesTaint(state) {
+		return componentTainted
+	}
+	return componentClean
+}
+
+func isUnresolvedState(state schema.EpistemicState) bool {
+	return state == schema.EpistemicPending ||
+		state == schema.EpistemicDraft ||
+		state == schema.EpistemicNeedsRefinement
+}
+
+func combineComponents(a, b taintComponent) taintComponent {
+	if a == componentUnresolved || b == componentUnresolved {
+		return componentUnresolved
+	}
+	if a == componentTainted || b == componentTainted {
+		return componentTainted
+	}
+	return componentClean
+}
+
+func finalTaint(n *node.Node, down, up taintComponent) node.TaintState {
+	if isSevered(n) {
+		return node.TaintClean
+	}
+	if isUnresolvedState(n.EpistemicState) {
+		return node.TaintUnresolved
+	}
+	if down == componentUnresolved {
+		return node.TaintUnresolved
+	}
+	if schema.IntroducesTaint(n.EpistemicState) {
+		return node.TaintSelfAdmitted
+	}
+	if up == componentUnresolved {
+		return node.TaintUnresolved
+	}
+	if down == componentTainted {
+		return node.TaintTainted
+	}
+	if up == componentTainted {
+		return node.TaintTainted
+	}
+	return node.TaintClean
 }
 
 // GenerateTaintEvents creates TaintRecomputed events for all changed nodes.

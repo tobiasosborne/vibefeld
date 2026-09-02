@@ -51,10 +51,9 @@ func mustParseID(t *testing.T, s string) types.NodeID {
 	return id
 }
 
-// computeAndUpdateTaint computes taint for a node and updates its TaintState field.
-// This helper ensures ancestors have their TaintState updated before computing child taint.
-func computeAndUpdateTaint(n *node.Node, ancestors []*node.Node) node.TaintState {
-	computed := taint.ComputeTaint(n, ancestors)
+// computeAndUpdateTaint computes complete bidirectional taint for a node.
+func computeAndUpdateTaint(n *node.Node, allNodes []*node.Node) node.TaintState {
+	computed := taint.ComputeTaintInTree(n, allNodes)
 	n.TaintState = computed
 	return computed
 }
@@ -129,13 +128,13 @@ func TestTaint_PropagationToParent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AdmitNode for root failed: %v", err)
 	}
-	err = svc.AcceptNode(childID)
-	if err != nil {
-		t.Fatalf("AcceptNode for child failed: %v", err)
-	}
 	err = svc.AcceptNode(grandchildID)
 	if err != nil {
 		t.Fatalf("AcceptNode for grandchild failed: %v", err)
+	}
+	err = svc.AcceptNode(childID)
+	if err != nil {
+		t.Fatalf("AcceptNode for child failed: %v", err)
 	}
 
 	// 3. Load state
@@ -152,21 +151,22 @@ func TestTaint_PropagationToParent(t *testing.T) {
 		t.Fatal("nodes not found in state")
 	}
 
-	// 4. Compute taint in order (parents first, then children)
+	allNodes := st.AllNodes()
+	// 4. Compute complete taint for each node.
 	// Root is admitted -> self_admitted
-	rootTaint := computeAndUpdateTaint(rootNode, nil)
+	rootTaint := computeAndUpdateTaint(rootNode, allNodes)
 	if rootTaint != node.TaintSelfAdmitted {
 		t.Errorf("root taint = %v, want %v", rootTaint, node.TaintSelfAdmitted)
 	}
 
 	// Child has admitted ancestor -> tainted
-	childTaint := computeAndUpdateTaint(childNode, []*node.Node{rootNode})
+	childTaint := computeAndUpdateTaint(childNode, allNodes)
 	if childTaint != node.TaintTainted {
 		t.Errorf("child taint = %v, want %v (parent is admitted)", childTaint, node.TaintTainted)
 	}
 
 	// Grandchild has tainted ancestor -> tainted
-	grandchildTaint := computeAndUpdateTaint(grandchildNode, []*node.Node{childNode, rootNode})
+	grandchildTaint := computeAndUpdateTaint(grandchildNode, allNodes)
 	if grandchildTaint != node.TaintTainted {
 		t.Errorf("grandchild taint = %v, want %v (ancestor is admitted)", grandchildTaint, node.TaintTainted)
 	}
@@ -194,10 +194,6 @@ func TestTaint_CleanWhenAllValidated(t *testing.T) {
 
 	// 2. Validate all nodes (not admit)
 	rootID := mustParseID(t, "1")
-	err = svc.AcceptNode(rootID)
-	if err != nil {
-		t.Fatalf("AcceptNode for root failed: %v", err)
-	}
 	err = svc.AcceptNode(child1ID)
 	if err != nil {
 		t.Fatalf("AcceptNode for child1 failed: %v", err)
@@ -205,6 +201,10 @@ func TestTaint_CleanWhenAllValidated(t *testing.T) {
 	err = svc.AcceptNode(child2ID)
 	if err != nil {
 		t.Fatalf("AcceptNode for child2 failed: %v", err)
+	}
+	err = svc.AcceptNode(rootID)
+	if err != nil {
+		t.Fatalf("AcceptNode for root failed: %v", err)
 	}
 
 	// 3. Load state
@@ -221,10 +221,10 @@ func TestTaint_CleanWhenAllValidated(t *testing.T) {
 		t.Fatal("nodes not found in state")
 	}
 
-	// 4. Compute taint in order (root first, then children)
-	rootTaint := computeAndUpdateTaint(rootNode, nil)
-	child1Taint := computeAndUpdateTaint(child1Node, []*node.Node{rootNode})
-	child2Taint := computeAndUpdateTaint(child2Node, []*node.Node{rootNode})
+	allNodes := st.AllNodes()
+	rootTaint := computeAndUpdateTaint(rootNode, allNodes)
+	child1Taint := computeAndUpdateTaint(child1Node, allNodes)
+	child2Taint := computeAndUpdateTaint(child2Node, allNodes)
 
 	// 5. Verify all nodes are TaintClean
 	if rootTaint != node.TaintClean {
@@ -254,17 +254,20 @@ func TestTaint_RefutedPropagation(t *testing.T) {
 		t.Fatalf("CreateNode failed: %v", err)
 	}
 
-	// Validate the root
+	// Validate the tree bottom-up, then force-refute the child so the parent
+	// remains validated while the refuted branch is severed.
 	rootID := mustParseID(t, "1")
+	err = svc.AcceptNode(childID)
+	if err != nil {
+		t.Fatalf("AcceptNode for child failed: %v", err)
+	}
 	err = svc.AcceptNode(rootID)
 	if err != nil {
 		t.Fatalf("AcceptNode for root failed: %v", err)
 	}
-
-	// 2. Refute the child
-	err = svc.RefuteNode(childID)
+	err = svc.VetoNode(childID, "counterexample", "test-verifier")
 	if err != nil {
-		t.Fatalf("RefuteNode failed: %v", err)
+		t.Fatalf("VetoNode failed: %v", err)
 	}
 
 	// 3. Load state and compute taint
@@ -285,9 +288,9 @@ func TestTaint_RefutedPropagation(t *testing.T) {
 		t.Errorf("child epistemic state = %v, want %v", childNode.EpistemicState, schema.EpistemicRefuted)
 	}
 
-	// Compute taint in order
-	rootTaint := computeAndUpdateTaint(rootNode, nil)
-	childTaint := computeAndUpdateTaint(childNode, []*node.Node{rootNode})
+	allNodes := st.AllNodes()
+	rootTaint := computeAndUpdateTaint(rootNode, allNodes)
+	childTaint := computeAndUpdateTaint(childNode, allNodes)
 
 	// Root is validated -> clean
 	if rootTaint != node.TaintClean {
@@ -325,9 +328,9 @@ func TestTaint_RefutedPropagation(t *testing.T) {
 		t.Errorf("root epistemic state = %v, want %v", root2Node.EpistemicState, schema.EpistemicPending)
 	}
 
-	// Compute taint in order
-	root2Taint := computeAndUpdateTaint(root2Node, nil)
-	child2Taint := computeAndUpdateTaint(child2Node, []*node.Node{root2Node})
+	allNodes2 := st2.AllNodes()
+	root2Taint := computeAndUpdateTaint(root2Node, allNodes2)
+	child2Taint := computeAndUpdateTaint(child2Node, allNodes2)
 
 	// Pending node -> unresolved taint
 	if root2Taint != node.TaintUnresolved {
@@ -367,13 +370,13 @@ func TestTaint_PropagateTaintFunction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AdmitNode for root failed: %v", err)
 	}
-	err = svc.AcceptNode(childID)
-	if err != nil {
-		t.Fatalf("AcceptNode for child failed: %v", err)
-	}
 	err = svc.AcceptNode(grandchildID)
 	if err != nil {
 		t.Fatalf("AcceptNode for grandchild failed: %v", err)
+	}
+	err = svc.AcceptNode(childID)
+	if err != nil {
+		t.Fatalf("AcceptNode for child failed: %v", err)
 	}
 
 	// Load state
@@ -451,13 +454,13 @@ func TestTaint_MixedAdmittedAndValidated(t *testing.T) {
 		t.Fatalf("CreateNode failed: %v", err)
 	}
 
-	// Set epistemic states
+	// Set epistemic states bottom-up, as required by acceptance.
 	rootID := mustParseID(t, "1")
-	_ = svc.AcceptNode(rootID)        // validated
-	_ = svc.AdmitNode(child1ID)       // admitted
-	_ = svc.AcceptNode(child2ID)      // validated
 	_ = svc.AcceptNode(grandchild1ID) // validated
 	_ = svc.AcceptNode(grandchild2ID) // validated
+	_ = svc.AdmitNode(child1ID)       // admitted
+	_ = svc.AcceptNode(child2ID)      // validated
+	_ = svc.AcceptNode(rootID)        // validated
 
 	// Load state
 	st, err := svc.LoadState()
@@ -471,16 +474,16 @@ func TestTaint_MixedAdmittedAndValidated(t *testing.T) {
 	grandchild1Node := st.GetNode(grandchild1ID)
 	grandchild2Node := st.GetNode(grandchild2ID)
 
-	// Compute taint in topological order (parents before children)
-	rootTaint := computeAndUpdateTaint(rootNode, nil)
-	child1Taint := computeAndUpdateTaint(child1Node, []*node.Node{rootNode})
-	child2Taint := computeAndUpdateTaint(child2Node, []*node.Node{rootNode})
-	grandchild1Taint := computeAndUpdateTaint(grandchild1Node, []*node.Node{child1Node, rootNode})
-	grandchild2Taint := computeAndUpdateTaint(grandchild2Node, []*node.Node{child2Node, rootNode})
+	allNodes := st.AllNodes()
+	rootTaint := computeAndUpdateTaint(rootNode, allNodes)
+	child1Taint := computeAndUpdateTaint(child1Node, allNodes)
+	child2Taint := computeAndUpdateTaint(child2Node, allNodes)
+	grandchild1Taint := computeAndUpdateTaint(grandchild1Node, allNodes)
+	grandchild2Taint := computeAndUpdateTaint(grandchild2Node, allNodes)
 
 	// Verify expected taint states
-	if rootTaint != node.TaintClean {
-		t.Errorf("root taint = %v, want %v", rootTaint, node.TaintClean)
+	if rootTaint != node.TaintTainted {
+		t.Errorf("root taint = %v, want %v", rootTaint, node.TaintTainted)
 	}
 	if child1Taint != node.TaintSelfAdmitted {
 		t.Errorf("child1 taint = %v, want %v", child1Taint, node.TaintSelfAdmitted)

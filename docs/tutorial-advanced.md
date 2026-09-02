@@ -572,17 +572,21 @@ Taint tracks epistemic uncertainty through dependencies:
 
 | Taint State | Meaning | Cause |
 |-------------|---------|-------|
-| `clean` | Fully verified | All ancestors validated |
+| `clean` | Fully verified | No active ancestor/descendant uncertainty |
 | `self_admitted` | This node was admitted | Used `af admit` on this node |
-| `tainted` | Depends on admitted node | Ancestor has `self_admitted` or `tainted` |
-| `unresolved` | Not yet decidable | Some ancestor is `pending` |
+| `tainted` | Depends on admitted node | An ancestor or active descendant is admitted |
+| `unresolved` | Not yet decidable | This node, an ancestor, or active descendant is pending/draft/needs_refinement |
 
 **Taint propagation rules**:
-1. If node is `pending` -> taint is `unresolved`
-2. If any ancestor has `unresolved` taint -> `unresolved`
-3. If this node is `admitted` -> `self_admitted`
-4. If any ancestor has `tainted` or `self_admitted` -> `tainted`
-5. Otherwise -> `clean`
+1. Archived/refuted nodes are `clean` and sever their branch upward
+2. Pending/draft/needs_refinement self or non-severed ancestors make the node `unresolved`
+3. An admitted node is `self_admitted` and ignores its subtree
+4. Pending/draft/needs_refinement active descendants make a validated node `unresolved`
+5. Admitted non-severed ancestors or active descendants make it `tainted`
+6. Otherwise it is `clean`
+
+The upward result is not fed back down: a validated sibling of an admitted or
+pending branch remains clean when its own ancestor chain and subtree are clean.
 
 **Finding tainted nodes**:
 ```bash
@@ -689,7 +693,7 @@ This recalculates taint for all nodes based on current epistemic states.
 | `af admit` | Accept without full proof (escape hatch) |
 | `af reap` | Clear stale locks |
 | `af replay --verify` | Check ledger consistency |
-| `af recompute-taint` | Force taint recalculation |
+| `af recompute-taint` | Re-sync derived taint audit records |
 
 ---
 

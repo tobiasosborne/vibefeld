@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/tobias/vibefeld/internal/ledger"
+	"github.com/tobias/vibefeld/internal/taint"
 )
 
 // Replay reads all events from the ledger and applies them to build the current state.
@@ -75,6 +76,11 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// TaintRecomputed events are retained and applied as audit records, but
+	// taint itself is derived. Recompute it authoritatively after the complete
+	// event stream so ledgers produced by older versions self-heal on load.
+	taint.RecomputeAll(state.AllNodes())
 
 	return state, nil
 }
@@ -151,9 +157,9 @@ var eventFactories = map[ledger.EventType]eventFactory{
 	ledger.EventLemmaExtracted:      func() ledger.Event { return &ledger.LemmaExtracted{} },
 	ledger.EventLockReaped:          func() ledger.Event { return &ledger.LockReaped{} },
 	ledger.EventClaimRefreshed:      func() ledger.Event { return &ledger.ClaimRefreshed{} },
-	ledger.EventScopeOpened:          func() ledger.Event { return &ledger.ScopeOpened{} },
-	ledger.EventScopeClosed:          func() ledger.Event { return &ledger.ScopeClosed{} },
-	ledger.EventRefinementRequested:  func() ledger.Event { return &ledger.RefinementRequested{} },
+	ledger.EventScopeOpened:         func() ledger.Event { return &ledger.ScopeOpened{} },
+	ledger.EventScopeClosed:         func() ledger.Event { return &ledger.ScopeClosed{} },
+	ledger.EventRefinementRequested: func() ledger.Event { return &ledger.RefinementRequested{} },
 	ledger.EventNodeSubmitted:       func() ledger.Event { return &ledger.NodeSubmitted{} },
 	ledger.EventNodeUnvalidated:     func() ledger.Event { return &ledger.NodeUnvalidated{} },
 	ledger.EventNodeUnadmitted:      func() ledger.Event { return &ledger.NodeUnadmitted{} },

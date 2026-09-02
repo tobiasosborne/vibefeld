@@ -116,6 +116,12 @@ func TestDefAddCmd_SupportsDryRun(t *testing.T) {
 	}
 }
 
+func TestRecomputeTaintCmd_SupportsDryRun(t *testing.T) {
+	if !supportsDryRun(newRecomputeTaintCmd()) {
+		t.Error("recompute-taint must be marked as supporting --dry-run")
+	}
+}
+
 // TestDefAddCmd_DryRunDoesNotWrite is the core regression for vibefeld-52ff:
 // `af def-add --dry-run` must preview without writing a definition.
 func TestDefAddCmd_DryRunDoesNotWrite(t *testing.T) {

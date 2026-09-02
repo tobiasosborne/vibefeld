@@ -502,7 +502,7 @@ Greenfield Go implementation of the AF (Adversarial Proof Framework) CLI.
 ### 84. Write tests for single node taint computation
 - Test file: `internal/taint/compute_test.go`
 - Test clean, self_admitted, tainted, unresolved states
-- Test based on epistemic state and ancestor taints
+- Test based on epistemic states in the ancestor chain and active subtree
 - **Deps**: 25, 37
 
 ### 85. Implement single node taint computation
@@ -512,7 +512,7 @@ Greenfield Go implementation of the AF (Adversarial Proof Framework) CLI.
 
 ### 86. Write tests for taint propagation
 - Test file: `internal/taint/propagate_test.go`
-- Test propagation to descendants on status change
+- Test propagation to ancestors and descendants on status change without sibling contamination
 - Test TaintRecomputed event generation
 - **Deps**: 85, 73
 
@@ -1242,7 +1242,7 @@ This phase implements the minimal commands needed for a working proof cycle.
 
 ### 226. Write E2E test: taint propagation
 - Test file: `e2e/taint_test.go`
-- admit node → verify taint propagates to descendants
+- admit node → verify taint propagates to ancestors and descendants, but not siblings
 - **Deps**: 87, 178
 
 ### 227. Write E2E test: concurrent agents (simulated)

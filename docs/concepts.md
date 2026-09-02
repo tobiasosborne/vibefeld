@@ -200,20 +200,28 @@ Key points about epistemic states:
 
 Taint tracks epistemic uncertainty that propagates through the proof tree:
 
+An **active descendant** is a descendant reachable without crossing an
+archived/refuted node or continuing beyond an admitted, pending, draft, or
+needs_refinement node. Those non-severed boundary nodes contribute taint or
+unresolved state themselves, but their own descendants are not inspected.
+
 | State | Description |
 |-------|-------------|
-| `clean` | All ancestors are validated. This node has full epistemic certainty. |
+| `clean` | The ancestor chain and active descendant subtree contain no uncertainty. |
 | `self_admitted` | This node itself was admitted without proof. |
-| `tainted` | Some ancestor was admitted, so this node inherits that uncertainty. |
-| `unresolved` | Some ancestor is still pending, so the chain is incomplete. |
+| `tainted` | A non-severed ancestor or active descendant was admitted. |
+| `unresolved` | This node, a non-severed ancestor, or an active descendant is pending/draft/needs_refinement. |
 
 Taint is computed, not directly set. The computation follows these rules (in order):
 
-1. If the node is pending, return `unresolved`
-2. If any ancestor is unresolved, return `unresolved`
-3. If the node's epistemic state is `admitted`, return `self_admitted`
-4. If any ancestor is tainted or self_admitted, return `tainted`
-5. Otherwise, return `clean`
+0. If the node is archived/refuted, return `clean` (the branch is severed)
+1. If the node is pending/draft/needs_refinement, return `unresolved`
+2. If any non-severed ancestor is pending/draft/needs_refinement, return `unresolved`
+3. If the node is admitted, return `self_admitted` (its subtree is ignored)
+4. If any active descendant is pending/draft/needs_refinement, return `unresolved`
+5. If any non-severed ancestor is admitted, return `tainted`
+6. If any active descendant is admitted, return `tainted`
+7. Otherwise, return `clean`
 
 A proof is fully verified only when the root node is `validated` with taint `clean`.
 
@@ -345,30 +353,34 @@ Taint answers the question: "If we were to verify this proof with maximum rigor,
 
 ### How Taint Spreads
 
-Taint propagates along the dependency tree. The computation is performed from root toward leaves, ensuring parents are computed before children.
+Taint propagates in both directions along the proof tree. Ancestor-chain state
+flows downward from epistemic states only; active descendant state flows upward.
+The two components are kept separate, so taint derived from one child never
+flows back down into a validated sibling. Archived/refuted children sever their
+whole branch from the upward walk. Admitted children are taken on faith, while
+pending/draft/needs_refinement children already establish unresolved status, so
+none of those boundary nodes require inspecting their own subtrees.
 
 The algorithm:
 
 ```
-function ComputeTaint(node, ancestors):
-    if node.epistemic_state == pending:
-        return unresolved
+function ComputeTaintInTree(node, tree):
+    if node is archived or refuted: return clean
+    if node is pending, draft, or needs_refinement: return unresolved
 
-    for ancestor in ancestors:
-        if ancestor.taint == unresolved:
-            return unresolved
+    down = epistemic contribution of non-severed ancestors
+    if down is unresolved: return unresolved
+    if node is admitted: return self_admitted
 
-    if node.epistemic_state == admitted:
-        return self_admitted
-
-    for ancestor in ancestors:
-        if ancestor.taint in [tainted, self_admitted]:
-            return tainted
-
+    up = contribution of active descendants, computed deepest-first
+    if up is unresolved: return unresolved
+    if down is tainted or up is tainted: return tainted
     return clean
 ```
 
-When a node's epistemic state changes, taint is recomputed for that node and all its descendants.
+When a node's epistemic state changes, taint is recomputed for that node, its
+ancestors, and its descendants. Replay also runs a full authoritative recompute,
+so stale historical `TaintRecomputed` audit events cannot override derived state.
 
 ### Why It Matters for Proof Integrity
 

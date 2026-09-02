@@ -295,8 +295,9 @@ func outputBulkAcceptance(cmd *cobra.Command, acceptedStrs []string, format stri
 	return nil
 }
 
-// warnTaintedDeps prints a non-blocking warning if any node to be accepted
-// has children with admitted or tainted taint state.
+// warnTaintedDeps prints a non-blocking warning if any node to be accepted has
+// children with tainted or unresolved state. Under bidirectional propagation,
+// accepting the parent keeps that descendant uncertainty visible on the parent.
 func warnTaintedDeps(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID) {
 	st, err := svc.LoadState()
 	if err != nil {
@@ -305,30 +306,26 @@ func warnTaintedDeps(cmd *cobra.Command, svc *service.ProofService, nodeIDs []se
 
 	allNodes := st.AllNodes()
 	for _, nodeID := range nodeIDs {
-		var taintedChildren []string
+		var conditionalChildren []string
 		for _, child := range allNodes {
 			parentID, hasParent := child.ID.Parent()
 			if !hasParent || parentID.String() != nodeID.String() {
 				continue
 			}
-			if child.TaintState == node.TaintSelfAdmitted || child.TaintState == node.TaintTainted {
-				taintedChildren = append(taintedChildren, fmt.Sprintf("%s (%s, taint: %s)",
+			if child.TaintState != node.TaintClean {
+				conditionalChildren = append(conditionalChildren, fmt.Sprintf("%s (%s, taint: %s)",
 					child.ID.String(), child.EpistemicState, child.TaintState))
-			}
-			if child.EpistemicState == schema.EpistemicAdmitted {
-				// Also warn if child is admitted even if taint hasn't been computed yet
-				if child.TaintState != node.TaintSelfAdmitted && child.TaintState != node.TaintTainted {
-					taintedChildren = append(taintedChildren, fmt.Sprintf("%s (admitted)",
-						child.ID.String()))
-				}
+			} else if child.EpistemicState == schema.EpistemicAdmitted || child.EpistemicState == schema.EpistemicNeedsRefinement {
+				// Defensive fallback if derived taint is unavailable or stale.
+				conditionalChildren = append(conditionalChildren, fmt.Sprintf("%s (%s)", child.ID.String(), child.EpistemicState))
 			}
 		}
-		if len(taintedChildren) > 0 {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: node %s has tainted/admitted children:\n", nodeID.String())
-			for _, tc := range taintedChildren {
+		if len(conditionalChildren) > 0 {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: node %s has conditional children:\n", nodeID.String())
+			for _, tc := range conditionalChildren {
 				fmt.Fprintf(cmd.ErrOrStderr(), "  %s\n", tc)
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Accepting will propagate taint to this node.\n\n")
+			fmt.Fprintf(cmd.ErrOrStderr(), "Accepting will leave this node tainted or unresolved.\n\n")
 		}
 	}
 }

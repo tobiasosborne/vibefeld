@@ -3,51 +3,58 @@ package taint
 
 import (
 	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
 )
 
-// ComputeTaint computes the taint state for a node based on its epistemic state
-// and its ancestors' taint states.
+// ComputeTaint computes the taint state for a node from its epistemic state and
+// the epistemic states of its ancestors. It is the ancestor-chain-only form of
+// the computation; use ComputeTaintInTree when descendants are available.
 //
 // The taint computation follows these rules:
 // 0. If the node is archived or refuted, return clean (severed from proof)
-// 1. If the node is pending, return unresolved
-// 2. If any ancestor is unresolved, return unresolved
+// 1. If the node is pending, draft, or needs_refinement, return unresolved
+// 2. If any non-severed ancestor is pending, draft, or needs_refinement, return unresolved
 // 3. If the node's epistemic state introduces taint (admitted), return self_admitted
-// 4. If any ancestor is tainted or self_admitted, return tainted
+// 4. If any non-severed ancestor is admitted, return tainted
 // 5. Otherwise, return clean
+//
+// Ancestors' stored TaintState values are deliberately ignored: taint is a
+// derived property, and historical ledgers may contain stale audit values.
 func ComputeTaint(n *node.Node, ancestors []*node.Node) node.TaintState {
-	// Rule 0: Archived/refuted nodes are severed from the proof — always clean.
-	// They are explicitly abandoned (archived) or disproven (refuted) and
-	// should not inherit taint from ancestors.
-	if n.EpistemicState == schema.EpistemicArchived || n.EpistemicState == schema.EpistemicRefuted {
-		return node.TaintClean
-	}
-
-	// Rule 1: If the node is pending or draft, return unresolved
-	if n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicDraft {
-		return node.TaintUnresolved
-	}
-
-	// Rule 2: If any ancestor is unresolved, return unresolved
+	down := componentClean
 	for _, ancestor := range ancestors {
-		if ancestor.TaintState == node.TaintUnresolved {
-			return node.TaintUnresolved
+		if ancestor == nil || isSevered(ancestor) {
+			continue
+		}
+		down = combineComponents(down, epistemicContribution(ancestor.EpistemicState))
+	}
+	return finalTaint(n, down, componentClean)
+}
+
+// ComputeTaintInTree computes a node's complete taint state, including both
+// ancestor-chain and descendant-subtree contributions. The computation is
+// independent of every node's stored TaintState. It is O(N) per call and is
+// intended for one-off queries; use RecomputeAll when deriving the whole tree.
+func ComputeTaintInTree(n *node.Node, allNodes []*node.Node) node.TaintState {
+	if n == nil {
+		panic("ComputeTaintInTree called with nil node")
+	}
+
+	nodes := allNodes
+	found := false
+	for _, candidate := range allNodes {
+		if candidate != nil && candidate.ID.Equal(n.ID) {
+			found = true
+			break
 		}
 	}
-
-	// Rule 3: If the node's epistemic state introduces taint (admitted), return self_admitted
-	if schema.IntroducesTaint(n.EpistemicState) {
-		return node.TaintSelfAdmitted
+	if !found {
+		nodes = append(append([]*node.Node(nil), allNodes...), n)
 	}
 
-	// Rule 4: If any ancestor is tainted or self_admitted, return tainted
-	for _, ancestor := range ancestors {
-		if ancestor.TaintState == node.TaintTainted || ancestor.TaintState == node.TaintSelfAdmitted {
-			return node.TaintTainted
-		}
+	computed := computeTreeTaints(nodes)
+	if result, ok := computed.final[n.ID.String()]; ok {
+		return result
 	}
 
-	// Rule 5: Otherwise, return clean
-	return node.TaintClean
+	return ComputeTaint(n, nil)
 }

@@ -5,6 +5,7 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -711,7 +712,7 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 		if st.GetNode(depID) == nil {
 			return fmt.Errorf("invalid dependency: node %s not found", depID.String())
 		}
-		
+
 		if res := cycle.WouldCreateCycle(provider, spec.ParentID, depID); res.HasCycle {
 			return fmt.Errorf("%w: adding dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), depID.String(), res.Path)
 		}
@@ -722,7 +723,7 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 		if st.GetNode(valDepID) == nil {
 			return fmt.Errorf("invalid validation dependency: node %s not found", valDepID.String())
 		}
-		
+
 		if res := cycle.WouldCreateCycle(provider, spec.ParentID, valDepID); res.HasCycle {
 			return fmt.Errorf("%w: adding validation dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), valDepID.String(), res.Path)
 		}
@@ -751,7 +752,13 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 
 	event := ledger.NewNodeCreated(*child)
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	return wrapSequenceMismatch(err, "Refine")
+	if err != nil {
+		return wrapSequenceMismatch(err, "Refine")
+	}
+
+	// Node creation and taint-audit emission are intentionally non-atomic, like
+	// epistemic transitions. Replay still derives correct state if emission fails.
+	return s.emitTaintRecomputedEvents(ldg, spec.ChildID, snapshotTaintStates(st))
 }
 
 // AcceptNode validates a node, marking it as verified correct.
@@ -782,11 +789,12 @@ func (s *ProofService) AcceptNode(id types.NodeID) error {
 //
 // ATOMICITY NOTE: The validation event and subsequent taint recomputation events
 // are NOT atomic - they are written as separate ledger appends. This means:
-// 1. If taint emission fails after validation succeeds, the validation stands
-//    but taint state in the ledger may be stale until the next state replay.
-// 2. Concurrent readers may briefly see the validated node with outdated taint.
-// 3. The taint package computes correct taint on replay, so eventual consistency
-//    is guaranteed - the ledger just won't contain explicit taint events.
+//  1. If taint emission fails after validation succeeds, the validation stands
+//     but taint state in the ledger may be stale until the next state replay.
+//  2. Concurrent readers may briefly see the validated node with outdated taint.
+//  3. The taint package computes correct taint on replay, so eventual consistency
+//     is guaranteed - the ledger just won't contain explicit taint events.
+//
 // This is acceptable because taint is derived state (can be recomputed from
 // epistemic states) and the validation event is the authoritative record.
 //
@@ -913,7 +921,7 @@ func (s *ProofService) AcceptNodeWithVerifier(id types.NodeID, note, verifiedBy,
 	}
 
 	// Auto-compute and emit taint events after successful validation
-	return s.emitTaintRecomputedEvents(ldg, id)
+	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
 }
 
 // AcceptNodeBulk validates multiple nodes atomically, marking them as verified correct.
@@ -996,9 +1004,11 @@ func (s *ProofService) AcceptNodeBulkWithVerifier(ids []types.NodeID, verifiedBy
 		return wrapSequenceMismatch(err, "AcceptNodeBulk")
 	}
 
-	// Emit taint events for all accepted nodes
+	// Emit taint events for all accepted nodes. Reuse one pre-transition
+	// snapshot so overlapping ancestor changes are emitted only once.
+	oldTaints := snapshotTaintStates(st)
 	for _, id := range ids {
-		if err := s.emitTaintRecomputedEvents(ldg, id); err != nil {
+		if err := s.emitTaintRecomputedEvents(ldg, id, oldTaints); err != nil {
 			// Log but don't fail - the validation events are already committed
 			// Taint will be recalculated on next state load
 			continue
@@ -1100,7 +1110,7 @@ func (s *ProofService) AdmitNode(id types.NodeID) error {
 	}
 
 	// Auto-compute and emit taint events after successful admission
-	return s.emitTaintRecomputedEvents(ldg, id)
+	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
 }
 
 // RefuteNode refutes a node, marking it as incorrect.
@@ -1146,7 +1156,7 @@ func (s *ProofService) RefuteNode(id types.NodeID) error {
 	}
 
 	// Auto-compute and emit taint events after successful refutation
-	return s.emitTaintRecomputedEvents(ldg, id)
+	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
 }
 
 // VetoNode is a human expert force-refute that bypasses normal adversarial
@@ -1194,7 +1204,7 @@ func (s *ProofService) VetoNode(id types.NodeID, reason, vetoedBy string) error 
 		return wrapSequenceMismatch(err, "VetoNode")
 	}
 
-	return s.emitTaintRecomputedEvents(ldg, id)
+	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
 }
 
 // ArchiveNode archives a node, abandoning the branch.
@@ -1240,7 +1250,7 @@ func (s *ProofService) ArchiveNode(id types.NodeID) error {
 	}
 
 	// Auto-compute and emit taint events after successful archiving
-	return s.emitTaintRecomputedEvents(ldg, id)
+	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
 }
 
 // AddDefinition adds a new definition to the proof.
@@ -1463,8 +1473,9 @@ func (s *ProofService) Path() string {
 	return s.path
 }
 
-// emitTaintRecomputedEvents computes taint for a node and its descendants after
-// an epistemic state change, then emits TaintRecomputed events to the ledger.
+// emitTaintRecomputedEvents computes taint for a node, its ancestors, and its
+// descendants after an epistemic state change, then emits TaintRecomputed
+// events for every changed node.
 //
 // This is called automatically after validation events (AcceptNode, AdmitNode,
 // RefuteNode, ArchiveNode) to ensure the ledger contains explicit taint state
@@ -1473,12 +1484,12 @@ func (s *ProofService) Path() string {
 // IMPORTANT: This function is intentionally NOT atomic with the preceding epistemic
 // state change event. The taint events are appended separately after the validation
 // event is committed. This means:
-// - If this function fails, the epistemic state change still stands
-// - Taint state is derived (computable from epistemic states), so eventual consistency
-//   is guaranteed on the next state replay even if these events are never written
-// - The ledger may lack explicit taint records, but the taint package will compute
-//   correct taint on replay
-func (s *ProofService) emitTaintRecomputedEvents(ldg *ledger.Ledger, nodeID types.NodeID) error {
+//   - If this function fails, the epistemic state change still stands
+//   - Taint state is derived (computable from epistemic states), so eventual consistency
+//     is guaranteed on the next state replay even if these events are never written
+//   - The ledger may lack explicit taint records, but the taint package will compute
+//     correct taint on replay
+func (s *ProofService) emitTaintRecomputedEvents(ldg *ledger.Ledger, nodeID types.NodeID, oldTaints map[string]node.TaintState) error {
 	// Reload state to get the updated epistemic state (validation event was just applied)
 	st, err := s.LoadState()
 	if err != nil {
@@ -1492,50 +1503,35 @@ func (s *ProofService) emitTaintRecomputedEvents(ldg *ledger.Ledger, nodeID type
 		return nil
 	}
 
-	// Get all nodes for taint computation
 	allNodes := st.AllNodes()
 
-	// Build ancestor list for this node
-	nodeMap := make(map[string]*node.Node)
-	for _, nd := range allNodes {
-		if nd != nil {
-			nodeMap[nd.ID.String()] = nd
+	// Recompute in memory first. LoadState already performs an authoritative
+	// full recompute, but keeping this targeted call here makes the affected-set
+	// contract explicit and protects non-replay callers.
+	taint.PropagateTaint(n, allNodes)
+
+	// Compare against the caller's pre-transition snapshot. This is necessary
+	// because replay derives correct taint before this audit-emission step runs.
+	for _, changed := range allNodes {
+		if changed == nil || (!changed.ID.Equal(nodeID) && !nodeID.IsAncestorOf(changed.ID) && !changed.ID.IsAncestorOf(nodeID)) {
+			continue
 		}
-	}
-
-	var ancestors []*node.Node
-	parentID, hasParent := nodeID.Parent()
-	for hasParent {
-		if parent, ok := nodeMap[parentID.String()]; ok {
-			ancestors = append(ancestors, parent)
+		key := changed.ID.String()
+		oldTaint, ok := oldTaints[key]
+		if !ok {
+			// Node absent from the pre-transition snapshot was created by this
+			// operation; its NodeCreated event already records its taint.
+			oldTaints[key] = changed.TaintState
+			continue
 		}
-		parentID, hasParent = parentID.Parent()
-	}
-
-	// Compute taint for this node
-	newTaint := taint.ComputeTaint(n, ancestors)
-
-	// Emit TaintRecomputed event for this node if taint changed
-	if n.TaintState != newTaint {
-		taintEvent := ledger.NewTaintRecomputed(nodeID, newTaint)
+		if oldTaint == changed.TaintState {
+			continue
+		}
+		taintEvent := ledger.NewTaintRecomputed(changed.ID, changed.TaintState)
 		if _, err := ldg.Append(taintEvent); err != nil {
 			return err
 		}
-	}
-
-	// Propagate taint to descendants and get changed nodes
-	// Note: We need to update n.TaintState first so descendants see the correct parent taint
-	n.TaintState = newTaint
-	changedDescendants := taint.PropagateTaint(n, allNodes)
-
-	// Emit TaintRecomputed events for all changed descendants
-	for _, desc := range changedDescendants {
-		if desc != nil {
-			taintEvent := ledger.NewTaintRecomputed(desc.ID, desc.TaintState)
-			if _, err := ldg.Append(taintEvent); err != nil {
-				return err
-			}
-		}
+		oldTaints[key] = changed.TaintState
 	}
 
 	return nil
@@ -1849,6 +1845,16 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		return nil, wrapSequenceMismatch(err, "RefineNodeBulk")
 	}
 
+	// Emit audit events once for the parent: the affected set (parent, its
+	// ancestors, and all its descendants) already covers every new child, so a
+	// single reload suffices. The NodeCreated events are committed at this
+	// point and taint is derived, so an audit-emission failure must not hide
+	// the created IDs from the caller (mirrors AcceptNodeBulk).
+	oldTaints := snapshotTaintStates(st)
+	if err := s.emitTaintRecomputedEvents(ldg, parentID, oldTaints); err != nil {
+		return childIDs, err
+	}
+
 	return childIDs, nil
 }
 
@@ -1860,11 +1866,11 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 // 2. Uses simple Append for remaining events without further CAS checks
 //
 // This means:
-// - If the first CAS succeeds but a subsequent append fails (disk error, etc.), the ledger
-//   will contain a partial set of events. The function returns the successfully appended
-//   sequence numbers along with an error.
-// - Concurrent readers may observe partially-applied changes during the append window.
-// - However, each individual event is still a valid, consistent ledger entry.
+//   - If the first CAS succeeds but a subsequent append fails (disk error, etc.), the ledger
+//     will contain a partial set of events. The function returns the successfully appended
+//     sequence numbers along with an error.
+//   - Concurrent readers may observe partially-applied changes during the append window.
+//   - However, each individual event is still a valid, consistent ledger entry.
 //
 // Why this is acceptable:
 // - Disk/IO failures during append are rare in practice
@@ -2104,15 +2110,15 @@ func (s *ProofService) UpdateExternal(id string, name, source, notes string) (*n
 	return ext, nil
 }
 
-// RecomputeAllTaint recomputes taint state for all nodes in the proof tree.
-// If dryRun is true, returns what would change without applying changes.
-// Otherwise, persists TaintRecomputed events to the ledger for each changed node.
+// RecomputeAllTaint re-synchronizes the ledger's TaintRecomputed audit trail
+// with authoritative derived state. If dryRun is true, it reports stale audit
+// values without appending their corrected events.
 //
 // Taint propagates through the proof tree based on epistemic states:
-// - Validated nodes are clean
 // - Admitted nodes are self_admitted
-// - Children of self_admitted/tainted nodes become tainted
-// - Pending nodes are unresolved
+// - Admitted ancestors or descendants taint validated nodes
+// - Pending ancestors or descendants make validated nodes unresolved
+// - Archived and refuted branches are severed from upward propagation
 func (s *ProofService) RecomputeAllTaint(dryRun bool) (*RecomputeTaintResult, error) {
 	// Load current state
 	st, err := s.LoadState()
@@ -2126,42 +2132,34 @@ func (s *ProofService) RecomputeAllTaint(dryRun bool) (*RecomputeTaintResult, er
 		return nil, fmt.Errorf("proof not initialized or empty")
 	}
 
-	// Track changes
+	ldg, err := s.getLedger()
+	if err != nil {
+		return nil, err
+	}
+	auditTaints, err := lastAuditedTaintStates(ldg)
+	if err != nil {
+		return nil, err
+	}
+
+	// LoadState has already derived correct taint, but use the shared primitive
+	// here too so repair and replay cannot acquire different semantics.
+	taint.RecomputeAll(allNodes)
 	var changes []TaintChange
-	oldTaints := make(map[string]node.TaintState)
-
-	// Store old taint states
 	for _, n := range allNodes {
-		oldTaints[n.ID.String()] = n.TaintState
-	}
-
-	// Sort nodes by depth (shallower first) to process parents before children
-	sortNodesByDepthForTaint(allNodes)
-
-	// Build node map for ancestor lookup
-	nodeMap := make(map[string]*node.Node)
-	for _, n := range allNodes {
-		nodeMap[n.ID.String()] = n
-	}
-
-	// Recompute taint for each node
-	for _, n := range allNodes {
-		// Get ancestors
-		ancestors := getNodeAncestorsForTaint(n, nodeMap)
-
-		// Compute new taint
-		newTaint := taint.ComputeTaint(n, ancestors)
-
-		// Check if changed
-		if n.TaintState != newTaint {
-			changes = append(changes, TaintChange{
-				NodeID:   n.ID.String(),
-				OldTaint: TaintState(n.TaintState),
-				NewTaint: TaintState(newTaint),
-			})
-			// Update node in memory (for cascade effect)
-			n.TaintState = newTaint
+		oldTaint, ok := auditTaints[n.ID.String()]
+		if !ok {
+			// A valid ledger has a NodeCreated event for every node. Treat a
+			// missing baseline defensively as already synchronized.
+			oldTaint = n.TaintState
 		}
+		if oldTaint == n.TaintState {
+			continue
+		}
+		changes = append(changes, TaintChange{
+			NodeID:   n.ID.String(),
+			OldTaint: TaintState(oldTaint),
+			NewTaint: TaintState(n.TaintState),
+		})
 	}
 
 	// Build result
@@ -2174,12 +2172,6 @@ func (s *ProofService) RecomputeAllTaint(dryRun bool) (*RecomputeTaintResult, er
 
 	// If not dry-run, persist changes to ledger
 	if !dryRun && len(changes) > 0 {
-		ledgerDir := filepath.Join(s.path, "ledger")
-		ldg, err := ledger.NewLedger(ledgerDir)
-		if err != nil {
-			return nil, err
-		}
-
 		// Append events for each change
 		seq := st.LatestSeq()
 		for _, change := range changes {
@@ -2200,29 +2192,39 @@ func (s *ProofService) RecomputeAllTaint(dryRun bool) (*RecomputeTaintResult, er
 	return result, nil
 }
 
-// sortNodesByDepthForTaint sorts nodes by their depth (shallower first).
-func sortNodesByDepthForTaint(nodes []*node.Node) {
-	// Using a simple insertion sort since nodes are already mostly ordered
-	for i := 1; i < len(nodes); i++ {
-		j := i
-		for j > 0 && nodes[j].ID.Depth() < nodes[j-1].ID.Depth() {
-			nodes[j], nodes[j-1] = nodes[j-1], nodes[j]
-			j--
+// lastAuditedTaintStates returns the last explicitly recorded taint for each
+// node. Until the first TaintRecomputed event, the NodeCreated value is the
+// audit baseline because that is what applyNodeCreated places in state.
+func lastAuditedTaintStates(ldg *ledger.Ledger) (map[string]node.TaintState, error) {
+	result := make(map[string]node.TaintState)
+	err := ldg.Scan(func(seq int, data []byte) error {
+		var envelope struct {
+			Type ledger.EventType `json:"type"`
 		}
-	}
-}
+		if err := json.Unmarshal(data, &envelope); err != nil {
+			return fmt.Errorf("parsing ledger event %d for taint audit: %w", seq, err)
+		}
 
-// getNodeAncestorsForTaint returns the ancestor nodes for a given node.
-func getNodeAncestorsForTaint(n *node.Node, nodeMap map[string]*node.Node) []*node.Node {
-	var ancestors []*node.Node
-	parentID, hasParent := n.ID.Parent()
-	for hasParent {
-		if parent, ok := nodeMap[parentID.String()]; ok {
-			ancestors = append(ancestors, parent)
+		switch envelope.Type {
+		case ledger.EventNodeCreated:
+			var event ledger.NodeCreated
+			if err := json.Unmarshal(data, &event); err != nil {
+				return fmt.Errorf("parsing NodeCreated event %d for taint audit: %w", seq, err)
+			}
+			result[event.Node.ID.String()] = event.Node.TaintState
+		case ledger.EventTaintRecomputed:
+			var event ledger.TaintRecomputed
+			if err := json.Unmarshal(data, &event); err != nil {
+				return fmt.Errorf("parsing TaintRecomputed event %d for taint audit: %w", seq, err)
+			}
+			result[event.NodeID.String()] = event.NewTaint
 		}
-		parentID, hasParent = parentID.Parent()
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return ancestors
+	return result, nil
 }
 
 // RequestRefinement requests refinement on a validated node, transitioning it
@@ -2270,7 +2272,13 @@ func (s *ProofService) RequestRefinement(nodeID types.NodeID, reason, requestedB
 
 	event := ledger.NewRefinementRequested(nodeID, reason, requestedBy)
 	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	return wrapSequenceMismatch(err, "RequestRefinement")
+	if err != nil {
+		return wrapSequenceMismatch(err, "RequestRefinement")
+	}
+
+	// Requesting refinement makes this node unresolved. Audit emission is
+	// intentionally non-atomic; replay remains authoritative if it fails.
+	return s.emitTaintRecomputedEvents(ldg, nodeID, snapshotTaintStates(st))
 }
 
 // UnvalidateNode revokes validation on a node, reverting it from validated
@@ -2313,8 +2321,8 @@ func (s *ProofService) UnvalidateNode(nodeID types.NodeID, reason, revokedBy str
 	}
 
 	// Emit taint recomputation — node becomes pending (TaintUnresolved),
-	// which propagates to descendants
-	return s.emitTaintRecomputedEvents(ldg, nodeID)
+	// which propagates to ancestors and descendants.
+	return s.emitTaintRecomputedEvents(ldg, nodeID, snapshotTaintStates(st))
 }
 
 // UnadmitNode revokes an admission on a node, reverting it from admitted back
@@ -2357,10 +2365,22 @@ func (s *ProofService) UnadmitNode(nodeID types.NodeID, reason, revokedBy string
 		return wrapSequenceMismatch(err, "UnadmitNode")
 	}
 
-	// Emit taint recomputation — node becomes pending (TaintUnresolved),
-	// the self_admitted source is gone so descendants that inherited it move
-	// to unresolved.
-	return s.emitTaintRecomputedEvents(ldg, nodeID)
+	// Emit taint recomputation — node becomes pending (TaintUnresolved), the
+	// self_admitted source is gone, and ancestors/descendants recompute.
+	return s.emitTaintRecomputedEvents(ldg, nodeID, snapshotTaintStates(st))
+}
+
+func snapshotTaintStates(st *state.State) map[string]node.TaintState {
+	taints := make(map[string]node.TaintState)
+	if st == nil {
+		return taints
+	}
+	for _, n := range st.AllNodes() {
+		if n != nil {
+			taints[n.ID.String()] = n.TaintState
+		}
+	}
+	return taints
 }
 
 // RecordApproachTried records a failed proof approach for a node.

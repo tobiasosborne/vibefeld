@@ -37,8 +37,10 @@ func newReplayCmd() *cobra.Command {
 		Short:   "Replay ledger to rebuild and verify state",
 		Long: `Replay all events from the ledger to rebuild and verify the proof state.
 
-The replay command processes all events in sequence order and shows statistics
-about the proof including nodes, challenges, and definitions.
+The replay command processes all events in sequence order, authoritatively
+recomputes derived taint, and shows statistics about the proof including nodes,
+challenges, and definitions. Historical TaintRecomputed events remain audit
+records but cannot override the final derived value.
 
 With --verify, the command also validates content hashes for all nodes to
 ensure data integrity.

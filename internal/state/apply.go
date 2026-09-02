@@ -7,13 +7,16 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/taint"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
 // Apply takes an event and updates the state accordingly.
 // This is the core function for event sourcing - it replays events
 // to build the current state.
+//
+// Taint is deliberately not recomputed here: Apply runs once per event during
+// replay, so tree-wide derivation here would make replay quadratic. replayInternal
+// performs one authoritative taint.RecomputeAll pass after all events are applied.
 //
 // Returns an error if:
 // - The state or event is nil
@@ -191,9 +194,6 @@ func applyNodeValidated(s *State, e ledger.NodeValidated) error {
 	n.ValidatedBy = e.VerifiedBy
 	n.ValidationBatchID = e.BatchID
 
-	// Auto-trigger taint recomputation after epistemic state change
-	recomputeTaintForNode(s, n)
-
 	return nil
 }
 
@@ -209,9 +209,6 @@ func applyNodeAdmitted(s *State, e ledger.NodeAdmitted) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicAdmitted
-
-	// Auto-trigger taint recomputation after epistemic state change
-	recomputeTaintForNode(s, n)
 
 	return nil
 }
@@ -233,9 +230,6 @@ func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 	// Auto-supersede any open challenges on this node
 	supersedeOpenChallengesForNode(s, e.NodeID)
 
-	// Auto-trigger taint recomputation after epistemic state change
-	recomputeTaintForNode(s, n)
-
 	return nil
 }
 
@@ -255,9 +249,6 @@ func applyNodeArchived(s *State, e ledger.NodeArchived) error {
 
 	// Auto-supersede any open challenges on this node
 	supersedeOpenChallengesForNode(s, e.NodeID)
-
-	// Auto-trigger taint recomputation after epistemic state change
-	recomputeTaintForNode(s, n)
 
 	return nil
 }
@@ -390,44 +381,6 @@ func supersedeOpenChallengesForNode(s *State, nodeID types.NodeID) {
 	}
 }
 
-// recomputeTaintForNode recomputes the taint state for a node and propagates
-// taint changes to its descendants.
-//
-// This function is called automatically after epistemic state changes to ensure
-// the taint system stays in sync with the proof state.
-func recomputeTaintForNode(s *State, n *node.Node) {
-	if n == nil || s == nil {
-		return
-	}
-
-	// Get all nodes in the state for taint computation
-	allNodes := s.AllNodes()
-
-	// Build ancestor list for this node
-	nodeMap := make(map[string]*node.Node)
-	for _, nd := range allNodes {
-		if nd != nil {
-			nodeMap[nd.ID.String()] = nd
-		}
-	}
-
-	var ancestors []*node.Node
-	parentID, hasParent := n.ID.Parent()
-	for hasParent {
-		if parent, ok := nodeMap[parentID.String()]; ok {
-			ancestors = append(ancestors, parent)
-		}
-		parentID, hasParent = parentID.Parent()
-	}
-
-	// Compute the taint for the node itself
-	newTaint := taint.ComputeTaint(n, ancestors)
-	n.TaintState = newTaint
-
-	// Propagate taint to descendants
-	taint.PropagateTaint(n, allNodes)
-}
-
 // applyNodeProofAuthored handles the NodeProofAuthored event.
 // This stamps the decomposed parent node with the prover-of-record identity
 // (the prover that proved it by decomposition). It records ONLY ProofAuthor —
@@ -511,9 +464,6 @@ func applyNodeSubmitted(s *State, e ledger.NodeSubmitted) error {
 	}
 	n.EpistemicState = schema.EpistemicPending
 
-	// Auto-trigger taint recomputation after epistemic state change
-	recomputeTaintForNode(s, n)
-
 	return nil
 }
 
@@ -532,9 +482,6 @@ func applyNodeUnvalidated(s *State, e ledger.NodeUnvalidated) error {
 	n.ValidatedBy = ""
 	n.ValidationBatchID = ""
 
-	// Auto-trigger taint recomputation after epistemic state change
-	recomputeTaintForNode(s, n)
-
 	return nil
 }
 
@@ -551,10 +498,6 @@ func applyNodeUnadmitted(s *State, e ledger.NodeUnadmitted) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicPending
-
-	// Auto-trigger taint recomputation: the self_admitted source is gone,
-	// so this node and any descendants that inherited its taint move to unresolved.
-	recomputeTaintForNode(s, n)
 
 	return nil
 }
@@ -579,9 +522,6 @@ func applyNodeVetoed(s *State, e ledger.NodeVetoed) error {
 
 	// Auto-supersede any open challenges on this node
 	supersedeOpenChallengesForNode(s, e.NodeID)
-
-	// Auto-trigger taint recomputation after epistemic state change
-	recomputeTaintForNode(s, n)
 
 	return nil
 }

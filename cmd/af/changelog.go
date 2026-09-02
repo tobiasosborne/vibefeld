@@ -9,6 +9,15 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version: "0.1.7",
+		Date:    "2026-09-02",
+		Items: []string{
+			"Fix: taint now propagates upward from admitted, pending, draft, or needs-refinement descendants to their ancestors while validated siblings remain uncontaminated; replay authoritatively recomputes derived taint so existing 0.1.6 ledgers self-heal on their next load, and af taint-trace explains descendant sources.",
+			"Fix: needs_refinement now counts as unresolved for taint on the reopened node, its ancestors, and its descendants, so requesting more proof no longer leaves the root looking clean.",
+			"Compatibility note: af taint-trace JSON keys remain backward compatible and only gain additive fields, but human-readable `reason` values now name the nearest offending ancestor/descendant and report its epistemic state; scripts matching reason text should update.",
+		},
+	},
+	{
 		Version: "0.1.6",
 		Date:    "2026-07-25",
 		Items: []string{

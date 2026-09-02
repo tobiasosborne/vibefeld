@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/tobias/vibefeld/internal/ledger"
+	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobias/vibefeld/internal/render"
+	"github.com/tobias/vibefeld/internal/schema"
 	"github.com/tobias/vibefeld/internal/service"
 	"github.com/tobias/vibefeld/internal/types"
 )
@@ -202,6 +207,178 @@ func TestTaintTraceCmd_JSONOutput(t *testing.T) {
 	}
 	if _, ok := result["trace"]; !ok {
 		t.Error("expected 'trace' in JSON output")
+	}
+}
+
+func TestTaintTraceCmd_ExplainsAdmittedDescendant(t *testing.T) {
+	render.DisableColor()
+	defer render.EnableColor()
+	dir, svc := setupTaintTraceTest(t)
+	refineAndClaim(t, svc, "1", "prover1")
+	if err := svc.AdmitNode(nid("1.1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AcceptNode(nid("1")); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTaintTraceCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"1", "--dir", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Current taint: tainted") {
+		t.Errorf("expected tainted root, got: %s", output)
+	}
+	if !strings.Contains(output, "descendant 1.1 is admitted") {
+		t.Errorf("expected admitted descendant reason, got: %s", output)
+	}
+	if !strings.Contains(output, "Descendant source(s):\n  1.1 — admitted (self_admitted)") {
+		t.Errorf("expected descendant source block, got: %s", output)
+	}
+}
+
+func TestTaintTraceCmd_SparseTreeUsesNearestExistingParent(t *testing.T) {
+	render.DisableColor()
+	defer render.EnableColor()
+	dir, svc := setupTaintTraceTest(t)
+	ldg, err := ledger.NewLedger(filepath.Join(dir, "ledger"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deepID := nid("1.1.1")
+	deep, err := node.NewNode(deepID, schema.NodeTypeClaim, "Sparse admitted descendant", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []ledger.Event{
+		ledger.NewNodeCreated(*deep),
+		ledger.NewNodeAdmitted(deepID),
+		ledger.NewNodeValidated(nid("1")),
+	} {
+		if _, err := ldg.Append(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := svc.LoadState(); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTaintTraceCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"1", "--dir", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output := buf.String(); !strings.Contains(output, "descendant 1.1.1 is admitted") {
+		t.Errorf("sparse trace did not use nearest existing parent: %s", output)
+	}
+}
+
+func TestTaintTraceCmd_ExplainsNeedsRefinementSources(t *testing.T) {
+	render.DisableColor()
+	defer render.EnableColor()
+	dir, svc := setupTaintTraceTest(t)
+	refineAndClaim(t, svc, "1", "prover1")
+	if err := svc.AcceptNode(nid("1.1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AcceptNode(nid("1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RequestRefinement(nid("1.1"), "show details", "verifier1"); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		nodeID string
+		want   string
+	}{
+		{nodeID: "1.1", want: "node is reopened for refinement"},
+		{nodeID: "1", want: "descendant 1.1 is reopened for refinement"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.nodeID, func(t *testing.T) {
+			cmd := newTaintTraceCmd()
+			buf := new(bytes.Buffer)
+			cmd.SetOut(buf)
+			cmd.SetErr(new(bytes.Buffer))
+			cmd.SetArgs([]string{tt.nodeID, "--dir", dir})
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if output := buf.String(); !strings.Contains(output, tt.want) {
+				t.Errorf("trace output missing %q: %s", tt.want, output)
+			}
+		})
+	}
+
+	if err := svc.ClaimNode(nid("1.1"), "prover1", 5*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RefineNode(nid("1.1"), "prover1", nid("1.1.1"), schema.NodeTypeClaim, "Validated detail", schema.InferenceAssumption); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AcceptNode(nid("1.1.1")); err != nil {
+		t.Fatal(err)
+	}
+	cmd := newTaintTraceCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"1.1.1", "--dir", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output := buf.String(); !strings.Contains(output, "ancestor 1.1 is reopened for refinement") {
+		t.Errorf("trace output missing needs_refinement ancestor reason: %s", output)
+	}
+}
+
+func TestTaintTraceCmd_ExplainsPendingDescendantInJSON(t *testing.T) {
+	dir, svc := setupTaintTraceTest(t)
+	refineAndClaim(t, svc, "1", "prover1")
+	if err := svc.AcceptNode(nid("1.1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AcceptNode(nid("1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UnvalidateNode(nid("1.1"), "recheck", "verifier1"); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTaintTraceCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"1", "--dir", dir, "--format", "json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	var result struct {
+		TaintState        string `json:"taint_state"`
+		DescendantSources []struct {
+			NodeID         string `json:"node_id"`
+			EpistemicState string `json:"epistemic_state"`
+		} `json:"descendant_sources"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.TaintState != "unresolved" {
+		t.Errorf("taint_state = %q, want unresolved", result.TaintState)
+	}
+	if len(result.DescendantSources) != 1 || result.DescendantSources[0].NodeID != "1.1" || result.DescendantSources[0].EpistemicState != "pending" {
+		t.Errorf("descendant_sources = %#v, want pending node 1.1", result.DescendantSources)
 	}
 }
 

@@ -267,14 +267,10 @@ n.WorkflowState = schema.WorkflowClaimed
 func applyNodeValidated(s *State, e *Event) error {
     // ... existing logic ...
 
-    // NEW: Recompute taint for this node and propagate to descendants
-    ancestors := s.GetAncestors(node.ID)
-    newTaint := taint.ComputeTaint(node, ancestors)
-    if node.TaintState != newTaint {
-        node.TaintState = newTaint
-        changed := taint.PropagateTaint(node, s.AllNodes())
-        // Optionally append TaintRecomputed event
-    }
+    // Recompute the node, its ancestors, and its descendants. The shared
+    // implementation keeps downward and upward components separate.
+    changed := taint.PropagateTaint(node, s.AllNodes())
+    // Optionally append TaintRecomputed events for changed nodes.
     return nil
 }
 ```

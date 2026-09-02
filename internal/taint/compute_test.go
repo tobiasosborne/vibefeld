@@ -157,6 +157,17 @@ func TestComputeTaint_AncestorWithUnresolved(t *testing.T) {
 	}
 }
 
+func TestComputeTaint_IgnoresStaleStoredAncestorTaint(t *testing.T) {
+	n := makeTestNode("1.1", schema.EpistemicValidated, node.TaintUnresolved)
+	ancestor := makeTestNode("1", schema.EpistemicValidated, node.TaintUnresolved)
+
+	result := ComputeTaint(n, []*node.Node{ancestor})
+
+	if result != node.TaintClean {
+		t.Errorf("ComputeTaint() = %v, want %v; stored ancestor taint is not authoritative", result, node.TaintClean)
+	}
+}
+
 func TestComputeTaint_MultipleAncestorsOneAdmitted(t *testing.T) {
 	// If any ancestor is self_admitted, node should be tainted
 	n := makeTestNode("1.1.1.1", schema.EpistemicValidated, node.TaintUnresolved)

@@ -148,24 +148,26 @@ Computed property reflecting epistemic uncertainty propagation.
 
 | Taint | Meaning |
 |-------|---------|
-| `clean` | All ancestors validated |
+| `clean` | No uncertainty in the ancestor chain or active descendant subtree |
 | `self_admitted` | This node is admitted |
-| `tainted` | Some ancestor is admitted or tainted |
-| `unresolved` | Some ancestor is pending |
+| `tainted` | A non-severed ancestor or active descendant is admitted |
+| `unresolved` | This node, a non-severed ancestor, or an active descendant is pending/draft/needs_refinement |
 
 Taint computation:
 ```
-if node.epistemic_state == admitted:
-    taint = self_admitted
-elif any(ancestor.taint in [self_admitted, tainted] for ancestor in dependencies):
-    taint = tainted
-elif any(ancestor.epistemic_state == pending for ancestor in dependencies):
-    taint = unresolved
-else:
-    taint = clean
+if node is archived/refuted: clean
+elif node is pending/draft/needs_refinement: unresolved
+elif any non-severed ancestor is pending/draft/needs_refinement: unresolved
+elif node is admitted: self_admitted
+elif any active descendant is pending/draft/needs_refinement: unresolved
+elif any non-severed ancestor is admitted: tainted
+elif any active descendant is admitted: tainted
+else: clean
 ```
 
-Taint is recomputed on every status change and propagated to descendants.
+Taint is recomputed on every status change for the node, its ancestors, and its
+descendants. Descendant-derived taint does not propagate back down into siblings.
+Archived/refuted child branches are severed, and admitted nodes ignore their subtree.
 
 #### Challenge State
 
@@ -763,8 +765,8 @@ PROOF STATUS: All primes greater than 2 are odd
 LEGEND:
   [validated] = accepted by verifier    [pending] = awaiting verification
   [admitted] = assumed without proof    [archived] = abandoned
-  [clean] = all ancestors validated     [tainted] = depends on admitted
-  [unresolved] = ancestors pending      (!) = has open challenges
+  [clean] = no active uncertainty       [tainted] = depends on admitted
+  [unresolved] = active chain pending   (!) = has open challenges
 
 SUMMARY:
   Nodes: 8 total (5 validated, 2 pending, 1 archived)
@@ -966,7 +968,7 @@ Administration:
   log           Show event ledger
   replay        Rebuild state from ledger
   reap          Clear stale locks
-  recompute-taint   Force taint recalculation
+  recompute-taint   Re-sync derived taint audit records
   def-add       Add definition (human operator)
   def-reject    Reject definition request (human operator)
   extract-lemma Extract reusable subproof
@@ -1522,6 +1524,54 @@ Exit codes: 1 = retriable, 2 = blocked, 3 = logic error, 4 = corruption.
 **Stuck**: No jobs available, root still `pending`.
 
 **Blocked**: Pending definition or external reference requests.
+
+---
+
+### v0.2 Target: Trust at Scale (Trusted Kernel)
+
+**Goal.** af must be something you trust *at scale*, once you stop reading
+the code and the proofs. The 0.1.7 taint bug (root reported `clean` above an
+admitted child, with every test passing) showed the failure mode this
+addresses: a spec/implementation mismatch that no amount of statement
+coverage catches, because the tests encoded the wrong semantics.
+
+**Principle.** LCF-style split. A small *trusted kernel* derives all truth;
+everything else is an *untrusted shell* that may be wrong without corrupting a
+proof. Assurance effort concentrates on the kernel.
+
+| Part | Contents | Assurance bar |
+|------|----------|---------------|
+| Kernel (~4-6k LOC) | Event replay (ledger → state), epistemic transition validity, taint derivation, content hashing, lock protocol | Executable spec; machine-checked proof or MC/DC against that spec |
+| Shell (everything else) | CLI, rendering, export, hooks, shell, fuzzy matching, job discovery, metrics | Ordinary tests; may be replaced or ported freely |
+
+**Deliverables (in order; each is independently shippable):**
+
+1. **Executable spec + differential fuzz.** A small, readable reference
+   implementation of the taint rules and epistemic transitions, checked
+   against production on randomly generated trees and command sequences.
+   Invariants: replay equals incremental state; root `clean` iff every active
+   descendant is validated; taint recompute is idempotent; sequence numbers
+   contiguous; hashes verify.
+2. **TLA+ model of the ledger + lock protocol.** Model append-only writes,
+   CAS on sequence numbers, lock acquire/expire/reap, and the documented
+   non-atomic window between an epistemic event and its taint audit events.
+   Model-check for lost writes, sequence gaps, and double claims. This is
+   where concurrency bugs live and no coverage metric finds them.
+3. **Kernel/shell boundary in code.** Extract the kernel behind a narrow,
+   documented API (events in, state out; no I/O, no CLI types) so it can be
+   proven, instrumented, or ported independently of the shell.
+4. **Kernel assurance.** Choose one: (a) port the kernel to a language with
+   native MC/DC tooling and proof support (SPARK; or Lean 4 for outright
+   proof) behind an FFI, or (b) keep a single language with model checking
+   (e.g. Rust + Kani/Verus, MC/DC when stable). Decision deferred until 1-3
+   exist; the shell language is a separate, later choice.
+
+**Known trust gaps** that this work must close or make auditable are listed
+in `docs/trust-model.md`.
+
+**Explicit non-goals for v0.2.** No new proof features. No rewrite of the
+shell. No MC/DC target for the shell. No language change until deliverables
+1-3 are in place and have found (or failed to find) real bugs.
 
 ---
 

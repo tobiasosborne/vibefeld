@@ -29,9 +29,9 @@ Use this when:
 - A rigorous proof has replaced a previously admitted step
 - The verifier wants to remove the self_admitted taint from the lineage
 
-Note: Unadmitting a node will recompute taint downward — the self_admitted
-source is gone, so descendants that inherited it become taint-unresolved
-until re-evaluated.
+Note: Unadmitting a node makes it pending and recomputes taint for its ancestors
+and descendants. Those nodes become unresolved as appropriate; validated
+siblings are not contaminated.
 
 Examples:
   af unadmit 1.2
@@ -65,7 +65,7 @@ func runUnadmit(cmd *cobra.Command, args []string) error {
 		return render.InvalidNodeIDError("af unadmit", nodeIDStr, examples)
 	}
 
-	msg := fmt.Sprintf("Unadmit node %s? This reverts it to pending and may propagate taint to descendants.", nodeID.String())
+	msg := fmt.Sprintf("Unadmit node %s? This reverts it to pending and may make ancestors and descendants unresolved.", nodeID.String())
 	confirmed, err := cli.ConfirmAction(cmd.OutOrStdout(), msg, yes)
 	if err != nil {
 		return err

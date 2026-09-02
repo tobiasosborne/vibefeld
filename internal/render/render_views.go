@@ -217,9 +217,9 @@ func renderLegendView(sb *strings.Builder) {
 
 	sb.WriteString("Taint States:\n")
 	sb.WriteString(fmt.Sprintf("  %s         - No epistemic uncertainty\n", colorTaintStateString("clean")))
-	sb.WriteString(fmt.Sprintf("  %s - Contains admitted node\n", colorTaintStateString("self_admitted")))
-	sb.WriteString(fmt.Sprintf("  %s       - Depends on tainted/refuted node\n", colorTaintStateString("tainted")))
-	sb.WriteString(fmt.Sprintf("  %s    - Taint status not yet computed\n", colorTaintStateString("unresolved")))
+	sb.WriteString(fmt.Sprintf("  %s - This node is admitted\n", colorTaintStateString("self_admitted")))
+	sb.WriteString(fmt.Sprintf("  %s       - Depends on an admitted node (ancestor or descendant)\n", colorTaintStateString("tainted")))
+	sb.WriteString(fmt.Sprintf("  %s    - Some node in its chain needs verification or refinement\n", colorTaintStateString("unresolved")))
 }
 
 // RenderTreeView renders a proof tree from a view model.

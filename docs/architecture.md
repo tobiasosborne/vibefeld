@@ -452,34 +452,25 @@ SHA256(type + statement + latex + inference + sorted(context) + sorted(dependenc
 
 ### Taint Computation
 
-Taint propagates epistemic uncertainty through the proof tree:
+Taint propagates epistemic uncertainty in both directions through the proof tree:
 
 ```go
-func ComputeTaint(n *Node, ancestors []*Node) TaintState {
-    // Rule 1: Pending nodes are unresolved
-    if n.EpistemicState == pending { return unresolved }
-
-    // Rule 2: Unresolved ancestors propagate
-    for _, a := range ancestors {
-        if a.TaintState == unresolved { return unresolved }
-    }
-
-    // Rule 3: Admitted nodes are self_admitted
-    if n.EpistemicState == admitted { return self_admitted }
-
-    // Rule 4: Tainted ancestors propagate
-    for _, a := range ancestors {
-        if a.TaintState == tainted || a.TaintState == self_admitted {
-            return tainted
-        }
-    }
-
-    // Rule 5: Clean
+func ComputeTaintInTree(n *Node, allNodes []*Node) TaintState {
+    if n is archived/refuted { return clean }
+    if n is pending/draft/needs_refinement { return unresolved }
+    if a non-severed ancestor is pending/draft/needs_refinement { return unresolved }
+    if n is admitted { return self_admitted }
+    if an active descendant is pending/draft/needs_refinement { return unresolved }
+    if a non-severed ancestor or active descendant is admitted { return tainted }
     return clean
 }
 ```
 
-Taint is recomputed whenever a node's epistemic state changes, and propagates to all descendants.
+Ancestor-chain state is derived only from epistemic states; subtree state is
+computed deepest-first. Thus admitted or unresolved-state descendants affect their ancestors
+without that derived result leaking down into validated siblings. Archived/refuted
+child branches are severed. Replay runs a full authoritative recomputation after
+applying all audit events.
 
 ---
 

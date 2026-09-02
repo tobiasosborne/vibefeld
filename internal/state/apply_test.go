@@ -8,6 +8,7 @@ import (
 	"github.com/tobias/vibefeld/internal/ledger"
 	"github.com/tobias/vibefeld/internal/node"
 	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobias/vibefeld/internal/taint"
 	"github.com/tobias/vibefeld/internal/types"
 )
 
@@ -1169,7 +1170,7 @@ func TestApplyNodesReleasedFromAvailable(t *testing.T) {
 	}
 }
 
-// TestApplyNodeValidatedAutoTaint verifies that validating a node auto-triggers taint computation.
+// TestApplyNodeValidatedAutoTaint verifies authoritative taint derivation after validation.
 func TestApplyNodeValidatedAutoTaint(t *testing.T) {
 	s := NewState()
 
@@ -1192,15 +1193,16 @@ func TestApplyNodeValidatedAutoTaint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply NodeValidated failed: %v", err)
 	}
+	taint.RecomputeAll(s.AllNodes())
 
-	// Verify taint was auto-computed to clean (validated node with no tainted ancestors)
+	// Verify the final derivation produces clean (validated node with no tainted ancestors).
 	got := s.GetNode(nodeID)
 	if got.TaintState != node.TaintClean {
 		t.Errorf("Taint state after validation should be clean: got %q", got.TaintState)
 	}
 }
 
-// TestApplyNodeAdmittedAutoTaint verifies that admitting a node auto-triggers taint computation.
+// TestApplyNodeAdmittedAutoTaint verifies authoritative taint derivation after admission.
 func TestApplyNodeAdmittedAutoTaint(t *testing.T) {
 	s := NewState()
 
@@ -1223,15 +1225,16 @@ func TestApplyNodeAdmittedAutoTaint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply NodeAdmitted failed: %v", err)
 	}
+	taint.RecomputeAll(s.AllNodes())
 
-	// Verify taint was auto-computed to self_admitted (admitted node introduces taint)
+	// Verify the final derivation produces self_admitted.
 	got := s.GetNode(nodeID)
 	if got.TaintState != node.TaintSelfAdmitted {
 		t.Errorf("Taint state after admission should be self_admitted: got %q", got.TaintState)
 	}
 }
 
-// TestApplyNodeValidatedPropagatesTaint verifies that validating a parent node propagates taint to children.
+// TestApplyNodeValidatedPropagatesTaint verifies the final derivation after validating a parent.
 func TestApplyNodeValidatedPropagatesTaint(t *testing.T) {
 	s := NewState()
 
@@ -1253,12 +1256,13 @@ func TestApplyNodeValidatedPropagatesTaint(t *testing.T) {
 	child.EpistemicState = schema.EpistemicValidated
 	s.AddNode(child)
 
-	// Validate parent - this should propagate taint to child
+	// Apply validation, then mirror replay's final authoritative derivation.
 	event := ledger.NewNodeValidated(parentID)
 	err = Apply(s, event)
 	if err != nil {
 		t.Fatalf("Apply NodeValidated failed: %v", err)
 	}
+	taint.RecomputeAll(s.AllNodes())
 
 	// Check that parent taint is clean
 	gotParent := s.GetNode(parentID)
@@ -1273,7 +1277,7 @@ func TestApplyNodeValidatedPropagatesTaint(t *testing.T) {
 	}
 }
 
-// TestApplyNodeAdmittedPropagatesTaint verifies that admitting a parent propagates taint to descendants.
+// TestApplyNodeAdmittedPropagatesTaint verifies the final derivation after admitting a parent.
 func TestApplyNodeAdmittedPropagatesTaint(t *testing.T) {
 	s := NewState()
 
@@ -1294,12 +1298,13 @@ func TestApplyNodeAdmittedPropagatesTaint(t *testing.T) {
 	child.EpistemicState = schema.EpistemicValidated
 	s.AddNode(child)
 
-	// Admit parent - this should propagate taint to child
+	// Apply admission, then mirror replay's final authoritative derivation.
 	event := ledger.NewNodeAdmitted(parentID)
 	err = Apply(s, event)
 	if err != nil {
 		t.Fatalf("Apply NodeAdmitted failed: %v", err)
 	}
+	taint.RecomputeAll(s.AllNodes())
 
 	// Check that parent taint is self_admitted
 	gotParent := s.GetNode(parentID)

@@ -505,12 +505,13 @@ The ledger is the **source of truth**. The current state of the proof is derived
 
 | Taint | Meaning |
 |-------|---------|
-| `clean` | All ancestors are validated - full confidence |
+| `clean` | No uncertainty in the ancestor chain or active subtree - full confidence |
 | `self_admitted` | This node was admitted without proof |
-| `tainted` | Depends on an admitted or tainted ancestor |
-| `unresolved` | Some ancestor is still pending |
+| `tainted` | Depends on an admitted ancestor or active descendant |
+| `unresolved` | This node, an ancestor, or an active descendant is pending/draft/needs_refinement |
 
 A proof is truly complete when the root is `validated` and `clean`.
+Descendant-derived taint flows upward only, so it does not contaminate validated siblings.
 
 ---
 

@@ -134,9 +134,9 @@ func ColorEpistemicState(state schema.EpistemicState) string {
 // ColorTaintState returns the taint state string with appropriate color coding.
 // Color mapping:
 //   - clean = green (no epistemic uncertainty)
-//   - self_admitted = cyan (contains admitted node)
-//   - tainted = red (depends on tainted/refuted node)
-//   - unresolved = yellow (taint not yet computed)
+//   - self_admitted = cyan (this node is admitted)
+//   - tainted = red (depends on admitted ancestor/descendant)
+//   - unresolved = yellow (pending/draft/needs_refinement node in active chain)
 func ColorTaintState(state node.TaintState) string {
 	s := string(state)
 	switch state {

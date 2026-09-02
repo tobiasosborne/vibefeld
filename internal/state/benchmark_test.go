@@ -91,6 +91,7 @@ func BenchmarkStateReplay(b *testing.B) {
 		{"100_events", 100},
 		{"500_events", 500},
 		{"1000_events", 1000},
+		{"2000_events", 2000},
 	}
 
 	for _, bm := range benchmarks {
@@ -115,6 +116,44 @@ func BenchmarkStateReplay(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// BenchmarkReplay2000NodesWithEpistemicEvents guards against performing a
+// tree-wide taint recomputation after every epistemic event during replay.
+func BenchmarkReplay2000NodesWithEpistemicEvents(b *testing.B) {
+	dir := b.TempDir()
+	ldg, err := ledger.NewLedger(dir)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := appendEvent(ldg, ledger.NewProofInitialized("Replay benchmark", "benchmark")); err != nil {
+		b.Fatal(err)
+	}
+
+	ids := make([]types.NodeID, 2000)
+	for i := range ids {
+		idText := "1"
+		if i > 0 {
+			idText = fmt.Sprintf("1.%d", i)
+		}
+		ids[i], _ = types.Parse(idText)
+		n, _ := node.NewNode(ids[i], schema.NodeTypeClaim, fmt.Sprintf("Claim %d", i), schema.InferenceAssumption)
+		if err := appendEvent(ldg, ledger.NewNodeCreated(*n)); err != nil {
+			b.Fatal(err)
+		}
+	}
+	for _, id := range ids {
+		if err := appendEvent(ldg, ledger.NewNodeValidated(id)); err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := Replay(ldg); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

@@ -205,9 +205,9 @@ func renderLegend(sb *strings.Builder) {
 	// Taint states legend with color coding
 	sb.WriteString("Taint States:\n")
 	sb.WriteString(fmt.Sprintf("  %s         - No epistemic uncertainty\n", ColorTaintState(node.TaintClean)))
-	sb.WriteString(fmt.Sprintf("  %s - Contains admitted node\n", ColorTaintState(node.TaintSelfAdmitted)))
-	sb.WriteString(fmt.Sprintf("  %s       - Depends on tainted/refuted node\n", ColorTaintState(node.TaintTainted)))
-	sb.WriteString(fmt.Sprintf("  %s    - Taint status not yet computed\n", ColorTaintState(node.TaintUnresolved)))
+	sb.WriteString(fmt.Sprintf("  %s - This node is admitted\n", ColorTaintState(node.TaintSelfAdmitted)))
+	sb.WriteString(fmt.Sprintf("  %s       - Depends on an admitted node (ancestor or descendant)\n", ColorTaintState(node.TaintTainted)))
+	sb.WriteString(fmt.Sprintf("  %s    - Some node in its chain needs verification or refinement\n", ColorTaintState(node.TaintUnresolved)))
 }
 
 // UrgentItem represents a single urgent work item for display.
@@ -247,10 +247,10 @@ func FilterUrgentNodes(s *state.State) []UrgentItem {
 			statement = n.Statement
 		}
 		items = append(items, UrgentItem{
-			NodeID:   nodeIDStr,
+			NodeID:    nodeIDStr,
 			Statement: statement,
-			Category: "blocking_challenge",
-			Details:  fmt.Sprintf("[%s] %s: %s", challenge.Severity, challenge.Target, challenge.Reason),
+			Category:  "blocking_challenge",
+			Details:   fmt.Sprintf("[%s] %s: %s", challenge.Severity, challenge.Target, challenge.Reason),
 		})
 	}
 

@@ -55,7 +55,7 @@ Multiple AI agents work concurrently as adversarial provers and verifiers, refin
 | `pending-ref` | Show a specific pending reference |
 | `assumptions` | List assumptions in the proof |
 | `assumption` | Show a specific assumption |
-| `recompute-taint` | Recompute taint state for all nodes |
+| `recompute-taint` | Re-sync derived taint audit records |
 | `agents` | Show agent activity and claimed nodes |
 | `extend-claim` | Extend duration of an existing claim |
 | `reap` | Clean up stale/expired locks |
@@ -848,8 +848,8 @@ Revoke validation on a previously validated node, reverting it to pending —
 or, with `--batch`, bulk-revoke every node validated under a given batch id
 (the inverse of `af verdicts apply`; see
 [`docs/verdicts-apply.md`](verdicts-apply.md)). Each revocation is a normal,
-attributed `NodeUnvalidated` event; unvalidating a node with validated
-children propagates taint to those children.
+attributed `NodeUnvalidated` event; unvalidating a node propagates unresolved
+state to its non-severed ancestors and descendants, but not into siblings.
 
 **Syntax:**
 ```
@@ -921,9 +921,10 @@ af admit 1.2.3      # Admit specific node
 af admit 1 -d ./proof  # Specific directory
 ```
 
-**Note:** Admitted nodes introduce taint. Any nodes depending on admitted nodes will inherit taint.
+**Note:** Admitted nodes introduce taint. Non-severed ancestors and descendants
+that depend on them inherit it; descendant-derived taint does not flow into siblings.
 
-**Next Steps:** Use `af recompute-taint` to see taint propagation effects.
+**Next Steps:** Use `af taint-trace <node-id>` to inspect propagation sources.
 
 ---
 
@@ -1548,7 +1549,10 @@ af deps 1.3 -f json      # JSON output
 
 ### `recompute-taint`
 
-Recompute taint state for all nodes in the proof tree.
+Re-sync `TaintRecomputed` audit records for all nodes using the same
+authoritative bidirectional derivation as replay. Proof state is already
+derived-correct on load; this command compares it with the last audit event (or
+the node's creation baseline) and appends corrections where they differ.
 
 **Syntax:**
 ```
@@ -1559,7 +1563,7 @@ af recompute-taint [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--dry-run` | | bool | false | Preview changes without applying |
+| `--dry-run` | | bool | false | Preview stale audit records without appending corrections |
 | `--verbose` | `-v` | bool | false | Verbose output with details |
 | `--dir` | `-d` | string | "." | Proof directory path |
 | `--format` | `-f` | string | "text" | Output format |
@@ -1567,14 +1571,17 @@ af recompute-taint [flags]
 **Taint States:**
 | State | Description |
 |-------|-------------|
-| `clean` | Validated nodes |
+| `clean` | No uncertainty in the ancestor chain or active subtree |
 | `self_admitted` | Admitted nodes |
-| `tainted` | Children of self_admitted/tainted nodes |
-| `unresolved` | Pending nodes |
+| `tainted` | Depends on an admitted ancestor or active descendant |
+| `unresolved` | Self, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
+
+Archived/refuted child branches are severed upward. Upward-derived taint is not
+fed back down, so validated siblings remain uncontaminated.
 
 **Examples:**
 ```bash
-af recompute-taint                    # Recompute in current directory
+af recompute-taint                    # Re-sync audit records in current directory
 af recompute-taint --dir /path        # Specific directory
 af recompute-taint --dry-run          # Preview changes
 af recompute-taint -v                 # Verbose output
@@ -2477,10 +2484,10 @@ af wizard respond-challenge
 
 | State | Description |
 |-------|-------------|
-| `clean` | No epistemic uncertainty |
+| `clean` | No uncertainty in the ancestor chain or active subtree |
 | `self_admitted` | Node itself was admitted |
-| `tainted` | Depends on admitted node |
-| `unresolved` | Pending verification |
+| `tainted` | Depends on an admitted ancestor or active descendant |
+| `unresolved` | Self, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
 
 ---
 

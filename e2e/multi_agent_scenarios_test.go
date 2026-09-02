@@ -824,7 +824,7 @@ func TestSupersession_OnArchive(t *testing.T) {
 // 1. The admitted node gets TaintSelfAdmitted
 // 2. All descendants become TaintTainted
 // 3. Validated siblings remain TaintClean
-// 4. Taint propagates correctly through the hierarchy
+// 4. The validated root is tainted while validated siblings remain clean
 func TestEscapeHatch_TaintPropagation(t *testing.T) {
 	proofDir, cleanup := setupMultiAgentTest(t)
 	defer cleanup()
@@ -889,17 +889,13 @@ func TestEscapeHatch_TaintPropagation(t *testing.T) {
 	}
 
 	// ==========================================================================
-	// Step 1: Validate root and child2 (clean path)
+	// Step 1: Validate child2 (clean sibling path)
 	// ==========================================================================
-	t.Log("Step 1: Validate clean path (root, child2)")
+	t.Log("Step 1: Validate clean sibling path (child2)")
 
 	if err := svc.AcceptNode(child2ID); err != nil {
 		t.Fatalf("AcceptNode (child2) failed: %v", err)
 	}
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("AcceptNode (root) failed: %v", err)
-	}
-
 	// ==========================================================================
 	// Step 2: ADMIT child1 (escape hatch - not fully verified)
 	// ==========================================================================
@@ -907,6 +903,9 @@ func TestEscapeHatch_TaintPropagation(t *testing.T) {
 
 	if err := svc.AdmitNode(child1ID); err != nil {
 		t.Fatalf("AdmitNode (child1) failed: %v", err)
+	}
+	if err := svc.AcceptNode(rootID); err != nil {
+		t.Fatalf("AcceptNode (root) failed: %v", err)
 	}
 
 	// Verify child1 is admitted
@@ -949,51 +948,40 @@ func TestEscapeHatch_TaintPropagation(t *testing.T) {
 		nodeMap[n.ID.String()] = n
 	}
 
-	// Helper to compute taint with ancestors
-	computeTaintWithAncestors := func(n *node.Node) node.TaintState {
-		var ancestors []*node.Node
-		parentID, hasParent := n.ID.Parent()
-		for hasParent {
-			if parent, ok := nodeMap[parentID.String()]; ok {
-				ancestors = append(ancestors, parent)
-			}
-			parentID, hasParent = parentID.Parent()
-		}
-		return taint.ComputeTaint(n, ancestors)
+	computeTaintInTree := func(n *node.Node) node.TaintState {
+		return taint.ComputeTaintInTree(n, state.AllNodes())
 	}
 
-	// Root: validated -> clean
+	// Root: validated with an admitted descendant -> tainted
 	rootNode := nodeMap[rootID.String()]
-	rootTaint := computeTaintWithAncestors(rootNode)
-	if rootTaint != node.TaintClean {
-		t.Errorf("Root taint = %v, want %v", rootTaint, node.TaintClean)
+	rootTaint := computeTaintInTree(rootNode)
+	if rootTaint != node.TaintTainted {
+		t.Errorf("Root taint = %v, want %v", rootTaint, node.TaintTainted)
 	}
 
 	// Child1: admitted -> self_admitted
-	child1Taint := computeTaintWithAncestors(child1Node)
+	child1Taint := computeTaintInTree(child1Node)
 	if child1Taint != node.TaintSelfAdmitted {
 		t.Errorf("Child1 taint = %v, want %v", child1Taint, node.TaintSelfAdmitted)
 	}
 
 	// Child2: validated with clean ancestors -> clean
 	child2Node := nodeMap[child2ID.String()]
-	child2Taint := computeTaintWithAncestors(child2Node)
+	child2Taint := computeTaintInTree(child2Node)
 	if child2Taint != node.TaintClean {
 		t.Errorf("Child2 taint = %v, want %v", child2Taint, node.TaintClean)
 	}
 
 	// Grandchild1: validated but has admitted ancestor -> tainted
-	// Need to set child1's taint first for grandchild computation
-	child1Node.TaintState = node.TaintSelfAdmitted
 	grandchild1Node := nodeMap[grandchild1ID.String()]
-	grandchild1Taint := computeTaintWithAncestors(grandchild1Node)
+	grandchild1Taint := computeTaintInTree(grandchild1Node)
 	if grandchild1Taint != node.TaintTainted {
 		t.Errorf("Grandchild1 taint = %v, want %v (has admitted ancestor)", grandchild1Taint, node.TaintTainted)
 	}
 
 	// Grandchild2: same as grandchild1
 	grandchild2Node := nodeMap[grandchild2ID.String()]
-	grandchild2Taint := computeTaintWithAncestors(grandchild2Node)
+	grandchild2Taint := computeTaintInTree(grandchild2Node)
 	if grandchild2Taint != node.TaintTainted {
 		t.Errorf("Grandchild2 taint = %v, want %v (has admitted ancestor)", grandchild2Taint, node.TaintTainted)
 	}
@@ -1001,7 +989,7 @@ func TestEscapeHatch_TaintPropagation(t *testing.T) {
 	t.Log("")
 	t.Log("==============================================")
 	t.Log("  ESCAPE HATCH TAINT PROPAGATION: SUCCESS")
-	t.Log("  Root: clean, Child1: self_admitted")
+	t.Log("  Root: tainted, Child1: self_admitted")
 	t.Log("  Child2: clean, Grandchildren: tainted")
 	t.Log("==============================================")
 }

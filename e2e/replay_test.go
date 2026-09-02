@@ -461,8 +461,8 @@ func TestReplay_AllEventTypes(t *testing.T) {
 	if replayedNode1.EpistemicState != schema.EpistemicValidated {
 		t.Errorf("Node 1: EpistemicState = %q, want %q", replayedNode1.EpistemicState, schema.EpistemicValidated)
 	}
-	if replayedNode1.TaintState != node.TaintClean {
-		t.Errorf("Node 1: TaintState = %q, want %q", replayedNode1.TaintState, node.TaintClean)
+	if replayedNode1.TaintState != node.TaintTainted {
+		t.Errorf("Node 1: TaintState = %q, want %q", replayedNode1.TaintState, node.TaintTainted)
 	}
 
 	replayedNode2 := s.GetNode(node2ID)

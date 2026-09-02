@@ -15,22 +15,26 @@ func newRecomputeTaintCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "recompute-taint",
 		GroupID: GroupAdmin,
-		Short:   "Recompute taint state for all nodes",
-		Long: `Recompute taint state for all nodes in the proof tree.
+		Short:   "Re-sync derived taint audit records",
+		Long: `Re-sync TaintRecomputed audit records for all nodes in the proof tree.
 
 Taint propagates through the proof tree based on epistemic states:
-- Validated nodes are clean
 - Admitted nodes are self_admitted
-- Children of self_admitted/tainted nodes become tainted
-- Pending nodes are unresolved
+- Admitted ancestors or active descendants taint validated nodes
+- Pending/draft/needs_refinement ancestors or active descendants make nodes unresolved
+- Archived/refuted child branches are severed from upward propagation
+- Descendant-derived taint does not flow back down into siblings
 
-Use --dry-run to preview changes without applying them.
+Proof state is always derived correctly during replay. This command compares
+that state with each node's last TaintRecomputed ledger event (or its
+NodeCreated baseline) and appends corrected audit events where they differ.
+Use --dry-run to preview stale audit records without appending corrections.
 Use --verbose for detailed output.
 
 Examples:
-  af recompute-taint                    Recompute taint in current directory
-  af recompute-taint --dir /path        Recompute in specific directory
-  af recompute-taint --dry-run          Preview changes without applying
+  af recompute-taint                    Re-sync audit records in current directory
+  af recompute-taint --dir /path        Re-sync audit records in a specific directory
+  af recompute-taint --dry-run          Preview stale audit records
   af recompute-taint -v                 Verbose output with details
   af recompute-taint -f json            Output in JSON format`,
 		RunE: runRecomputeTaint,
@@ -40,6 +44,7 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
 	cmd.Flags().Bool("dry-run", false, "Show what would change without applying")
 	cmd.Flags().BoolP("verbose", "v", false, "Verbose output with details")
+	markDryRunSupported(cmd)
 
 	return cmd
 }

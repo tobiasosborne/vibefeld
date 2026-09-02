@@ -82,26 +82,9 @@ func findJobsWithTaint(st *state.State) *jobs.JobResult {
 	return jobs.FindJobs(nodes, nodeMap, challengeMap)
 }
 
-// computeTaintForState computes taint for all nodes in topological order (parents before children).
+// computeTaintForState authoritatively recomputes bidirectional taint.
 func computeTaintForState(st *state.State) {
-	nodes := st.AllNodes()
-	nodeMap := make(map[string]*node.Node, len(nodes))
-	for _, n := range nodes {
-		nodeMap[n.ID.String()] = n
-	}
-
-	// Build ancestor map and compute taint in order (root first)
-	for _, n := range nodes {
-		var ancestors []*node.Node
-		parentID, hasParent := n.ID.Parent()
-		for hasParent {
-			if parent := nodeMap[parentID.String()]; parent != nil {
-				ancestors = append(ancestors, parent)
-			}
-			parentID, hasParent = parentID.Parent()
-		}
-		n.TaintState = taint.ComputeTaint(n, ancestors)
-	}
+	taint.RecomputeAll(st.AllNodes())
 }
 
 // TestTaintJobsIntegration_AdmitPropagatesTaintToChildren tests that when a node is admitted,
@@ -337,11 +320,11 @@ func TestTaintJobsIntegration_PendingChildrenShowUnresolvedTaint(t *testing.T) {
 	// ==========================================================================
 	t.Log("Step 4: Accept children and verify they become tainted")
 
-	if err := svc.AcceptNode(child1ID); err != nil {
-		t.Fatalf("AcceptNode (child1) failed: %v", err)
-	}
 	if err := svc.AcceptNode(grandchildID); err != nil {
 		t.Fatalf("AcceptNode (grandchild) failed: %v", err)
+	}
+	if err := svc.AcceptNode(child1ID); err != nil {
+		t.Fatalf("AcceptNode (child1) failed: %v", err)
 	}
 
 	// Reload state and recompute taint

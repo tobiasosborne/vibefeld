@@ -20,9 +20,9 @@ import (
 // GitCommit/BuildDate are ldflags-only (no source default makes sense for
 // them); scripts/build.sh stamps all three at build/install time:
 //
-//	go build -ldflags "-X main.VersionInfo=0.1.6 -X main.GitCommit=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+//	go build -ldflags "-X main.VersionInfo=0.1.7 -X main.GitCommit=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 var (
-	VersionInfo = "0.1.6"
+	VersionInfo = "0.1.7"
 	GitCommit   = "unknown"
 	BuildDate   = "unknown"
 )

@@ -149,59 +149,28 @@ Source: `internal/node/node.go`, `internal/taint/compute.go`
 
 | State | Description |
 |-------|-------------|
-| `clean` | Node and all ancestors are validated |
+| `clean` | No uncertainty in the ancestor chain or active subtree |
 | `self_admitted` | This node was admitted (introduced taint) |
-| `tainted` | Node inherits taint from an ancestor |
-| `unresolved` | Node or an ancestor is still pending |
+| `tainted` | A non-severed ancestor or active descendant is admitted |
+| `unresolved` | Node, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
 
 ### Computation Rules
 
-Taint is computed (not directly transitioned) based on the node's epistemic state and its ancestors' taint states. The rules are applied in order:
+Taint is computed (not directly transitioned) from epistemic states in both directions. The rules are applied in order:
 
-1. **Rule 1**: If the node's epistemic state is `pending`, taint = `unresolved`
-2. **Rule 2**: If any ancestor has taint = `unresolved`, taint = `unresolved`
-3. **Rule 3**: If the node's epistemic state is `admitted`, taint = `self_admitted`
-4. **Rule 4**: If any ancestor has taint = `tainted` or `self_admitted`, taint = `tainted`
-5. **Rule 5**: Otherwise, taint = `clean`
+1. Archived/refuted nodes are clean and sever their subtree upward
+2. Pending/draft/needs_refinement self or non-severed ancestors make the node unresolved
+3. An admitted node is self_admitted and ignores its subtree
+4. Pending/draft/needs_refinement active descendants make a validated node unresolved
+5. Admitted non-severed ancestors or active descendants make it tainted
+6. Otherwise, it is clean
 
 ### Taint Propagation Diagram
 
 ```
-                     ┌─────────────────────────────────────┐
-                     │       Is node pending?              │
-                     └─────────────────────────────────────┘
+epistemic states of ancestors ──down──► node ◄──up── active descendant subtree
                                       │
-                          ┌───────────┴───────────┐
-                         Yes                      No
-                          │                       │
-                          ▼                       ▼
-                    ┌───────────┐    ┌─────────────────────────┐
-                    │unresolved │    │ Any ancestor unresolved?│
-                    └───────────┘    └─────────────────────────┘
-                                                  │
-                                      ┌───────────┴───────────┐
-                                     Yes                      No
-                                      │                       │
-                                      ▼                       ▼
-                                ┌───────────┐    ┌─────────────────────────┐
-                                │unresolved │    │ Is node admitted?       │
-                                └───────────┘    └─────────────────────────┘
-                                                              │
-                                                  ┌───────────┴───────────┐
-                                                 Yes                      No
-                                                  │                       │
-                                                  ▼                       ▼
-                                            ┌─────────────┐  ┌───────────────────────────┐
-                                            │self_admitted│  │ Ancestor tainted/admitted?│
-                                            └─────────────┘  └───────────────────────────┘
-                                                                          │
-                                                              ┌───────────┴───────────┐
-                                                             Yes                      No
-                                                              │                       │
-                                                              ▼                       ▼
-                                                        ┌─────────┐            ┌───────────┐
-                                                        │ tainted │            │   clean   │
-                                                        └─────────┘            └───────────┘
+                  final priority: unresolved, self_admitted, tainted, clean
 ```
 
 ### Taint Events
@@ -214,9 +183,9 @@ When taint changes due to epistemic state changes or propagation:
 
 ### Taint Propagation
 
-When a node's epistemic state changes, taint must be recomputed for:
-1. The node itself
-2. All descendant nodes
+When a node's epistemic state changes, taint must be recomputed for the node,
+its ancestors, and its descendants. Descendant-derived taint does not flow
+back down into validated siblings.
 
 Use `taint.PropagateTaint(root, allNodes)` to propagate taint changes through the tree.
 
@@ -294,10 +263,10 @@ Source: `internal/schema/target.go`
 
 ### Epistemic + Taint
 
-- `pending` -> `validated`: taint may change from `unresolved` to `clean`
+- `pending` -> `validated`: taint may become clean, tainted, or remain unresolved
 - `pending` -> `admitted`: taint changes to `self_admitted`
-- `pending` -> `refuted`/`archived`: taint remains `unresolved` (doesn't matter for invalid nodes)
-- Taint propagates to all descendants when any node's epistemic state changes
+- `pending` -> `refuted`/`archived`: taint becomes `clean` and the branch is severed upward
+- Taint recomputes for the node, ancestors, and descendants on epistemic changes
 
 ### Epistemic + Challenge
 
@@ -347,10 +316,10 @@ introducesTaint := schema.IntroducesTaint(schema.EpistemicAdmitted) // true
 ```go
 import "github.com/tobias/vibefeld/internal/taint"
 
-// Compute taint for a single node
-taintState := taint.ComputeTaint(node, ancestors)
+// Compute complete taint for a single node
+taintState := taint.ComputeTaintInTree(node, allNodes)
 
-// Propagate taint to all descendants
+// Recompute the node, ancestors, and descendants
 changedNodes := taint.PropagateTaint(root, allNodes)
 
 // Propagate and generate events
