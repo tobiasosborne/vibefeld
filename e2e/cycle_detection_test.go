@@ -207,11 +207,11 @@ func TestCycleDetection_CheckAllCycles(t *testing.T) {
 // TestCycleDetection_DiamondPatternNoCycle tests that diamond dependency patterns
 // are correctly identified as NOT being cycles.
 //
-//	   A (1.1)
-//	  / \
-//	 B   C (1.2, 1.3)
-//	  \ /
-//	   D (1.4)
+//	  A (1.1)
+//	 / \
+//	B   C (1.2, 1.3)
+//	 \ /
+//	  D (1.4)
 func TestCycleDetection_DiamondPatternNoCycle(t *testing.T) {
 	proofDir, cleanup := setupCycleTest(t)
 	defer cleanup()

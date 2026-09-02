@@ -52,8 +52,8 @@ func IsProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 // A prover job is a node that needs prover attention:
 //   - WorkflowState != "blocked" (can be available or claimed)
 //   - One of the following:
-//     - EpistemicState = "pending" with at least one open blocking challenge
-//     - EpistemicState = "needs_refinement" (awaiting further proof development)
+//   - EpistemicState = "pending" with at least one open blocking challenge
+//   - EpistemicState = "needs_refinement" (awaiting further proof development)
 //
 // Provers address blocking challenges raised by verifiers. Minor and note
 // challenges do not require prover attention. Once all blocking challenges

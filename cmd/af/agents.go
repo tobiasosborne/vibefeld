@@ -16,18 +16,18 @@ import (
 
 // AgentEntry represents a currently claimed node and its owner.
 type AgentEntry struct {
-	NodeID    string          `json:"node_id"`
-	Owner     string          `json:"owner"`
+	NodeID    string            `json:"node_id"`
+	Owner     string            `json:"owner"`
 	ClaimedAt service.Timestamp `json:"claimed_at,omitempty"`
 }
 
 // ActivityEntry represents a historical claim/release activity.
 type ActivityEntry struct {
-	Seq       int             `json:"seq"`
-	Type      string          `json:"type"`
+	Seq       int               `json:"seq"`
+	Type      string            `json:"type"`
 	Timestamp service.Timestamp `json:"timestamp"`
-	NodeIDs   []string        `json:"node_ids,omitempty"`
-	Owner     string          `json:"owner,omitempty"`
+	NodeIDs   []string          `json:"node_ids,omitempty"`
+	Owner     string            `json:"owner,omitempty"`
 }
 
 // AgentsOutput represents the complete agents output data.

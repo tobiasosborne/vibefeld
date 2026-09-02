@@ -448,12 +448,12 @@ func TestValidateDepExistence_NodeNotInState(t *testing.T) {
 // TestValidateDepExistence_TableDriven provides comprehensive table-driven tests.
 func TestValidateDepExistence_TableDriven(t *testing.T) {
 	tests := []struct {
-		name            string
-		nodeID          string
-		dependencies    []string
-		existingNodes   []string
-		expectError     bool
-		errorContains   string
+		name          string
+		nodeID        string
+		dependencies  []string
+		existingNodes []string
+		expectError   bool
+		errorContains string
 	}{
 		{
 			name:          "no dependencies",

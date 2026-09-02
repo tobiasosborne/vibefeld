@@ -175,12 +175,12 @@ func TestFuzzyMatchFlag_MultipleSuggestions(t *testing.T) {
 	// if one match is clearly better. These tests verify the suggestions are
 	// populated when there are multiple close options.
 	tests := []struct {
-		name           string
-		input          string
-		knownFlags     []string
-		wantAutoFalse  bool
-		wantMinSuggs   int
-		wantContains   []string // suggestions should contain these
+		name          string
+		input         string
+		knownFlags    []string
+		wantAutoFalse bool
+		wantMinSuggs  int
+		wantContains  []string // suggestions should contain these
 	}{
 		{
 			name:          "for ambiguous (format, force)",
@@ -414,11 +414,11 @@ func TestFuzzyMatchFlag_EdgeCases(t *testing.T) {
 
 func TestFuzzyMatchFlags_MultipleArgs(t *testing.T) {
 	tests := []struct {
-		name         string
-		args         []string
-		knownFlags   []string
+		name          string
+		args          []string
+		knownFlags    []string
 		wantCorrected []string
-		wantHasError bool
+		wantHasError  bool
 	}{
 		{
 			name:          "all exact matches",

@@ -93,32 +93,32 @@ type StatusView struct {
 
 // ProverContextView is a view model for rendering prover context.
 type ProverContextView struct {
-	Node        NodeView
-	Parent      *NodeView        // nil if root
-	Siblings    []NodeView       // sibling nodes
-	Dependencies []NodeView      // dependency nodes
-	Definitions []DefinitionView // definitions in scope
-	Assumptions []AssumptionView // assumptions in scope
-	Externals   []ExternalView   // externals in scope
-	Challenges  []ChallengeView  // challenges on this node
+	Node         NodeView
+	Parent       *NodeView        // nil if root
+	Siblings     []NodeView       // sibling nodes
+	Dependencies []NodeView       // dependency nodes
+	Definitions  []DefinitionView // definitions in scope
+	Assumptions  []AssumptionView // assumptions in scope
+	Externals    []ExternalView   // externals in scope
+	Challenges   []ChallengeView  // challenges on this node
 }
 
 // VerifierContextView is a view model for rendering verifier context.
 type VerifierContextView struct {
-	Challenge   ChallengeView
-	Node        NodeView          // The challenged node
-	Parent      *NodeView         // Parent of challenged node (nil if root)
-	Siblings    []NodeView        // Sibling nodes
+	Challenge    ChallengeView
+	Node         NodeView         // The challenged node
+	Parent       *NodeView        // Parent of challenged node (nil if root)
+	Siblings     []NodeView       // Sibling nodes
 	Dependencies []NodeView       // Dependency nodes
-	Definitions []DefinitionView  // definitions in scope
-	Assumptions []AssumptionView  // assumptions in scope
-	Externals   []ExternalView    // externals in scope
+	Definitions  []DefinitionView // definitions in scope
+	Assumptions  []AssumptionView // assumptions in scope
+	Externals    []ExternalView   // externals in scope
 }
 
 // TreeView is a view model for rendering a proof tree.
 type TreeView struct {
-	Root       *NodeView   // The root node to render (nil renders all roots)
-	Nodes      []NodeView  // All nodes in the tree
+	Root       *NodeView           // The root node to render (nil renders all roots)
+	Nodes      []NodeView          // All nodes in the tree
 	NodeLookup map[string]NodeView // Quick lookup by ID string
 }
 

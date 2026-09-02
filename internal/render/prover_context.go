@@ -292,11 +292,11 @@ func renderDefinitions(sb *strings.Builder, s *state.State, n *node.Node) {
 // collectDefinitionNames extracts definition names from node context fields.
 //
 // This function uses two collection passes for distinct purposes:
-// 1. First pass (collectContextEntries): Collects ALL definition references from the
-//    target node's context/scope, including references to definitions not yet in state.
-//    This ensures "definition not found" can be displayed for missing definitions.
-// 2. Second pass (addDefinitionNamesFromNode): Iterates all nodes to find definitions
-//    that exist in state, ensuring we show all relevant definitions from the proof.
+//  1. First pass (collectContextEntries): Collects ALL definition references from the
+//     target node's context/scope, including references to definitions not yet in state.
+//     This ensures "definition not found" can be displayed for missing definitions.
+//  2. Second pass (addDefinitionNamesFromNode): Iterates all nodes to find definitions
+//     that exist in state, ensuring we show all relevant definitions from the proof.
 //
 // The target node may be processed in both passes, but this is intentional:
 // the first pass collects references unconditionally, while the second only adds

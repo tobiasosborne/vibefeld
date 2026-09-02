@@ -309,10 +309,10 @@ func TestFindVerifierJobs_ReturnsOriginalPointers(t *testing.T) {
 func TestFindVerifierJobs_AllNodesExcluded(t *testing.T) {
 	nodeID1, _ := types.Parse("1")
 	nodes := []*node.Node{
-		createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),   // has open challenge
-		createVerifierTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending),   // blocked
+		createVerifierTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),     // has open challenge
+		createVerifierTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending),     // blocked
 		createVerifierTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated), // not pending
-		createVerifierTestNode(t, "1.3", schema.WorkflowClaimed, schema.EpistemicPending),   // claimed
+		createVerifierTestNode(t, "1.3", schema.WorkflowClaimed, schema.EpistemicPending),     // claimed
 	}
 	nodeMap := buildNodeMap(nodes)
 	challengeMap := buildChallengeMap([]*node.Challenge{

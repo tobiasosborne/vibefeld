@@ -7,11 +7,11 @@ import (
 
 func TestParseArgs(t *testing.T) {
 	tests := []struct {
-		name             string
-		args             []string
-		flagNames        []string
-		wantPositional   []string
-		wantFlags        map[string]string
+		name           string
+		args           []string
+		flagNames      []string
+		wantPositional []string
+		wantFlags      map[string]string
 	}{
 		// Empty args
 		{
@@ -231,12 +231,12 @@ func TestParseArgs(t *testing.T) {
 
 func TestParseArgs_BooleanFlags(t *testing.T) {
 	tests := []struct {
-		name             string
-		args             []string
-		flagNames        []string
-		boolFlags        []string
-		wantPositional   []string
-		wantFlags        map[string]string
+		name           string
+		args           []string
+		flagNames      []string
+		boolFlags      []string
+		wantPositional []string
+		wantFlags      map[string]string
 	}{
 		// Boolean flag explicitly marked
 		{

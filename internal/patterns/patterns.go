@@ -21,18 +21,18 @@ type PatternType string
 
 // Pattern types that can be detected from resolved challenges.
 const (
-	PatternLogicalGap       PatternType = "logical_gap"
-	PatternScopeViolation   PatternType = "scope_violation"
+	PatternLogicalGap        PatternType = "logical_gap"
+	PatternScopeViolation    PatternType = "scope_violation"
 	PatternCircularReasoning PatternType = "circular_reasoning"
-	PatternUndefinedTerm    PatternType = "undefined_term"
+	PatternUndefinedTerm     PatternType = "undefined_term"
 )
 
 // patternTypeRegistry maps each valid pattern type to its metadata.
 var patternTypeRegistry = map[PatternType]PatternTypeInfo{
-	PatternLogicalGap:       {Type: PatternLogicalGap, Description: "Missing justification or logical gap in reasoning"},
-	PatternScopeViolation:   {Type: PatternScopeViolation, Description: "Using assumptions outside their valid scope"},
+	PatternLogicalGap:        {Type: PatternLogicalGap, Description: "Missing justification or logical gap in reasoning"},
+	PatternScopeViolation:    {Type: PatternScopeViolation, Description: "Using assumptions outside their valid scope"},
 	PatternCircularReasoning: {Type: PatternCircularReasoning, Description: "Circular or self-referential dependency"},
-	PatternUndefinedTerm:    {Type: PatternUndefinedTerm, Description: "Using terms that are not defined"},
+	PatternUndefinedTerm:     {Type: PatternUndefinedTerm, Description: "Using terms that are not defined"},
 }
 
 // PatternTypeInfo provides metadata about a pattern type.
@@ -138,8 +138,8 @@ func (lib *PatternLibrary) GetByType(pt PatternType) []*Pattern {
 
 // PatternStats contains statistics about patterns in the library.
 type PatternStats struct {
-	TotalPatterns    int                `json:"total_patterns"`
-	TotalOccurrences int                `json:"total_occurrences"`
+	TotalPatterns    int                 `json:"total_patterns"`
+	TotalOccurrences int                 `json:"total_occurrences"`
 	ByType           map[PatternType]int `json:"by_type"`
 }
 

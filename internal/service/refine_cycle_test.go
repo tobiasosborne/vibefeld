@@ -64,7 +64,7 @@ func TestRefine_DetectsCircularDependency(t *testing.T) {
 
 	// Now attempt to add 1.1.2 to 1.1, depending on 1.2.1.
 	// Cycle: 1.1 -> 1.1.2 (child) -> 1.2.1 (dep) -> 1.1 (dep)
-	
+
 	// Must claim 1.1
 	if err := svc.ClaimNode(parseNodeID(t, "1.1"), owner, time.Hour); err != nil {
 		t.Fatalf("Claim 1.1 failed: %v", err)

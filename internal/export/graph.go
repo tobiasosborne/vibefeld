@@ -139,7 +139,7 @@ type GraphValidation struct {
 // json`. SchemaVersion is D6's explicit compat marker: rk's M2.2 store
 // reader checks this field before parsing the rest of the document.
 type GraphExport struct {
-	SchemaVersion string          `json:"schema_version"`
+	SchemaVersion string `json:"schema_version"`
 	// Features is the fixed capability list this af build advertises
 	// (GraphFeatures). Always present (never omitempty) so an external driver
 	// can detect an af too old to emit a capability it depends on: an older af

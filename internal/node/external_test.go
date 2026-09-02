@@ -75,11 +75,11 @@ func TestNewExternal(t *testing.T) {
 
 func TestNewExternalWithNotes(t *testing.T) {
 	tests := []struct {
-		name       string
-		refName    string
-		source     string
-		notes      string
-		wantNotes  string
+		name      string
+		refName   string
+		source    string
+		notes     string
+		wantNotes string
 	}{
 		{
 			name:      "basic notes",
@@ -230,8 +230,8 @@ func TestExternal_UniqueIDs(t *testing.T) {
 
 func TestExternal_JSONSerialization(t *testing.T) {
 	tests := []struct {
-		name   string
-		ext    func() (*node.External, error)
+		name string
+		ext  func() (*node.External, error)
 	}{
 		{
 			name: "basic external",

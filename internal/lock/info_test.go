@@ -195,8 +195,8 @@ func TestLockInfo_Stringer(t *testing.T) {
 			owner:   "agent-001",
 			timeout: 5 * time.Minute,
 			expectContains: []string{
-				"1",           // node ID
-				"agent-001",   // owner
+				"1",         // node ID
+				"agent-001", // owner
 			},
 		},
 		{

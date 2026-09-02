@@ -221,9 +221,9 @@ func getAllDefinitions(proofDir string) ([]*node.Definition, error) {
 // outputDefsJSON outputs definitions in JSON format.
 func outputDefsJSON(cmd *cobra.Command, definitions []*node.Definition) error {
 	type defOutput struct {
-		ID      string          `json:"id"`
-		Name    string          `json:"name"`
-		Content string          `json:"content"`
+		ID      string            `json:"id"`
+		Name    string            `json:"name"`
+		Content string            `json:"content"`
 		Created service.Timestamp `json:"created"`
 	}
 
@@ -266,10 +266,10 @@ func outputDefsText(cmd *cobra.Command, definitions []*node.Definition) error {
 // outputDefJSON outputs a single definition in JSON format.
 func outputDefJSON(cmd *cobra.Command, def *node.Definition, full bool) error {
 	type defOutput struct {
-		ID          string          `json:"id,omitempty"`
-		Name        string          `json:"name"`
-		Content     string          `json:"content"`
-		ContentHash string          `json:"content_hash,omitempty"`
+		ID          string            `json:"id,omitempty"`
+		Name        string            `json:"name"`
+		Content     string            `json:"content"`
+		ContentHash string            `json:"content_hash,omitempty"`
 		Created     service.Timestamp `json:"created,omitempty"`
 	}
 

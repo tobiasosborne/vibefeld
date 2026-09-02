@@ -256,12 +256,12 @@ The contrapositive holds, so if n^2 is even, then n is even.`,
 
 // Patterns for suggestion matching
 var (
-	universalPattern     = regexp.MustCompile(`(?i)\b(for all|every|all|any)\b.*\b(natural|integer|number|n\b)`)
-	nonExistencePattern  = regexp.MustCompile(`(?i)(\bno\b|\bnot\b|\bcannot\b|not exist|does not exist|there is no|impossible|irrational)`)
-	disjunctionPattern   = regexp.MustCompile(`(?i)\b(either|or)\b`)
-	implicationPattern   = regexp.MustCompile(`(?i)\b(if|then|implies|whenever|when)\b`)
-	evenOddPattern       = regexp.MustCompile(`(?i)\b(even|odd)\b`)
-	inductionKeywords    = regexp.MustCompile(`(?i)\b(natural number|n\s*\+\s*1|successor|induction)\b`)
+	universalPattern    = regexp.MustCompile(`(?i)\b(for all|every|all|any)\b.*\b(natural|integer|number|n\b)`)
+	nonExistencePattern = regexp.MustCompile(`(?i)(\bno\b|\bnot\b|\bcannot\b|not exist|does not exist|there is no|impossible|irrational)`)
+	disjunctionPattern  = regexp.MustCompile(`(?i)\b(either|or)\b`)
+	implicationPattern  = regexp.MustCompile(`(?i)\b(if|then|implies|whenever|when)\b`)
+	evenOddPattern      = regexp.MustCompile(`(?i)\b(even|odd)\b`)
+	inductionKeywords   = regexp.MustCompile(`(?i)\b(natural number|n\s*\+\s*1|successor|induction)\b`)
 )
 
 // Get retrieves a strategy by name.

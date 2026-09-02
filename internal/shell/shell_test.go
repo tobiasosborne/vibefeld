@@ -156,12 +156,12 @@ func TestIsBuiltin(t *testing.T) {
 		{"status", false},
 		{"claim", false},
 		{"", false},
-		{"HELP", true},   // case insensitive
-		{"EXIT", true},   // case insensitive
-		{"Help", true},   // case insensitive
-		{"ExIt", true},   // case insensitive
-		{"QUIT", true},   // case insensitive
-		{"QuIt", true},   // case insensitive
+		{"HELP", true}, // case insensitive
+		{"EXIT", true}, // case insensitive
+		{"Help", true}, // case insensitive
+		{"ExIt", true}, // case insensitive
+		{"QUIT", true}, // case insensitive
+		{"QuIt", true}, // case insensitive
 	}
 
 	for _, tt := range tests {

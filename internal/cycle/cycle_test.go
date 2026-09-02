@@ -732,8 +732,8 @@ func TestDetectCycle_SelfDependency(t *testing.T) {
 
 		// Create a node that has multiple dependencies including itself
 		// This tests that self-dependency is detected even when mixed with valid deps
-		p.addNode("1.3") // valid dependency target
-		p.addNode("1.2") // valid dependency target
+		p.addNode("1.3")                      // valid dependency target
+		p.addNode("1.2")                      // valid dependency target
 		p.addNode("1.1", "1.2", "1.1", "1.3") // depends on 1.2, itself, and 1.3
 		p.addNode("1")
 

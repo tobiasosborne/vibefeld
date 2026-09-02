@@ -257,11 +257,11 @@ func renderSeverityExplanation(sb *strings.Builder) {
 
 // JSONVerificationChecklist represents a verification checklist in JSON format.
 type JSONVerificationChecklist struct {
-	NodeID           string                       `json:"node_id"`
-	Items            []JSONChecklistItem          `json:"items"`
-	Dependencies     []JSONChecklistDependency    `json:"dependencies"`
-	ChallengeCommand string                       `json:"challenge_command"`
-	Severities       []JSONChallengeSeverity      `json:"severities"`
+	NodeID           string                    `json:"node_id"`
+	Items            []JSONChecklistItem       `json:"items"`
+	Dependencies     []JSONChecklistDependency `json:"dependencies"`
+	ChallengeCommand string                    `json:"challenge_command"`
+	Severities       []JSONChallengeSeverity   `json:"severities"`
 }
 
 // JSONChecklistItem represents a single checklist item for verification.

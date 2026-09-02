@@ -578,12 +578,12 @@ func TestListNodes_IgnoresInvalidFilenames(t *testing.T) {
 
 	// Create files with invalid node ID formats
 	invalidFiles := []string{
-		"invalid.json",       // Not a valid node ID
-		"0.json",             // Root must be 1
-		"1_0_2.json",         // Zero is invalid
-		"abc_def.json",       // Non-numeric
-		"2.json",             // Root must be 1
-		"negative_-1.json",   // Negative invalid
+		"invalid.json",     // Not a valid node ID
+		"0.json",           // Root must be 1
+		"1_0_2.json",       // Zero is invalid
+		"abc_def.json",     // Non-numeric
+		"2.json",           // Root must be 1
+		"negative_-1.json", // Negative invalid
 	}
 	for _, name := range invalidFiles {
 		path := filepath.Join(nodesDir, name)

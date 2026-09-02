@@ -21,9 +21,9 @@ import (
 // TestHookType_Validation tests hook type validation.
 func TestHookType_Validation(t *testing.T) {
 	tests := []struct {
-		name    string
+		name     string
 		hookType HookType
-		valid   bool
+		valid    bool
 	}{
 		{"webhook valid", HookTypeWebhook, true},
 		{"command valid", HookTypeCommand, true},
@@ -673,9 +673,9 @@ func TestAllEventTypes(t *testing.T) {
 
 	// Verify all expected types are present
 	expected := map[EventType]bool{
-		EventNodeCreated:      false,
-		EventNodeValidated:    false,
-		EventChallengeRaised:  false,
+		EventNodeCreated:       false,
+		EventNodeValidated:     false,
+		EventChallengeRaised:   false,
 		EventChallengeResolved: false,
 	}
 	for _, et := range types {

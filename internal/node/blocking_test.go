@@ -308,8 +308,8 @@ func TestComputeBlockedSet_TransitiveBlocking(t *testing.T) {
 	pendingDefs := []*node.PendingDef{pd}
 
 	deps := map[string][]string{
-		"1.2": {"1.1"},       // 1.2 depends on 1.1
-		"1.3": {"1.2"},       // 1.3 depends on 1.2
+		"1.2": {"1.1"}, // 1.2 depends on 1.1
+		"1.3": {"1.2"}, // 1.3 depends on 1.2
 	}
 
 	got := node.ComputeBlockedSet(pendingDefs, deps)

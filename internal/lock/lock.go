@@ -145,12 +145,12 @@ func (l *ClaimLock) Refresh(timeout time.Duration) error {
 
 // claimLockJSON is the JSON representation of a ClaimLock.
 // This intermediate struct is required because:
-// 1. ClaimLock has unexported fields that json.Marshal cannot access directly
-// 2. ClaimLock contains a sync.Mutex which must not be serialized
-// 3. JSON uses snake_case field names (node_id, acquired_at, expires_at)
-// 4. Timestamps use RFC3339Nano format (not RFC3339) to preserve nanosecond
-//    precision for accurate lock expiration tracking. This differs from
-//    types.Timestamp which uses RFC3339 (second precision) for ledger events.
+//  1. ClaimLock has unexported fields that json.Marshal cannot access directly
+//  2. ClaimLock contains a sync.Mutex which must not be serialized
+//  3. JSON uses snake_case field names (node_id, acquired_at, expires_at)
+//  4. Timestamps use RFC3339Nano format (not RFC3339) to preserve nanosecond
+//     precision for accurate lock expiration tracking. This differs from
+//     types.Timestamp which uses RFC3339 (second precision) for ledger events.
 type claimLockJSON struct {
 	NodeID     string `json:"node_id"`
 	Owner      string `json:"owner"`

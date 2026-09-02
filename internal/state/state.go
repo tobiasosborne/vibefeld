@@ -222,21 +222,21 @@ type State struct {
 // NewState creates a new empty State with all maps initialized.
 func NewState() *State {
 	return &State{
-		nodes:        make(map[string]*node.Node),
-		definitions:  make(map[string]*node.Definition),
-		assumptions:  make(map[string]*node.Assumption),
-		externals:    make(map[string]*node.External),
-		lemmas:       make(map[string]*node.Lemma),
-		challenges:   make(map[string]*Challenge),
-		amendments:       make(map[string][]Amendment),
-		failedApproaches: make(map[string][]FailedApproach),
-		evidence:         make(map[string][]Evidence),
+		nodes:              make(map[string]*node.Node),
+		definitions:        make(map[string]*node.Definition),
+		assumptions:        make(map[string]*node.Assumption),
+		externals:          make(map[string]*node.External),
+		lemmas:             make(map[string]*node.Lemma),
+		challenges:         make(map[string]*Challenge),
+		amendments:         make(map[string][]Amendment),
+		failedApproaches:   make(map[string][]FailedApproach),
+		evidence:           make(map[string][]Evidence),
 		hints:              make(map[string][]Hint),
 		proposedStrategies: make(map[string][]ProposedStrategy),
-		claimTests:        make(map[string][]ClaimTestResult),
-		defChecks:         make(map[string][]DefCheckResult),
-		outlineLinks:     make(map[string]types.NodeID),
-		scopeTracker:     scope.NewTracker(),
+		claimTests:         make(map[string][]ClaimTestResult),
+		defChecks:          make(map[string][]DefCheckResult),
+		outlineLinks:       make(map[string]types.NodeID),
+		scopeTracker:       scope.NewTracker(),
 	}
 }
 

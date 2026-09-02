@@ -336,11 +336,11 @@ func TestAnalyzer_AnalyzeResolvedChallenges(t *testing.T) {
 			Resolution: "Restructured proof",
 		},
 		{
-			ID:         "ch-003",
-			NodeID:     mustParse("1.3"),
-			Target:     "gap",
-			Reason:     "Another logical gap",
-			Status:     "open", // Should be skipped
+			ID:     "ch-003",
+			NodeID: mustParse("1.3"),
+			Target: "gap",
+			Reason: "Another logical gap",
+			Status: "open", // Should be skipped
 		},
 	}
 
@@ -530,10 +530,10 @@ func TestAllPatternTypes(t *testing.T) {
 
 	// Verify all expected types are present
 	expected := map[PatternType]bool{
-		PatternLogicalGap:       false,
-		PatternScopeViolation:   false,
+		PatternLogicalGap:        false,
+		PatternScopeViolation:    false,
 		PatternCircularReasoning: false,
-		PatternUndefinedTerm:    false,
+		PatternUndefinedTerm:     false,
 	}
 
 	for _, pt := range types {

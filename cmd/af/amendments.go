@@ -109,9 +109,9 @@ type amendmentJSON struct {
 
 // amendmentsOutputJSON is the JSON output for the amendments command.
 type amendmentsOutputJSON struct {
-	NodeID     string          `json:"node_id"`
-	TotalAmendments int       `json:"total_amendments"`
-	Versions   []amendmentJSON `json:"versions"`
+	NodeID          string          `json:"node_id"`
+	TotalAmendments int             `json:"total_amendments"`
+	Versions        []amendmentJSON `json:"versions"`
 }
 
 // renderAmendmentsJSON renders the amendment history as JSON.

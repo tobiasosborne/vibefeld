@@ -104,82 +104,82 @@ func TestCheckValidationInvariant_UnvalidatedChild(t *testing.T) {
 // TestCheckValidationInvariant_MixedChildStates tests that a node with mixed child states cannot be validated.
 func TestCheckValidationInvariant_MixedChildStates(t *testing.T) {
 	tests := []struct {
-		name         string
-		childStates  []schema.EpistemicState
-		expectError  bool
-		description  string
+		name        string
+		childStates []schema.EpistemicState
+		expectError bool
+		description string
 	}{
 		{
-			name:         "one validated one pending",
-			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicPending},
-			expectError:  true,
-			description:  "mixed validated and pending",
+			name:        "one validated one pending",
+			childStates: []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicPending},
+			expectError: true,
+			description: "mixed validated and pending",
 		},
 		{
-			name:         "one validated one admitted",
-			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicAdmitted},
-			expectError:  false,
-			description:  "admitted is acceptable like validated",
+			name:        "one validated one admitted",
+			childStates: []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicAdmitted},
+			expectError: false,
+			description: "admitted is acceptable like validated",
 		},
 		{
-			name:         "one validated one refuted",
-			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicRefuted},
-			expectError:  true,
-			description:  "refuted is not validated",
+			name:        "one validated one refuted",
+			childStates: []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicRefuted},
+			expectError: true,
+			description: "refuted is not validated",
 		},
 		{
-			name:         "all pending",
-			childStates:  []schema.EpistemicState{schema.EpistemicPending, schema.EpistemicPending},
-			expectError:  true,
-			description:  "all pending children",
+			name:        "all pending",
+			childStates: []schema.EpistemicState{schema.EpistemicPending, schema.EpistemicPending},
+			expectError: true,
+			description: "all pending children",
 		},
 		{
-			name:         "three children one not validated",
-			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicValidated, schema.EpistemicPending},
-			expectError:  true,
-			description:  "one pending among three",
+			name:        "three children one not validated",
+			childStates: []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicValidated, schema.EpistemicPending},
+			expectError: true,
+			description: "one pending among three",
 		},
 		{
-			name:         "all validated",
-			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicValidated, schema.EpistemicValidated},
-			expectError:  false,
-			description:  "all three validated is OK",
+			name:        "all validated",
+			childStates: []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicValidated, schema.EpistemicValidated},
+			expectError: false,
+			description: "all three validated is OK",
 		},
 		{
-			name:         "all admitted",
-			childStates:  []schema.EpistemicState{schema.EpistemicAdmitted, schema.EpistemicAdmitted},
-			expectError:  false,
-			description:  "all admitted is OK (escape hatch)",
+			name:        "all admitted",
+			childStates: []schema.EpistemicState{schema.EpistemicAdmitted, schema.EpistemicAdmitted},
+			expectError: false,
+			description: "all admitted is OK (escape hatch)",
 		},
 		{
-			name:         "mixed validated and admitted",
-			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicAdmitted, schema.EpistemicValidated},
-			expectError:  false,
-			description:  "mixed validated and admitted is OK",
+			name:        "mixed validated and admitted",
+			childStates: []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicAdmitted, schema.EpistemicValidated},
+			expectError: false,
+			description: "mixed validated and admitted is OK",
 		},
 		{
-			name:         "one validated one archived",
-			childStates:  []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicArchived},
-			expectError:  false,
-			description:  "archived sibling is a terminal-cleared verdict (branch abandoned)",
+			name:        "one validated one archived",
+			childStates: []schema.EpistemicState{schema.EpistemicValidated, schema.EpistemicArchived},
+			expectError: false,
+			description: "archived sibling is a terminal-cleared verdict (branch abandoned)",
 		},
 		{
-			name:         "one admitted one archived",
-			childStates:  []schema.EpistemicState{schema.EpistemicAdmitted, schema.EpistemicArchived},
-			expectError:  false,
-			description:  "admitted plus archived is OK",
+			name:        "one admitted one archived",
+			childStates: []schema.EpistemicState{schema.EpistemicAdmitted, schema.EpistemicArchived},
+			expectError: false,
+			description: "admitted plus archived is OK",
 		},
 		{
-			name:         "all archived",
-			childStates:  []schema.EpistemicState{schema.EpistemicArchived, schema.EpistemicArchived},
-			expectError:  false,
-			description:  "all archived branches are abandoned, parent doesn't rely on them",
+			name:        "all archived",
+			childStates: []schema.EpistemicState{schema.EpistemicArchived, schema.EpistemicArchived},
+			expectError: false,
+			description: "all archived branches are abandoned, parent doesn't rely on them",
 		},
 		{
-			name:         "one archived one pending",
-			childStates:  []schema.EpistemicState{schema.EpistemicArchived, schema.EpistemicPending},
-			expectError:  true,
-			description:  "pending child is still open even if a sibling is archived",
+			name:        "one archived one pending",
+			childStates: []schema.EpistemicState{schema.EpistemicArchived, schema.EpistemicPending},
+			expectError: true,
+			description: "pending child is still open even if a sibling is archived",
 		},
 	}
 

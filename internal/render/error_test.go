@@ -199,9 +199,9 @@ func TestRenderAFError_NodeBlocked(t *testing.T) {
 	recoveryText := fmt.Sprintf("%v", result.Recovery)
 	// Context-aware suggestions should include the node ID from the error message
 	wantSuggestions := []string{
-		"af get 1.3",         // Context-specific command with node ID
-		"af challenges 1.3",  // Context-specific command with node ID
-		"af pending-defs",    // General suggestion
+		"af get 1.3",        // Context-specific command with node ID
+		"af challenges 1.3", // Context-specific command with node ID
+		"af pending-defs",   // General suggestion
 	}
 
 	for _, want := range wantSuggestions {
@@ -685,4 +685,3 @@ func TestContextAwareRecovery(t *testing.T) {
 		})
 	}
 }
-

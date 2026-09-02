@@ -16,16 +16,16 @@ import (
 
 // HandoffReport contains the data for a handoff report.
 type HandoffReport struct {
-	Conjecture    string                 `json:"conjecture"`
-	TotalNodes    int                    `json:"total_nodes"`
-	Completion    int                    `json:"completion_percent"`
-	ByState       map[string]int         `json:"by_state"`
-	TaintSummary  map[string]int         `json:"taint_summary"`
-	Challenges    []HandoffChallenge     `json:"challenges"`
-	NextSteps     []string               `json:"next_steps"`
-	RecentEvents  []HandoffRecentEvent   `json:"recent_events,omitempty"`
-	ProverJobs    int                    `json:"prover_jobs"`
-	VerifierJobs  int                    `json:"verifier_jobs"`
+	Conjecture   string               `json:"conjecture"`
+	TotalNodes   int                  `json:"total_nodes"`
+	Completion   int                  `json:"completion_percent"`
+	ByState      map[string]int       `json:"by_state"`
+	TaintSummary map[string]int       `json:"taint_summary"`
+	Challenges   []HandoffChallenge   `json:"challenges"`
+	NextSteps    []string             `json:"next_steps"`
+	RecentEvents []HandoffRecentEvent `json:"recent_events,omitempty"`
+	ProverJobs   int                  `json:"prover_jobs"`
+	VerifierJobs int                  `json:"verifier_jobs"`
 }
 
 // HandoffChallenge summarizes open challenges on a node.
@@ -148,12 +148,12 @@ func buildHandoffReport(st *service.State, dir string, since int) *HandoffReport
 		Conjecture: conjecture,
 		TotalNodes: len(nodes),
 		ByState: map[string]int{
-			"pending":           0,
-			"validated":         0,
-			"admitted":          0,
-			"refuted":           0,
-			"archived":          0,
-			"needs_refinement":  0,
+			"pending":          0,
+			"validated":        0,
+			"admitted":         0,
+			"refuted":          0,
+			"archived":         0,
+			"needs_refinement": 0,
 		},
 		TaintSummary: map[string]int{
 			"clean":         0,

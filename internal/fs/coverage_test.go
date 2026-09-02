@@ -231,8 +231,8 @@ func TestLargeFileWrite(t *testing.T) {
 
 		// Create data with very long strings
 		data := testData{
-			ID:   strings.Repeat("x", 100000),  // 100KB string
-			Name: strings.Repeat("y", 100000),  // 100KB string
+			ID:   strings.Repeat("x", 100000), // 100KB string
+			Name: strings.Repeat("y", 100000), // 100KB string
 		}
 
 		err := WriteJSON(filePath, &data)
@@ -1173,19 +1173,19 @@ func TestWriteJSON_UnicodeContent(t *testing.T) {
 	filePath := filepath.Join(dir, "unicode.json")
 
 	type unicodeData struct {
-		Chinese   string `json:"chinese"`
-		Japanese  string `json:"japanese"`
-		Arabic    string `json:"arabic"`
-		Emoji     string `json:"emoji"`
-		Mixed     string `json:"mixed"`
+		Chinese  string `json:"chinese"`
+		Japanese string `json:"japanese"`
+		Arabic   string `json:"arabic"`
+		Emoji    string `json:"emoji"`
+		Mixed    string `json:"mixed"`
 	}
 
 	data := unicodeData{
-		Chinese:   "\u4e2d\u6587\u6d4b\u8bd5",              // Chinese characters
-		Japanese:  "\u65e5\u672c\u8a9e\u30c6\u30b9\u30c8",  // Japanese characters
-		Arabic:    "\u0627\u0644\u0639\u0631\u0628\u064a\u0629", // Arabic characters
-		Emoji:     "\U0001F600\U0001F604\U0001F60A",       // Emoji
-		Mixed:     "Hello \u4e16\u754c \U0001F30D",        // Mixed
+		Chinese:  "\u4e2d\u6587\u6d4b\u8bd5",                   // Chinese characters
+		Japanese: "\u65e5\u672c\u8a9e\u30c6\u30b9\u30c8",       // Japanese characters
+		Arabic:   "\u0627\u0644\u0639\u0631\u0628\u064a\u0629", // Arabic characters
+		Emoji:    "\U0001F600\U0001F604\U0001F60A",             // Emoji
+		Mixed:    "Hello \u4e16\u754c \U0001F30D",              // Mixed
 	}
 
 	if err := WriteJSON(filePath, &data); err != nil {

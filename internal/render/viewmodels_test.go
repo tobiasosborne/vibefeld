@@ -94,33 +94,33 @@ func TestJobListView_TotalCount(t *testing.T) {
 
 func TestGetNodeViewParentID(t *testing.T) {
 	tests := []struct {
-		name         string
-		nodeID       string
-		wantParent   string
+		name          string
+		nodeID        string
+		wantParent    string
 		wantHasParent bool
 	}{
 		{
-			name:         "root node",
-			nodeID:       "1",
-			wantParent:   "",
+			name:          "root node",
+			nodeID:        "1",
+			wantParent:    "",
 			wantHasParent: false,
 		},
 		{
-			name:         "first level child",
-			nodeID:       "1.2",
-			wantParent:   "1",
+			name:          "first level child",
+			nodeID:        "1.2",
+			wantParent:    "1",
 			wantHasParent: true,
 		},
 		{
-			name:         "second level child",
-			nodeID:       "1.2.3",
-			wantParent:   "1.2",
+			name:          "second level child",
+			nodeID:        "1.2.3",
+			wantParent:    "1.2",
 			wantHasParent: true,
 		},
 		{
-			name:         "deep child",
-			nodeID:       "1.2.3.4.5",
-			wantParent:   "1.2.3.4",
+			name:          "deep child",
+			nodeID:        "1.2.3.4.5",
+			wantParent:    "1.2.3.4",
 			wantHasParent: true,
 		},
 	}

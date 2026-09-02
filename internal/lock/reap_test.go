@@ -290,8 +290,8 @@ func TestReapStaleLocks_MixedFreshAndStale(t *testing.T) {
 	nodeID3, _ := types.Parse("1.2")
 
 	freshPath := createLockFile(t, locksDir, nodeID1, "agent-001", 1*time.Hour) // Fresh
-	createStaleLockFile(t, locksDir, nodeID2, "agent-002")                       // Stale
-	createStaleLockFile(t, locksDir, nodeID3, "agent-003")                       // Stale
+	createStaleLockFile(t, locksDir, nodeID2, "agent-002")                      // Stale
+	createStaleLockFile(t, locksDir, nodeID3, "agent-003")                      // Stale
 
 	lg, err := ledger.NewLedger(ledgerDir)
 	if err != nil {
@@ -567,12 +567,12 @@ func TestReapStaleLocks_HandlesCorruptedLockFile(t *testing.T) {
 // TestReapStaleLocks_TableDriven provides comprehensive table-driven tests.
 func TestReapStaleLocks_TableDriven(t *testing.T) {
 	tests := []struct {
-		name           string
-		freshLocks     []string // Node IDs for fresh locks
-		staleLocks     []string // Node IDs for stale locks
-		wantReaped     int      // Expected number of reaped locks
-		wantEvents     int      // Expected number of events
-		wantRemaining  int      // Expected remaining lock files
+		name          string
+		freshLocks    []string // Node IDs for fresh locks
+		staleLocks    []string // Node IDs for stale locks
+		wantReaped    int      // Expected number of reaped locks
+		wantEvents    int      // Expected number of events
+		wantRemaining int      // Expected remaining lock files
 	}{
 		{
 			name:          "no locks",

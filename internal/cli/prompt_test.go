@@ -278,9 +278,9 @@ func TestCheckRequiredArgs(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "nil specs",
-			args: []string{"something"},
-			specs: nil,
+			name:    "nil specs",
+			args:    []string{"something"},
+			specs:   nil,
 			wantErr: false,
 		},
 		{

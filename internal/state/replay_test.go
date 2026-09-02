@@ -295,8 +295,8 @@ func TestReplay_NodeEpistemicStateTransitions(t *testing.T) {
 // TestReplay_TaintRecomputedEvent verifies that TaintRecomputed events are replayed correctly.
 func TestReplay_TaintRecomputedEvent(t *testing.T) {
 	tests := []struct {
-		name         string
-		taintState   node.TaintState
+		name       string
+		taintState node.TaintState
 	}{
 		{"clean", node.TaintClean},
 		{"self_admitted", node.TaintSelfAdmitted},
@@ -815,9 +815,9 @@ func TestReplay_CorruptedEventInMiddle(t *testing.T) {
 // different types of JSON corruption in the middle of the ledger.
 func TestReplay_CorruptedEventInMiddle_VariousCorruptions(t *testing.T) {
 	tests := []struct {
-		name           string
-		corruptedData  string
-		errorContains  string // what the error message should contain
+		name          string
+		corruptedData string
+		errorContains string // what the error message should contain
 	}{
 		{
 			name:          "truncated JSON object",

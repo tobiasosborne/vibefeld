@@ -442,10 +442,10 @@ func TestNames_ReturnsAllNames(t *testing.T) {
 
 	// Check required names
 	required := map[string]bool{
-		"direct":        false,
-		"contradiction": false,
-		"induction":     false,
-		"cases":         false,
+		"direct":         false,
+		"contradiction":  false,
+		"induction":      false,
+		"cases":          false,
 		"contrapositive": false,
 	}
 

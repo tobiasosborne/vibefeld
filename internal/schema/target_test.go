@@ -162,64 +162,64 @@ func TestValidateChallengeTargets_Empty(t *testing.T) {
 // TestGetChallengeTargetInfo_Exists tests that valid targets return correct descriptions.
 func TestGetChallengeTargetInfo_Exists(t *testing.T) {
 	tests := []struct {
-		name               string
-		target             ChallengeTarget
-		wantDescNotEmpty   bool
-		wantDescContains   string
+		name             string
+		target           ChallengeTarget
+		wantDescNotEmpty bool
+		wantDescContains string
 	}{
 		{
-			name:               "statement",
-			target:             TargetStatement,
-			wantDescNotEmpty:   true,
-			wantDescContains:   "claim",
+			name:             "statement",
+			target:           TargetStatement,
+			wantDescNotEmpty: true,
+			wantDescContains: "claim",
 		},
 		{
-			name:               "inference",
-			target:             TargetInference,
-			wantDescNotEmpty:   true,
-			wantDescContains:   "inference",
+			name:             "inference",
+			target:           TargetInference,
+			wantDescNotEmpty: true,
+			wantDescContains: "inference",
 		},
 		{
-			name:               "context",
-			target:             TargetContext,
-			wantDescNotEmpty:   true,
-			wantDescContains:   "definition",
+			name:             "context",
+			target:           TargetContext,
+			wantDescNotEmpty: true,
+			wantDescContains: "definition",
 		},
 		{
-			name:               "dependencies",
-			target:             TargetDependencies,
-			wantDescNotEmpty:   true,
-			wantDescContains:   "dependencies",
+			name:             "dependencies",
+			target:           TargetDependencies,
+			wantDescNotEmpty: true,
+			wantDescContains: "dependencies",
 		},
 		{
-			name:               "scope",
-			target:             TargetScope,
-			wantDescNotEmpty:   true,
-			wantDescContains:   "scope",
+			name:             "scope",
+			target:           TargetScope,
+			wantDescNotEmpty: true,
+			wantDescContains: "scope",
 		},
 		{
-			name:               "gap",
-			target:             TargetGap,
-			wantDescNotEmpty:   true,
-			wantDescContains:   "gap",
+			name:             "gap",
+			target:           TargetGap,
+			wantDescNotEmpty: true,
+			wantDescContains: "gap",
 		},
 		{
-			name:               "type_error",
-			target:             TargetTypeError,
-			wantDescNotEmpty:   true,
-			wantDescContains:   "type",
+			name:             "type_error",
+			target:           TargetTypeError,
+			wantDescNotEmpty: true,
+			wantDescContains: "type",
 		},
 		{
-			name:               "domain",
-			target:             TargetDomain,
-			wantDescNotEmpty:   true,
-			wantDescContains:   "domain",
+			name:             "domain",
+			target:           TargetDomain,
+			wantDescNotEmpty: true,
+			wantDescContains: "domain",
 		},
 		{
-			name:               "completeness",
-			target:             TargetCompleteness,
-			wantDescNotEmpty:   true,
-			wantDescContains:   "complete",
+			name:             "completeness",
+			target:           TargetCompleteness,
+			wantDescNotEmpty: true,
+			wantDescContains: "complete",
 		},
 	}
 
@@ -367,8 +367,8 @@ func TestParseChallengeTargets_Multiple(t *testing.T) {
 			expected: []ChallengeTarget{TargetStatement, TargetContext, TargetScope},
 		},
 		{
-			name:     "all_nine_targets",
-			input:    "statement,inference,context,dependencies,scope,gap,type_error,domain,completeness",
+			name:  "all_nine_targets",
+			input: "statement,inference,context,dependencies,scope,gap,type_error,domain,completeness",
 			expected: []ChallengeTarget{
 				TargetStatement, TargetInference, TargetContext, TargetDependencies,
 				TargetScope, TargetGap, TargetTypeError, TargetDomain, TargetCompleteness,

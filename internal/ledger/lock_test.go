@@ -359,11 +359,11 @@ func TestRelease_DoubleFree(t *testing.T) {
 // TestAcquireLock_TableDriven uses table-driven tests for various scenarios.
 func TestAcquireLock_TableDriven(t *testing.T) {
 	tests := []struct {
-		name      string
-		agentID   string
-		timeout   time.Duration
-		preLock   bool // if true, another lock holds the file
-		wantErr   bool
+		name    string
+		agentID string
+		timeout time.Duration
+		preLock bool // if true, another lock holds the file
+		wantErr bool
 	}{
 		{
 			name:    "valid agent ID and timeout",

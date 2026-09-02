@@ -145,10 +145,10 @@ func renderScanRepairStats(cmd *cobra.Command, st *service.State, warnThresh, al
 
 	if format == "json" {
 		output := map[string]interface{}{
-			"fatigued_subtrees":  fatigued,
-			"warning_threshold":  warnThresh,
-			"alarm_threshold":    alarmThresh,
-			"count":              len(fatigued),
+			"fatigued_subtrees": fatigued,
+			"warning_threshold": warnThresh,
+			"alarm_threshold":   alarmThresh,
+			"count":             len(fatigued),
 		}
 		if fatigued == nil {
 			output["fatigued_subtrees"] = []state.FatiguedSubtree{}

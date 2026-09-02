@@ -19,38 +19,38 @@ func TestSchema_DefaultValues(t *testing.T) {
 
 	// Test that default schema has expected properties
 	tests := []struct {
-		name string
-		check func() bool
+		name   string
+		check  func() bool
 		errMsg string
 	}{
 		{
-			name: "has inference types",
-			check: func() bool { return len(s.InferenceTypes) > 0 },
+			name:   "has inference types",
+			check:  func() bool { return len(s.InferenceTypes) > 0 },
 			errMsg: "default schema should have inference types",
 		},
 		{
-			name: "has node types",
-			check: func() bool { return len(s.NodeTypes) > 0 },
+			name:   "has node types",
+			check:  func() bool { return len(s.NodeTypes) > 0 },
 			errMsg: "default schema should have node types",
 		},
 		{
-			name: "has challenge targets",
-			check: func() bool { return len(s.ChallengeTargets) > 0 },
+			name:   "has challenge targets",
+			check:  func() bool { return len(s.ChallengeTargets) > 0 },
 			errMsg: "default schema should have challenge targets",
 		},
 		{
-			name: "has workflow states",
-			check: func() bool { return len(s.WorkflowStates) > 0 },
+			name:   "has workflow states",
+			check:  func() bool { return len(s.WorkflowStates) > 0 },
 			errMsg: "default schema should have workflow states",
 		},
 		{
-			name: "has epistemic states",
-			check: func() bool { return len(s.EpistemicStates) > 0 },
+			name:   "has epistemic states",
+			check:  func() bool { return len(s.EpistemicStates) > 0 },
 			errMsg: "default schema should have epistemic states",
 		},
 		{
-			name: "version is set",
-			check: func() bool { return s.Version != "" },
+			name:   "version is set",
+			check:  func() bool { return s.Version != "" },
 			errMsg: "default schema should have a version",
 		},
 	}

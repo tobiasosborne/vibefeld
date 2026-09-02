@@ -501,11 +501,11 @@ func TestRenderVerificationChecklistJSON_IncludesAllFields(t *testing.T) {
 	}
 
 	expectedCategories := map[string]bool{
-		"statement_precision": false,
-		"inference_validity":  false,
-		"dependencies":        false,
-		"hidden_assumptions":  false,
-		"domain_restrictions": false,
+		"statement_precision":  false,
+		"inference_validity":   false,
+		"dependencies":         false,
+		"hidden_assumptions":   false,
+		"domain_restrictions":  false,
 		"notation_consistency": false,
 	}
 

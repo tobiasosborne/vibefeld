@@ -659,7 +659,7 @@ func TestRenderVerifierContext_ShowsDependencies(t *testing.T) {
 // TestRenderVerifierContext_ChallengeStatus tests handling of different challenge statuses.
 func TestRenderVerifierContext_ChallengeStatus(t *testing.T) {
 	tests := []struct {
-		name       string
+		name           string
 		setupChallenge func(c *node.Challenge)
 		expectStatus   string
 	}{

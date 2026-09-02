@@ -8,13 +8,13 @@ import (
 // TestNewUsageError tests creation of usage errors with examples
 func TestNewUsageError(t *testing.T) {
 	tests := []struct {
-		name       string
-		command    string
-		message    string
-		examples   []string
-		wantCmd    string
-		wantMsg    string
-		wantExLen  int
+		name      string
+		command   string
+		message   string
+		examples  []string
+		wantCmd   string
+		wantMsg   string
+		wantExLen int
 	}{
 		{
 			name:      "single example",

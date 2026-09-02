@@ -1496,9 +1496,9 @@ func TestProofService_AddExternal_Success(t *testing.T) {
 // TestProofService_AddExternal_Invalid verifies validation of externals.
 func TestProofService_AddExternal_Invalid(t *testing.T) {
 	tests := []struct {
-		name   string
+		name    string
 		extName string
-		source string
+		source  string
 	}{
 		{"empty name", "", "Valid source"},
 		{"whitespace name", "   ", "Valid source"},
@@ -1628,19 +1628,19 @@ func TestProofService_ExtractLemma_NonExistentNode(t *testing.T) {
 // Note: Uses root node "1" created by Init()
 func TestProofService_NodeOperationsFlow(t *testing.T) {
 	tests := []struct {
-		name            string
-		conjecture      string
-		nodeID          string
-		statement       string
-		owner           string
+		name             string
+		conjecture       string
+		nodeID           string
+		statement        string
+		owner            string
 		expectedWorkflow schema.WorkflowState
 	}{
 		{
-			name:            "complete workflow",
-			conjecture:      "For all x, P(x) implies Q(x)",
-			nodeID:          "1",
-			statement:       "Root claim",
-			owner:           "prover-001",
+			name:             "complete workflow",
+			conjecture:       "For all x, P(x) implies Q(x)",
+			nodeID:           "1",
+			statement:        "Root claim",
+			owner:            "prover-001",
 			expectedWorkflow: schema.WorkflowClaimed,
 		},
 	}

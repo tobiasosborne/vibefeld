@@ -164,7 +164,6 @@ func sanitizeStatement(s string) string {
 	return result
 }
 
-
 // compareNodeIDs compares two node ID strings for sorting.
 // Returns true if a should come before b.
 func compareNodeIDs(a, b string) bool {

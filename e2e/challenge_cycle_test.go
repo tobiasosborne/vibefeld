@@ -69,11 +69,11 @@ func initializeProofWithNode(t *testing.T, proofDir string) (*ledger.Ledger, typ
 
 // ChallengeState tracks the state of challenges from ledger events.
 type ChallengeState struct {
-	ID       string
-	NodeID   types.NodeID
-	Target   string
-	Reason   string
-	Status   string // "open", "resolved", "withdrawn"
+	ID     string
+	NodeID types.NodeID
+	Target string
+	Reason string
+	Status string // "open", "resolved", "withdrawn"
 }
 
 // getChallengeStates replays the ledger and returns the current state of all challenges.

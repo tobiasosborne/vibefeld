@@ -308,11 +308,11 @@ func TestFormatJSON_SpecialCharacters(t *testing.T) {
 // TestFormatJSON_FromAFError tests JSON formatting of rendered AFErrors
 func TestFormatJSON_FromAFError(t *testing.T) {
 	tests := []struct {
-		name       string
-		err        *errors.AFError
-		wantCode   string
-		wantExit   int
-		wantInMsg  string
+		name      string
+		err       *errors.AFError
+		wantCode  string
+		wantExit  int
+		wantInMsg string
 	}{
 		{
 			name:      "ALREADY_CLAIMED",

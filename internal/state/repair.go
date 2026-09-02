@@ -10,10 +10,10 @@ import (
 type RepairMetrics struct {
 	NodeID             string `json:"node_id"`
 	ChallengeCount     int    `json:"challenge_count"`      // Total challenges raised against this node
-	OpenChallengeCount int    `json:"open_challenge_count"`  // Currently open challenges
-	AmendmentCount     int    `json:"amendment_count"`       // Number of amendments made
-	ResolvedCount      int    `json:"resolved_count"`        // Challenges resolved (repair cycles)
-	WithdrawnCount     int    `json:"withdrawn_count"`       // Challenges withdrawn
+	OpenChallengeCount int    `json:"open_challenge_count"` // Currently open challenges
+	AmendmentCount     int    `json:"amendment_count"`      // Number of amendments made
+	ResolvedCount      int    `json:"resolved_count"`       // Challenges resolved (repair cycles)
+	WithdrawnCount     int    `json:"withdrawn_count"`      // Challenges withdrawn
 }
 
 // SubtreeRepairMetrics holds aggregated repair metrics for a node and its descendants.
@@ -132,9 +132,9 @@ func ClassifyFatigue(repairCycles, warningThreshold, alarmThreshold int) Fatigue
 
 // FatiguedSubtree identifies a subtree exhibiting repair fatigue.
 type FatiguedSubtree struct {
-	NodeID       string       `json:"node_id"`
-	RepairCycles int          `json:"repair_cycles"`
-	Level        FatigueLevel `json:"level"`
+	NodeID       string               `json:"node_id"`
+	RepairCycles int                  `json:"repair_cycles"`
+	Level        FatigueLevel         `json:"level"`
 	Metrics      SubtreeRepairMetrics `json:"metrics"`
 }
 

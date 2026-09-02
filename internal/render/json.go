@@ -660,9 +660,9 @@ func RenderNodeChallengesJSON(s *state.State, nodeID types.NodeID) string {
 
 // JSONUrgentStatus represents urgent proof status in JSON format.
 type JSONUrgentStatus struct {
-	BlockingChallenges []JSONUrgentItem `json:"blocking_challenges"`
-	ProverJobs         []JSONUrgentItem `json:"prover_jobs"`
-	VerifierJobs       []JSONUrgentItem `json:"verifier_jobs"`
+	BlockingChallenges []JSONUrgentItem  `json:"blocking_challenges"`
+	ProverJobs         []JSONUrgentItem  `json:"prover_jobs"`
+	VerifierJobs       []JSONUrgentItem  `json:"verifier_jobs"`
 	Summary            JSONUrgentSummary `json:"summary"`
 }
 

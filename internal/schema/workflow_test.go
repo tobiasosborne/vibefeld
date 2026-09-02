@@ -52,9 +52,9 @@ func TestValidateWorkflowState_Invalid(t *testing.T) {
 
 func TestGetWorkflowStateInfo_Exists(t *testing.T) {
 	tests := []struct {
-		name             string
-		state            schema.WorkflowState
-		wantDescription  string
+		name            string
+		state           schema.WorkflowState
+		wantDescription string
 	}{
 		{
 			name:            "available",

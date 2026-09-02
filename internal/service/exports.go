@@ -98,13 +98,13 @@ type EpistemicState = schema.EpistemicState
 
 // EpistemicState constants.
 const (
-	EpistemicPending          = schema.EpistemicPending
-	EpistemicValidated        = schema.EpistemicValidated
-	EpistemicAdmitted         = schema.EpistemicAdmitted
-	EpistemicRefuted          = schema.EpistemicRefuted
-	EpistemicArchived         = schema.EpistemicArchived
-	EpistemicNeedsRefinement  = schema.EpistemicNeedsRefinement
-	EpistemicDraft            = schema.EpistemicDraft
+	EpistemicPending         = schema.EpistemicPending
+	EpistemicValidated       = schema.EpistemicValidated
+	EpistemicAdmitted        = schema.EpistemicAdmitted
+	EpistemicRefuted         = schema.EpistemicRefuted
+	EpistemicArchived        = schema.EpistemicArchived
+	EpistemicNeedsRefinement = schema.EpistemicNeedsRefinement
+	EpistemicDraft           = schema.EpistemicDraft
 )
 
 // WorkflowState is an alias for schema.WorkflowState.
@@ -146,37 +146,37 @@ const (
 
 // Schema validation functions re-exported from internal/schema.
 var (
-	ValidateNodeType          = schema.ValidateNodeType
-	ValidateInference         = schema.ValidateInference
-	ValidateJustification     = schema.ValidateJustification
-	ValidateEpistemicState    = schema.ValidateEpistemicState
-	ValidateWorkflowState     = schema.ValidateWorkflowState
-	ValidateChallengeTarget   = schema.ValidateChallengeTarget
-	ValidateChallengeTargets  = schema.ValidateChallengeTargets
-	ParseChallengeTargets     = schema.ParseChallengeTargets
-	SuggestInference          = schema.SuggestInference
-	AllInferences             = schema.AllInferences
-	AllNodeTypes              = schema.AllNodeTypes
-	AllEpistemicStates        = schema.AllEpistemicStates
-	AllWorkflowStates         = schema.AllWorkflowStates
-	AllChallengeTargets       = schema.AllChallengeTargets
-	GetInferenceInfo          = schema.GetInferenceInfo
-	GetNodeTypeInfo           = schema.GetNodeTypeInfo
-	GetEpistemicStateInfo     = schema.GetEpistemicStateInfo
-	GetWorkflowStateInfo      = schema.GetWorkflowStateInfo
-	GetChallengeTargetInfo    = schema.GetChallengeTargetInfo
-	OpensScope                = schema.OpensScope
-	ClosesScope               = schema.ClosesScope
-	IsFinal                   = schema.IsFinal
-	IntroducesTaint           = schema.IntroducesTaint
-	ValidateEpistemicTransition = schema.ValidateEpistemicTransition
-	ValidateWorkflowTransition  = schema.ValidateWorkflowTransition
-	CanClaim                    = schema.CanClaim
-	ValidateChallengeSeverity   = schema.ValidateChallengeSeverity
-	SeverityBlocksAcceptance    = schema.SeverityBlocksAcceptance
-	GetChallengeSeverityInfo    = schema.GetChallengeSeverityInfo
-	AllChallengeSeverities      = schema.AllChallengeSeverities
-	DefaultChallengeSeverity    = schema.DefaultChallengeSeverity
+	ValidateNodeType              = schema.ValidateNodeType
+	ValidateInference             = schema.ValidateInference
+	ValidateJustification         = schema.ValidateJustification
+	ValidateEpistemicState        = schema.ValidateEpistemicState
+	ValidateWorkflowState         = schema.ValidateWorkflowState
+	ValidateChallengeTarget       = schema.ValidateChallengeTarget
+	ValidateChallengeTargets      = schema.ValidateChallengeTargets
+	ParseChallengeTargets         = schema.ParseChallengeTargets
+	SuggestInference              = schema.SuggestInference
+	AllInferences                 = schema.AllInferences
+	AllNodeTypes                  = schema.AllNodeTypes
+	AllEpistemicStates            = schema.AllEpistemicStates
+	AllWorkflowStates             = schema.AllWorkflowStates
+	AllChallengeTargets           = schema.AllChallengeTargets
+	GetInferenceInfo              = schema.GetInferenceInfo
+	GetNodeTypeInfo               = schema.GetNodeTypeInfo
+	GetEpistemicStateInfo         = schema.GetEpistemicStateInfo
+	GetWorkflowStateInfo          = schema.GetWorkflowStateInfo
+	GetChallengeTargetInfo        = schema.GetChallengeTargetInfo
+	OpensScope                    = schema.OpensScope
+	ClosesScope                   = schema.ClosesScope
+	IsFinal                       = schema.IsFinal
+	IntroducesTaint               = schema.IntroducesTaint
+	ValidateEpistemicTransition   = schema.ValidateEpistemicTransition
+	ValidateWorkflowTransition    = schema.ValidateWorkflowTransition
+	CanClaim                      = schema.CanClaim
+	ValidateChallengeSeverity     = schema.ValidateChallengeSeverity
+	SeverityBlocksAcceptance      = schema.SeverityBlocksAcceptance
+	GetChallengeSeverityInfo      = schema.GetChallengeSeverityInfo
+	AllChallengeSeverities        = schema.AllChallengeSeverities
+	DefaultChallengeSeverity      = schema.DefaultChallengeSeverity
 	ValidateChallengeCategory     = schema.ValidateChallengeCategory
 	GetChallengeCategoryInfo      = schema.GetChallengeCategoryInfo
 	AllChallengeCategories        = schema.AllChallengeCategories

@@ -42,10 +42,10 @@ func TestValidateJustification_FreeTextAccepted(t *testing.T) {
 		"monotonicity",
 		"Cauchy-Schwarz",
 		"algebraic manipulation",
-		"modus_ponens",   // registry values still accepted
-		"contradiction",  // registry values still accepted
-		"local_assume",   // special-scope value still accepted as a label
-		"assumption",     // the default value still accepted
+		"modus_ponens",  // registry values still accepted
+		"contradiction", // registry values still accepted
+		"local_assume",  // special-scope value still accepted as a label
+		"assumption",    // the default value still accepted
 	}
 	for _, s := range accepted {
 		if err := ValidateJustification(s); err != nil {

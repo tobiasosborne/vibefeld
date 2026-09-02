@@ -29,17 +29,17 @@ type Blocker struct {
 
 // HealthStatistics contains proof health metrics.
 type HealthStatistics struct {
-	TotalNodes     int `json:"total_nodes"`
-	PendingNodes   int `json:"pending_nodes"`
-	ValidatedNodes int `json:"validated_nodes"`
-	AdmittedNodes  int `json:"admitted_nodes"`
-	RefutedNodes   int `json:"refuted_nodes"`
-	ArchivedNodes  int `json:"archived_nodes"`
-	OpenChallenges int `json:"open_challenges"`
-	ProverJobs     int `json:"prover_jobs"`
-	VerifierJobs   int `json:"verifier_jobs"`
-	LeafNodes        int `json:"leaf_nodes"`
-	BlockedLeaves    int `json:"blocked_leaves"`
+	TotalNodes               int `json:"total_nodes"`
+	PendingNodes             int `json:"pending_nodes"`
+	ValidatedNodes           int `json:"validated_nodes"`
+	AdmittedNodes            int `json:"admitted_nodes"`
+	RefutedNodes             int `json:"refuted_nodes"`
+	ArchivedNodes            int `json:"archived_nodes"`
+	OpenChallenges           int `json:"open_challenges"`
+	ProverJobs               int `json:"prover_jobs"`
+	VerifierJobs             int `json:"verifier_jobs"`
+	LeafNodes                int `json:"leaf_nodes"`
+	BlockedLeaves            int `json:"blocked_leaves"`
 	FatiguedSubtrees         int `json:"fatigued_subtrees"`
 	OutlineStages            int `json:"outline_stages,omitempty"`
 	OutlineMapped            int `json:"outline_mapped,omitempty"`

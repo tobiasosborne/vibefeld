@@ -79,9 +79,9 @@ func TestValidateChallengeSeverity_InvalidValues(t *testing.T) {
 // TestChallengeSeverityBlocksAcceptance tests which severities block acceptance.
 func TestChallengeSeverityBlocksAcceptance(t *testing.T) {
 	tests := []struct {
-		severity     schema.ChallengeSeverity
-		shouldBlock  bool
-		description  string
+		severity    schema.ChallengeSeverity
+		shouldBlock bool
+		description string
 	}{
 		{schema.SeverityCritical, true, "critical severity blocks acceptance"},
 		{schema.SeverityMajor, true, "major severity blocks acceptance"},

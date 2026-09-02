@@ -42,9 +42,9 @@ func TestExtractEventType_NodeCreated(t *testing.T) {
 // TestExtractEventType_AllKnownTypes verifies extractEventType works for all known event types.
 func TestExtractEventType_AllKnownTypes(t *testing.T) {
 	tests := []struct {
-		name      string
-		json      string
-		wantType  ledger.EventType
+		name     string
+		json     string
+		wantType ledger.EventType
 	}{
 		{"proof_initialized", `{"type":"proof_initialized"}`, ledger.EventProofInitialized},
 		{"node_created", `{"type":"node_created"}`, ledger.EventNodeCreated},

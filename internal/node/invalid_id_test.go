@@ -71,10 +71,10 @@ func TestNewNode_InvalidIDFormats(t *testing.T) {
 		{"colon separator", "1:1"},
 		{"plus sign", "1+1"},
 		{"equals sign", "1=1"},
-		{"leading zeros", "1.01"},        // May or may not be accepted
-		{"float notation", "1.2.3e4"},    // Scientific notation
-		{"hex notation", "1.0x10"},       // Hex prefix
-		{"octal-like", "1.010"},          // Leading zero (octal-like)
+		{"leading zeros", "1.01"},     // May or may not be accepted
+		{"float notation", "1.2.3e4"}, // Scientific notation
+		{"hex notation", "1.0x10"},    // Hex prefix
+		{"octal-like", "1.010"},       // Leading zero (octal-like)
 		{"whitespace around dot", "1 . 2"},
 		{"leading whitespace", " 1.2"},
 		{"trailing whitespace", "1.2 "},

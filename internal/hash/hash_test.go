@@ -228,7 +228,7 @@ func TestComputeNodeHash_DeterministicOrdering_Context(t *testing.T) {
 func TestComputeNodeHash_DeterministicOrdering_Dependencies(t *testing.T) {
 	// Dependencies arrays with same elements in different order should produce same hash
 	tests := []struct {
-		name string
+		name  string
 		deps1 []string
 		deps2 []string
 	}{

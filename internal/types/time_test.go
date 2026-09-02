@@ -116,9 +116,9 @@ func TestNow_NotZero(t *testing.T) {
 
 func TestBefore_True(t *testing.T) {
 	tests := []struct {
-		name   string
-		early  string
-		later  string
+		name  string
+		early string
+		later string
 	}{
 		{"same day different hours", "2025-01-11T10:00:00Z", "2025-01-11T11:00:00Z"},
 		{"different days", "2025-01-10T23:59:59Z", "2025-01-11T00:00:01Z"},
@@ -177,9 +177,9 @@ func TestBefore_False(t *testing.T) {
 
 func TestAfter_True(t *testing.T) {
 	tests := []struct {
-		name   string
-		later  string
-		early  string
+		name  string
+		later string
+		early string
 	}{
 		{"same day different hours", "2025-01-11T11:00:00Z", "2025-01-11T10:00:00Z"},
 		{"different days", "2025-01-11T00:00:01Z", "2025-01-10T23:59:59Z"},
@@ -556,9 +556,9 @@ func TestJSON_UnmarshalRFC3339Nano(t *testing.T) {
 func TestString_NanosecondPrecision(t *testing.T) {
 	// Test that String() preserves nanosecond precision
 	tests := []struct {
-		name     string
-		time     time.Time
-		wantStr  string
+		name    string
+		time    time.Time
+		wantStr string
 	}{
 		{
 			"zero nanoseconds",

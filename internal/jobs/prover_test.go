@@ -373,8 +373,8 @@ func TestFindProverJobs_ReturnsOriginalPointers(t *testing.T) {
 // are excluded (no open challenges).
 func TestFindProverJobs_AllNodesExcluded(t *testing.T) {
 	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),   // no challenges
-		createTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending),   // blocked
+		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicPending),     // no challenges
+		createTestNode(t, "1.1", schema.WorkflowBlocked, schema.EpistemicPending),     // blocked
 		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicValidated), // not pending
 	}
 	nodeMap := buildProverNodeMap(nodes)
@@ -554,10 +554,10 @@ func TestFindProverJobs_MixedNeedsRefinementAndChallenges(t *testing.T) {
 	nodeID2, _ := types.Parse("1.2")
 
 	nodes := []*node.Node{
-		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicNeedsRefinement),  // refinement -> prover
-		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),        // no challenge -> not prover
-		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending),        // with challenge -> prover
-		createTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicValidated),      // validated -> not prover
+		createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicNeedsRefinement), // refinement -> prover
+		createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicPending),       // no challenge -> not prover
+		createTestNode(t, "1.2", schema.WorkflowAvailable, schema.EpistemicPending),       // with challenge -> prover
+		createTestNode(t, "1.3", schema.WorkflowAvailable, schema.EpistemicValidated),     // validated -> not prover
 	}
 	nodeMap := buildProverNodeMap(nodes)
 	challengeMap := buildProverChallengeMap([]*node.Challenge{

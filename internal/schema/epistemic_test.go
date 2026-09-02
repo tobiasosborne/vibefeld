@@ -52,11 +52,11 @@ func TestValidateEpistemicState_Invalid(t *testing.T) {
 
 func TestGetEpistemicStateInfo_Exists(t *testing.T) {
 	tests := []struct {
-		name               string
-		state              EpistemicState
-		expectedDesc       string
-		expectedFinal      bool
-		expectedTaint      bool
+		name          string
+		state         EpistemicState
+		expectedDesc  string
+		expectedFinal bool
+		expectedTaint bool
 	}{
 		{
 			name:          "pending",

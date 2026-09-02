@@ -13,8 +13,8 @@ import (
 
 func TestValidateIndependence(t *testing.T) {
 	tests := []struct {
-		name             string
-		setupState       func() (*state.State, types.NodeID)
+		name              string
+		setupState        func() (*state.State, types.NodeID)
 		expectIndependent bool
 		expectViolations  int
 		expectLocalDeps   int

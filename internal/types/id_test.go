@@ -322,10 +322,10 @@ func TestIsAncestorOf(t *testing.T) {
 // TestCommonAncestor verifies finding common ancestors
 func TestCommonAncestor(t *testing.T) {
 	tests := []struct {
-		name     string
-		id1      string
-		id2      string
-		wantCA   string
+		name   string
+		id1    string
+		id2    string
+		wantCA string
 	}{
 		// Siblings share parent
 		{"siblings share parent", "1.1", "1.2", "1"},
@@ -539,10 +539,10 @@ func TestParent_Chain(t *testing.T) {
 // TestChild_Chain verifies creating chain of children
 func TestChild_Chain(t *testing.T) {
 	tests := []struct {
-		name        string
-		start       string
-		childNums   []int
-		wantFinal   string
+		name      string
+		start     string
+		childNums []int
+		wantFinal string
 	}{
 		{
 			name:      "build 1.1.1.1",
@@ -1134,9 +1134,9 @@ func BenchmarkLess_Sorting(b *testing.B) {
 // TestToStringSlice verifies conversion of NodeID slice to string slice
 func TestToStringSlice(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  []string
-		want   []string
+		name  string
+		input []string
+		want  []string
 	}{
 		{
 			name:  "empty slice",

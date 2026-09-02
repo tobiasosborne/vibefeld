@@ -659,52 +659,52 @@ func TestRenderJobs_NextStepsGuidance(t *testing.T) {
 // TestRenderJobs_TableDrivenJobTypes tests rendering different combinations of jobs.
 func TestRenderJobs_TableDrivenJobTypes(t *testing.T) {
 	tests := []struct {
-		name             string
-		proverCount      int
-		verifierCount    int
-		wantProverMention bool
+		name                string
+		proverCount         int
+		verifierCount       int
+		wantProverMention   bool
 		wantVerifierMention bool
 	}{
 		{
-			name:             "no jobs",
-			proverCount:      0,
-			verifierCount:    0,
-			wantProverMention: false,
+			name:                "no jobs",
+			proverCount:         0,
+			verifierCount:       0,
+			wantProverMention:   false,
 			wantVerifierMention: false,
 		},
 		{
-			name:             "only prover jobs",
-			proverCount:      2,
-			verifierCount:    0,
-			wantProverMention: true,
+			name:                "only prover jobs",
+			proverCount:         2,
+			verifierCount:       0,
+			wantProverMention:   true,
 			wantVerifierMention: false,
 		},
 		{
-			name:             "only verifier jobs",
-			proverCount:      0,
-			verifierCount:    1,
-			wantProverMention: false,
+			name:                "only verifier jobs",
+			proverCount:         0,
+			verifierCount:       1,
+			wantProverMention:   false,
 			wantVerifierMention: true,
 		},
 		{
-			name:             "both job types",
-			proverCount:      3,
-			verifierCount:    2,
-			wantProverMention: true,
+			name:                "both job types",
+			proverCount:         3,
+			verifierCount:       2,
+			wantProverMention:   true,
 			wantVerifierMention: true,
 		},
 		{
-			name:             "single prover",
-			proverCount:      1,
-			verifierCount:    0,
-			wantProverMention: true,
+			name:                "single prover",
+			proverCount:         1,
+			verifierCount:       0,
+			wantProverMention:   true,
 			wantVerifierMention: false,
 		},
 		{
-			name:             "single verifier",
-			proverCount:      0,
-			verifierCount:    1,
-			wantProverMention: false,
+			name:                "single verifier",
+			proverCount:         0,
+			verifierCount:       1,
+			wantProverMention:   false,
 			wantVerifierMention: true,
 		},
 	}

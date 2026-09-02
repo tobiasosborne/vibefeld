@@ -357,10 +357,10 @@ func TestSuggestCommand_Typo(t *testing.T) {
 
 func TestSuggestCommand_Prefix(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         string
-		wantContains  string // Match should contain this
-		wantMinSuggs  int    // minimum suggestions
+		name         string
+		input        string
+		wantContains string // Match should contain this
+		wantMinSuggs int    // minimum suggestions
 	}{
 		{
 			name:         "ref prefix",
@@ -390,9 +390,9 @@ func TestSuggestCommand_Prefix(t *testing.T) {
 
 func TestSuggestCommand_Multiple(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		wantMin  int // minimum suggestions
+		name    string
+		input   string
+		wantMin int // minimum suggestions
 	}{
 		{
 			name:    "multiple close matches for 're'",
@@ -500,7 +500,7 @@ func TestMatch_ThresholdBoundary(t *testing.T) {
 	}{
 		{
 			name:      "exactly at threshold",
-			input:     "stat", // 4 chars
+			input:     "stat",  // 4 chars
 			candidate: "start", // 5 chars, distance 1
 			threshold: 0.8,     // similarity = 1 - (1/5) = 0.8
 			wantAuto:  true,
