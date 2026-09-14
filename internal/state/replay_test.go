@@ -292,7 +292,12 @@ func TestReplay_NodeEpistemicStateTransitions(t *testing.T) {
 	}
 }
 
-// TestReplay_TaintRecomputedEvent verifies that TaintRecomputed events are replayed correctly.
+// TestReplay_TaintRecomputedEvent verifies that TaintRecomputed events of every
+// taint value replay without error. Since 0.1.7 they are audit records only:
+// taint is derived, and Replay ends with an authoritative taint.RecomputeAll,
+// so the recorded value never overrides the derived one. A lone pending root
+// derives to unresolved whatever the audit event says (see also
+// TestReplay_DerivedTaintOverridesOldStyleAuditEvent).
 func TestReplay_TaintRecomputedEvent(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -334,8 +339,9 @@ func TestReplay_TaintRecomputedEvent(t *testing.T) {
 				t.Fatal("Node not found after replay")
 			}
 
-			if got.TaintState != tt.taintState {
-				t.Errorf("Taint state: got %q, want %q", got.TaintState, tt.taintState)
+			if got.TaintState != node.TaintUnresolved {
+				t.Errorf("Taint state after audit event %q: got %q, want derived %q",
+					tt.taintState, got.TaintState, node.TaintUnresolved)
 			}
 		})
 	}
@@ -551,8 +557,10 @@ func TestReplay_AllEventTypes(t *testing.T) {
 	if gotRoot.EpistemicState != schema.EpistemicValidated {
 		t.Errorf("Root epistemic state: got %q, want %q", gotRoot.EpistemicState, schema.EpistemicValidated)
 	}
-	if gotRoot.TaintState != node.TaintClean {
-		t.Errorf("Root taint state: got %q, want %q", gotRoot.TaintState, node.TaintClean)
+	// The admitted child taints its validated parent (bottom-up propagation,
+	// 0.1.7); the TaintRecomputed(clean) audit event does not override that.
+	if gotRoot.TaintState != node.TaintTainted {
+		t.Errorf("Root taint state: got %q, want %q", gotRoot.TaintState, node.TaintTainted)
 	}
 
 	gotChild := state.GetNode(childID)
@@ -1971,17 +1979,19 @@ func TestReplay_CircularDependencies_WithTaint(t *testing.T) {
 		t.Fatalf("Replay failed: %v", err)
 	}
 
-	// Verify both nodes have their taint state set
+	// Verify both nodes have their taint state set. Taint is derived on
+	// replay (the TaintRecomputed(clean) events are audit records only), and
+	// both nodes are still pending, so both derive to unresolved.
 	gotA := state.GetNode(nodeA)
 	gotB := state.GetNode(nodeB)
 	if gotA == nil || gotB == nil {
 		t.Fatal("Nodes not found after replay")
 	}
-	if gotA.TaintState != node.TaintClean {
-		t.Errorf("Node A taint: got %q, want %q", gotA.TaintState, node.TaintClean)
+	if gotA.TaintState != node.TaintUnresolved {
+		t.Errorf("Node A taint: got %q, want %q", gotA.TaintState, node.TaintUnresolved)
 	}
-	if gotB.TaintState != node.TaintClean {
-		t.Errorf("Node B taint: got %q, want %q", gotB.TaintState, node.TaintClean)
+	if gotB.TaintState != node.TaintUnresolved {
+		t.Errorf("Node B taint: got %q, want %q", gotB.TaintState, node.TaintUnresolved)
 	}
 }
 
