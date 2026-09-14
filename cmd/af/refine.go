@@ -131,14 +131,33 @@ func findNextChildID(parentID service.NodeID, st *service.State, svc *service.Pr
 }
 
 // handleRefineError converts service-layer errors into user-friendly error messages.
+//
+// service.ErrNotClaimed and service.ErrOwnerMismatch carry the same
+// NOT_CLAIM_HOLDER code and AFError.Is compares codes only, so errors.Is
+// cannot tell them apart; match the sentinel values themselves instead.
 func handleRefineError(err error, parentIDStr, owner string) error {
-	if errors.Is(err, service.ErrNotClaimed) {
-		return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s -o %s -s ...' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
-	}
-	if errors.Is(err, service.ErrOwnerMismatch) {
+	if wrapsSentinel(err, service.ErrOwnerMismatch) {
 		return fmt.Errorf("owner does not match the claim owner for node %s", parentIDStr)
 	}
+	if errors.Is(err, service.ErrMaxDepthExceeded) {
+		// Keep the service error (and its DEPTH_EXCEEDED code) and add the hint.
+		return fmt.Errorf("%w; add breadth instead (af refine-sibling)", err)
+	}
+	if wrapsSentinel(err, service.ErrNotClaimed) {
+		return fmt.Errorf("parent node is not claimed. Claim it first with 'af claim %s'\n\nHint: Run 'af claim %s -o %s && af refine %s \"...\" -o %s' to claim and refine in one step", parentIDStr, parentIDStr, owner, parentIDStr, owner)
+	}
 	return err
+}
+
+// wrapsSentinel reports whether target itself (by identity, not by
+// errors.Is) appears in err's Unwrap chain.
+func wrapsSentinel(err, target error) bool {
+	for ; err != nil; err = errors.Unwrap(err) {
+		if err == target {
+			return true
+		}
+	}
+	return false
 }
 
 // formatMultiChildOutput formats the output for multi-child refine operations.
@@ -516,7 +535,7 @@ func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDSt
 			return err
 		}
 		if childResult.WarnDepth {
-			fmt.Fprintf(cmd.OutOrStdout(), "Warning: Creating node at depth %d. Consider adding siblings instead.\n\n", childResult.ChildID.Depth())
+			writeRefineDepthWarning(cmd, childResult.ChildID.Depth())
 		}
 
 		err = svc.Refine(service.RefineSpec{
@@ -557,12 +576,26 @@ func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDSt
 		}
 	}
 
+	// All new children sit one level below the parent. The single-statement
+	// path above warns via findNextChildID; do the same here, since this is
+	// also the path a plain `af refine <id> "stmt"` takes.
+	childDepth := parentID.Depth() + 1
+	if cfg, err := svc.Config(); err == nil && childDepth <= cfg.MaxDepth && childDepth > cfg.WarnDepth {
+		writeRefineDepthWarning(cmd, childDepth)
+	}
+
 	childIDs, err := svc.RefineNodeBulk(parentID, owner, specs)
 	if err != nil {
 		return handleRefineError(err, parentIDStr, owner)
 	}
 
 	return formatMultiChildOutput(cmd, format, parentIDStr, specs, childIDs)
+}
+
+// writeRefineDepthWarning writes the warn_depth advisory. It goes to stderr so
+// that -f json output on stdout stays parseable.
+func writeRefineDepthWarning(cmd *cobra.Command, depth int) {
+	fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Creating node at depth %d. Consider adding siblings instead.\n\n", depth)
 }
 
 func init() {
