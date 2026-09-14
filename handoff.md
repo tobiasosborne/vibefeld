@@ -1,3 +1,20 @@
+# Handoff - 2026-09-14 (0.1.8: module path + build.sh portability, GitHub #2)
+
+- Go module path renamed to `github.com/tobiasosborne/vibefeld` (go.mod, all
+  self-imports, docs). `go install github.com/tobiasosborne/vibefeld/cmd/af@main`
+  now works from outside a checkout.
+- `scripts/build.sh` reads VersionInfo with POSIX `sed -n` instead of GNU-only
+  `grep -oP` (macOS BSD grep has no `-P`); output byte-identical on GNU.
+- Version bumped to 0.1.8 (source + in-binary changelog). No git tags exist;
+  cutting one (e.g. v0.1.8) is an open decision for Tobias.
+- Not fixed, noted: `af.test` and `hooks` are stale ELF binaries committed at
+  the repo root (along with `coverage*.out`); `go test -tags integration ./...`
+  was already broken before this change (build failures in fs/node/render/
+  service/taint test files, failures in cmd/af, e2e, lock, state);
+  `scripts/auto-prove.sh` uses GNU `timeout` (not on stock macOS).
+
+---
+
 # Handoff - 2026-09-02 (0.1.7: taint propagates upward; trust model; v0.2 target)
 
 ## What Was Accomplished

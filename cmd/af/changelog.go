@@ -9,6 +9,14 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version: "0.1.8",
+		Date:    "2026-09-14",
+		Items: []string{
+			"Fix: `go install github.com/tobiasosborne/vibefeld/cmd/af@...` now works. The module path declared in go.mod did not match the repository location; go.mod, all self-imports, and the docs now use github.com/tobiasosborne/vibefeld (GitHub issue #2).",
+			"Fix: scripts/build.sh reads the version with POSIX sed instead of GNU-only `grep -oP`, so the stamped build/install works with macOS's BSD grep.",
+		},
+	},
+	{
 		Version: "0.1.7",
 		Date:    "2026-09-02",
 		Items: []string{

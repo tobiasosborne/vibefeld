@@ -22,7 +22,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION=$(grep -oP '(?<=VersionInfo = ")[^"]+' cmd/af/version.go)
+# POSIX sed rather than `grep -oP`: BSD grep (macOS default) has no -P. On
+# no match sed exits 0 with empty output, so the check below reports it.
+VERSION=$(sed -n 's/.*VersionInfo = "\([^"]*\)".*/\1/p' cmd/af/version.go)
 if [[ -z "$VERSION" ]]; then
   echo "build.sh: could not read VersionInfo default from cmd/af/version.go" >&2
   exit 1
