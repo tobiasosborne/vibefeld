@@ -2,3 +2,10 @@
 /af
 *.exe
 
+# Test binaries (go test -c) and stray go build outputs at the repo root
+*.test
+/hooks
+
+# Coverage profiles
+coverage*.out
+*.coverprofile
