@@ -140,9 +140,11 @@ func TestAcceptCmd_MissingNodeID(t *testing.T) {
 		t.Fatal("expected error for missing node ID, got nil")
 	}
 
-	// Should contain error about missing argument
+	// Should contain error about missing argument (accept now takes one or
+	// more node IDs, or --all, and says so)
 	errStr := err.Error()
-	if !strings.Contains(errStr, "accepts 1 arg") && !strings.Contains(errStr, "required") {
+	if !strings.Contains(errStr, "accepts 1 arg") && !strings.Contains(errStr, "required") &&
+		!strings.Contains(errStr, "specify node IDs") {
 		t.Errorf("expected error about missing argument, got: %q", errStr)
 	}
 }
@@ -723,8 +725,9 @@ func TestAcceptCmd_MultipleNodesSequential(t *testing.T) {
 		}
 	}
 
-	// Accept nodes in sequence
-	nodes := []string{"1", "1.1", "1.2"}
+	// Accept nodes in sequence, children before the parent (a node cannot be
+	// accepted while its children are still pending)
+	nodes := []string{"1.1", "1.2", "1"}
 	for _, idStr := range nodes {
 		output, err := executeAcceptCommand(t, idStr, "-d", tmpDir)
 		if err != nil {

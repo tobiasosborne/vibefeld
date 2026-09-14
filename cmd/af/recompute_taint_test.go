@@ -403,8 +403,8 @@ func TestRecomputeTaintCmd_CleanNodeStaysClean(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Accept root and children
-	for _, idStr := range []string{"1", "1.1", "1.2", "1.1.1"} {
+	// Accept children, then root
+	for _, idStr := range []string{"1.1.1", "1.1", "1.2", "1"} { // children before parents
 		nodeID := mustParseRecomputeTaintNodeID(t, idStr)
 		if err := svc.AcceptNode(nodeID); err != nil {
 			t.Fatalf("failed to accept node %s: %v", idStr, err)
@@ -448,16 +448,8 @@ func TestRecomputeTaintCmd_AdmittedNodeBecomesSelfAdmitted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Accept root, admit node 1.1
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
-
-	nodeID := mustParseRecomputeTaintNodeID(t, "1.1")
-	if err := svc.AdmitNode(nodeID); err != nil {
-		t.Fatalf("failed to admit node 1.1: %v", err)
-	}
+	// Admit 1.1 (leaving 1.1.1 pending) under a validated root
+	nodeID := setupAdmittedChildUnderValidatedRoot(t, svc)
 
 	// Run recompute-taint
 	output, err := executeRecomputeTaintCommand(t, "-d", tmpDir)
@@ -493,16 +485,8 @@ func TestRecomputeTaintCmd_ChildOfTaintedBecomesTainted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Accept root, admit node 1.1, accept grandchild 1.1.1
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
-
-	node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
-	if err := svc.AdmitNode(node11ID); err != nil {
-		t.Fatalf("failed to admit node 1.1: %v", err)
-	}
+	// Admit 1.1 (leaving 1.1.1 pending) under a validated root
+	node11ID := setupAdmittedChildUnderValidatedRoot(t, svc)
 
 	node111ID := mustParseRecomputeTaintNodeID(t, "1.1.1")
 	if err := svc.AcceptNode(node111ID); err != nil {
@@ -682,29 +666,24 @@ func TestRecomputeTaintCmd_ComplexTreePropagation(t *testing.T) {
 		}
 	}
 
-	// Accept root and 1.2, admit 1.1
+	// Build bottom-up (a node can only be accepted once its children are
+	// validated, admitted or archived): accept 1.2.1, 1.2.2 and 1.2, admit 1.1
+	// leaving 1.1.1 pending, then accept the root.
 	// Tree:
-	//       1 (validated, clean)
+	//       1 (validated, tainted: admitted child 1.1)
 	//      / \
 	//   1.1   1.2 (validated, clean)
 	//  (admitted, self_admitted)  / \
-	//   |                       1.2.1 1.2.2 (pending, unresolved)
+	//   |                       1.2.1 1.2.2 (validated, clean)
 	// 1.1.1 (pending, unresolved)
-
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
+	acceptRecomputeTaintNodes(t, svc, "1.2.1", "1.2.2", "1.2")
 
 	node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
 	if err := svc.AdmitNode(node11ID); err != nil {
 		t.Fatalf("failed to admit node 1.1: %v", err)
 	}
 
-	node12ID := mustParseRecomputeTaintNodeID(t, "1.2")
-	if err := svc.AcceptNode(node12ID); err != nil {
-		t.Fatalf("failed to accept node 1.2: %v", err)
-	}
+	acceptRecomputeTaintNodes(t, svc, "1")
 
 	// Run recompute-taint
 	output, err := executeRecomputeTaintCommand(t, "-d", tmpDir)
@@ -719,12 +698,12 @@ func TestRecomputeTaintCmd_ComplexTreePropagation(t *testing.T) {
 	}
 
 	expectedTaint := map[string]node.TaintState{
-		"1":     node.TaintClean,        // validated
-		"1.1":   node.TaintSelfAdmitted, // admitted
-		"1.2":   node.TaintClean,        // validated
-		"1.1.1": node.TaintUnresolved,   // pending (ancestor unresolved check doesn't apply when node itself is pending)
-		"1.2.1": node.TaintUnresolved,   // pending
-		"1.2.2": node.TaintUnresolved,   // pending
+		"1":     node.TaintTainted,      // validated, but admitted child 1.1 taints it (bottom-up, 0.1.7)
+		"1.1":   node.TaintSelfAdmitted, // admitted (its pending child does not make it unresolved)
+		"1.2":   node.TaintClean,        // validated, not affected by admitted sibling
+		"1.1.1": node.TaintUnresolved,   // pending
+		"1.2.1": node.TaintClean,        // validated
+		"1.2.2": node.TaintClean,        // validated
 	}
 
 	for idStr, expected := range expectedTaint {
@@ -757,7 +736,7 @@ func TestRecomputeTaintCmd_DryRunShowsChanges(t *testing.T) {
 	}
 
 	// Accept all nodes
-	for _, idStr := range []string{"1", "1.1", "1.2", "1.1.1"} {
+	for _, idStr := range []string{"1.1.1", "1.1", "1.2", "1"} { // children before parents
 		nodeID := mustParseRecomputeTaintNodeID(t, idStr)
 		if err := svc.AcceptNode(nodeID); err != nil {
 			t.Fatalf("failed to accept node %s: %v", idStr, err)
@@ -788,7 +767,7 @@ func TestRecomputeTaintCmd_DryRunDoesNotModify(t *testing.T) {
 	}
 
 	// Accept all nodes
-	for _, idStr := range []string{"1", "1.1", "1.2", "1.1.1"} {
+	for _, idStr := range []string{"1.1.1", "1.1", "1.2", "1"} { // children before parents
 		nodeID := mustParseRecomputeTaintNodeID(t, idStr)
 		if err := svc.AcceptNode(nodeID); err != nil {
 			t.Fatalf("failed to accept node %s: %v", idStr, err)
@@ -838,16 +817,8 @@ func TestRecomputeTaintCmd_DryRunWithJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Accept root, admit 1.1
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
-
-	node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
-	if err := svc.AdmitNode(node11ID); err != nil {
-		t.Fatalf("failed to admit node 1.1: %v", err)
-	}
+	// Admit 1.1 (leaving 1.1.1 pending) under a validated root
+	setupAdmittedChildUnderValidatedRoot(t, svc)
 
 	// Run with --dry-run and JSON format
 	output, err := executeRecomputeTaintCommand(t, "-d", tmpDir, "--dry-run", "-f", "json")
@@ -876,11 +847,8 @@ func TestRecomputeTaintCmd_TextOutputFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Accept root to trigger some taint changes
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
+	// Accept the tree (children before parents) to trigger some taint changes
+	acceptRecomputeTaintNodes(t, svc, "1.1.1", "1.1", "1.2", "1")
 
 	// Run with text format (default)
 	output, err := executeRecomputeTaintCommand(t, "-d", tmpDir, "-f", "text")
@@ -913,11 +881,8 @@ func TestRecomputeTaintCmd_JSONOutputFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Accept root
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
+	// Accept the tree (children before parents)
+	acceptRecomputeTaintNodes(t, svc, "1.1.1", "1.1", "1.2", "1")
 
 	// Run with JSON format
 	output, err := executeRecomputeTaintCommand(t, "-d", tmpDir, "-f", "json")
@@ -942,16 +907,8 @@ func TestRecomputeTaintCmd_JSONOutputStructure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Accept root, admit 1.1
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
-
-	node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
-	if err := svc.AdmitNode(node11ID); err != nil {
-		t.Fatalf("failed to admit node 1.1: %v", err)
-	}
+	// Admit 1.1 (leaving 1.1.1 pending) under a validated root
+	setupAdmittedChildUnderValidatedRoot(t, svc)
 
 	// Run with JSON format
 	output, err := executeRecomputeTaintCommand(t, "-d", tmpDir, "-f", "json")
@@ -996,16 +953,8 @@ func TestRecomputeTaintCmd_VerboseOutputDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Accept root, admit 1.1 to cause taint changes
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
-
-	node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
-	if err := svc.AdmitNode(node11ID); err != nil {
-		t.Fatalf("failed to admit node 1.1: %v", err)
-	}
+	// Admit 1.1 (leaving 1.1.1 pending) under a validated root
+	setupAdmittedChildUnderValidatedRoot(t, svc)
 
 	// Run without verbose
 	normalOutput, err := executeRecomputeTaintCommand(t, "-d", tmpDir)
@@ -1022,15 +971,7 @@ func TestRecomputeTaintCmd_VerboseOutputDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rootID2 := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc2.AcceptNode(rootID2); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
-
-	node11ID2 := mustParseRecomputeTaintNodeID(t, "1.1")
-	if err := svc2.AdmitNode(node11ID2); err != nil {
-		t.Fatalf("failed to admit node 1.1: %v", err)
-	}
+	setupAdmittedChildUnderValidatedRoot(t, svc2)
 
 	// Run with verbose
 	verboseOutput, err := executeRecomputeTaintCommand(t, "-d", tmpDir2, "-v")
@@ -1096,7 +1037,7 @@ func TestRecomputeTaintCmd_SummaryOutput(t *testing.T) {
 	}
 
 	// Accept all nodes
-	for _, idStr := range []string{"1", "1.1", "1.2", "1.1.1"} {
+	for _, idStr := range []string{"1.1.1", "1.1", "1.2", "1"} { // children before parents
 		nodeID := mustParseRecomputeTaintNodeID(t, idStr)
 		if err := svc.AcceptNode(nodeID); err != nil {
 			t.Fatalf("failed to accept node %s: %v", idStr, err)
@@ -1179,7 +1120,7 @@ func TestRecomputeTaintCmd_TableDrivenTaintStates(t *testing.T) {
 		{
 			name: "all validated",
 			setupFunc: func(t *testing.T, svc *service.ProofService) {
-				for _, idStr := range []string{"1", "1.1", "1.2", "1.1.1"} {
+				for _, idStr := range []string{"1.1.1", "1.1", "1.2", "1"} { // children before parents
 					nodeID := mustParseRecomputeTaintNodeID(t, idStr)
 					if err := svc.AcceptNode(nodeID); err != nil {
 						t.Fatalf("failed to accept %s: %v", idStr, err)
@@ -1200,8 +1141,8 @@ func TestRecomputeTaintCmd_TableDrivenTaintStates(t *testing.T) {
 				if err := svc.AdmitNode(rootID); err != nil {
 					t.Fatalf("failed to admit root: %v", err)
 				}
-				// Accept children
-				for _, idStr := range []string{"1.1", "1.2", "1.1.1"} {
+				// Accept children (1.1.1 before its parent 1.1)
+				for _, idStr := range []string{"1.1.1", "1.1", "1.2"} {
 					nodeID := mustParseRecomputeTaintNodeID(t, idStr)
 					if err := svc.AcceptNode(nodeID); err != nil {
 						t.Fatalf("failed to accept %s: %v", idStr, err)
@@ -1218,24 +1159,12 @@ func TestRecomputeTaintCmd_TableDrivenTaintStates(t *testing.T) {
 		{
 			name: "sibling not affected by admitted sibling",
 			setupFunc: func(t *testing.T, svc *service.ProofService) {
-				// Accept root
-				rootID := mustParseRecomputeTaintNodeID(t, "1")
-				if err := svc.AcceptNode(rootID); err != nil {
-					t.Fatalf("failed to accept root: %v", err)
-				}
-				// Admit 1.1
-				node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
-				if err := svc.AdmitNode(node11ID); err != nil {
-					t.Fatalf("failed to admit 1.1: %v", err)
-				}
-				// Accept 1.2 (sibling)
-				node12ID := mustParseRecomputeTaintNodeID(t, "1.2")
-				if err := svc.AcceptNode(node12ID); err != nil {
-					t.Fatalf("failed to accept 1.2: %v", err)
-				}
+				// Accept 1.2, admit its sibling 1.1 (1.1.1 stays pending),
+				// then accept the root
+				setupAdmittedChildUnderValidatedRoot(t, svc)
 			},
 			expectedTaint: map[string]node.TaintState{
-				"1":     node.TaintClean,        // validated
+				"1":     node.TaintTainted,      // validated, tainted by admitted child 1.1 (bottom-up, 0.1.7)
 				"1.1":   node.TaintSelfAdmitted, // admitted
 				"1.2":   node.TaintClean,        // validated, not affected by sibling
 				"1.1.1": node.TaintUnresolved,   // pending
@@ -1358,16 +1287,8 @@ func TestRecomputeTaintCmd_IdempotentOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Accept root, admit 1.1
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
-
-	node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
-	if err := svc.AdmitNode(node11ID); err != nil {
-		t.Fatalf("failed to admit 1.1: %v", err)
-	}
+	// Admit 1.1 (leaving 1.1.1 pending) under a validated root
+	setupAdmittedChildUnderValidatedRoot(t, svc)
 
 	// First run
 	_, err = executeRecomputeTaintCommand(t, "-d", tmpDir)
@@ -1417,11 +1338,9 @@ func TestRecomputeTaintCmd_AfterStateChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// First: accept root only
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
+	// First: accept one leaf only (the root cannot be accepted while its
+	// children are pending)
+	acceptRecomputeTaintNodes(t, svc, "1.2")
 
 	// Run recompute
 	_, err = executeRecomputeTaintCommand(t, "-d", tmpDir)
@@ -1429,11 +1348,13 @@ func TestRecomputeTaintCmd_AfterStateChange(t *testing.T) {
 		t.Fatalf("first recompute error: %v", err)
 	}
 
-	// Now admit 1.1
+	// Now admit 1.1, which unblocks accepting the root. (Under a still-pending
+	// root the admitted node would derive to unresolved, not self_admitted.)
 	node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
 	if err := svc.AdmitNode(node11ID); err != nil {
 		t.Fatalf("failed to admit 1.1: %v", err)
 	}
+	acceptRecomputeTaintNodes(t, svc, "1")
 
 	// Run recompute again
 	_, err = executeRecomputeTaintCommand(t, "-d", tmpDir)
@@ -1477,32 +1398,16 @@ func TestRecomputeTaintCmd_DeeplyNestedTree(t *testing.T) {
 		}
 	}
 
-	// Accept root, admit 1.1.1 (middle node)
-	rootID := mustParseRecomputeTaintNodeID(t, "1")
-	if err := svc.AcceptNode(rootID); err != nil {
-		t.Fatalf("failed to accept root: %v", err)
-	}
-
-	node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
-	if err := svc.AcceptNode(node11ID); err != nil {
-		t.Fatalf("failed to accept 1.1: %v", err)
-	}
+	// Bottom-up: accept the two deepest nodes, admit 1.1.1 (middle node),
+	// then accept 1.1 and the root
+	acceptRecomputeTaintNodes(t, svc, "1.1.1.1.1", "1.1.1.1")
 
 	node111ID := mustParseRecomputeTaintNodeID(t, "1.1.1")
 	if err := svc.AdmitNode(node111ID); err != nil {
 		t.Fatalf("failed to admit 1.1.1: %v", err)
 	}
 
-	// Accept descendants
-	node1111ID := mustParseRecomputeTaintNodeID(t, "1.1.1.1")
-	if err := svc.AcceptNode(node1111ID); err != nil {
-		t.Fatalf("failed to accept 1.1.1.1: %v", err)
-	}
-
-	node11111ID := mustParseRecomputeTaintNodeID(t, "1.1.1.1.1")
-	if err := svc.AcceptNode(node11111ID); err != nil {
-		t.Fatalf("failed to accept 1.1.1.1.1: %v", err)
-	}
+	acceptRecomputeTaintNodes(t, svc, "1.1", "1")
 
 	// Run recompute
 	_, err = executeRecomputeTaintCommand(t, "-d", tmpDir)
@@ -1517,8 +1422,8 @@ func TestRecomputeTaintCmd_DeeplyNestedTree(t *testing.T) {
 	}
 
 	expected := map[string]node.TaintState{
-		"1":         node.TaintClean,        // validated
-		"1.1":       node.TaintClean,        // validated
+		"1":         node.TaintTainted,      // validated, admitted descendant 1.1.1 (bottom-up, 0.1.7)
+		"1.1":       node.TaintTainted,      // validated, admitted child 1.1.1
 		"1.1.1":     node.TaintSelfAdmitted, // admitted
 		"1.1.1.1":   node.TaintTainted,      // child of admitted
 		"1.1.1.1.1": node.TaintTainted,      // grandchild of admitted
@@ -1535,4 +1440,32 @@ func TestRecomputeTaintCmd_DeeplyNestedTree(t *testing.T) {
 			t.Errorf("node %s TaintState = %q, want %q", idStr, n.TaintState, expectedTaint)
 		}
 	}
+}
+
+// acceptRecomputeTaintNodes accepts the given nodes in the order listed.
+// List children before parents: a node can only be accepted once all of its
+// children are validated, admitted or archived.
+func acceptRecomputeTaintNodes(t *testing.T, svc *service.ProofService, ids ...string) {
+	t.Helper()
+	for _, idStr := range ids {
+		if err := svc.AcceptNode(mustParseRecomputeTaintNodeID(t, idStr)); err != nil {
+			t.Fatalf("failed to accept node %s: %v", idStr, err)
+		}
+	}
+}
+
+// setupAdmittedChildUnderValidatedRoot takes the setupRecomputeTaintTestWithNodes
+// tree (1, 1.1, 1.2, 1.1.1) to: 1.2 validated, 1.1 admitted with 1.1.1 still
+// pending, then root 1 validated. Before children had to be cleared first,
+// these tests accepted the root and then admitted 1.1; this is the reachable
+// equivalent. Returns the admitted node's ID (1.1).
+func setupAdmittedChildUnderValidatedRoot(t *testing.T, svc *service.ProofService) service.NodeID {
+	t.Helper()
+	acceptRecomputeTaintNodes(t, svc, "1.2")
+	node11ID := mustParseRecomputeTaintNodeID(t, "1.1")
+	if err := svc.AdmitNode(node11ID); err != nil {
+		t.Fatalf("failed to admit node 1.1: %v", err)
+	}
+	acceptRecomputeTaintNodes(t, svc, "1")
+	return node11ID
 }

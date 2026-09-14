@@ -70,6 +70,11 @@ func setupRefuteTestWithNode(t *testing.T) (string, func()) {
 func executeRefuteCommand(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 
+	// refute is destructive and prompts for confirmation; with a non-terminal
+	// stdin (as under go test) it requires --yes. These tests exercise the
+	// command itself, not the prompt (covered in internal/cli), so confirm.
+	args = append(args, "--yes")
+
 	cmd := newRefuteCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)

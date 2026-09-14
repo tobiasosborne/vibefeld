@@ -113,8 +113,9 @@ func TestReleaseCmd_MissingNodeID(t *testing.T) {
 		t.Fatal("expected error for missing node ID, got nil")
 	}
 
+	// cobra's ExactArgs reports this as "accepts 1 arg(s), received 0"
 	errStr := err.Error()
-	if !strings.Contains(errStr, "node") && !strings.Contains(errStr, "argument") && !strings.Contains(errStr, "required") {
+	if !strings.Contains(errStr, "node") && !strings.Contains(errStr, "arg") && !strings.Contains(errStr, "required") {
 		t.Errorf("expected error about missing node ID, got: %q", errStr)
 	}
 }
@@ -223,7 +224,9 @@ func TestReleaseCmd_InvalidNodeID(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := newTestReleaseCmd()
-			_, err := executeCommand(cmd, "release", tc.nodeID, "--owner", "test-agent", "--dir", tmpDir)
+			// "--" ends flag parsing, so IDs like "-1" reach the node ID parser
+			// instead of being rejected by cobra as an unknown shorthand flag.
+			_, err := executeCommand(cmd, "release", "--owner", "test-agent", "--dir", tmpDir, "--", tc.nodeID)
 
 			if err == nil {
 				t.Fatalf("expected error for invalid node ID %q, got nil", tc.nodeID)

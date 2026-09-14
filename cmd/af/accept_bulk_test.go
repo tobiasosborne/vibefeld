@@ -395,7 +395,9 @@ func TestAcceptBulkCmd_AllFlag_NoPendingNodes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, idStr := range []string{"1", "1.1", "1.2", "1.3"} {
+	// Children before the root: a node cannot be accepted while its children
+	// are still pending.
+	for _, idStr := range []string{"1.1", "1.2", "1.3", "1"} {
 		nodeID, _ := service.ParseNodeID(idStr)
 		if err := svc.AcceptNode(nodeID); err != nil {
 			t.Fatalf("failed to pre-accept node %s: %v", idStr, err)
@@ -420,10 +422,18 @@ func TestAcceptBulkCmd_AllFlag_JSONOutput(t *testing.T) {
 	tmpDir, cleanup := setupBulkAcceptTest(t)
 	defer cleanup()
 
-	output, err := executeBulkAcceptCommand(t, "--all", "-d", tmpDir, "-f", "json")
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
+	// Capture stdout on its own: accept writes advisory warnings (e.g. about
+	// accepting a node whose children are still conditional) to stderr, and
+	// only stdout has to be valid JSON.
+	cmd := newAcceptCmd()
+	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"--all", "-d", tmpDir, "-f", "json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected no error, got: %v\nStderr: %s", err, stderr.String())
 	}
+	output := stdout.String()
 
 	// Output should be valid JSON
 	var result map[string]interface{}

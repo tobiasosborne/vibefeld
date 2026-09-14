@@ -388,7 +388,8 @@ func TestChallengesCmd_FilterByNonExistentNode(t *testing.T) {
 	defer cleanup()
 
 	cmd := newTestChallengesCmd()
-	output, err := executeChallengesCommand(cmd, "challenges", "--node", "2", "--dir", proofDir)
+	// "1.9" is well-formed but absent. ("2" no longer parses: the root must be 1.)
+	output, err := executeChallengesCommand(cmd, "challenges", "--node", "1.9", "--dir", proofDir)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -397,7 +398,7 @@ func TestChallengesCmd_FilterByNonExistentNode(t *testing.T) {
 	// Should show no challenges
 	lowerOutput := strings.ToLower(output)
 	if !strings.Contains(lowerOutput, "no challenges") {
-		t.Errorf("expected no challenges for node 2, got: %q", output)
+		t.Errorf("expected no challenges for node 1.9, got: %q", output)
 	}
 }
 

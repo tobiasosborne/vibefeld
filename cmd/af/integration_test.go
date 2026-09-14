@@ -113,11 +113,17 @@ func TestTracerBullet_FullWorkflow(t *testing.T) {
 		t.Fatalf("failed to parse jobs JSON: %v\nOutput: %s", err, output)
 	}
 
-	if len(jobsResult.ProverJobs) == 0 {
-		t.Fatal("expected at least one prover job")
+	// Jobs follow the challenge-driven model (internal/jobs): an unchallenged
+	// pending node is verifier work, and prover jobs only appear once a
+	// blocking challenge is raised. The fresh root is therefore a verifier job.
+	if len(jobsResult.VerifierJobs) == 0 {
+		t.Fatalf("expected the fresh root to be a verifier job\nOutput: %s", output)
+	}
+	if len(jobsResult.ProverJobs) != 0 {
+		t.Errorf("expected no prover jobs before any challenge, got %d\nOutput: %s", len(jobsResult.ProverJobs), output)
 	}
 
-	t.Logf("  ✓ Found %d prover job(s)", len(jobsResult.ProverJobs))
+	t.Logf("  ✓ Found %d verifier job(s), %d prover job(s)", len(jobsResult.VerifierJobs), len(jobsResult.ProverJobs))
 
 	// ==========================================================================
 	// Step 2: CLAIM - Prover claims the root node
@@ -146,7 +152,7 @@ func TestTracerBullet_FullWorkflow(t *testing.T) {
 
 	cmd = newIntegrationTestCmd()
 	output, err = executeCommand(cmd, "refine", "1",
-		"--statement", "Assume n is prime and n > 2. By definition of prime, n has no divisors other than 1 and itself.",
+		"Assume n is prime and n > 2. By definition of prime, n has no divisors other than 1 and itself.",
 		"--justification", "assumption",
 		"--owner", "prover-agent-001",
 		"--dir", proofDir,
@@ -165,7 +171,7 @@ func TestTracerBullet_FullWorkflow(t *testing.T) {
 	// Add another refinement step
 	cmd = newIntegrationTestCmd()
 	output, err = executeCommand(cmd, "refine", "1",
-		"--statement", "Since n > 2 and all even numbers > 2 are divisible by 2, n cannot be even. Therefore n is odd.",
+		"Since n > 2 and all even numbers > 2 are divisible by 2, n cannot be even. Therefore n is odd.",
 		"--justification", "modus_ponens",
 		"--owner", "prover-agent-001",
 		"--dir", proofDir,
@@ -282,7 +288,7 @@ func TestTracerBullet_ProverVerifierRoleIsolation(t *testing.T) {
 	// Prover refines
 	cmd = newIntegrationTestCmd()
 	_, err = executeCommand(cmd, "refine", "1",
-		"--statement", "Proof step",
+		"Proof step",
 		"--justification", "assumption",
 		"--owner", "prover-001",
 		"--dir", proofDir,
@@ -352,7 +358,7 @@ func TestTracerBullet_MultipleRefinements(t *testing.T) {
 	for i, r := range refinements {
 		cmd = newIntegrationTestCmd()
 		output, err := executeCommand(cmd, "refine", "1",
-			"--statement", r.statement,
+			r.statement,
 			"--justification", r.inference,
 			"--owner", "prover",
 			"--dir", proofDir,
@@ -430,7 +436,7 @@ func TestTracerBullet_JSONOutput(t *testing.T) {
 	// Refine with JSON
 	cmd = newIntegrationTestCmd()
 	output, err = executeCommand(cmd, "refine", "1",
-		"--statement", "Test",
+		"Test",
 		"--justification", "assumption",
 		"--owner", "test",
 		"--dir", proofDir,

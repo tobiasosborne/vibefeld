@@ -22,7 +22,7 @@ func TestRefineCmd_WithRequiresValidated_ValidSingleDep(t *testing.T) {
 	cmd := newRefineTestCmd()
 	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "First subgoal",
+		"First subgoal",
 		"--dir", tmpDir,
 	)
 	if err != nil {
@@ -33,7 +33,7 @@ func TestRefineCmd_WithRequiresValidated_ValidSingleDep(t *testing.T) {
 	cmd2 := newRefineTestCmd()
 	output, err := executeCommand(cmd2, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Depends on 1.1 being validated",
+		"Depends on 1.1 being validated",
 		"--requires-validated", "1.1",
 		"--dir", tmpDir,
 	)
@@ -82,7 +82,7 @@ func TestRefineCmd_WithRequiresValidated_MultipleDeps(t *testing.T) {
 		cmd := newRefineTestCmd()
 		_, err := executeCommand(cmd, "refine", "1",
 			"--owner", "test-agent",
-			"--statement", "Subgoal",
+			"Subgoal",
 			"--dir", tmpDir,
 		)
 		if err != nil {
@@ -94,7 +94,7 @@ func TestRefineCmd_WithRequiresValidated_MultipleDeps(t *testing.T) {
 	cmd := newRefineTestCmd()
 	output, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Node 1.5 depends on 1.1-1.4 being validated",
+		"Node 1.5 depends on 1.1-1.4 being validated",
 		"--requires-validated", "1.1,1.2,1.3,1.4",
 		"--dir", tmpDir,
 	)
@@ -137,7 +137,7 @@ func TestRefineCmd_WithRequiresValidated_NonExistentDep(t *testing.T) {
 	cmd := newRefineTestCmd()
 	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Depends on non-existent 1.99",
+		"Depends on non-existent 1.99",
 		"--requires-validated", "1.99",
 		"--dir", tmpDir,
 	)
@@ -163,7 +163,7 @@ func TestRefineCmd_WithRequiresValidated_InvalidFormat(t *testing.T) {
 	cmd := newRefineTestCmd()
 	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Some statement",
+		"Some statement",
 		"--requires-validated", "invalid.id.format",
 		"--dir", tmpDir,
 	)
@@ -186,7 +186,7 @@ func TestRefineCmd_WithRequiresValidated_EmptyString(t *testing.T) {
 	cmd := newRefineTestCmd()
 	output, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Statement without validation dependencies",
+		"Statement without validation dependencies",
 		"--requires-validated", "",
 		"--dir", tmpDir,
 	)
@@ -208,7 +208,7 @@ func TestRefineCmd_WithRequiresValidated_MixedValidAndInvalid(t *testing.T) {
 	cmd := newRefineTestCmd()
 	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "First subgoal",
+		"First subgoal",
 		"--dir", tmpDir,
 	)
 	if err != nil {
@@ -219,7 +219,7 @@ func TestRefineCmd_WithRequiresValidated_MixedValidAndInvalid(t *testing.T) {
 	cmd2 := newRefineTestCmd()
 	_, err = executeCommand(cmd2, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Depends on 1.1 and 1.99 being validated",
+		"Depends on 1.1 and 1.99 being validated",
 		"--requires-validated", "1.1,1.99",
 		"--dir", tmpDir,
 	)
@@ -242,7 +242,7 @@ func TestRefineCmd_WithRequiresValidated_BothDependsAndRequiresValidated(t *test
 	cmd := newRefineTestCmd()
 	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "First subgoal",
+		"First subgoal",
 		"--dir", tmpDir,
 	)
 	if err != nil {
@@ -252,7 +252,7 @@ func TestRefineCmd_WithRequiresValidated_BothDependsAndRequiresValidated(t *test
 	cmd2 := newRefineTestCmd()
 	_, err = executeCommand(cmd2, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Second subgoal",
+		"Second subgoal",
 		"--dir", tmpDir,
 	)
 	if err != nil {
@@ -263,7 +263,7 @@ func TestRefineCmd_WithRequiresValidated_BothDependsAndRequiresValidated(t *test
 	cmd3 := newRefineTestCmd()
 	output, err := executeCommand(cmd3, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "References 1.1, requires 1.2 validated",
+		"References 1.1, requires 1.2 validated",
 		"--depends", "1.1",
 		"--requires-validated", "1.2",
 		"--dir", tmpDir,
@@ -313,7 +313,7 @@ func TestRefineCmd_WithRequiresValidated_JSONOutput(t *testing.T) {
 	cmd := newRefineTestCmd()
 	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "First subgoal",
+		"First subgoal",
 		"--dir", tmpDir,
 	)
 	if err != nil {
@@ -324,7 +324,7 @@ func TestRefineCmd_WithRequiresValidated_JSONOutput(t *testing.T) {
 	cmd2 := newRefineTestCmd()
 	output, err := executeCommand(cmd2, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Requires 1.1 validated",
+		"Requires 1.1 validated",
 		"--requires-validated", "1.1",
 		"--format", "json",
 		"--dir", tmpDir,
@@ -363,7 +363,7 @@ func TestRefineCmd_WithRequiresValidated_DependOnSelf(t *testing.T) {
 	cmd := newRefineTestCmd()
 	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Self-referential validation dep",
+		"Self-referential validation dep",
 		"--requires-validated", "1.1", // This is the ID it will get
 		"--dir", tmpDir,
 	)
@@ -382,7 +382,7 @@ func TestRefineCmd_WithRequiresValidated_CrossBranch(t *testing.T) {
 	cmd := newRefineTestCmd()
 	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Branch A step 1",
+		"Branch A step 1",
 		"--dir", tmpDir,
 	)
 	if err != nil {
@@ -404,7 +404,7 @@ func TestRefineCmd_WithRequiresValidated_CrossBranch(t *testing.T) {
 	cmd2 := newRefineTestCmd()
 	_, err = executeCommand(cmd2, "refine", "1.1",
 		"--owner", "test-agent",
-		"--statement", "Branch A step 2",
+		"Branch A step 2",
 		"--dir", tmpDir,
 	)
 	if err != nil {
@@ -415,7 +415,7 @@ func TestRefineCmd_WithRequiresValidated_CrossBranch(t *testing.T) {
 	cmd3 := newRefineTestCmd()
 	output, err := executeCommand(cmd3, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Branch B, requires 1.1.1 validated",
+		"Branch B, requires 1.1.1 validated",
 		"--requires-validated", "1.1.1",
 		"--dir", tmpDir,
 	)

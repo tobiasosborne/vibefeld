@@ -342,7 +342,7 @@ func TestRefineMultiCmd_ChildAlreadyExists(t *testing.T) {
 	cmd1 := newRefineMultiTestCmd()
 	_, err := executeCommand(cmd1, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Existing child",
+		"Existing child",
 		"--dir", tmpDir,
 	)
 	if err != nil {
@@ -535,32 +535,6 @@ func TestRefineMultiCmd_InvalidChildType(t *testing.T) {
 	errStr := err.Error()
 	if !strings.Contains(errStr, "type") && !strings.Contains(errStr, "invalid") {
 		t.Errorf("expected error about invalid type, got: %q", errStr)
-	}
-}
-
-// TestRefineMultiCmd_ConflictWithSingleStatement tests that --children and --statement are mutually exclusive.
-func TestRefineMultiCmd_ConflictWithSingleStatement(t *testing.T) {
-	tmpDir, cleanup := setupRefineMultiTest(t)
-	defer cleanup()
-
-	cmd := newRefineMultiTestCmd()
-	childrenJSON := `[{"statement":"Child 1"}]`
-
-	// Using both --statement and --children should be an error
-	_, err := executeCommand(cmd, "refine", "1",
-		"--owner", "test-agent",
-		"--statement", "Single statement",
-		"--children", childrenJSON,
-		"--dir", tmpDir,
-	)
-
-	if err == nil {
-		t.Fatal("expected error when using both --statement and --children, got nil")
-	}
-
-	errStr := err.Error()
-	if !strings.Contains(errStr, "exclusive") && !strings.Contains(errStr, "both") && !strings.Contains(errStr, "conflict") {
-		t.Errorf("expected error about conflicting flags, got: %q", errStr)
 	}
 }
 
@@ -1054,30 +1028,6 @@ func TestRefineMultiCmd_PositionalArgs_JSONOutput(t *testing.T) {
 	}
 }
 
-// TestRefineMultiCmd_PositionalArgs_ConflictWithStatementFlag tests mutual exclusivity.
-// Using positional args AND --statement should produce an error.
-func TestRefineMultiCmd_PositionalArgs_ConflictWithStatementFlag(t *testing.T) {
-	tmpDir, cleanup := setupRefineMultiTest(t)
-	defer cleanup()
-
-	cmd := newRefineMultiTestCmd()
-	_, err := executeCommand(cmd, "refine", "1",
-		"Positional statement",
-		"--statement", "Flag statement",
-		"--owner", "test-agent",
-		"--dir", tmpDir,
-	)
-
-	if err == nil {
-		t.Fatal("expected error when using both positional args and --statement, got nil")
-	}
-
-	errStr := err.Error()
-	if !strings.Contains(errStr, "exclusive") && !strings.Contains(errStr, "both") && !strings.Contains(errStr, "conflict") {
-		t.Errorf("expected error about conflicting input methods, got: %q", errStr)
-	}
-}
-
 // TestRefineMultiCmd_PositionalArgs_ConflictWithChildrenFlag tests mutual exclusivity.
 // Using positional args AND --children should produce an error.
 func TestRefineMultiCmd_PositionalArgs_ConflictWithChildrenFlag(t *testing.T) {
@@ -1156,7 +1106,7 @@ func TestRefineMultiCmd_PositionalArgs_ExistingChildren(t *testing.T) {
 	cmd1 := newRefineMultiTestCmd()
 	_, err := executeCommand(cmd1, "refine", "1",
 		"--owner", "test-agent",
-		"--statement", "Existing child",
+		"Existing child",
 		"--dir", tmpDir,
 	)
 	if err != nil {

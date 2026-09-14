@@ -83,8 +83,9 @@ func setupLogTestWithEvents(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 
-	// Accept a node
-	nodeID, err = service.ParseNodeID("1")
+	// Accept a node (a leaf: accepting the root would fail while its
+	// children are still pending)
+	nodeID, err = service.ParseNodeID("1.1")
 	if err != nil {
 		cleanup()
 		t.Fatal(err)
