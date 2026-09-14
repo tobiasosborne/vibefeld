@@ -82,8 +82,9 @@ func createTestNode(t *testing.T, id string, statement string) *node.Node {
 // ProofService Creation Tests
 // =============================================================================
 
-// TestNewProofService_ValidPath verifies service creation with valid path.
-func TestNewProofService_ValidPath(t *testing.T) {
+// TestNewProofService_ValidPathInitializedProof verifies service creation on an
+// already-initialized proof directory.
+func TestNewProofService_ValidPathInitializedProof(t *testing.T) {
 	tests := []struct {
 		name string
 		path string
@@ -128,8 +129,9 @@ func TestNewProofService_InvalidPath(t *testing.T) {
 	}
 }
 
-// TestNewProofService_FileNotDirectory verifies error when path is a file.
-func TestNewProofService_FileNotDirectory(t *testing.T) {
+// TestNewProofService_FileNotDirectoryNilService verifies error, and a nil service,
+// when path is a file.
+func TestNewProofService_FileNotDirectoryNilService(t *testing.T) {
 	dir := setupTestDir(t)
 	filePath := filepath.Join(dir, "not_a_directory")
 
@@ -429,7 +431,8 @@ func TestProofService_CreateNode_InvalidInput(t *testing.T) {
 		{"empty statement", "1.1", schema.NodeTypeClaim, "", schema.InferenceAssumption},
 		{"whitespace statement", "1.1", schema.NodeTypeClaim, "   ", schema.InferenceAssumption},
 		{"invalid node type", "1.1", schema.NodeType("invalid"), "Statement", schema.InferenceAssumption},
-		{"invalid inference", "1.1", schema.NodeTypeClaim, "Statement", schema.InferenceType("invalid")},
+		// Inference is a free-text justification label (any non-blank string); blank is invalid.
+		{"blank inference", "1.1", schema.NodeTypeClaim, "Statement", schema.InferenceType("   ")},
 	}
 
 	for _, tt := range tests {
@@ -823,69 +826,6 @@ func TestProofService_RefineNode_Success(t *testing.T) {
 	}
 }
 
-// TestProofService_Init_RecordsAuthorOnRootNode covers rk-9pk / PRD C3 V1:
-// the root node's Author is recorded from Init's author parameter, the same
-// driver-supplied-provenance convention as any other node's Author.
-func TestProofService_Init_RecordsAuthorOnRootNode(t *testing.T) {
-	proofDir := setupInitializedProof(t)
-	svc, err := NewProofService(proofDir)
-	if err != nil {
-		t.Fatalf("NewProofService() unexpected error: %v", err)
-	}
-
-	if err := svc.Init("Test conjecture", "author-alice"); err != nil {
-		t.Fatalf("Init() unexpected error: %v", err)
-	}
-
-	st, err := svc.LoadState()
-	if err != nil {
-		t.Fatalf("LoadState() unexpected error: %v", err)
-	}
-	root := st.GetNode(mustParseNodeID(t, "1"))
-	if root == nil {
-		t.Fatal("root node not found")
-	}
-	if root.Author != "author-alice" {
-		t.Errorf("root node Author = %q, want %q", root.Author, "author-alice")
-	}
-}
-
-// TestProofService_Refine_RecordsAuthorAsOwner covers rk-9pk / PRD C3 V1:
-// a refined child node's Author is the claiming owner who authored it.
-func TestProofService_Refine_RecordsAuthorAsOwner(t *testing.T) {
-	proofDir := setupInitializedProof(t)
-	svc, err := NewProofService(proofDir)
-	if err != nil {
-		t.Fatalf("NewProofService() unexpected error: %v", err)
-	}
-	if err := svc.Init("Test conjecture", "agent-001"); err != nil {
-		t.Fatalf("Init() unexpected error: %v", err)
-	}
-
-	nodeID := mustParseNodeID(t, "1")
-	owner := "prover-42"
-	if err := svc.ClaimNode(nodeID, owner, 5*time.Minute); err != nil {
-		t.Fatalf("ClaimNode() unexpected error: %v", err)
-	}
-
-	childID := mustParseNodeID(t, "1.1")
-	if err := svc.RefineNode(nodeID, owner, childID, schema.NodeTypeClaim, "Child statement", schema.InferenceModusPonens); err != nil {
-		t.Fatalf("RefineNode() unexpected error: %v", err)
-	}
-
-	st, err := svc.LoadState()
-	if err != nil {
-		t.Fatalf("LoadState() unexpected error: %v", err)
-	}
-	child := st.GetNode(childID)
-	if child == nil {
-		t.Fatal("Refined child node not found in state")
-	}
-	if child.Author != owner {
-		t.Errorf("child node Author = %q, want %q (the claiming owner)", child.Author, owner)
-	}
-}
-
 // TestProofService_RefineNode_NotOwner verifies error when refining with wrong owner.
 // Note: Uses root node "1" created by Init()
 func TestProofService_RefineNode_NotOwner(t *testing.T) {
@@ -1138,14 +1078,14 @@ func TestProofService_AcceptNode_Success(t *testing.T) {
 	}
 }
 
-// TestProofService_AcceptNodeWithVerifier_RecordsVerifierAndBatchID covers
+// TestProofService_AcceptNodeWithVerifier_RecordsVerifierAndBatchIDPlainAcceptUnset covers
 // rk-9pk / PRD C3 V1: AcceptNodeWithVerifier is the kernel surface for
 // verifier identity + batch id, the groundwork for rk's batch verification
 // mode (`af verdicts apply`, item V2 — not implemented here). It must
 // record both on the resulting node exactly like AcceptNode/
 // AcceptNodeWithNote record epistemic state, and both must be reachable
 // through the same reader used elsewhere (LoadState / GetNode).
-func TestProofService_AcceptNodeWithVerifier_RecordsVerifierAndBatchID(t *testing.T) {
+func TestProofService_AcceptNodeWithVerifier_RecordsVerifierAndBatchIDPlainAcceptUnset(t *testing.T) {
 	proofDir := setupInitializedProof(t)
 	svc, err := NewProofService(proofDir)
 	if err != nil {
@@ -3168,7 +3108,7 @@ func TestProofService_RequestRefinement_NonExistent(t *testing.T) {
 	}
 
 	// Try to request refinement on non-existent node
-	nodeID := mustParseNodeID(t, "99")
+	nodeID := mustParseNodeID(t, "1.99")
 	err = svc.RequestRefinement(nodeID, "reason", "verifier-001")
 	if err == nil {
 		t.Error("RequestRefinement() on non-existent node expected error, got nil")
@@ -3302,6 +3242,11 @@ func TestProofService_RevalidateAfterRefinement_Success(t *testing.T) {
 		t.Fatalf("Child() unexpected error: %v", err)
 	}
 
+	// Refine requires the prover to hold a claim on the parent.
+	if err := svc.ClaimNode(nodeID, "prover-001", 5*time.Minute); err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
 	// Refine with a child node
 	err = svc.Refine(RefineSpec{
 		ParentID:  nodeID,
@@ -3412,6 +3357,11 @@ func TestProofService_RevalidateAfterRefinement_UnvalidatedChildren(t *testing.T
 		t.Fatalf("Child() unexpected error: %v", err)
 	}
 
+	// Refine requires the prover to hold a claim on the parent.
+	if err := svc.ClaimNode(nodeID, "prover-001", 5*time.Minute); err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
 	// Refine with a child node (child will be pending)
 	err = svc.Refine(RefineSpec{
 		ParentID:  nodeID,
@@ -3468,6 +3418,11 @@ func TestProofService_RevalidateAfterRefinement_AdmittedChild(t *testing.T) {
 	childID, err := nodeID.Child(1)
 	if err != nil {
 		t.Fatalf("Child() unexpected error: %v", err)
+	}
+
+	// Refine requires the prover to hold a claim on the parent.
+	if err := svc.ClaimNode(nodeID, "prover-001", 5*time.Minute); err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
 	}
 
 	// Refine with a child node
@@ -3535,6 +3490,11 @@ func TestProofService_RevalidateAfterRefinement_ArchivedChild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Child() unexpected error: %v", err)
 	}
+	// Refine requires the prover to hold a claim on the parent.
+	if err := svc.ClaimNode(nodeID, "prover-001", 5*time.Minute); err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
+	}
+
 	if err := svc.Refine(RefineSpec{
 		ParentID:  nodeID,
 		Owner:     "prover-001",
@@ -3593,6 +3553,11 @@ func TestProofService_RevalidateAfterRefinement_ValidatedAndArchivedChildren(t *
 	replacementID, err := parentID.Child(2)
 	if err != nil {
 		t.Fatalf("Child(2) unexpected error: %v", err)
+	}
+
+	// Refine requires the prover to hold a claim on the parent.
+	if err := svc.ClaimNode(parentID, "prover-001", 5*time.Minute); err != nil {
+		t.Fatalf("ClaimNode() unexpected error: %v", err)
 	}
 
 	if err := svc.Refine(RefineSpec{

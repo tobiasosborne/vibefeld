@@ -33,7 +33,7 @@ func TestWritePendingDef(t *testing.T) {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	pd := node.NewPendingDef("continuity", nodeID)
+	pd := mustNewPendingDef(t, "continuity", nodeID)
 
 	err = WritePendingDef(dir, nodeID, pd)
 	if err != nil {
@@ -89,7 +89,7 @@ func TestWritePendingDef_CreatesPendingDefsDir(t *testing.T) {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	pd := node.NewPendingDef("limit", nodeID)
+	pd := mustNewPendingDef(t, "limit", nodeID)
 
 	err = WritePendingDef(dir, nodeID, pd)
 	if err != nil {
@@ -138,7 +138,7 @@ func TestWritePendingDef_EmptyNodeID(t *testing.T) {
 	dir := t.TempDir()
 
 	nodeID, _ := types.Parse("1.1")
-	pd := node.NewPendingDef("term", nodeID)
+	pd := mustNewPendingDef(t, "term", nodeID)
 
 	err := WritePendingDef(dir, types.NodeID{}, pd)
 	if err == nil {
@@ -161,7 +161,7 @@ func TestReadPendingDef(t *testing.T) {
 	}
 
 	// Create a pending def and write it manually
-	pd := node.NewPendingDef("derivative", nodeID)
+	pd := mustNewPendingDef(t, "derivative", nodeID)
 
 	pdJSON, err := json.Marshal(pd)
 	if err != nil {
@@ -269,7 +269,7 @@ func TestReadPendingDef_InvalidJSON(t *testing.T) {
 // an error for invalid paths.
 func TestWritePendingDef_InvalidPath(t *testing.T) {
 	nodeID, _ := types.Parse("1.1")
-	pd := node.NewPendingDef("test", nodeID)
+	pd := mustNewPendingDef(t, "test", nodeID)
 
 	t.Run("empty_path", func(t *testing.T) {
 		err := WritePendingDef("", nodeID, pd)
@@ -323,7 +323,7 @@ func TestWritePendingDef_PermissionDenied(t *testing.T) {
 	})
 
 	nodeID, _ := types.Parse("1.1")
-	pd := node.NewPendingDef("test", nodeID)
+	pd := mustNewPendingDef(t, "test", nodeID)
 
 	err := WritePendingDef(dir, nodeID, pd)
 	if err == nil {
@@ -343,7 +343,7 @@ func TestWritePendingDef_Overwrite(t *testing.T) {
 	nodeID, _ := types.Parse("1.4")
 
 	// Create initial pending def
-	pd := node.NewPendingDef("integral", nodeID)
+	pd := mustNewPendingDef(t, "integral", nodeID)
 
 	// Write it first time
 	err := WritePendingDef(dir, nodeID, pd)
@@ -352,7 +352,7 @@ func TestWritePendingDef_Overwrite(t *testing.T) {
 	}
 
 	// Create a new pending def with same nodeID but different term
-	pd2 := node.NewPendingDef("riemann_integral", nodeID)
+	pd2 := mustNewPendingDef(t, "riemann_integral", nodeID)
 
 	// Write it again - should overwrite
 	err = WritePendingDef(dir, nodeID, pd2)
@@ -388,9 +388,9 @@ func TestListPendingDefs(t *testing.T) {
 	nodeID2, _ := types.Parse("1.2")
 	nodeID3, _ := types.Parse("1.3.1")
 
-	pd1 := node.NewPendingDef("term1", nodeID1)
-	pd2 := node.NewPendingDef("term2", nodeID2)
-	pd3 := node.NewPendingDef("term3", nodeID3)
+	pd1 := mustNewPendingDef(t, "term1", nodeID1)
+	pd2 := mustNewPendingDef(t, "term2", nodeID2)
+	pd3 := mustNewPendingDef(t, "term3", nodeID3)
 
 	for _, pair := range []struct {
 		nodeID types.NodeID
@@ -478,7 +478,7 @@ func TestListPendingDefs_IgnoresNonJSONFiles(t *testing.T) {
 
 	// Create a valid pending def
 	nodeID, _ := types.Parse("1.1")
-	pd := node.NewPendingDef("valid", nodeID)
+	pd := mustNewPendingDef(t, "valid", nodeID)
 	if err := WritePendingDef(dir, nodeID, pd); err != nil {
 		t.Fatalf("failed to write pending def: %v", err)
 	}
@@ -527,7 +527,7 @@ func TestDeletePendingDef(t *testing.T) {
 
 	// Create a pending def
 	nodeID, _ := types.Parse("1.5")
-	pd := node.NewPendingDef("to-delete", nodeID)
+	pd := mustNewPendingDef(t, "to-delete", nodeID)
 	if err := WritePendingDef(dir, nodeID, pd); err != nil {
 		t.Fatalf("failed to write pending def: %v", err)
 	}
@@ -595,9 +595,9 @@ func TestDeletePendingDef_DoesNotAffectOthers(t *testing.T) {
 	nodeID2, _ := types.Parse("1.2")
 	nodeID3, _ := types.Parse("1.3")
 
-	pd1 := node.NewPendingDef("keep1", nodeID1)
-	pd2 := node.NewPendingDef("delete-me", nodeID2)
-	pd3 := node.NewPendingDef("keep2", nodeID3)
+	pd1 := mustNewPendingDef(t, "keep1", nodeID1)
+	pd2 := mustNewPendingDef(t, "delete-me", nodeID2)
+	pd3 := mustNewPendingDef(t, "keep2", nodeID3)
 
 	for _, pair := range []struct {
 		nodeID types.NodeID
@@ -638,7 +638,7 @@ func TestWritePendingDef_AtomicWrite(t *testing.T) {
 	}
 
 	nodeID, _ := types.Parse("1.6")
-	pd := node.NewPendingDef("atomic-test", nodeID)
+	pd := mustNewPendingDef(t, "atomic-test", nodeID)
 
 	// Write the pending def
 	err := WritePendingDef(dir, nodeID, pd)
@@ -678,7 +678,7 @@ func TestPendingDefRoundTrip(t *testing.T) {
 		t.Fatalf("failed to parse node ID: %v", err)
 	}
 
-	original := node.NewPendingDef("injective", nodeID)
+	original := mustNewPendingDef(t, "injective", nodeID)
 
 	// Write
 	if err := WritePendingDef(dir, nodeID, original); err != nil {
@@ -722,7 +722,7 @@ func TestPendingDefFileFormat(t *testing.T) {
 	}
 
 	nodeID, _ := types.Parse("1.8")
-	pd := node.NewPendingDef("format-test", nodeID)
+	pd := mustNewPendingDef(t, "format-test", nodeID)
 
 	if err := WritePendingDef(dir, nodeID, pd); err != nil {
 		t.Fatalf("WritePendingDef failed: %v", err)
@@ -825,7 +825,7 @@ func TestPendingDefWithResolvedStatus(t *testing.T) {
 	}
 
 	nodeID, _ := types.Parse("1.9")
-	pd := node.NewPendingDef("resolved-term", nodeID)
+	pd := mustNewPendingDef(t, "resolved-term", nodeID)
 
 	// Resolve the pending def
 	if err := pd.Resolve("def-123"); err != nil {
@@ -849,4 +849,15 @@ func TestPendingDefWithResolvedStatus(t *testing.T) {
 	if retrieved.ResolvedBy != "def-123" {
 		t.Errorf("ResolvedBy mismatch: got %q, want %q", retrieved.ResolvedBy, "def-123")
 	}
+}
+
+// mustNewPendingDef wraps node.NewPendingDef, which returns an error
+// (random ID generation), failing the test on error.
+func mustNewPendingDef(t testing.TB, term string, requestedBy types.NodeID) *node.PendingDef {
+	t.Helper()
+	pd, err := node.NewPendingDef(term, requestedBy)
+	if err != nil {
+		t.Fatalf("node.NewPendingDef(%q) failed: %v", term, err)
+	}
+	return pd
 }

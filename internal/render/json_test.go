@@ -758,9 +758,10 @@ func TestFormatJSON_RecoveryArrayType(t *testing.T) {
 	}
 }
 
-// TestRenderNodeJSON_NoHTMLEscape tests that HTML characters are not escaped in JSON output.
+// TestRenderNodeJSON_NoHTMLEscapeRoundTrip tests that HTML characters are not escaped in
+// JSON output and that the statement round-trips through json.Unmarshal.
 // This addresses issue vibefeld-9cd0 where 'k>=0' was being rendered as 'k\u003e=0'.
-func TestRenderNodeJSON_NoHTMLEscape(t *testing.T) {
+func TestRenderNodeJSON_NoHTMLEscapeRoundTrip(t *testing.T) {
 	tests := []struct {
 		name      string
 		statement string

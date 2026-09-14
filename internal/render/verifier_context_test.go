@@ -244,7 +244,7 @@ func TestRenderVerifierContext_ShowsAssumptions(t *testing.T) {
 	s.AddNode(n)
 
 	// Add the referenced assumption
-	assume := node.NewAssumptionWithJustification("Assume P(k) holds for some k", "Induction hypothesis")
+	assume := mustNewAssumptionWithJustification(t, "Assume P(k) holds for some k", "Induction hypothesis")
 	s.AddAssumption(assume)
 
 	// Create a challenge

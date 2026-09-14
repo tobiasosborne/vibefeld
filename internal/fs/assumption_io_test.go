@@ -28,7 +28,7 @@ func TestWriteAssumption(t *testing.T) {
 			t.Fatalf("failed to create assumptions directory: %v", err)
 		}
 
-		assumption := node.NewAssumption("All natural numbers are positive")
+		assumption := mustNewAssumption(t, "All natural numbers are positive")
 
 		err := WriteAssumption(dir, assumption)
 		if err != nil {
@@ -70,7 +70,7 @@ func TestWriteAssumption(t *testing.T) {
 			t.Fatalf("failed to create assumptions directory: %v", err)
 		}
 
-		assumption := node.NewAssumptionWithJustification(
+		assumption := mustNewAssumptionWithJustification(t,
 			"The set S is non-empty",
 			"This follows from the problem statement",
 		)
@@ -101,7 +101,7 @@ func TestWriteAssumption(t *testing.T) {
 		dir := t.TempDir()
 		// Do NOT pre-create assumptions/ directory
 
-		assumption := node.NewAssumption("Test assumption")
+		assumption := mustNewAssumption(t, "Test assumption")
 
 		err := WriteAssumption(dir, assumption)
 		if err != nil {
@@ -180,7 +180,7 @@ func TestReadAssumption(t *testing.T) {
 		}
 
 		// Use WriteAssumption to create, then read back
-		original := node.NewAssumptionWithJustification(
+		original := mustNewAssumptionWithJustification(t,
 			"All primes greater than 2 are odd",
 			"Well-known mathematical fact",
 		)
@@ -283,7 +283,7 @@ func TestReadAssumption_NotFound(t *testing.T) {
 // for invalid directory paths.
 func TestWriteAssumption_InvalidPath(t *testing.T) {
 	t.Run("empty_path", func(t *testing.T) {
-		assumption := node.NewAssumption("Test assumption")
+		assumption := mustNewAssumption(t, "Test assumption")
 
 		err := WriteAssumption("", assumption)
 		if err == nil {
@@ -292,7 +292,7 @@ func TestWriteAssumption_InvalidPath(t *testing.T) {
 	})
 
 	t.Run("whitespace_path", func(t *testing.T) {
-		assumption := node.NewAssumption("Test assumption")
+		assumption := mustNewAssumption(t, "Test assumption")
 
 		err := WriteAssumption("   ", assumption)
 		if err == nil {
@@ -309,7 +309,7 @@ func TestWriteAssumption_InvalidPath(t *testing.T) {
 			t.Fatalf("failed to create test file: %v", err)
 		}
 
-		assumption := node.NewAssumption("Test assumption")
+		assumption := mustNewAssumption(t, "Test assumption")
 		err := WriteAssumption(filePath, assumption)
 		if err == nil {
 			t.Error("expected error when path is a file, got nil")
@@ -336,7 +336,7 @@ func TestWriteAssumption_InvalidPath(t *testing.T) {
 			os.Chmod(assumptionsDir, 0755)
 		})
 
-		assumption := node.NewAssumption("Test assumption")
+		assumption := mustNewAssumption(t, "Test assumption")
 		err := WriteAssumption(dir, assumption)
 		if err == nil {
 			t.Error("expected error when directory is read-only, got nil")
@@ -344,7 +344,7 @@ func TestWriteAssumption_InvalidPath(t *testing.T) {
 	})
 
 	t.Run("null_byte_in_path", func(t *testing.T) {
-		assumption := node.NewAssumption("Test assumption")
+		assumption := mustNewAssumption(t, "Test assumption")
 
 		err := WriteAssumption("path\x00invalid", assumption)
 		if err == nil {
@@ -364,7 +364,7 @@ func TestWriteAssumption_Overwrite(t *testing.T) {
 		}
 
 		// Create initial assumption
-		assumption := node.NewAssumption("Original statement")
+		assumption := mustNewAssumption(t, "Original statement")
 		originalID := assumption.ID
 
 		if err := WriteAssumption(dir, assumption); err != nil {
@@ -409,8 +409,8 @@ func TestWriteAssumption_Overwrite(t *testing.T) {
 		}
 
 		// Create two assumptions
-		assumption1 := node.NewAssumption("First assumption")
-		assumption2 := node.NewAssumption("Second assumption")
+		assumption1 := mustNewAssumption(t, "First assumption")
+		assumption2 := mustNewAssumption(t, "Second assumption")
 
 		if err := WriteAssumption(dir, assumption1); err != nil {
 			t.Fatalf("WriteAssumption for assumption1 failed: %v", err)
@@ -468,7 +468,7 @@ func TestListAssumptions(t *testing.T) {
 			t.Fatalf("failed to create assumptions directory: %v", err)
 		}
 
-		assumption := node.NewAssumption("Test assumption")
+		assumption := mustNewAssumption(t, "Test assumption")
 		if err := WriteAssumption(dir, assumption); err != nil {
 			t.Fatalf("WriteAssumption failed: %v", err)
 		}
@@ -495,9 +495,9 @@ func TestListAssumptions(t *testing.T) {
 
 		// Create multiple assumptions
 		assumptions := []*node.Assumption{
-			node.NewAssumption("First assumption"),
-			node.NewAssumption("Second assumption"),
-			node.NewAssumption("Third assumption"),
+			mustNewAssumption(t, "First assumption"),
+			mustNewAssumption(t, "Second assumption"),
+			mustNewAssumption(t, "Third assumption"),
 		}
 
 		expectedKeys := make([]string, len(assumptions))
@@ -536,7 +536,7 @@ func TestListAssumptions(t *testing.T) {
 		}
 
 		// Create a valid assumption
-		assumption := node.NewAssumption("Valid assumption")
+		assumption := mustNewAssumption(t, "Valid assumption")
 		if err := WriteAssumption(dir, assumption); err != nil {
 			t.Fatalf("WriteAssumption failed: %v", err)
 		}
@@ -571,7 +571,7 @@ func TestListAssumptions(t *testing.T) {
 		}
 
 		// Create a valid assumption
-		assumption := node.NewAssumption("Valid assumption")
+		assumption := mustNewAssumption(t, "Valid assumption")
 		if err := WriteAssumption(dir, assumption); err != nil {
 			t.Fatalf("WriteAssumption failed: %v", err)
 		}
@@ -626,7 +626,7 @@ func TestDeleteAssumption(t *testing.T) {
 		}
 
 		// Create an assumption
-		assumption := node.NewAssumption("To be deleted")
+		assumption := mustNewAssumption(t, "To be deleted")
 		if err := WriteAssumption(dir, assumption); err != nil {
 			t.Fatalf("WriteAssumption failed: %v", err)
 		}
@@ -677,8 +677,8 @@ func TestDeleteAssumption(t *testing.T) {
 		}
 
 		// Create two assumptions
-		assumption1 := node.NewAssumption("First assumption")
-		assumption2 := node.NewAssumption("Second assumption")
+		assumption1 := mustNewAssumption(t, "First assumption")
+		assumption2 := mustNewAssumption(t, "Second assumption")
 
 		if err := WriteAssumption(dir, assumption1); err != nil {
 			t.Fatalf("WriteAssumption for assumption1 failed: %v", err)
@@ -760,7 +760,7 @@ func TestDeleteAssumption(t *testing.T) {
 		}
 
 		// Create an assumption
-		assumption := node.NewAssumption("Cannot delete")
+		assumption := mustNewAssumption(t, "Cannot delete")
 		if err := WriteAssumption(dir, assumption); err != nil {
 			t.Fatalf("WriteAssumption failed: %v", err)
 		}
@@ -795,27 +795,27 @@ func TestAssumptionIO_RoundTrip(t *testing.T) {
 	}{
 		{
 			name:       "simple_assumption",
-			assumption: node.NewAssumption("Simple statement"),
+			assumption: mustNewAssumption(t, "Simple statement"),
 		},
 		{
 			name:       "with_justification",
-			assumption: node.NewAssumptionWithJustification("Statement with justification", "Because it's needed"),
+			assumption: mustNewAssumptionWithJustification(t, "Statement with justification", "Because it's needed"),
 		},
 		{
 			name: "with_special_characters",
-			assumption: node.NewAssumption(
+			assumption: mustNewAssumption(t,
 				"Statement with \"quotes\" and 'apostrophes' and newlines\nand tabs\t",
 			),
 		},
 		{
 			name: "unicode_statement",
-			assumption: node.NewAssumption(
+			assumption: mustNewAssumption(t,
 				"Statement with unicode: \u03c0 \u2260 0 and \u2200x \u2208 \u211d",
 			),
 		},
 		{
 			name:       "long_statement",
-			assumption: node.NewAssumption(string(make([]byte, 10000))),
+			assumption: mustNewAssumption(t, string(make([]byte, 10000))),
 		},
 	}
 
@@ -908,4 +908,26 @@ func TestReadAssumption_InvalidJSON(t *testing.T) {
 			t.Error("expected error for wrong JSON type, got nil")
 		}
 	})
+}
+
+// mustNewAssumption wraps node.NewAssumption, which returns an error
+// (random ID generation), failing the test on error.
+func mustNewAssumption(t testing.TB, statement string) *node.Assumption {
+	t.Helper()
+	a, err := node.NewAssumption(statement)
+	if err != nil {
+		t.Fatalf("node.NewAssumption(%q) failed: %v", statement, err)
+	}
+	return a
+}
+
+// mustNewAssumptionWithJustification wraps node.NewAssumptionWithJustification,
+// failing the test on error.
+func mustNewAssumptionWithJustification(t testing.TB, statement, justification string) *node.Assumption {
+	t.Helper()
+	a, err := node.NewAssumptionWithJustification(statement, justification)
+	if err != nil {
+		t.Fatalf("node.NewAssumptionWithJustification(%q) failed: %v", statement, err)
+	}
+	return a
 }

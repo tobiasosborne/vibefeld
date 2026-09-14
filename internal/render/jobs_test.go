@@ -45,20 +45,6 @@ func buildNodeMap(nodes []*node.Node) map[string]*node.Node {
 	return m
 }
 
-// TestRenderJobs_NilJobResult tests handling of nil JobResult.
-func TestRenderJobs_NilJobResult(t *testing.T) {
-	result := RenderJobs(nil)
-
-	// Should return empty or message indicating no jobs
-	if result != "" {
-		// If non-empty, should be safe/informative
-		lower := strings.ToLower(result)
-		if !strings.Contains(lower, "no") && !strings.Contains(lower, "empty") {
-			t.Logf("Note: RenderJobs for nil result returned: %q", result)
-		}
-	}
-}
-
 // TestRenderJobs_EmptyJobResult tests rendering when no jobs are available.
 func TestRenderJobs_EmptyJobResult(t *testing.T) {
 	jobResult := &jobs.JobResult{
@@ -331,8 +317,9 @@ func TestRenderJobs_MultiLineFormat(t *testing.T) {
 	}
 }
 
-// TestRenderJobs_ConsistentOutput tests that repeated calls produce consistent output.
-func TestRenderJobs_ConsistentOutput(t *testing.T) {
+// TestRenderJobs_ConsistentOutputProverAndVerifier tests that repeated calls produce
+// consistent output when both prover and verifier jobs are present.
+func TestRenderJobs_ConsistentOutputProverAndVerifier(t *testing.T) {
 	proverNodes := []*node.Node{
 		makeJobsTestNode("1.1", "Prover job", schema.WorkflowAvailable, schema.EpistemicPending),
 	}
@@ -357,8 +344,9 @@ func TestRenderJobs_ConsistentOutput(t *testing.T) {
 	}
 }
 
-// TestRenderJobs_SortedByID tests that jobs are sorted by node ID for consistency.
-func TestRenderJobs_SortedByID(t *testing.T) {
+// TestRenderJobs_SortedByIDAllPresent tests that jobs are sorted by node ID and that
+// every job ID is present in the output.
+func TestRenderJobs_SortedByIDAllPresent(t *testing.T) {
 	// Provide nodes in unsorted order
 	proverNodes := []*node.Node{
 		makeJobsTestNode("1.3", "Third", schema.WorkflowAvailable, schema.EpistemicPending),

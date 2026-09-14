@@ -57,7 +57,7 @@ func createTestDefinition(t *testing.T, s *state.State, name, content string) *n
 func createTestAssumption(t *testing.T, s *state.State, statement string) *node.Assumption {
 	t.Helper()
 
-	assn := node.NewAssumption(statement)
+	assn := mustNewAssumption(t, statement)
 	s.AddAssumption(assn)
 	return assn
 }
@@ -964,4 +964,15 @@ func TestValidateContextRefs_UsesLookupInterface(t *testing.T) {
 	if retrieved != nil && retrieved.ID != def.ID {
 		t.Errorf("State.GetDefinition() returned wrong definition: got ID %s, want %s", retrieved.ID, def.ID)
 	}
+}
+
+// mustNewAssumption wraps node.NewAssumption, which returns an error
+// (random ID generation), failing the test on error.
+func mustNewAssumption(t testing.TB, statement string) *node.Assumption {
+	t.Helper()
+	a, err := node.NewAssumption(statement)
+	if err != nil {
+		t.Fatalf("node.NewAssumption(%q) failed: %v", statement, err)
+	}
+	return a
 }

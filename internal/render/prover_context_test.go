@@ -173,10 +173,10 @@ func TestRenderProverContext_WithAssumptions(t *testing.T) {
 	s.AddNode(n)
 
 	// Add assumptions to state
-	assume1 := node.NewAssumption("Let n be a positive integer")
+	assume1 := mustNewAssumption(t, "Let n be a positive integer")
 	s.AddAssumption(assume1)
 
-	assume2 := node.NewAssumptionWithJustification("Assume P(k) holds for some k", "Induction hypothesis")
+	assume2 := mustNewAssumptionWithJustification(t, "Assume P(k) holds for some k", "Induction hypothesis")
 	s.AddAssumption(assume2)
 
 	rootID, _ := types.Parse("1")
@@ -1063,4 +1063,26 @@ func TestRenderProverContext_SpecialCharactersInStatement(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mustNewAssumption wraps node.NewAssumption, which returns an error
+// (random ID generation), failing the test on error.
+func mustNewAssumption(t testing.TB, statement string) *node.Assumption {
+	t.Helper()
+	a, err := node.NewAssumption(statement)
+	if err != nil {
+		t.Fatalf("node.NewAssumption(%q) failed: %v", statement, err)
+	}
+	return a
+}
+
+// mustNewAssumptionWithJustification wraps node.NewAssumptionWithJustification,
+// failing the test on error.
+func mustNewAssumptionWithJustification(t testing.TB, statement, justification string) *node.Assumption {
+	t.Helper()
+	a, err := node.NewAssumptionWithJustification(statement, justification)
+	if err != nil {
+		t.Fatalf("node.NewAssumptionWithJustification(%q) failed: %v", statement, err)
+	}
+	return a
 }

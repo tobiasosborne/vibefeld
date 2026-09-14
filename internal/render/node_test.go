@@ -411,6 +411,16 @@ func TestRenderNode_SpecialCharacters(t *testing.T) {
 func TestRenderNode_FormatConsistency(t *testing.T) {
 	n := makeTestNode("1.2", schema.NodeTypeClaim, "Test statement", schema.InferenceModusPonens)
 
+	// The state is colorized when color is enabled (the package default), which
+	// wraps it in ANSI codes; check the plain layout with color off.
+	wasEnabled := IsColorEnabled()
+	DisableColor()
+	defer func() {
+		if wasEnabled {
+			EnableColor()
+		}
+	}()
+
 	// Expected format: [1.2] claim (pending): "Test statement"
 	result := RenderNode(n)
 

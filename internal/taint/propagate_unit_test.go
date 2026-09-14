@@ -160,6 +160,17 @@ func TestPropagateTaint_NoDescendants(t *testing.T) {
 	if len(changed) != 0 {
 		t.Errorf("PropagateTaint() with no descendants returned %d changed nodes, want 0", len(changed))
 	}
+
+	// A clean node whose only companion in allNodes is a sibling (not a
+	// descendant or ancestor) has nothing to propagate either.
+	sibling := makeNode("1.1", schema.EpistemicValidated, node.TaintClean)
+	nonDescendant := makeNode("1.2", schema.EpistemicValidated, node.TaintClean)
+
+	changed2 := PropagateTaint(sibling, []*node.Node{sibling, nonDescendant})
+
+	if len(changed2) != 0 {
+		t.Errorf("PropagateTaint() with only siblings returned %d changed nodes, want 0", len(changed2))
+	}
 }
 
 func TestPropagateTaint_UnresolvedPropagates(t *testing.T) {
