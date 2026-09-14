@@ -143,6 +143,7 @@ func TestConcurrent_TwoAgentsClaimSameNode(t *testing.T) {
 
 // TestConcurrent_LockTimeoutAndReaping tests that expired locks can be reaped.
 func TestConcurrent_LockTimeoutAndReaping(t *testing.T) {
+	slowLockExpiryTest(t)
 	proofDir, cleanup := setupConcurrentTest(t)
 	defer cleanup()
 
@@ -186,8 +187,8 @@ func TestConcurrent_LockTimeoutAndReaping(t *testing.T) {
 		t.Error("Lock should not be expired immediately after acquisition")
 	}
 
-	// Wait for the lock to expire
-	time.Sleep(20 * time.Millisecond)
+	// Wait for the lock to expire (past ClockSkewTolerance)
+	waitForLockExpiry(t, shortTimeout)
 
 	// Verify lock is now expired
 	if !lk.IsExpired() {
@@ -604,6 +605,7 @@ func TestConcurrent_RaceConditionOnClaim(t *testing.T) {
 // TestConcurrent_ExpiredLockCanBeReacquired tests that after a lock expires,
 // another agent can acquire it.
 func TestConcurrent_ExpiredLockCanBeReacquired(t *testing.T) {
+	slowLockExpiryTest(t)
 	manager := lock.NewManager()
 	nodeID, _ := types.Parse("1")
 
@@ -619,8 +621,8 @@ func TestConcurrent_ExpiredLockCanBeReacquired(t *testing.T) {
 		t.Error("Second agent should not be able to acquire locked node")
 	}
 
-	// Wait for lock to expire
-	time.Sleep(60 * time.Millisecond)
+	// Wait for lock to expire (past ClockSkewTolerance)
+	waitForLockExpiry(t, 50*time.Millisecond)
 
 	// Now second agent should be able to acquire (expired locks can be replaced)
 	lk, err := manager.Acquire(nodeID, "agent-second", 5*time.Minute)

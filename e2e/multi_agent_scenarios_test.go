@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -1126,7 +1127,7 @@ func TestConcurrentAgents_ParallelOperations(t *testing.T) {
 	wg.Add(len(childIDs))
 
 	var mu sync.Mutex
-	errors := make([]error, len(childIDs))
+	acceptErrs := make([]error, len(childIDs))
 
 	start := make(chan struct{})
 
@@ -1138,7 +1139,7 @@ func TestConcurrentAgents_ParallelOperations(t *testing.T) {
 			<-start
 			err := svc.AcceptNode(id)
 			mu.Lock()
-			errors[idx] = err
+			acceptErrs[idx] = err
 			mu.Unlock()
 		}()
 	}
@@ -1151,12 +1152,14 @@ func TestConcurrentAgents_ParallelOperations(t *testing.T) {
 	// Check how many succeeded
 	successCount := 0
 	casFailures := 0
-	for i, err := range errors {
+	for i, err := range acceptErrs {
 		if err == nil {
 			successCount++
 			t.Logf("  Child %s accepted successfully", childIDs[i])
-		} else if err.Error() != "" && (err.Error()[:10] == "concurrent" || err.Error()[:6] == "concur") {
-			// CAS failure - expected in concurrent scenario
+		} else if errors.Is(err, service.ErrConcurrentModification) {
+			// CAS failure - expected in concurrent scenario. (Matched with
+			// errors.Is: the message now carries an error-code prefix, e.g.
+			// "VALIDATION_INVARIANT_FAILED: concurrent modification detected".)
 			casFailures++
 			t.Logf("  Child %s got CAS failure (expected): %v", childIDs[i], err)
 		} else {

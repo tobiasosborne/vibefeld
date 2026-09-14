@@ -156,6 +156,7 @@ func TestErrorRecovery_AgentCrashDuringRefine(t *testing.T) {
 // TestErrorRecovery_LockAcquiredAgentDies tests that when an agent acquires a lock
 // and then dies, the system can recover via lock expiration and reaping.
 func TestErrorRecovery_LockAcquiredAgentDies(t *testing.T) {
+	slowLockExpiryTest(t)
 	proofDir, cleanup := setupErrorRecoveryTest(t)
 	defer cleanup()
 
@@ -188,8 +189,8 @@ func TestErrorRecovery_LockAcquiredAgentDies(t *testing.T) {
 	t.Logf("Dead agent acquired lock, expires: %v", lk.ExpiresAt())
 
 	// Agent dies without releasing - simulate by doing nothing
-	// Wait for lock to expire
-	time.Sleep(40 * time.Millisecond)
+	// Wait for lock to expire (past ClockSkewTolerance)
+	waitForLockExpiry(t, shortTimeout)
 
 	// Verify lock is expired
 	if !lk.IsExpired() {
@@ -224,6 +225,7 @@ func TestErrorRecovery_LockAcquiredAgentDies(t *testing.T) {
 // TestErrorRecovery_MultipleDeadAgents tests recovery when multiple agents die
 // with active locks.
 func TestErrorRecovery_MultipleDeadAgents(t *testing.T) {
+	slowLockExpiryTest(t)
 	proofDir, cleanup := setupErrorRecoveryTest(t)
 	defer cleanup()
 
@@ -255,8 +257,8 @@ func TestErrorRecovery_MultipleDeadAgents(t *testing.T) {
 
 	t.Logf("Created %d locks from 'dead' agents", len(nodeIDs))
 
-	// Wait for all locks to expire
-	time.Sleep(35 * time.Millisecond)
+	// Wait for all locks to expire (past ClockSkewTolerance)
+	waitForLockExpiry(t, 25*time.Millisecond)
 
 	// Reap all expired locks
 	reaped, err := lockMgr.ReapExpired()

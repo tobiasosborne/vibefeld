@@ -67,18 +67,28 @@ func createTestLockFile(t *testing.T, locksDir string, nodeID types.NodeID, owne
 func createTestStaleLockFile(t *testing.T, locksDir string, nodeID types.NodeID, owner string) string {
 	t.Helper()
 
-	// Create lock with very short timeout
-	lk, err := lock.NewClaimLock(nodeID, owner, 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("NewLock(%s, %s) failed: %v", nodeID, owner, err)
-	}
-
-	// Wait for it to expire
-	time.Sleep(10 * time.Millisecond)
-
-	data, err := json.Marshal(lk)
+	// Build the lock file as another process would have written it, with an
+	// expiry already past lock.ClockSkewTolerance. (A 1ns timeout plus a short
+	// sleep is not stale: IsStale allows the tolerance as a grace period.)
+	now := time.Now().UTC()
+	expired := now.Add(-2 * lock.ClockSkewTolerance)
+	data, err := json.Marshal(map[string]string{
+		"node_id":     nodeID.String(),
+		"owner":       owner,
+		"acquired_at": expired.Add(-time.Minute).Format(time.RFC3339Nano),
+		"expires_at":  expired.Format(time.RFC3339Nano),
+	})
 	if err != nil {
 		t.Fatalf("Marshal lock failed: %v", err)
+	}
+
+	// Sanity check: the file must parse as a stale ClaimLock.
+	var lk lock.ClaimLock
+	if err := json.Unmarshal(data, &lk); err != nil {
+		t.Fatalf("stale lock JSON does not parse: %v", err)
+	}
+	if !lk.IsStale() {
+		t.Fatalf("stale lock for %s is not stale", nodeID)
 	}
 
 	lockPath := filepath.Join(locksDir, nodeID.String()+".lock")

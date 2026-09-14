@@ -108,6 +108,7 @@ func TestLockLedger_LockExpiresDuringLedgerWrite(t *testing.T) {
 // expires and is reaped, another agent can successfully claim the node. This tests
 // the full lifecycle of lock expiration, reaping, and re-acquisition.
 func TestLockLedger_NewAgentClaimsAfterExpiredLockReaped(t *testing.T) {
+	slowLockExpiryTest(t)
 	proofDir, cleanup := setupLockLedgerTest(t)
 	defer cleanup()
 
@@ -148,8 +149,8 @@ func TestLockLedger_NewAgentClaimsAfterExpiredLockReaped(t *testing.T) {
 		t.Error("Node should be locked after acquisition")
 	}
 
-	// Wait for lock to expire
-	time.Sleep(30 * time.Millisecond)
+	// Wait for lock to expire (past ClockSkewTolerance)
+	waitForLockExpiry(t, shortTimeout)
 
 	// Verify lock is now expired
 	if !lk.IsExpired() {
@@ -352,6 +353,7 @@ func TestLockLedger_LedgerAppendAfterLockExpires(t *testing.T) {
 // PersistentManager correctly reconstructs lock state from the ledger after
 // a restart, and handles expired locks properly.
 func TestLockLedger_PersistentManagerReplayAfterLockExpire(t *testing.T) {
+	slowLockExpiryTest(t)
 	proofDir, cleanup := setupLockLedgerTest(t)
 	defer cleanup()
 
@@ -390,8 +392,8 @@ func TestLockLedger_PersistentManagerReplayAfterLockExpire(t *testing.T) {
 		t.Errorf("Expected 1 event in ledger, got %d", count)
 	}
 
-	// Wait for lock to expire
-	time.Sleep(30 * time.Millisecond)
+	// Wait for lock to expire (past ClockSkewTolerance)
+	waitForLockExpiry(t, shortTimeout)
 
 	// Create a new persistent manager (simulating process restart)
 	lockMgr2, err := lock.NewPersistentManager(ldg)
@@ -606,6 +608,7 @@ func TestLockLedger_LockConflictDuringConcurrentClaim(t *testing.T) {
 // TestLockLedger_ExpiredLockCanBeReplaced tests that an expired lock can be
 // directly replaced by a new acquisition without explicit reaping.
 func TestLockLedger_ExpiredLockCanBeReplaced(t *testing.T) {
+	slowLockExpiryTest(t)
 	proofDir, cleanup := setupLockLedgerTest(t)
 	defer cleanup()
 
@@ -631,8 +634,8 @@ func TestLockLedger_ExpiredLockCanBeReplaced(t *testing.T) {
 		t.Error("Node should be locked")
 	}
 
-	// Wait for expiration
-	time.Sleep(30 * time.Millisecond)
+	// Wait for expiration (past ClockSkewTolerance)
+	waitForLockExpiry(t, 20*time.Millisecond)
 
 	// Agent 2 should be able to acquire because the lock is expired
 	// (the manager allows replacing expired locks)
