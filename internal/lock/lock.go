@@ -99,6 +99,12 @@ func (l *ClaimLock) ExpiresAt() types.Timestamp {
 func (l *ClaimLock) IsExpired() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.isExpiredLocked()
+}
+
+// isExpiredLocked is IsExpired for callers that already hold l.mu
+// (sync.Mutex is not reentrant, so they must not call IsExpired).
+func (l *ClaimLock) isExpiredLocked() bool {
 	if l.released {
 		return true
 	}

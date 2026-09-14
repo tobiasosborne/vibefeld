@@ -1424,3 +1424,36 @@ func TestMultipleLocks(t *testing.T) {
 		t.Error("lk2.IsOwnedBy(\"agent-001\") = true, want false")
 	}
 }
+
+// TestClaimLockRelease_DoesNotDeadlock is a regression test: ClaimLock.Release
+// held l.mu and then called IsExpired, which takes l.mu again. sync.Mutex is
+// not reentrant, so every Release by the owner of a live lock hung forever.
+func TestClaimLockRelease_DoesNotDeadlock(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("types.Parse() unexpected error: %v", err)
+	}
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("NewClaimLock() unexpected error: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- lock.Release(lk, "agent-001") }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Release() by owner unexpected error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Release() did not return within 5s (deadlock on ClaimLock.mu)")
+	}
+
+	if !lk.IsReleased() {
+		t.Error("IsReleased() = false after successful Release, want true")
+	}
+	if err := lk.Release("agent-001"); err != lock.ErrAlreadyReleased {
+		t.Errorf("second Release() error = %v, want %v", err, lock.ErrAlreadyReleased)
+	}
+}

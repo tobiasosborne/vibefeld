@@ -43,8 +43,9 @@ func (l *ClaimLock) Release(owner string) error {
 		return ErrAlreadyReleased
 	}
 
-	// Check if lock has expired
-	if l.IsExpired() {
+	// Check if lock has expired. l.mu is already held, so use the
+	// lock-held variant: calling IsExpired here would self-deadlock.
+	if l.isExpiredLocked() {
 		return ErrLockExpired
 	}
 
