@@ -1,3 +1,43 @@
+# Handoff - 2026-09-14 (integration suite green; artifacts; auto-prove portability)
+
+Follow-ups to the 0.1.8 notes below. No version bump, no tags.
+
+- `go test -tags integration ./...` compiles and passes: 28 packages, 7906
+  PASS, 1 SKIP. Nearly all failures were stale tests (API moved on, tagged
+  files never updated): duplicate symbols against untagged copies,
+  `NewAssumption`/`NewPendingDef` returning errors, lock ClockSkewTolerance,
+  derived taint (0.1.7), removed `refine --statement`/`--sibling`,
+  `--yes` on archive/refute, and children-before-parent accept. Closes
+  vibefeld-hitt.
+- Real bugs fixed along the way:
+  - `lock.ClaimLock.Release` self-deadlocked: it held `l.mu` and called
+    `IsExpired`, which takes `l.mu`. No production caller.
+  - `af refine` reported a wrong-owner refine as "parent node is not claimed"
+    (`ErrNotClaimed`/`ErrOwnerMismatch` share a code; `AFError.Is` compares
+    codes). The hint also still used the removed `-s`.
+  - `af refine <id> "stmt"` had lost its warn_depth warning and the "add
+    breadth instead" max-depth hint since 88dd188. The warning now goes to
+    stderr, so JSON stdout stays clean.
+- Flaky `TestScopeAcceptance_FullWorkflow`: `State.AllNodes()` is map order
+  and `scope.ValidateScopeBalance` is order-sensitive. The test sorts by
+  NodeID now; 20/20 and 100/100 pass.
+- Skipped, needs a decision: `TestRefineCmd_WithDependsFlag_DependOnParent`
+  (vibefeld-0ko0: the Refine cycle check treats a child citing an ancestor as
+  a cycle).
+- Removed committed artifacts `af.test`, `hooks` (stray ELF build, not a git
+  hook), `coverage*.out`; `.gitignore` covers them.
+- `scripts/auto-prove.sh`: `timeout`, then `gtimeout`, then a bash watchdog
+  (exit 124 on timeout), plus a bash >= 4 guard (stock macOS bash is 3.2).
+- AISM corpus (now 211 workspaces): `af replay --verify` + `af export --graph
+  json` output byte-identical between 251f576 and this HEAD (no ledger/replay
+  changes were made anyway).
+- New issues: vibefeld-hspn (P1, `af accept 1 1.2` / `--all` validates a
+  parent with pending children), vibefeld-0ko0 (decision), vibefeld-uj18
+  (LockInfo ignores tolerance + unsynchronized reads), vibefeld-xr7g (root
+  help uses removed `refine -s`; integration tag undocumented).
+
+---
+
 # Handoff - 2026-09-14 (0.1.8: module path + build.sh portability, GitHub #2)
 
 - Go module path renamed to `github.com/tobiasosborne/vibefeld` (go.mod, all
