@@ -27,6 +27,14 @@
 
 set -euo pipefail
 
+# Associative arrays and ${var,,} below need bash >= 4. Stock macOS ships
+# bash 3.2 as /bin/bash; fail with a clear message instead of a syntax error.
+if (( BASH_VERSINFO[0] < 4 )); then
+    echo "auto-prove.sh: bash >= 4 is required (this is bash $BASH_VERSION)." >&2
+    echo "  On macOS: brew install bash, then run it with that bash (or put it first in PATH)." >&2
+    exit 4
+fi
+
 # Determine script directory and find af binary
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -93,6 +101,64 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[$(date '+%H:%M:%S')] ✗${NC} $*"
+}
+
+# Per-agent timeouts. GNU coreutils `timeout` is standard on Linux but not on
+# stock macOS, where Homebrew coreutils installs it as `gtimeout`. Without
+# either, run_with_timeout falls back to a bash watchdog with the same
+# contract: exit status 124 if the command was killed for running too long.
+TIMEOUT_CMD=""
+if command -v timeout &> /dev/null; then
+    TIMEOUT_CMD="timeout"
+elif command -v gtimeout &> /dev/null; then
+    TIMEOUT_CMD="gtimeout"
+fi
+
+# run_with_timeout SECONDS COMMAND [ARGS...]
+run_with_timeout() {
+    local secs="$1"
+    shift
+
+    if [[ -n "$TIMEOUT_CMD" ]]; then
+        "$TIMEOUT_CMD" "$secs" "$@"
+        return
+    fi
+
+    # Fallback watchdog. Give the command our stdin explicitly: a background
+    # job in a non-interactive shell otherwise reads from /dev/null.
+    local marker
+    marker=$(mktemp)
+    "$@" <&0 &
+    local cmd_pid=$!
+    (
+        # Runs under the script's set -euo pipefail, hence the || true guards.
+        sleep_pid=""
+        trap 'kill "$sleep_pid" 2> /dev/null || true; exit 0' TERM
+        sleep "$secs" &
+        sleep_pid=$!
+        wait "$sleep_pid" || true
+        if kill -0 "$cmd_pid" 2> /dev/null; then
+            echo timeout > "$marker"
+            kill -TERM "$cmd_pid" 2> /dev/null || true
+            # Escalate if it ignores SIGTERM (as `timeout -k 5` would).
+            sleep 5 &
+            sleep_pid=$!
+            wait "$sleep_pid" || true
+            kill -KILL "$cmd_pid" 2> /dev/null || true
+        fi
+    ) < /dev/null > /dev/null 2>&1 &
+    local watchdog_pid=$!
+
+    local status=0
+    wait "$cmd_pid" || status=$?
+    kill -TERM "$watchdog_pid" 2> /dev/null || true
+    wait "$watchdog_pid" 2> /dev/null || true
+
+    if [[ -s "$marker" ]]; then
+        status=124
+    fi
+    rm -f "$marker"
+    return "$status"
 }
 
 usage() {
@@ -193,6 +259,14 @@ log_verbose "Using af binary: $AF_CMD"
 if [[ ! -d "ledger" ]]; then
     log_error "No ledger/ directory found in $PROOF_DIR. Initialize a proof first: $AF_CMD init"
     exit 4
+fi
+
+if [[ -z "$TIMEOUT_CMD" ]]; then
+    log_warning "Neither 'timeout' nor 'gtimeout' found (stock macOS has no GNU timeout)."
+    log_warning "Using a built-in bash watchdog for the ${AGENT_TIMEOUT}s per-agent timeout."
+    log_warning "For the coreutils version: brew install coreutils (provides gtimeout)."
+else
+    log_verbose "Using timeout command: $TIMEOUT_CMD"
 fi
 
 case "$AGENT_BACKEND" in
@@ -483,13 +557,13 @@ EOF
 # Call agent headlessly
 run_claude_agent() {
     local prompt_file="$1"
-    timeout "${AGENT_TIMEOUT:-300}" claude --print --dangerously-skip-permissions -p "$(cat "$prompt_file")"
+    run_with_timeout "${AGENT_TIMEOUT:-300}" claude --print --dangerously-skip-permissions -p "$(cat "$prompt_file")"
 }
 
 run_codex_agent() {
     local prompt_file="$1"
     local output_file="$2"
-    timeout "${AGENT_TIMEOUT:-300}" codex exec \
+    run_with_timeout "${AGENT_TIMEOUT:-300}" codex exec \
         --dangerously-bypass-approvals-and-sandbox \
         -C "$PWD" \
         -o "$output_file" \
