@@ -95,14 +95,12 @@ func TestRelease_ExpiredLock(t *testing.T) {
 		t.Fatalf("types.Parse(\"1.1\") unexpected error: %v", err)
 	}
 
-	// Create lock with very short timeout
-	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
+	// Create a lock and push its expiry past ClockSkewTolerance
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	lock.ExpireForTest(lk)
 
 	// Verify lock is expired
 	if !lk.IsExpired() {
@@ -124,14 +122,12 @@ func TestRelease_ExpiredLock_NotOwner(t *testing.T) {
 		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 	}
 
-	// Create lock with very short timeout
-	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
+	// Create a lock and push its expiry past ClockSkewTolerance
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	lock.ExpireForTest(lk)
 
 	// Release by non-owner on expired lock should also fail
 	err = lk.Release("other-agent")
@@ -254,7 +250,7 @@ func TestRelease_TableDriven(t *testing.T) {
 			nodeID:       "1.2.3",
 			lockOwner:    "prover",
 			releaseOwner: "prover",
-			timeout:      1 * time.Nanosecond,
+			timeout:      1 * time.Minute,
 			waitExpiry:   true,
 			wantErr:      true,
 		},
@@ -282,7 +278,8 @@ func TestRelease_TableDriven(t *testing.T) {
 			}
 
 			if tt.waitExpiry {
-				time.Sleep(10 * time.Millisecond)
+				// Past expiry + ClockSkewTolerance; a short sleep is not enough.
+				lock.ExpireForTest(lk)
 			}
 
 			err = lk.Release(tt.releaseOwner)

@@ -47,14 +47,13 @@ func createLockFile(t *testing.T, locksDir string, nodeID types.NodeID, owner st
 func createStaleLockFile(t *testing.T, locksDir string, nodeID types.NodeID, owner string) string {
 	t.Helper()
 
-	// Create lock with very short timeout
-	lk, err := lock.NewClaimLock(nodeID, owner, 1*time.Nanosecond)
+	lk, err := lock.NewClaimLock(nodeID, owner, 1*time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock(%s, %s) failed: %v", nodeID, owner, err)
 	}
 
-	// Wait for it to expire
-	time.Sleep(10 * time.Millisecond)
+	// Push expiry past the clock-skew tolerance so the lock is stale.
+	lock.ExpireForTest(lk)
 
 	data, err := json.Marshal(lk)
 	if err != nil {

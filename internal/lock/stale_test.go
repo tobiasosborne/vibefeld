@@ -70,14 +70,12 @@ func TestIsStale_ExpiredLock(t *testing.T) {
 		t.Fatalf("types.Parse(\"1.1\") unexpected error: %v", err)
 	}
 
-	// Create lock with very short timeout
-	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
+	// Create a lock and push its expiry past ClockSkewTolerance
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	lock.ExpireForTest(lk)
 
 	// Verify lock is expired first
 	if !lk.IsExpired() {
@@ -95,25 +93,26 @@ func TestIsStale_ExpiredLock(t *testing.T) {
 	}
 }
 
-// TestIsStale_JustExpired verifies a lock that just expired is stale
+// TestIsStale_JustExpired verifies a lock just past its expiry plus
+// ClockSkewTolerance is stale. (A lock only nominally past expiry, still inside
+// the tolerance, is not; see TestIsStale_ExpiryBoundary.)
 func TestIsStale_JustExpired(t *testing.T) {
 	nodeID, err := types.Parse("1")
 	if err != nil {
 		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 	}
 
-	// Create lock with 1ms timeout
-	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Millisecond)
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
 
-	// Wait just past expiration
-	time.Sleep(5 * time.Millisecond)
+	// Push expiry just past the clock-skew tolerance
+	lock.ExpireForTest(lk)
 
 	// Should be expired
 	if !lk.IsExpired() {
-		t.Fatal("Lock should be expired after 5ms wait on 1ms timeout")
+		t.Fatal("Lock should be expired once past expiry + ClockSkewTolerance")
 	}
 
 	// Just-expired lock should be stale
@@ -248,6 +247,7 @@ func TestIsStale_TableDriven(t *testing.T) {
 		owner      string
 		timeout    time.Duration
 		waitBefore time.Duration
+		expire     bool // push expiry past ClockSkewTolerance (lock.ExpireForTest)
 		wantStale  bool
 	}{
 		{
@@ -267,20 +267,28 @@ func TestIsStale_TableDriven(t *testing.T) {
 			wantStale:  false,
 		},
 		{
-			name:       "expired nanosecond lock",
-			nodeID:     "1.2",
-			owner:      "agent-003",
-			timeout:    1 * time.Nanosecond,
-			waitBefore: 10 * time.Millisecond,
-			wantStale:  true,
+			name:      "expired lock past tolerance",
+			nodeID:    "1.2",
+			owner:     "agent-003",
+			timeout:   1 * time.Minute,
+			expire:    true,
+			wantStale: true,
 		},
 		{
-			name:       "expired millisecond lock",
+			name:       "nominally expired lock within tolerance",
 			nodeID:     "1.3",
 			owner:      "prover",
 			timeout:    1 * time.Millisecond,
 			waitBefore: 10 * time.Millisecond,
-			wantStale:  true,
+			wantStale:  false,
+		},
+		{
+			name:      "expired millisecond lock past tolerance",
+			nodeID:    "1.5",
+			owner:     "prover",
+			timeout:   1 * time.Millisecond,
+			expire:    true,
+			wantStale: true,
 		},
 		{
 			name:       "half-elapsed lock",
@@ -306,6 +314,9 @@ func TestIsStale_TableDriven(t *testing.T) {
 
 			if tt.waitBefore > 0 {
 				time.Sleep(tt.waitBefore)
+			}
+			if tt.expire {
+				lock.ExpireForTest(lk)
 			}
 
 			// Package-level function
@@ -339,7 +350,7 @@ func TestIsStale_ConsistentWithIsExpired(t *testing.T) {
 	}{
 		{"fresh long lock", 1 * time.Hour, 0},
 		{"fresh short lock", 1 * time.Second, 0},
-		{"expired lock", 1 * time.Nanosecond, 10 * time.Millisecond},
+		{"expired lock", 1 * time.Minute, -1},
 	}
 
 	for _, tt := range tests {
@@ -356,6 +367,10 @@ func TestIsStale_ConsistentWithIsExpired(t *testing.T) {
 
 			if tt.wait > 0 {
 				time.Sleep(tt.wait)
+			}
+			if tt.wait < 0 {
+				// Past expiry + ClockSkewTolerance without sleeping.
+				lock.ExpireForTest(lk)
 			}
 
 			isExpired := lk.IsExpired()
@@ -413,14 +428,12 @@ func TestIsStale_RefreshExpiredLock(t *testing.T) {
 		t.Fatalf("types.Parse(\"1\") unexpected error: %v", err)
 	}
 
-	// Create lock with very short timeout
-	lk, err := lock.NewClaimLock(nodeID, "agent-001", 1*time.Nanosecond)
+	// Create a lock and push its expiry past ClockSkewTolerance
+	lk, err := lock.NewClaimLock(nodeID, "agent-001", time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	lock.ExpireForTest(lk)
 
 	// Verify stale
 	if !lk.IsStale() {
@@ -464,13 +477,13 @@ func TestIsStale_MultipleNodes(t *testing.T) {
 		t.Fatalf("NewLock() for fresh lock unexpected error: %v", err)
 	}
 
-	expiredLock, err := lock.NewClaimLock(nodeID2, "agent-002", 1*time.Nanosecond)
+	expiredLock, err := lock.NewClaimLock(nodeID2, "agent-002", time.Minute)
 	if err != nil {
 		t.Fatalf("NewLock() for expired lock unexpected error: %v", err)
 	}
 
-	// Wait for one to expire
-	time.Sleep(10 * time.Millisecond)
+	// Expire one of them (past ClockSkewTolerance)
+	lock.ExpireForTest(expiredLock)
 
 	// Fresh lock should not be stale
 	if freshLock.IsStale() {
@@ -536,12 +549,18 @@ func TestIsStale_ExpiryBoundary(t *testing.T) {
 		t.Error("Lock should not be stale before expiry")
 	}
 
-	// Wait past expiry
+	// Wait past nominal expiry
 	time.Sleep(60 * time.Millisecond)
 
-	// After expiry
+	// Nominally expired, but still inside ClockSkewTolerance: not stale yet
+	if lk.IsStale() {
+		t.Error("Lock should not be stale within ClockSkewTolerance of expiry")
+	}
+
+	// Past expiry + tolerance
+	lock.ExpireForTest(lk)
 	if !lk.IsStale() {
-		t.Error("Lock should be stale after expiry")
+		t.Error("Lock should be stale after expiry + ClockSkewTolerance")
 	}
 }
 

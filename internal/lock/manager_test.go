@@ -456,14 +456,8 @@ func TestManager_IsLocked_ExpiredLock(t *testing.T) {
 
 	nodeID, _ := types.Parse("1.1")
 
-	// Acquire lock with very short timeout
-	_, err := mgr.Acquire(nodeID, "agent-001", 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("Acquire() unexpected error: %v", err)
-	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	// Acquire a lock that is already expired
+	acquireExpired(t, mgr, nodeID, "agent-001")
 
 	// Expired locks should not count as locked
 	if mgr.IsLocked(nodeID) {
@@ -504,14 +498,8 @@ func TestManager_ReapExpired_SingleExpired(t *testing.T) {
 
 	nodeID, _ := types.Parse("1.1")
 
-	// Acquire lock with very short timeout
-	_, err := mgr.Acquire(nodeID, "agent-001", 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("Acquire() unexpected error: %v", err)
-	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	// Acquire a lock that is already expired
+	acquireExpired(t, mgr, nodeID, "agent-001")
 
 	// Reap should return the expired lock
 	reaped, err := mgr.ReapExpired()
@@ -539,15 +527,12 @@ func TestManager_ReapExpired_SingleExpired(t *testing.T) {
 func TestManager_ReapExpired_MultipleExpired(t *testing.T) {
 	mgr := lock.NewManager()
 
-	// Acquire multiple locks with short timeout
+	// Acquire multiple locks that are already expired
 	nodeIDs := []string{"1", "1.1", "1.2"}
 	for _, nid := range nodeIDs {
 		nodeID, _ := types.Parse(nid)
-		_, _ = mgr.Acquire(nodeID, "agent-"+nid, 1*time.Nanosecond)
+		acquireExpired(t, mgr, nodeID, "agent-"+nid)
 	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
 
 	// Reap should return all expired locks
 	reaped, err := mgr.ReapExpired()
@@ -578,14 +563,11 @@ func TestManager_ReapExpired_MixedFreshAndExpired(t *testing.T) {
 	_, _ = mgr.Acquire(freshID1, "fresh-001", 1*time.Hour)
 	_, _ = mgr.Acquire(freshID2, "fresh-002", 1*time.Hour)
 
-	// Expired locks (short timeout)
+	// Expired locks
 	expiredID1, _ := types.Parse("1.2")
 	expiredID2, _ := types.Parse("1.3")
-	_, _ = mgr.Acquire(expiredID1, "expired-001", 1*time.Nanosecond)
-	_, _ = mgr.Acquire(expiredID2, "expired-002", 1*time.Nanosecond)
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	acquireExpired(t, mgr, expiredID1, "expired-001")
+	acquireExpired(t, mgr, expiredID2, "expired-002")
 
 	// Reap
 	reaped, err := mgr.ReapExpired()
@@ -616,13 +598,7 @@ func TestManager_ReapExpired_ReapedLockContainsInfo(t *testing.T) {
 	nodeID, _ := types.Parse("1.2.3")
 	owner := "reap-test-agent"
 
-	_, err := mgr.Acquire(nodeID, owner, 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("Acquire() unexpected error: %v", err)
-	}
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	acquireExpired(t, mgr, nodeID, owner)
 
 	// Reap
 	reaped, err := mgr.ReapExpired()
@@ -651,11 +627,8 @@ func TestManager_ReapExpired_AllowsReacquire(t *testing.T) {
 
 	nodeID, _ := types.Parse("1")
 
-	// Acquire with short timeout
-	_, _ = mgr.Acquire(nodeID, "agent-001", 1*time.Nanosecond)
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	// Acquire a lock that is already expired
+	acquireExpired(t, mgr, nodeID, "agent-001")
 
 	// Reap
 	_, _ = mgr.ReapExpired()
@@ -716,10 +689,7 @@ func TestManager_ListAll_ExcludesExpired(t *testing.T) {
 
 	// Expired lock
 	expiredID, _ := types.Parse("1.1")
-	_, _ = mgr.Acquire(expiredID, "expired-agent", 1*time.Nanosecond)
-
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	acquireExpired(t, mgr, expiredID, "expired-agent")
 
 	// ListAll should only return fresh locks
 	locks := mgr.ListAll()
@@ -1057,4 +1027,16 @@ func TestManager_ZeroValueNodeID(t *testing.T) {
 	// These should not panic
 	_ = mgr.IsLocked(zeroNodeID)
 	_, _ = mgr.Info(zeroNodeID)
+}
+
+// acquireExpired acquires a lock through mgr and then pushes its expiry past
+// ClockSkewTolerance. A 1ns timeout plus a short sleep no longer yields an
+// expired lock, because IsExpired allows a 5s clock-skew grace period.
+func acquireExpired(t *testing.T, mgr *lock.Manager, nodeID types.NodeID, owner string) {
+	t.Helper()
+	lk, err := mgr.Acquire(nodeID, owner, time.Minute)
+	if err != nil {
+		t.Fatalf("Acquire(%s, %s) unexpected error: %v", nodeID, owner, err)
+	}
+	lock.ExpireForTest(lk)
 }
