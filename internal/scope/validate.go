@@ -82,6 +82,11 @@ func ValidateScopeClosure(n *node.Node, scopeEntry *Entry) error {
 // local_discharge nodes. This ensures that all locally opened scopes
 // are properly closed.
 //
+// Nodes are processed in slice order: a local_discharge only closes a
+// local_assume that appears before it. Pass nodes in proof order (for example
+// sorted with types.NodeID.Less), not in map-iteration order such as
+// state.State.AllNodes returns, or the result can vary between calls.
+//
 // Returns:
 //   - nil if all scopes are balanced
 //   - SCOPE_UNCLOSED error if any local_assume has no matching discharge

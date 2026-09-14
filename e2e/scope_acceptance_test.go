@@ -5,6 +5,7 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -246,13 +247,20 @@ func TestScopeAcceptance_FullWorkflow(t *testing.T) {
 		t.Errorf("Expected 4 nodes (root + 3 children), got %d", len(nodes))
 	}
 
-	// Verify scope balance of the child nodes
+	// Verify scope balance of the child nodes. ValidateScopeBalance walks its
+	// input in slice order (a local_discharge only closes a local_assume seen
+	// before it), while AllNodes returns nodes in map-iteration order, so sort
+	// into proof (NodeID) order first. Without this the test failed whenever
+	// 1.3 (discharge) happened to come out before 1.1 (assume).
 	var childNodes []*node.Node
 	for _, n := range nodes {
 		if n.ID.String() != "1" {
 			childNodes = append(childNodes, n)
 		}
 	}
+	sort.Slice(childNodes, func(i, j int) bool {
+		return childNodes[i].ID.Less(childNodes[j].ID)
+	})
 
 	err = scope.ValidateScopeBalance(childNodes)
 	if err != nil {
