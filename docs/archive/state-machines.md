@@ -281,7 +281,7 @@ Source: `internal/schema/target.go`
 ### Workflow State Validation
 
 ```go
-import "github.com/tobias/vibefeld/internal/schema"
+import "github.com/tobiasosborne/vibefeld/internal/schema"
 
 // Check if a state is valid
 err := schema.ValidateWorkflowState("available")
@@ -296,7 +296,7 @@ canClaim := schema.CanClaim(schema.WorkflowAvailable) // true
 ### Epistemic State Validation
 
 ```go
-import "github.com/tobias/vibefeld/internal/schema"
+import "github.com/tobiasosborne/vibefeld/internal/schema"
 
 // Check if a state is valid
 err := schema.ValidateEpistemicState("pending")
@@ -314,7 +314,7 @@ introducesTaint := schema.IntroducesTaint(schema.EpistemicAdmitted) // true
 ### Taint Computation
 
 ```go
-import "github.com/tobias/vibefeld/internal/taint"
+import "github.com/tobiasosborne/vibefeld/internal/taint"
 
 // Compute complete taint for a single node
 taintState := taint.ComputeTaintInTree(node, allNodes)
@@ -329,7 +329,7 @@ changedNodes, events := taint.PropagateAndGenerateEvents(root, allNodes)
 ### Challenge State Management
 
 ```go
-import "github.com/tobias/vibefeld/internal/node"
+import "github.com/tobiasosborne/vibefeld/internal/node"
 
 // Create a new challenge
 challenge, err := node.NewChallenge(id, targetID, target, reason)

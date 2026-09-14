@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // HookType represents the type of hook.

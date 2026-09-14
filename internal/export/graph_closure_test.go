@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/config"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/config"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // nodeByID pulls one node object out of the parsed export document.

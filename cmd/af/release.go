@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/render"
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/render"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // newReleaseCmd creates the release command for releasing a claimed job.

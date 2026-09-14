@@ -2,7 +2,7 @@
 package node
 
 import (
-	"github.com/tobias/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/errors"
 )
 
 // ValidateChallengeLimit checks whether the number of challenges exceeds the maximum allowed.

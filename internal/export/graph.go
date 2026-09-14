@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/config"
-	"github.com/tobias/vibefeld/internal/jobs"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/config"
+	"github.com/tobiasosborne/vibefeld/internal/jobs"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/state"
 )
 
 // GraphSchemaVersion is the current schema version of the `af export --graph

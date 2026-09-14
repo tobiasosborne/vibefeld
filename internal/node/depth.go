@@ -4,7 +4,7 @@ package node
 import (
 	"errors"
 
-	aferrors "github.com/tobias/vibefeld/internal/errors"
+	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
 )
 
 // DefaultMaxDepth is the default maximum depth for proof trees.

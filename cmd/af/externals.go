@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // newExternalsCmd creates the externals command for listing all external references.

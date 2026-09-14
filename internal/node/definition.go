@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // Definition represents a formal definition used in a proof.

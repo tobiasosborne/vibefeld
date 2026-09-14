@@ -4,9 +4,9 @@ package node_test
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestCheckValidationInvariant_NoChildren tests that a node with no children can be validated.

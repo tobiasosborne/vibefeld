@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	aferrors "github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/verdicts"
+	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/verdicts"
 )
 
 func TestUnvalidateBatch_NotFound_CleanNoOp(t *testing.T) {

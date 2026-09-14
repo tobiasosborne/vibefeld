@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/render"
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/render"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // newExtractLemmaCmd creates the extract-lemma command for extracting lemmas from validated nodes.

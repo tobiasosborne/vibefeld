@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/lock"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/lock"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestManager_Acquire_Success verifies acquiring a lock on an unlocked node succeeds.

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // Tracker manages assumption scopes for a proof.

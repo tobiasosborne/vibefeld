@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestNewLemma_Valid tests creating a lemma with valid inputs

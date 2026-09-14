@@ -4,7 +4,7 @@ package state
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
 )
 
 // -----------------------------------------------------------------------------

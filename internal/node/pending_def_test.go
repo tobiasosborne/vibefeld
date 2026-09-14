@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestNewPendingDef_Valid verifies that NewPendingDef creates a valid pending definition request.

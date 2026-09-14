@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 // TestWriteSchema verifies that WriteSchema correctly writes schema.json

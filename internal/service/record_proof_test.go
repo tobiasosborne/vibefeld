@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/jobs"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/jobs"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 // challengeRoot raises a blocking (major) challenge on node "1", turning it

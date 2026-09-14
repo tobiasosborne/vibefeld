@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // newPendingRefsCmd creates the pending-refs command for listing all pending external references.

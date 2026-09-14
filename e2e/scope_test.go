@@ -5,10 +5,10 @@ package e2e
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/scope"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/scope"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // mustParseNodeID parses a node ID string or fails the test.

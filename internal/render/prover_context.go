@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // Display truncation constants for consistent output formatting.

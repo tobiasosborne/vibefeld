@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // =============================================================================

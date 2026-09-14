@@ -6,10 +6,10 @@ package metrics
 import (
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // QualityReport contains comprehensive quality metrics for a proof or subtree.

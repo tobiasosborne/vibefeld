@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/fuzzy"
+	"github.com/tobiasosborne/vibefeld/internal/fuzzy"
 )
 
 // Scoring constants for fuzzy inference type matching.

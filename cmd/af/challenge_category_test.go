@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 func setupChallengeCategoryTest(t *testing.T) (string, func()) {

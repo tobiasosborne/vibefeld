@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 )
 
 func TestNewExternal(t *testing.T) {

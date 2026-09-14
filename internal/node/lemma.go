@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // Lemma represents an extracted reusable proof fragment.

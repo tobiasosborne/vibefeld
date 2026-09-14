@@ -11,7 +11,7 @@ package cycle
 import (
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // DependencyProvider is an interface for accessing node dependencies.

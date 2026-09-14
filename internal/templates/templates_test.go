@@ -3,7 +3,7 @@ package templates
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 func TestGetTemplate_Contradiction(t *testing.T) {

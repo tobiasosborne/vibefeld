@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 // ANSI escape codes for terminal colors

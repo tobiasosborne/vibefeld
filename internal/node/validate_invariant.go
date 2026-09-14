@@ -4,8 +4,8 @@ package node
 import (
 	"fmt"
 
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // ChallengeStatusSuperseded is the status for challenges that became moot

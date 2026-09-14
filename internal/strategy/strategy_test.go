@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/strategy"
+	"github.com/tobiasosborne/vibefeld/internal/strategy"
 )
 
 // =============================================================================

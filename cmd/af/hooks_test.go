@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // setupHooksTest creates a temp directory with an initialized proof.

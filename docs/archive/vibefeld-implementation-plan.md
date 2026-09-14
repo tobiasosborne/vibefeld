@@ -21,7 +21,7 @@ Greenfield Go implementation of the AF (Adversarial Proof Framework) CLI.
 - **Deps**: 1
 
 ### 3. Initialize Go module
-- `go mod init github.com/tobias/vibefeld` (or chosen module path)
+- `go mod init github.com/tobiasosborne/vibefeld` (or chosen module path)
 - Create `go.mod`
 - **Deps**: 1
 

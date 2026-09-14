@@ -36,7 +36,7 @@ Building from source gives you the latest features and allows you to verify the 
 
 ```bash
 # Clone the repository
-git clone https://github.com/tobias/vibefeld.git
+git clone https://github.com/tobiasosborne/vibefeld.git
 
 # Enter the directory
 cd vibefeld
@@ -55,7 +55,7 @@ This creates an `af` binary in the current directory.
 Install directly using Go's package manager:
 
 ```bash
-go install github.com/tobias/vibefeld/cmd/af@latest
+go install github.com/tobiasosborne/vibefeld/cmd/af@latest
 ```
 
 This installs the binary to `$GOPATH/bin` or `$HOME/go/bin` by default.
@@ -191,7 +191,7 @@ go build ./cmd/af
 ### Using go install
 
 ```bash
-go install github.com/tobias/vibefeld/cmd/af@latest
+go install github.com/tobiasosborne/vibefeld/cmd/af@latest
 ```
 
 ### Verifying Upgrade

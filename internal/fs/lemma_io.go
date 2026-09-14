@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 )
 
 const lemmasDirName = "lemmas"

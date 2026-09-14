@@ -4,10 +4,10 @@ package node_test
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // helper function to create a node with dependencies and add it to state

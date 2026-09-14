@@ -1,9 +1,9 @@
 package export
 
 import (
-	"github.com/tobias/vibefeld/internal/jobs"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/jobs"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 // Capability tokens advertised in GraphExport.Features. An external driver

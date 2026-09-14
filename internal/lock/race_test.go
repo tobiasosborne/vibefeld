@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestLockRefreshRace verifies that ClaimLock.Refresh() is now thread-safe.

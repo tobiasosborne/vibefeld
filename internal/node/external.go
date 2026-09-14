@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // External represents a reference to an external source (theorem, paper, etc.).

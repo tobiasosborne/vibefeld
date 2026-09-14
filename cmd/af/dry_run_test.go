@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // newDryRunGuardedRoot builds a root command wired exactly like the real CLI

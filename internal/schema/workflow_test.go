@@ -3,7 +3,7 @@ package schema_test
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 func TestValidateWorkflowState_AllValid(t *testing.T) {

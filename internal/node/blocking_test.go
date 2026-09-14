@@ -3,8 +3,8 @@ package node_test
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // Helper to create a PendingDef with a specific ID for testing.

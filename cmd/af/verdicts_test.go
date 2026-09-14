@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // setupVerdictsCLIProof initializes a proof with root "1" (author

@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/render"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/render"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 func nid(s string) types.NodeID {

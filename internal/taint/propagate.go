@@ -2,9 +2,9 @@
 package taint
 
 import (
-	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 type taintComponent uint8

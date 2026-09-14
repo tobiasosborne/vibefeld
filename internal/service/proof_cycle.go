@@ -3,9 +3,9 @@
 package service
 
 import (
-	"github.com/tobias/vibefeld/internal/cycle"
-	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/cycle"
+	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // stateDependencyProvider adapts state.State to implement cycle.DependencyProvider.

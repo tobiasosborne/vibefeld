@@ -2,7 +2,7 @@
 package node
 
 import (
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // NodeProvider is an interface for accessing nodes in state.

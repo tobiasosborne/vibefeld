@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/lock"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/lock"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestGetLockInfo_Valid verifies GetLockInfo returns correct info from a valid lock

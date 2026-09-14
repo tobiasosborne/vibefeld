@@ -15,8 +15,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestWriteExternal verifies that WriteExternal correctly writes

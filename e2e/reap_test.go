@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/lock"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/lock"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // setupReapTest creates a temporary directory with locks and ledger subdirectories.

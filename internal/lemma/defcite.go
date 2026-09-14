@@ -4,8 +4,8 @@ package lemma
 import (
 	"regexp"
 
-	"github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/state"
 )
 
 // defCitePattern matches def:NAME citations in text.

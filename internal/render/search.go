@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 )
 
 // SearchResult represents a node match from a search query.

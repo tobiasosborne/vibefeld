@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TaintState represents the taint status of a node.

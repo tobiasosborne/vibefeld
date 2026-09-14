@@ -15,10 +15,10 @@ import (
 	"sort"
 	"testing"
 
-	aferrors "github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/types"
+	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestWriteNode verifies that WriteNode correctly writes a

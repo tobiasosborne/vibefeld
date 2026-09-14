@@ -1,9 +1,9 @@
 package scope
 
 import (
-	"github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 // ValidateScope checks if a node's scope references are valid.

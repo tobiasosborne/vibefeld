@@ -2,7 +2,7 @@
 package node
 
 import (
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // IsBlocked returns true if the node is blocked by a pending definition.

@@ -5,9 +5,9 @@ import (
 	"sort"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/render"
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/render"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // newNearbyCmd creates the nearby command for showing local neighborhood.

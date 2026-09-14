@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/fuzzy"
+	"github.com/tobiasosborne/vibefeld/internal/fuzzy"
 )
 
 // FuzzyFlagResult contains the result of fuzzy matching a single flag.

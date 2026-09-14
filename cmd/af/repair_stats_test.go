@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 func setupRepairStatsTest(t *testing.T) (string, func()) {

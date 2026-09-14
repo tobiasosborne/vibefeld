@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	aferrors "github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/verdicts"
+	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/verdicts"
 )
 
 // setupVerdictTestProof creates a proof with root node "1" (author

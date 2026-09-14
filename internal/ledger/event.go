@@ -4,8 +4,8 @@ package ledger
 import (
 	"time"
 
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // EventType identifies the type of ledger event.

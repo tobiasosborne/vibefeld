@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 )
 
 // TestNewDefinition tests the NewDefinition constructor.

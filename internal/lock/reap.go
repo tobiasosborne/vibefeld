@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
 )
 
 // ReapStaleLocks finds and removes stale locks from the given directory.

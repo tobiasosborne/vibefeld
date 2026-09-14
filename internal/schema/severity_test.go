@@ -3,7 +3,7 @@ package schema_test
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 // TestChallengeSeverity_Constants verifies severity constants exist and are distinct.

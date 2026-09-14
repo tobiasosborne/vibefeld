@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/fs"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/fs"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // setupCLIWorkflowTest creates a temporary proof directory for CLI workflow testing.

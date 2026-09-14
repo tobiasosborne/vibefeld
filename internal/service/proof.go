@@ -14,17 +14,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/config"
-	"github.com/tobias/vibefeld/internal/cycle"
-	aferrors "github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/fs"
-	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/lemma"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/state"
-	"github.com/tobias/vibefeld/internal/taint"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/config"
+	"github.com/tobiasosborne/vibefeld/internal/cycle"
+	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/fs"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/lemma"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/taint"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // ErrConcurrentModification is returned when an operation fails due to

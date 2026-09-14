@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 func mustParseNodeID(t *testing.T, s string) types.NodeID {

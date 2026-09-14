@@ -14,7 +14,7 @@ Welcome to Vibefeld! We appreciate your interest in contributing to the adversar
 
 ```bash
 # Clone the repository
-git clone https://github.com/tobias/vibefeld.git
+git clone https://github.com/tobiasosborne/vibefeld.git
 cd vibefeld
 
 # Verify your Go version

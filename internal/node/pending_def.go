@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // PendingDefStatus represents the status of a pending definition request.

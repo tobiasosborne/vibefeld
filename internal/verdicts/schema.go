@@ -24,8 +24,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // CurrentSchemaVersion is the only schema_version value this build accepts.

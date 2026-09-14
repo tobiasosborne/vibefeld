@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // HistoryEntry represents a single event in a node's history.

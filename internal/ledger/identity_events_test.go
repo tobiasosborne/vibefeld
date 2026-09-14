@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestNodeValidatedFull_RecordsVerifierAndBatchID covers rk-9pk / PRD C3 V1:

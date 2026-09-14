@@ -4,8 +4,8 @@ package lemma
 import (
 	"regexp"
 
-	"github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/state"
 )
 
 // extCitePattern matches external:NAME citations in text.

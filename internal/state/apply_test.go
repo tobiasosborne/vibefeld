@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/taint"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/taint"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestApplyProofInitialized verifies that ProofInitialized event sets up initial state.

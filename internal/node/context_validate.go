@@ -4,7 +4,7 @@ package node
 import (
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/errors"
 )
 
 // ContextLookup is an interface for looking up context items by ID.

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 func TestAmendNode_Basic(t *testing.T) {

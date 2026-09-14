@@ -1,4 +1,4 @@
-module github.com/tobias/vibefeld
+module github.com/tobiasosborne/vibefeld
 
 go 1.25.5
 

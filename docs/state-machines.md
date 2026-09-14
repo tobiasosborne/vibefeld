@@ -111,7 +111,7 @@ Event 2: nodes_released {node_ids: ["1.2"]}
 ### Validation
 
 ```go
-import "github.com/tobias/vibefeld/internal/schema"
+import "github.com/tobiasosborne/vibefeld/internal/schema"
 
 // Check if a state is valid
 err := schema.ValidateWorkflowState("available")
@@ -199,7 +199,7 @@ Event 4: node_validated {node_id: "1.2"}
 ### Validation
 
 ```go
-import "github.com/tobias/vibefeld/internal/schema"
+import "github.com/tobiasosborne/vibefeld/internal/schema"
 
 // Check if a state is valid
 err := schema.ValidateEpistemicState("pending")
@@ -285,7 +285,7 @@ After:  1.1.1 (validated, tainted)  <- now tainted from parent 1.1
 ### API Reference
 
 ```go
-import "github.com/tobias/vibefeld/internal/taint"
+import "github.com/tobiasosborne/vibefeld/internal/taint"
 
 // Compute complete taint for a single node in its tree
 taintState := taint.ComputeTaintInTree(node, allNodes)
@@ -390,7 +390,7 @@ Event 2: challenge_resolved {challenge_id: "c1"}
 ### API Reference
 
 ```go
-import "github.com/tobias/vibefeld/internal/node"
+import "github.com/tobiasosborne/vibefeld/internal/node"
 
 // Create a new challenge
 challenge, err := node.NewChallenge(id, targetID, target, reason)

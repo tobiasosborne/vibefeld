@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/service"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // setupCycleTest creates a temporary proof directory for cycle detection tests.

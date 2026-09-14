@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/errors"
 )
 
 // RenderedError contains a human-readable error with recovery suggestions.

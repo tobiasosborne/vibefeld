@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 func TestFormatHistory_EmptyHistory(t *testing.T) {

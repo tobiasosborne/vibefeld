@@ -3,7 +3,7 @@
 package templates
 
 import (
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 // ChildSpec defines a child node to be created by a template.

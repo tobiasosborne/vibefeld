@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestConcurrentAcquireSameNode verifies that only one agent can hold a lock

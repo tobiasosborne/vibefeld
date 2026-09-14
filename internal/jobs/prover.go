@@ -3,8 +3,8 @@
 package jobs
 
 import (
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
 // FindProverJobs returns nodes available for provers to work on.

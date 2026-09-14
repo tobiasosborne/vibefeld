@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	aferrors "github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/types"
+	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 const nodesDirName = "nodes"

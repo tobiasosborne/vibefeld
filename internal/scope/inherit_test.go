@@ -3,7 +3,7 @@ package scope
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 func TestGetActiveEntries(t *testing.T) {

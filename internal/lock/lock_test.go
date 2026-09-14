@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/lock"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/lock"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestNewLock_Valid verifies NewLock creates locks with correct fields

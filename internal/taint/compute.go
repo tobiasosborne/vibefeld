@@ -2,7 +2,7 @@
 package taint
 
 import (
-	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 )
 
 // ComputeTaint computes the taint state for a node from its epistemic state and

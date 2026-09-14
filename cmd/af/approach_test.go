@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // setupApproachTest creates a temp proof dir with an initialized proof.

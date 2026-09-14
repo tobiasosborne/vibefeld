@@ -15,7 +15,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 )
 
 // TestWriteDefinition verifies that WriteDefinition correctly writes a

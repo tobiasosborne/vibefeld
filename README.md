@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.25.5-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://github.com/tobias/vibefeld)
+[![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://github.com/tobiasosborne/vibefeld)
 
 ```
         _  _         __       _    _
@@ -72,7 +72,7 @@ Unlike traditional proof assistants that rely on formal logic kernels, Vibefeld 
 
 ```bash
 # Build from source, with version/commit/build-date stamped in
-git clone https://github.com/tobias/vibefeld.git
+git clone https://github.com/tobiasosborne/vibefeld.git
 cd vibefeld && ./scripts/build.sh install   # -> $GOBIN or ~/go/bin/af
 
 # Quick unstamped build (still reports a correct version — see cmd/af/version.go —

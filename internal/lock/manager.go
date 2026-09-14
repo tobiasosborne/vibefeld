@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // Manager provides a facade for managing locks on proof nodes.

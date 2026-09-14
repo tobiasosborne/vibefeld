@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tobias/vibefeld/internal/cli"
-	"github.com/tobias/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/cli"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
 )
 
 // challengeState tracks the state of a challenge as we replay events.

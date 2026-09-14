@@ -4,8 +4,8 @@ package cycle_test
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/cycle"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/cycle"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // mockNode represents a node with its dependencies for testing.

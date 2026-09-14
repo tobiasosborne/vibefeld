@@ -2,7 +2,7 @@
 package node
 
 import (
-	"github.com/tobias/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/errors"
 )
 
 // ValidateRefinementCount checks if a node can accept additional refinements.

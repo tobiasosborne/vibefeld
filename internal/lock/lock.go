@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // ClockSkewTolerance is the grace period added to lock expiration checks to handle

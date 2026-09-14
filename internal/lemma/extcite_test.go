@@ -4,9 +4,9 @@ package lemma
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/node"
-	"github.com/tobias/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/state"
 )
 
 func TestParseExtCitations(t *testing.T) {

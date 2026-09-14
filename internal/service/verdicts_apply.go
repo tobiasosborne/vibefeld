@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strings"
 
-	aferrors "github.com/tobias/vibefeld/internal/errors"
-	"github.com/tobias/vibefeld/internal/ledger"
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/types"
-	"github.com/tobias/vibefeld/internal/verdicts"
+	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/verdicts"
 )
 
 // ParseVerdictFile parses and validates raw verdict-file bytes (rk PRD C3 /

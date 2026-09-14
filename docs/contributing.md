@@ -27,7 +27,7 @@ This guide covers everything you need to know to contribute to the Adversarial P
 ### Cloning the Repository
 
 ```bash
-git clone https://github.com/tobias/vibefeld.git
+git clone https://github.com/tobiasosborne/vibefeld.git
 cd vibefeld
 ```
 
@@ -331,7 +331,7 @@ package main
 
 import (
     "github.com/spf13/cobra"
-    "github.com/tobias/vibefeld/internal/service"
+    "github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 func newMyCommandCmd() *cobra.Command {
@@ -438,7 +438,7 @@ Each package has clear boundaries:
 Use the structured error types from `internal/errors`:
 
 ```go
-import "github.com/tobias/vibefeld/internal/errors"
+import "github.com/tobiasosborne/vibefeld/internal/errors"
 
 // Creating errors with codes
 if nodeID == "" {

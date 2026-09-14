@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/lock"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/lock"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestRelease_Valid verifies releasing a lock owned by the caller succeeds

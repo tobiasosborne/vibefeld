@@ -4,8 +4,8 @@ package node
 import (
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestNode_ValidationDeps tests that nodes can have validation dependencies.

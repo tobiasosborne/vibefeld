@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // Entry represents a scope entry for a local assumption.

@@ -2,8 +2,8 @@
 package state
 
 import (
-	"github.com/tobias/vibefeld/internal/schema"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // RepairMetrics holds repair fatigue metrics for a single node.

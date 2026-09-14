@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/lock"
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/lock"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestIsStale_NilLock verifies IsStale handles nil lock gracefully

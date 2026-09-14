@@ -3,7 +3,7 @@
 package jobs
 
 import (
-	"github.com/tobias/vibefeld/internal/node"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 )
 
 // JobResult contains the results of finding all jobs.

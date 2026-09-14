@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobias/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // TestHookType_Validation tests hook type validation.

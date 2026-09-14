@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobias/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/errors"
 )
 
 // TestRenderError_AFError tests rendering of AFError types
