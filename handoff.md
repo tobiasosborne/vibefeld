@@ -1,3 +1,48 @@
+# Handoff - 2026-09-15 (scale-hardening plan v3; no code changes)
+
+Planning session only. No source changed; `gofmt`, `go vet`, `go build`,
+`go test ./...` all green at HEAD.
+
+## What was done
+
+- Surveyed repo + GitHub. One open GitHub issue, **#3** (vidick, MIP\*=RE
+  run: 123 nodes, 291 challenges, 1732 events): dependency edges are
+  write-once, 21 validated nodes have wrong edge lists, proposes
+  `af amend-deps`, asks for a decision (A build it / B defer to v0.2 /
+  C recreation is intended). No open PRs. **Needs a reply from Tobias.**
+- Wrote **`docs/plans/scale-hardening.md` (v3)**: the plan for making af
+  solid at 100-1000 node DAG scale on the 0.1.x line without waiting for
+  v0.2. Reviewed twice by codex gpt-6-astra xhigh; both reviews are saved
+  beside it (`scale-hardening-review-codex.md`,
+  `scale-hardening-rereview-codex.md`). v3 answers every point of the
+  re-review; the last section of the plan says what changed and why.
+  Recommended answer to #3: option A, `amend-deps` pending-only with an
+  explicit `--reopen` that unvalidates and amends in *one event*.
+- Measured: synthetic 1001-node / 3202-event workspace, every command
+  < 0.25 s with full replay, linear. Read performance is not the problem.
+- Epic **vibefeld-67y5** tracks the plan. Bugs found and confirmed this
+  session, filed: **tlh1** (P1, verdicts-apply two-read race +
+  appendBulkIfSequence CAS only on first event), **gxa7** (P1, refine on a
+  validated parent leaves it validated with pending children), **ywsu**
+  (health fatigue alarm is absolute; MIP\*=RE root alarms permanently),
+  **ujp4** (auto-prove.sh uses `accept --note`, flag is `--with-note`;
+  success judged on root state alone), **xk7c** (replay JSON exits 0 on
+  failure; config.Validate never called so meta version is unchecked).
+- Discrepancy: beads 0ry1, a7p5, 5qrx, gwps, 8x16, w2mt, 0zk7 cited by the
+  0.1.7 handoff below and by `docs/trust-model.md` **do not exist** in
+  `.beads/issues.jsonl`; commit 392b2da only touched `interactions.jsonl`.
+  Recreate them under vibefeld-67y5 when the plan is adopted.
+
+## Next steps
+
+1. Tobias decides on #3 and on the plan (or asks for a third review pass).
+2. Reply on #3 (plan "Order of work" step 0); ask for a ledger copy.
+3. File one bead per plan item D0-D11 under vibefeld-67y5; start with D0
+   (tlh1) and D10, which everything else depends on.
+4. Session-close protocol as usual; no tags exist yet, v0.1.9 is the first.
+
+---
+
 # Handoff - 2026-09-14 (integration suite green; artifacts; auto-prove portability)
 
 Follow-ups to the 0.1.8 notes below. No version bump, no tags.
