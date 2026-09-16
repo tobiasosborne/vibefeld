@@ -92,7 +92,7 @@ func (g *specGraph) specFinal(id string, memo map[string]specResult) node.TaintS
 	switch {
 	case specSevered(n.epistemic):
 		return node.TaintClean
-	case schema.IntroducesTaint(n.epistemic):
+	case specIntroducesTaint(n.epistemic):
 		return node.TaintSelfAdmitted
 	case specUnresolvedState(n.epistemic):
 		return node.TaintUnresolved
@@ -127,7 +127,7 @@ func (g *specGraph) specSupport(id string, memo map[string]specResult) specResul
 	if specUnresolvedState(n.epistemic) {
 		return specResult{comp: specUnresolved}
 	}
-	if schema.IntroducesTaint(n.epistemic) {
+	if specIntroducesTaint(n.epistemic) {
 		return specResult{comp: specTainted}
 	}
 
@@ -220,11 +220,18 @@ func (g *specGraph) canReach(from, to string) bool {
 	return seen[to]
 }
 
+// specIntroducesTaint is written from the rule list ("own admitted") rather
+// than reusing the production predicate, so the spec shares no decision helper
+// with the fold.
+func specIntroducesTaint(es schema.EpistemicState) bool {
+	return es == schema.EpistemicAdmitted
+}
+
 func specEpistemic(es schema.EpistemicState) specComp {
 	if specUnresolvedState(es) {
 		return specUnresolved
 	}
-	if schema.IntroducesTaint(es) {
+	if specIntroducesTaint(es) {
 		return specTainted
 	}
 	return specClean
