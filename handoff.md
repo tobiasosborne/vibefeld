@@ -1,3 +1,38 @@
+# Handoff - 2026-09-16 (v0.1.9 tagged: scale-hardening plan v3.1 0.1.9 set complete)
+
+All five 0.1.9 items (D0, D10 reduced, D1, D3, D2 + manifest) are merged on
+main, `VersionInfo` is 0.1.9, tag `v0.1.9` is created, and the 211-workspace
+corpus check passes on the release binary. Each item: pi deepseek-flash
+implementation -> one codex gpt-5.6-sol xhigh review -> deepseek fix pass ->
+Claude review -> merge. Reports in `docs/plans/reports/D{0,1,2,3,10}.md`.
+Worktrees and work/ branches removed after merge.
+
+End-to-end check on the release binary (`docs/amend-deps-example.md`, fixed
+to the real `refine` syntax): manifest dry-run, real run, `--resume` reports
+applied(already); on a validated node `amend-deps` without `--reopen` is
+refused (exit 3), a stale `--expect-hash` is refused, and `--reopen` with the
+right hash lands one `node_deps_amended` event that leaves the node pending
+with the corrected edge; `af replay --verify` valid.
+
+## For Tobias
+
+1. Post the reply on GitHub #3 (`docs/plans/issue-3-reply.md`); it can now
+   point at v0.1.9 and `docs/amend-deps-example.md`. Ask for the ledger.
+2. `git push --tags` was done; create the GitHub release for v0.1.9 if wanted
+   (`gh release create v0.1.9 --notes-from-tag` or from the in-binary
+   changelog `af changelog`).
+3. Decide 0.1.10 order. Suggested: D4 (support_current + shared validator;
+   closes hspn, gxa7) first, then D7 (ywsu), D8 strict subset, D11 (ujp4),
+   D5 (kbzm, uj18), D9. File beads per item under epic vibefeld-67y5.
+
+## Known follow-ups filed / noted
+
+- vibefeld-8rjx: fs.WriteNode concurrent corruption flake.
+- D2 report: dangling-edge removal now allowed; `node_amended_reopened` is a
+  distinct 1.1 event; `request_fingerprint` binds operation ids.
+- The AF_PREVIOUS_BINARY fixture test asserts the unknown-event error only
+  when a 0.1.8 binary is supplied; CI does not supply one yet.
+
 # Handoff - 2026-09-16 (scale-hardening v3.1 adopted; D0, D10, D1, D3 merged; D2 in flight)
 
 Plan v3.1 adopted (last section of `docs/plans/scale-hardening.md`): 0.1.9 is
