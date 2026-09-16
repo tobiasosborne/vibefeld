@@ -134,3 +134,107 @@ touched. Gates: `gofmt` clean · `go build ./cmd/af` · `go vet ./...` ·
   missing target to exist (D1 already keeps such edges as sinks).
 - The D4 `support_current`/audit work (0.1.10) should consume
   `dependency_amendments` to flag `AMENDED_NOT_REVERIFIED`.
+
+## Review fixes
+
+A follow-up review found eleven gaps; all are fixed on `work/d2-amend-deps`,
+TDD, with the gates green. Four commits: `6cfa264`, `ca80627`, `287588b`,
+`a75bfb9` (the fixture). Each intermediate commit builds (`go build ./...`).
+
+1. **Replay state contract for `node_deps_amended`** (`internal/state/apply.go`).
+   `applyNodeDepsAmended` now validates the state/reopen contract before any
+   mutation: a non-reopened event on a validated node is a replay error (a
+   content change on a validated node must reopen), and admitted/refuted/archived
+   nodes are always refused. Every previous list, the previous hash and the
+   reopen transition are checked before the edge replacement, hash recompute,
+   reopen and amendment record are applied, so a failed `Apply` leaves state
+   untouched. Tests: validated-without-reopen, terminal states, reopen-from-pending
+   all assert no mutation, plus the existing mismatch tests.
+
+2. **Operation-id binding** (`internal/state`, `internal/service/amend_deps.go`).
+   `State` now maps `operation_id -> OperationRecord{seq, event type, node,
+   request fingerprint, old/new hash, reopened}`. `AmendDeps` stores a canonical
+   SHA-256 fingerprint (node, reopen, four sorted edge lists) in the new optional
+   `request_fingerprint` event field. On an id hit, a match returns
+   `applied-already` with the original event's old/new hash and reopen flag; a
+   node/type/fingerprint mismatch returns the typed
+   `ErrAmendDepsOperationIDConflict` (new `OPERATION_ID_CONFLICT` code, exit 3,
+   manifest status `rejected:OPERATION_ID_CONFLICT`). Tests: same id + same
+   request reports the original hashes; different node and different change set
+   both conflict.
+
+3. **Dry run evolves its state** (`internal/service/amend_deps_manifest.go`).
+   Each successfully planned event is applied to the fresh replay state before
+   the next item is planned (and its operation id recorded), so hashes, no-op
+   decisions and cycle/scope verdicts match the real run. The reciprocal-edge
+   dry-run case (`1.1 -> 1.2`, then `1.2 -> 1.1`) is asserted as
+   `rejected:DEPENDENCY_CYCLE`, and a new dry-run/real-run parity test compares
+   per-item status, hashes and edge diff.
+
+4. **Operation ids persisted before the first commit** (`cmd/af/amend_deps.go`).
+   A real manifest run calls `EnsureOperationIDs`, and if any id was generated it
+   rewrites the manifest atomically (temp file + `rename`) before applying
+   anything. `--resume` reads the ids back from disk. Test:
+   `TestAmendDepsCmd_PersistsOperationIDsBeforeFirstCommit` inspects the file
+   inside the pre-append hook, crashes after item 0, resumes from the on-disk
+   file and asserts item 0 is `applied(already)`.
+
+5. **Restart-from-disk test** (`internal/service/amend_deps_test.go`). The old
+   in-memory crash test is replaced by `TestAmendDepsManifest_RestartFromDisk`,
+   which writes the manifest to disk, crashes before item 1's append, re-reads
+   the file, resumes, and compares the full event stream (operation id, owner,
+   reason, previous hash, both edge lists) with an uninterrupted run. It includes
+   a strict item and a stale-expect-hash rejection.
+
+6. **Manifest exit tiers** (`exitError`). All-unchanged is evaluated before the
+   generic success (exit 7 now happens), zero applied is none-applied (6),
+   applied-plus-rejected is partial (5), and an empty manifest is none-applied
+   rather than silently succeeding. `TestAmendDepsManifest_ExitCodes` covers
+   each tier.
+
+7. **Diff dependency interval** (`cmd/af/diff.go`, `internal/state`). Each
+   dependency change keeps its ledger `Seq`; `af diff` filters dependency changes
+   to `(seq(fromVersion), seq(toVersion)]`, and `--since-challenge` filters by the
+   challenge's ledger sequence (now stamped in replay) instead of timestamps.
+   Tests assert that the default/`--version 1` diff omits a dependency amendment
+   recorded after the last statement change, `--version 0` includes both, and
+   `--since-challenge` returns only changes after the challenge.
+
+8. **`af deps` per-kind symmetric differences** (`cmd/af/deps.go`). Only edges an
+   amendment actually added keep the `*` mark; removed edges are reported on a
+   separate `(-) removed by amendment:` line (with a `v:` prefix for validation
+   deps), applied in ledger order so a re-add cancels an earlier removal. Test:
+   removing one of two added edges leaves the survivor marked and lists the
+   removed edge.
+
+9. **Distinct reopened statement event** (`internal/ledger/event.go`, state,
+   service). `NodeAmended` no longer has a `reopened` field; the new
+   `node_amended_reopened` event (same fields, always reopens) is registered
+   format 1.1. `af amend --reopen` emits it and replay applies it through the
+   shared `reopenValidated` helper. Tests: the format gate refuses
+   `AmendNodeWithReopen` on a 1.0 workspace, the legacy `node_amended` still
+   works and does not reopen, and the ledger JSON shape/min-format are asserted.
+
+10. **Removing dangling edges** (`internal/service/amend_deps.go`).
+    `checkAmendDepsTargets` checks ADD lists only; a remove of a present edge is
+    always allowed. Test writes a dangling edge directly to the ledger (`1.1 ->
+    1.99`) and removes it through `AmendDeps`.
+
+11. **1.1 e2e fixture** (`e2e/fixtures/format-1.1/ledger/000006.json`). A real
+    `node_deps_amended` event was appended; `state.ReplayWithVerify` passes. The
+    regeneration path (`AF_GEN_FIXTURES=1`) now emits it for the 1.1 fixture, and
+    `TestFormatFixture_PreviousBinary` asserts the old binary's error text names
+    `node_deps_amended` when `AF_PREVIOUS_BINARY` is set.
+
+### Note on the conflict status name
+
+The review asked for `rejected:operation-id-conflict`. The manifest status is
+`rejected:<CODE>` from `ErrorCode.String()`, and every existing code is
+upper-snake, so the new code is `OPERATION_ID_CONFLICT` (exit 3). The typed
+sentinel is `service.ErrAmendDepsOperationIDConflict`, so callers can match it
+regardless of the rendered string.
+
+### Gates after the fixes
+
+`gofmt` clean · `go build ./cmd/af` · `go vet ./...` · `go test -count=1 ./...`
+all pass.
