@@ -16,6 +16,7 @@ Multiple AI agents work concurrently as adversarial provers and verifiers, refin
 | `release` | Release a claimed job |
 | `refine` | Add child node(s) to a claimed parent |
 | `amend` | Amend a node's statement |
+| `amend-deps` | Correct a node's dependency edges (one event, batchable) |
 | `challenge` | Raise a challenge against a proof node |
 | `resolve-challenge` | Resolve a challenge with a response |
 | `refine-sibling` | Add sibling node (breadth expansion) |
@@ -101,7 +102,7 @@ These flags apply to all commands:
 | 4 | Corruption | Data integrity failures (e.g., CONTENT_HASH_MISMATCH) |
 | 5 | Batch partially applied | `af verdicts apply`: some items applied, some blocked or rejected |
 | 6 | Batch nothing applied | `af verdicts apply`: file valid, zero items applied |
-| 7 | Batch not found | `af unvalidate --batch`: batch id matches no validated node (clean no-op) |
+| 7 | Batch not found / no-op | `af unvalidate --batch`: batch id matches no validated node; `af amend-deps --file`: every item already unchanged (clean no-op) |
 
 Codes 5-7 are specific to the batch-verdict verbs
 ([`docs/verdicts-apply.md`](verdicts-apply.md)) — a verdict batch is neither
@@ -583,19 +584,96 @@ af amend <node-id> [flags]
 |------|-------|------|----------|-------------|
 | `--owner` | `-o` | string | Yes | Agent/owner name |
 | `--statement` | `-s` | string | Yes | New statement text |
+| `--reopen` | | bool | No | Amend a validated node and reopen it (validated -> pending) in the same event |
 | `--dir` | `-d` | string | No | Proof directory (default: ".") |
 | `--format` | `-f` | string | No | Output format (default: "text") |
 
 **Requirements:**
 - You must be the owner of the node
-- Node must be in 'pending' epistemic state
+- Node must be in `pending`, `draft` or `needs_refinement` state; a `validated` node requires `--reopen`
 - Node must not be claimed by another agent
+
+For correcting dependency edges, use `af amend-deps` (it knows about
+result-use cycles and scopes).
 
 **Examples:**
 ```bash
 af amend 1.1 --owner agent1 --statement "Corrected claim about X"
 af amend 1.2 -o agent1 -s "Fixed typo in the proof step"
 af amend 1.1 --owner agent1 --statement "Clarified statement" --format json
+af amend 1.1 --reopen -o verifier-1 -s "Corrected after review"
+```
+
+---
+
+### `amend-deps`
+
+Correct a node's dependency edges (reference `dependencies` and
+`validation_deps`) with an append-only amendment.
+
+**Syntax:**
+```
+af amend-deps <node-id> [flags]
+af amend-deps --file <manifest.json> [--dry-run] [--resume] [flags]
+```
+
+**Flags:**
+
+| Flag | Short | Type | Required | Description |
+|------|-------|------|----------|-------------|
+| `--add` | | strings | No | Reference dependencies to add |
+| `--remove` | | strings | No | Reference dependencies to remove |
+| `--add-validated` | | strings | No | Validation dependencies to add |
+| `--remove-validated` | | strings | No | Validation dependencies to remove |
+| `--reopen` | | bool | No | Reopen a validated node (validated -> pending) in the same event |
+| `--expect-hash` | | string | No | Refuse unless the node's current content hash equals this value |
+| `--strict` | | bool | No | Make a no-op edge change an error instead of a no-op |
+| `--owner` | `-o` | string | Yes (single) | Agent/owner name |
+| `--reason` | `-r` | string | Yes (single) | Reason for the correction |
+| `--file` | | string | No | Apply a JSON manifest of corrections |
+| `--resume` | | bool | No | Rerun a manifest; already-applied items are recognised from the ledger |
+| `--dir` | `-d` | string | No | Proof directory (default: ".") |
+| `--format` | `-f` | string | No | Output format (default: "text") |
+
+**Policy:**
+- States `pending`, `draft` and `needs_refinement` may be corrected directly;
+  `validated` requires `--reopen`; `admitted` requires `af unadmit` first;
+  `refuted` and `archived` are refused.
+- One event: `node_deps_amended` carries the previous edges, the new edges and
+  (with `--reopen`) the `validated -> pending` transition. There is no window
+  in which the node is pending with its old edges.
+- The node's content hash covers dependency IDs, so a correction changes the
+  hash. Verdicts and claim-tests authored against the old hash are stale; pass
+  `--expect-hash` to refuse a correction against a node that moved.
+- `--strict` turns an add of an existing edge or a remove of an absent one into
+  an error. A contradictory add and remove of the same id is always an error.
+- The D1 result-use cycle and scope checks run over the prospective node.
+
+**Manifest:**
+```json
+{"schema_version": 1, "items": [
+  {"node": "1.2", "remove": ["1.3"], "add": ["1.4"],
+   "owner": "prover-1", "reason": "wrong citation", "operation_id": "ad-..."}
+]}
+```
+`--dry-run` validates every item against the current state without writing,
+prints the exact edge diff, the resulting hash and any cycle/scope path, and
+writes a generated `operation_id` back to the file. The real run applies items
+in file order, one commit each, and reports every item once as
+`applied`, `applied(already)`, `unchanged`, `rejected:<code>` or
+`blocked:batch-aborted`. A concurrent-modification error aborts the remaining
+items. The output ends with a re-verification work list for nodes reopened by
+`--reopen`.
+
+**Exit codes:** `0` all applied/unchanged, `5` partial, `6` none applied,
+`7` all unchanged, `3` rejected input, `1` concurrent modification.
+
+**Examples:**
+```bash
+af amend-deps 1.2 --add 1.5 --remove 1.3 -o prover-1 -r "wrong citation"
+af amend-deps 1.2 --reopen --add 1.5 -o verifier-1 -r "fix after review"
+af amend-deps --file corrections.json --dry-run
+af amend-deps --file corrections.json --resume -f json
 ```
 
 ---

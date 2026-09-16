@@ -352,6 +352,25 @@ exactly when the assumption encloses the citing node, carries no taint, and is
 never part of the cycle graph. Citing a node inside a `local_assume` scope that
 does not also enclose the citing node is a scope leak and is rejected.
 
+#### Correcting dependencies
+
+Dependencies are corrected, never edited in place. `af amend-deps` records one
+append-only `node_deps_amended` event carrying the previous edge lists, the new
+edge lists, the reason, and the owner; replay verifies the previous lists
+against the state it holds and refuses to overwrite a mismatch. A removal-only
+correction is accepted even when an unrelated legacy cycle already exists in the
+workspace, because the result-use cycle and scope checks run over the
+*prospective* node with its new edges (the D1 relation above).
+
+The content hash covers dependency IDs, so a correction produces a new content
+revision. Any verdict or claim-test authored against the old hash is stale and
+must be regenerated. Correcting a `validated` node therefore requires `--reopen`:
+the edge replacement and the `validated -> pending` transition are the same
+event, so there is never a window in which the node is pending with its old
+edges. The reopened node must be re-accepted, and every consumer's
+`support_current` becomes false until it is. `af amend` offers the same
+`--reopen` for statement corrections.
+
 ---
 
 ## Taint Propagation
