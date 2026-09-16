@@ -6,7 +6,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -21,8 +24,14 @@ type LedgerLock struct {
 }
 
 // lockMetadata stores the information written to the lock file.
+//
+// Legacy lock files contained only the agent ID as plain text; readLockFile
+// still understands those. New lock files are JSON with agent_id, pid, and
+// acquired_at. PID is 0 when unknown (legacy file), which callers treat as
+// "liveness unknown" and fall back to the acquired_at age.
 type lockMetadata struct {
 	AgentID    string    `json:"agent_id"`
+	PID        int       `json:"pid,omitempty"`
 	AcquiredAt time.Time `json:"acquired_at"`
 }
 
@@ -102,6 +111,7 @@ func (l *LedgerLock) tryAcquire(agentID string) error {
 	// Write metadata
 	meta := lockMetadata{
 		AgentID:    agentID,
+		PID:        os.Getpid(),
 		AcquiredAt: time.Now(),
 	}
 	if err := json.NewEncoder(f).Encode(&meta); err != nil {
@@ -128,14 +138,9 @@ func (l *LedgerLock) Release() error {
 	}
 
 	// Verify ownership by reading lock file metadata
-	data, err := os.ReadFile(l.lockPath)
+	meta, err := readLockFile(l.lockPath)
 	if err != nil {
 		return errors.New("failed to read lock file: " + err.Error())
-	}
-
-	var meta lockMetadata
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return errors.New("failed to parse lock file: " + err.Error())
 	}
 
 	if meta.AgentID != l.agentID {
@@ -160,17 +165,118 @@ func (l *LedgerLock) IsHeld() bool {
 }
 
 // Holder reads the lock file and returns the agent ID and acquisition time.
-// Returns an error if no lock file exists.
+// Returns an error if no lock file exists. Legacy plain-text lock files are
+// understood; their acquisition time is the zero time.
 func (l *LedgerLock) Holder() (agentID string, acquiredAt time.Time, err error) {
-	data, err := os.ReadFile(l.lockPath)
+	meta, err := readLockFile(l.lockPath)
 	if err != nil {
 		return "", time.Time{}, err
 	}
 
-	var meta lockMetadata
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return "", time.Time{}, err
+	return meta.AgentID, meta.AcquiredAt, nil
+}
+
+// Inspect returns the full metadata of the lock in dir, if one exists.
+// Legacy plain-text lock files are understood (PID 0, zero acquired_at).
+func Inspect(dir string) (agentID string, pid int, acquiredAt time.Time, present bool, err error) {
+	meta, err := readLockFile(filepath.Join(dir, lockFileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", 0, time.Time{}, false, nil
+		}
+		return "", 0, time.Time{}, false, err
+	}
+	return meta.AgentID, meta.PID, meta.AcquiredAt, true, nil
+}
+
+// readLockFile reads and parses a lock file, tolerating legacy plain-text
+// content (a bare agent ID). JSON that parses but has an empty agent_id is an
+// error: a corrupt lock file must never be treated as an anonymous holder.
+func readLockFile(path string) (lockMetadata, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return lockMetadata{}, err
+	}
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return lockMetadata{}, errors.New("empty lock file")
 	}
 
-	return meta.AgentID, meta.AcquiredAt, nil
+	if strings.HasPrefix(trimmed, "{") {
+		var meta lockMetadata
+		if err := json.Unmarshal(data, &meta); err != nil {
+			return lockMetadata{}, err
+		}
+		if meta.AgentID == "" {
+			return lockMetadata{}, errors.New("lock file missing agent_id")
+		}
+		return meta, nil
+	}
+
+	// Legacy plain-text lock file: the whole content is the agent ID. There is
+	// no recorded acquisition time, so fall back to the file's modification
+	// time for the staleness age check.
+	meta := lockMetadata{AgentID: trimmed}
+	if info, statErr := os.Stat(path); statErr == nil {
+		meta.AcquiredAt = info.ModTime()
+	}
+	return meta, nil
+}
+
+// IsProcessAlive reports whether a process with the given pid currently
+// exists, using kill(pid, 0) semantics. pid <= 0 is treated as unknown/dead
+// by the caller; this helper returns false for it.
+func IsProcessAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	// On Unix, Signal(0) performs the existence/permission check without
+	// delivering a signal. nil means the process exists and we may signal it;
+	// EPERM means it exists but is owned by another user (still alive).
+	err = proc.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	return errors.Is(err, syscall.EPERM)
+}
+
+// StaleLock returns whether the ledger lock in dir should be considered stale,
+// and a human-readable reason. A lock is stale when its recorded PID is not
+// alive, or when it has no PID and its acquired_at is older than timeout. A
+// live PID is never stale. ok is false when there is no lock file.
+func StaleLock(dir string, timeout time.Duration) (stale bool, reason string, ok bool, err error) {
+	agentID, pid, acquiredAt, present, err := Inspect(dir)
+	if err != nil {
+		return false, "", false, err
+	}
+	if !present {
+		return false, "", false, nil
+	}
+
+	if pid > 0 {
+		if IsProcessAlive(pid) {
+			return false, "", true, nil
+		}
+		return true, "holder pid " + strconv.Itoa(pid) + " is not alive", true, nil
+	}
+
+	// Legacy or missing pid: fall back to age.
+	if !acquiredAt.IsZero() && timeout > 0 && time.Since(acquiredAt) > timeout {
+		return true, "lock held by " + agentID + " is older than " + timeout.String(), true, nil
+	}
+	return false, "", true, nil
+}
+
+// RemoveLockFile removes the ledger lock file in dir unconditionally. Callers
+// must have established staleness first (via StaleLock).
+func RemoveLockFile(dir string) error {
+	err := os.Remove(filepath.Join(dir, lockFileName))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }

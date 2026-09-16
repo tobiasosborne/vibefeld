@@ -44,6 +44,28 @@ func cleanupTempFiles(tempPaths []string, start, end int) {
 	}
 }
 
+// fsyncDir flushes the directory entry created by a rename so that the new
+// event file survives a crash. On platforms where directory fsync is not
+// supported (e.g. some filesystems return EINVAL), the error is ignored: the
+// rename itself is still atomic, and losing the explicit directory fsync only
+// affects durability, not consistency.
+func fsyncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("failed to open ledger directory for fsync: %w", err)
+	}
+	defer d.Close()
+	if err := d.Sync(); err != nil {
+		// Some platforms/filesystems do not support fsync on a directory.
+		// Treat that as best-effort rather than failing the append.
+		if errors.Is(err, os.ErrInvalid) {
+			return nil
+		}
+		return fmt.Errorf("failed to fsync ledger directory: %w", err)
+	}
+	return nil
+}
+
 // validateDirectory checks that dir is a non-empty path to an existing directory.
 // Returns an error if validation fails.
 func validateDirectory(dir string) error {
@@ -135,6 +157,11 @@ func AppendWithTimeout(dir string, event Event, timeout time.Duration) (int, err
 	if err := os.Rename(tempPath, finalPath); err != nil {
 		_ = os.Remove(tempPath) // Best-effort cleanup; don't mask the rename error
 		return 0, fmt.Errorf("failed to rename temp file: %w", err)
+	}
+
+	// Make the rename durable before reporting success.
+	if err := fsyncDir(dir); err != nil {
+		return 0, err
 	}
 
 	return seq, nil
@@ -232,6 +259,11 @@ func AppendIfSequenceWithTimeout(dir string, event Event, expectedSeq int, timeo
 		return 0, fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
+	// Make the rename durable before reporting success.
+	if err := fsyncDir(dir); err != nil {
+		return 0, err
+	}
+
 	return seq, nil
 }
 
@@ -326,6 +358,117 @@ func AppendBatch(dir string, events []Event) ([]int, error) {
 			cleanupTempFiles(tempPaths, i, len(events))
 			return nil, fmt.Errorf("failed to rename event %d: %w", i, err)
 		}
+	}
+
+	// Make the renames durable before reporting success.
+	if err := fsyncDir(dir); err != nil {
+		return nil, err
+	}
+
+	return seqs, nil
+}
+
+// AppendBatchIfSequence appends a batch of events only if the ledger is still
+// at expectedSeq (the sequence observed when state was loaded). Unlike
+// AppendBatch, the sequence check covers the whole batch: it is taken under the
+// same exclusive lock that serializes the writes, so a concurrent writer that
+// landed between the caller's state read and this call causes the whole batch
+// to be refused with ErrSequenceMismatch.
+//
+// On a mid-batch write failure the already-renamed prefix is left in place (a
+// valid ledger prefix), remaining temp files are removed, and the error is
+// returned. Replay of the ledger is always valid up to the last renamed event.
+//
+// Returns the sequence numbers assigned to each event, or ErrSequenceMismatch.
+func AppendBatchIfSequence(dir string, events []Event, expectedSeq int) ([]int, error) {
+	return AppendBatchIfSequenceWithTimeout(dir, events, expectedSeq, defaultLockTimeout)
+}
+
+// AppendBatchIfSequenceWithTimeout is like AppendBatchIfSequence but with a
+// custom lock timeout.
+func AppendBatchIfSequenceWithTimeout(dir string, events []Event, expectedSeq int, timeout time.Duration) ([]int, error) {
+	if len(events) == 0 {
+		return nil, nil
+	}
+
+	if err := validateDirectory(dir); err != nil {
+		return nil, err
+	}
+
+	// Acquire lock for concurrent safety.
+	lock := NewLedgerLock(dir)
+	if err := lock.Acquire("append-batch-if-sequence-operation", timeout); err != nil {
+		return nil, fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer releaseLock(lock, "append-batch-if-sequence")
+
+	// Get current sequence number (inside lock to ensure atomicity).
+	currentSeq, err := NextSequence(dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine current sequence: %w", err)
+	}
+
+	actualLatest := currentSeq - 1
+	if actualLatest != expectedSeq {
+		return nil, fmt.Errorf("%w: expected sequence %d, but ledger is at %d",
+			ErrSequenceMismatch, expectedSeq, actualLatest)
+	}
+
+	seqs := make([]int, len(events))
+	tempPaths := make([]string, len(events))
+
+	// Write all temp files first.
+	for i, event := range events {
+		seq := currentSeq + i
+		seqs[i] = seq
+
+		data, err := json.Marshal(event)
+		if err != nil {
+			cleanupTempFiles(tempPaths, 0, i)
+			return nil, fmt.Errorf("failed to marshal event %d: %w", i, err)
+		}
+
+		tempFile, err := os.CreateTemp(dir, ".event-*.tmp")
+		if err != nil {
+			cleanupTempFiles(tempPaths, 0, i)
+			return nil, fmt.Errorf("failed to create temp file for event %d: %w", i, err)
+		}
+		tempPaths[i] = tempFile.Name()
+
+		if _, err = tempFile.Write(data); err != nil {
+			tempFile.Close()
+			cleanupTempFiles(tempPaths, 0, i+1)
+			return nil, fmt.Errorf("failed to write event %d: %w", i, err)
+		}
+		if err := tempFile.Sync(); err != nil {
+			tempFile.Close()
+			cleanupTempFiles(tempPaths, 0, i+1)
+			return nil, fmt.Errorf("failed to sync event %d: %w", i, err)
+		}
+		if err := tempFile.Close(); err != nil {
+			cleanupTempFiles(tempPaths, 0, i+1)
+			return nil, fmt.Errorf("failed to close temp file for event %d: %w", i, err)
+		}
+		if err := os.Chmod(tempPaths[i], 0644); err != nil {
+			cleanupTempFiles(tempPaths, 0, i+1)
+			return nil, fmt.Errorf("failed to set permissions for event %d: %w", i, err)
+		}
+	}
+
+	// Rename sequentially. On failure, keep the valid prefix already renamed
+	// (crash/partial-write semantics: a valid prefix, never a corrupt ledger)
+	// and clean up the remaining temp files.
+	for i := range events {
+		finalPath := filepath.Join(dir, GenerateFilename(seqs[i]))
+		if err := os.Rename(tempPaths[i], finalPath); err != nil {
+			cleanupTempFiles(tempPaths, i, len(events))
+			return seqs[:i], fmt.Errorf("failed to rename event %d: %w", i, err)
+		}
+	}
+
+	// Make the renames durable before reporting success.
+	if err := fsyncDir(dir); err != nil {
+		return seqs, err
 	}
 
 	return seqs, nil
