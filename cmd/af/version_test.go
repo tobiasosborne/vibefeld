@@ -188,7 +188,7 @@ func TestVersionCmd_JSONOutput(t *testing.T) {
 	}
 
 	// Check required fields exist
-	expectedKeys := []string{"version", "commit", "build_date", "go_version"}
+	expectedKeys := []string{"version", "commit", "build_date", "go_version", "format", "policy"}
 	for _, key := range expectedKeys {
 		if _, ok := result[key]; !ok {
 			t.Errorf("expected JSON output to contain key %q", key)
@@ -286,16 +286,25 @@ func TestVersionInfo_DefaultIsRealSemver(t *testing.T) {
 }
 
 // TestVersionInfo_MatchesLatestChangelogEntry pins VersionInfo's default to
-// the changelog's newest entry so the two cannot silently drift apart again
-// (that drift, compounded across 16 unversioned commits, is exactly what
-// broke rk doctor's stale-binary detection).
+// the changelog's newest *released* entry. Unreleased entries (e.g. the next
+// version's notes) are skipped so work can land before the version is cut.
 func TestVersionInfo_MatchesLatestChangelogEntry(t *testing.T) {
 	if len(changelog) == 0 {
 		t.Fatal("changelog is empty")
 	}
-	latest := changelog[0].Version
+	latest := ""
+	for _, r := range changelog {
+		if r.Unreleased {
+			continue
+		}
+		latest = r.Version
+		break
+	}
+	if latest == "" {
+		t.Fatal("changelog has no released entries")
+	}
 	if VersionInfo != latest {
-		t.Errorf("VersionInfo default %q does not match changelog[0].Version %q — bump one to match the other", VersionInfo, latest)
+		t.Errorf("VersionInfo default %q does not match the newest released changelog entry %q — bump one to match the other", VersionInfo, latest)
 	}
 }
 
@@ -354,7 +363,7 @@ func TestVersionCmd_OutputFormats(t *testing.T) {
 			args:      []string{"version", "--json"},
 			wantErr:   false,
 			checkJSON: true,
-			contains:  []string{"version", "commit", "build_date", "go_version"},
+			contains:  []string{"version", "commit", "build_date", "go_version", "format", "policy"},
 		},
 	}
 

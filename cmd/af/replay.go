@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobiasosborne/vibefeld/internal/config"
+	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/service"
 )
@@ -76,11 +77,18 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
 	}
 
-	// Open ledger
-	ledgerDir := filepath.Join(dir, "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
+	// Open the ledger through the shared entry point so the workspace format
+	// gate runs before any ledger access (replay bypasses ProofService).
+	ldg, cfg, err := openWorkspaceLedger(dir)
 	if err != nil {
-		return fmt.Errorf("error accessing ledger: %w", err)
+		return err
+	}
+
+	// Replay bypasses ProofService, so repeat the per-event format gate here:
+	// refuse any event whose minimum format is newer than the stamped format.
+	// An unknown event type stays the existing replay error.
+	if err := checkReplayFormat(ldg, cfg); err != nil {
+		return err
 	}
 
 	// Count events first
@@ -142,9 +150,10 @@ func runReplay(cmd *cobra.Command, args []string) error {
 			stats.Valid = false
 			output, _ := json.MarshalIndent(stats, "", "  ")
 			fmt.Fprintln(cmd.OutOrStdout(), string(output))
-			return nil
 		}
-		return fmt.Errorf("replay failed: %w", err)
+		// A failed replay is corruption: exit code 4 (LEDGER_INCONSISTENT)
+		// even when the JSON payload has already been printed.
+		return aferrors.Newf(aferrors.LEDGER_INCONSISTENT, "replay failed: %v", err)
 	}
 
 	// Output based on format
@@ -220,6 +229,31 @@ func formatReplayText(stats ReplayStats, verify bool, verbose bool) string {
 	}
 
 	return sb.String()
+}
+
+// checkReplayFormat enforces the per-event workspace format gate for the
+// replay CLI (which does not go through service.NewProofService). A missing
+// meta.json yields a default config and is skipped. Returns nil when no ledger
+// format issue is found; unknown event types are left to replay.
+func checkReplayFormat(ldg *ledger.Ledger, cfg *config.Config) error {
+	if err := config.CheckFormat(cfg); err != nil {
+		return err
+	}
+	return ldg.Scan(func(seq int, data []byte) error {
+		var base struct {
+			Type ledger.EventType `json:"type"`
+		}
+		if err := json.Unmarshal(data, &base); err != nil {
+			return nil // Leave malformed events to replay's own error path.
+		}
+		required := base.Type.MinFormat()
+		if config.CompareFormats(required, cfg.Version) > 0 {
+			return aferrors.Newf(aferrors.FORMAT_TOO_NEW,
+				"event type %s requires workspace format %s; run `af workspace upgrade --to %s`",
+				base.Type, required, required)
+		}
+		return nil
+	})
 }
 
 // countDefinitions counts the number of DefAdded events in the ledger.

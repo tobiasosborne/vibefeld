@@ -145,7 +145,20 @@ func NewProofService(path string) (*ProofService, error) {
 		return nil, fmt.Errorf("%w: path is not a directory", ErrInvalidState)
 	}
 
-	return &ProofService{path: path}, nil
+	svc := &ProofService{path: path}
+
+	// Refuse a workspace whose stamped format this binary cannot read. This is
+	// the format gate at the service entry point; the replay CLI bypasses
+	// ProofService and performs the same check itself.
+	cfg, err := svc.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+	if err := config.CheckFormat(cfg); err != nil {
+		return nil, err
+	}
+
+	return svc, nil
 }
 
 // LoadConfig loads and caches the config from meta.json.
@@ -1883,6 +1896,16 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 func (s *ProofService) appendBulkIfSequence(ldg *ledger.Ledger, events []ledger.Event, expectedSeq int) ([]int, error) {
 	if len(events) == 0 {
 		return nil, nil
+	}
+
+	// Refuse event types that require a newer workspace format before touching
+	// the ledger, so a 1.0 workspace cannot accumulate 1.1 events.
+	cfg, err := s.Config()
+	if err != nil {
+		return nil, err
+	}
+	if err := checkEventFormats(cfg, events); err != nil {
+		return nil, err
 	}
 
 	// For single event, use the existing method

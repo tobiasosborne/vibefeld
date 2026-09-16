@@ -4,13 +4,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tobiasosborne/vibefeld/internal/ledger"
 )
 
 func newLogCmd() *cobra.Command {
@@ -85,11 +83,10 @@ func runLog(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
 	}
 
-	// Create ledger instance
-	ledgerDir := filepath.Join(dir, "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
+	// Open the workspace ledger, applying the workspace format gate first.
+	ldg, _, err := openWorkspaceLedger(dir)
 	if err != nil {
-		return fmt.Errorf("error accessing ledger: %w", err)
+		return err
 	}
 
 	// Collect events

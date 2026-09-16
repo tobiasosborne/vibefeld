@@ -4,13 +4,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
@@ -116,11 +114,10 @@ func runAgents(cmd *cobra.Command, args []string) error {
 		return claimedNodes[i].NodeID < claimedNodes[j].NodeID
 	})
 
-	// Collect claim/release activity from ledger
-	ledgerDir := filepath.Join(dir, "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
+	// Collect claim/release activity from ledger, applying the format gate.
+	ldg, _, err := openWorkspaceLedger(dir)
 	if err != nil {
-		return fmt.Errorf("error accessing ledger: %w", err)
+		return err
 	}
 
 	var activity []ActivityEntry

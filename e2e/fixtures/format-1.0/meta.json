@@ -1,0 +1,11 @@
+{
+  "title": "",
+  "conjecture": "",
+  "lock_timeout": 300000000000,
+  "max_depth": 20,
+  "max_children": 100,
+  "warn_depth": 3,
+  "auto_correct_threshold": 0.8,
+  "created": "0001-01-01T00:00:00Z",
+  "version": "1.0"
+}

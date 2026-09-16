@@ -4,7 +4,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -171,8 +170,7 @@ func runDef(cmd *cobra.Command, args []string) error {
 
 // getAllDefinitions reads all definitions from the ledger.
 func getAllDefinitions(proofDir string) ([]*node.Definition, error) {
-	ledgerDir := filepath.Join(proofDir, "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
+	ldg, _, err := openWorkspaceLedger(proofDir)
 	if err != nil {
 		return nil, err
 	}
