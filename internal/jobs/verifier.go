@@ -114,6 +114,13 @@ func FilterReadyVerifierJobs(verifierJobs []*node.Node, nodeMap map[string]*node
 	return result
 }
 
+// IsVerifierReady reports whether n is a verifier job AND all its children are
+// cleared. It is the per-node form of FilterReadyVerifierJobs and the single
+// `verifier_ready` predicate shared by af get, status, jobs and export.
+func IsVerifierReady(n *node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) bool {
+	return isVerifierJob(n, challengeMap) && AllChildrenCleared(n, nodeMap)
+}
+
 // hasOpenChallenges returns true if the node has any open (unresolved) challenges.
 // Deprecated: Use hasBlockingChallenges for severity-aware checking.
 func hasOpenChallenges(n *node.Node, challengeMap map[string][]*node.Challenge) bool {

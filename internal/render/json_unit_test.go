@@ -1237,7 +1237,9 @@ func TestRenderVerifierContextJSON_ValidChallenge(t *testing.T) {
 func TestRenderStatusJSON_WithJobCounts(t *testing.T) {
 	s := state.NewState()
 	// Available + pending with a statement and no blocking challenge is a
-	// verifier job under the authoritative internal/jobs classifier.
+	// breadth-first verifier job; the status count additionally requires the
+	// bottom-up-ready condition (every child cleared), matching `verifier_ready`
+	// in af get / export.
 	s.AddNode(makeTestNodeWithState(t, "1", "Root", schema.WorkflowAvailable, schema.EpistemicPending))
 	s.AddNode(makeTestNodeWithState(t, "1.1", "Child verifier", schema.WorkflowAvailable, schema.EpistemicPending))
 	// Not a job: claimed nodes are not available for verifier review.
@@ -1254,21 +1256,23 @@ func TestRenderStatusJSON_WithJobCounts(t *testing.T) {
 	proverJobs := int(jobsMap["prover_jobs"].(float64))
 	verifierJobs := int(jobsMap["verifier_jobs"].(float64))
 
-	// The status counts must equal the shared classifier's counts.
+	// The status counts must equal the shared classifier's counts; the verifier
+	// count is the bottom-up-ready set.
 	nodes := s.AllNodes()
 	nodeMap := make(map[string]*node.Node, len(nodes))
 	for _, n := range nodes {
 		nodeMap[n.ID.String()] = n
 	}
 	expected := jobs.FindJobs(nodes, nodeMap, s.ChallengeMapForJobs())
+	expectedReady := jobs.FilterReadyVerifierJobs(expected.VerifierJobs, nodeMap)
 	if proverJobs != len(expected.ProverJobs) {
 		t.Errorf("prover_jobs = %d, want %d", proverJobs, len(expected.ProverJobs))
 	}
-	if verifierJobs != len(expected.VerifierJobs) {
-		t.Errorf("verifier_jobs = %d, want %d", verifierJobs, len(expected.VerifierJobs))
+	if verifierJobs != len(expectedReady) {
+		t.Errorf("verifier_jobs = %d, want %d", verifierJobs, len(expectedReady))
 	}
-	if verifierJobs != 2 {
-		t.Errorf("verifier_jobs = %d, want 2 (available+pending with no blocking challenges)", verifierJobs)
+	if verifierJobs != 1 {
+		t.Errorf("verifier_jobs = %d, want 1 (only the child, whose children are cleared)", verifierJobs)
 	}
 }
 

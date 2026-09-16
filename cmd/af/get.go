@@ -308,11 +308,17 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 	}
 
 	// Job readiness from the one authoritative classifier (D11). st may be nil
-	// in tests that build a node without a workspace.
+	// in tests that build a node without a workspace. verifier_ready uses the
+	// bottom-up ready semantics (every child cleared), matching
+	// `af export --graph json`, status and jobs.
 	if st != nil {
 		challengeMap := st.ChallengeMapForJobs()
+		nodeMap := make(map[string]*node.Node)
+		for _, other := range st.AllNodes() {
+			nodeMap[other.ID.String()] = other
+		}
 		result["prover_ready"] = service.IsProverJob(n, challengeMap)
-		result["verifier_ready"] = service.IsVerifierJob(n, challengeMap)
+		result["verifier_ready"] = service.IsVerifierReady(n, nodeMap, challengeMap)
 	}
 
 	if len(n.Context) > 0 {
@@ -410,7 +416,11 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		fmt.Fprint(cmd.OutOrStdout(), render.RenderNodeVerbose(nodes[0]))
 		if st != nil {
 			challengeMap := st.ChallengeMapForJobs()
-			fmt.Fprintf(cmd.OutOrStdout(), "Prover job: %t\nVerifier job: %t\n", service.IsProverJob(nodes[0], challengeMap), service.IsVerifierJob(nodes[0], challengeMap))
+			nodeMap := make(map[string]*node.Node)
+			for _, other := range st.AllNodes() {
+				nodeMap[other.ID.String()] = other
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Prover job: %t\nVerifier job: %t\n", service.IsProverJob(nodes[0], challengeMap), service.IsVerifierReady(nodes[0], nodeMap, challengeMap))
 		}
 		// Show challenges for this node
 		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)

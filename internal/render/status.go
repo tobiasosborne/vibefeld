@@ -167,6 +167,9 @@ func renderStatistics(sb *strings.Builder, nodes []*node.Node) {
 // jobCountsForState returns the authoritative prover and verifier job counts
 // from internal/jobs over every node in the state (not just the displayed or
 // paginated subset), so the af status summary can never disagree with af jobs.
+// The verifier count is the bottom-up-ready set (children cleared), i.e.
+// jobs.FilterReadyVerifierJobs — the same `verifier_ready` meaning af get and
+// `af export --graph json` use.
 func jobCountsForState(s *state.State) (int, int) {
 	if s == nil {
 		return 0, 0
@@ -180,7 +183,7 @@ func jobCountsForState(s *state.State) (int, int) {
 	if jr == nil {
 		return 0, 0
 	}
-	return len(jr.ProverJobs), len(jr.VerifierJobs)
+	return len(jr.ProverJobs), len(jobs.FilterReadyVerifierJobs(jr.VerifierJobs, nodeMap))
 }
 
 // renderJobs writes the jobs section to the builder. Counts come from the
@@ -284,8 +287,10 @@ func FilterUrgentNodes(s *state.State) []UrgentItem {
 		})
 	}
 
-	// 3. Verifier jobs: the shared internal/jobs classifier decides.
-	for _, n := range jobs.FindVerifierJobs(s.AllNodes(), nodeMap, challengeMap) {
+	// 3. Verifier jobs: the shared internal/jobs classifier decides, then the
+	// bottom-up-ready filter (children cleared), matching the `verifier_ready`
+	// meaning used by af get and export.
+	for _, n := range jobs.FilterReadyVerifierJobs(jobs.FindVerifierJobs(s.AllNodes(), nodeMap, challengeMap), nodeMap) {
 		nodeIDStr := n.ID.String()
 		if seenNodes[nodeIDStr] {
 			continue
