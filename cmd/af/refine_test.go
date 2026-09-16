@@ -1123,52 +1123,83 @@ func TestRefineCmd_WithDependsFlag_MixedValidAndInvalid(t *testing.T) {
 	}
 }
 
-func TestRefineCmd_WithDependsFlag_DependOnParent(t *testing.T) {
-	t.Skip("needs a design decision: service.Refine (588d7c4) runs the cycle check with " +
-		"the parent standing in for the not-yet-created child, so a child citing its own " +
-		"parent is rejected as a self-cycle (DEPENDENCY_CYCLE \"1 -> 1\"), as is citing any " +
-		"node that already depends on the parent. This test (older) expects depending on the " +
-		"parent to be allowed, and e2e/cycle_detection_test.go describes hierarchy and " +
-		"logical dependencies as separate. Decide whether ancestor dependencies are circular.")
+// TestRefineCmd_DependOnClaimAncestorRejected replaces the old skipped test: a
+// child may NOT result-use an ancestor claim (vibefeld-0ko0).
+func TestRefineCmd_DependOnClaimAncestorRejected(t *testing.T) {
 	tmpDir, cleanup := setupRefineTest(t)
 	defer cleanup()
 
-	// Should be able to depend on the parent node
 	cmd := newRefineTestCmd()
-	output, err := executeCommand(cmd, "refine", "1",
+	_, err := executeCommand(cmd, "refine", "1",
 		"--owner", "test-agent",
 		"From the conjecture (node 1), we derive...",
 		"--depends", "1",
 		"--dir", tmpDir,
 	)
+	if err == nil {
+		t.Fatal("expected a cycle error when a child result-uses its claim ancestor")
+	}
+	if !strings.Contains(err.Error(), "circular dependency") {
+		t.Fatalf("expected circular dependency error, got: %v", err)
+	}
+	// The message names the actual path, not the parent standing in for the child.
+	if !strings.Contains(err.Error(), "1.1") || !strings.Contains(err.Error(), "->") {
+		t.Fatalf("expected cycle path naming 1.1, got: %v", err)
+	}
+}
 
+// TestRefineCmd_DependOnEnclosingLocalAssumeAccepted covers the other half of
+// vibefeld-0ko0: a child MAY hypothesis-use an enclosing local_assume.
+func TestRefineCmd_DependOnEnclosingLocalAssumeAccepted(t *testing.T) {
+	tmpDir, cleanup := setupRefineTest(t)
+	defer cleanup()
+
+	// Create 1.1 as a local_assume under the claimed root.
+	cmd := newRefineTestCmd()
+	_, err := executeCommand(cmd, "refine", "1",
+		"--owner", "test-agent",
+		"Suppose P",
+		"--type", "local_assume",
+		"--dir", tmpDir,
+	)
 	if err != nil {
-		t.Fatalf("expected no error when depending on parent, got: %v", err)
+		t.Fatalf("creating local_assume failed: %v", err)
 	}
 
-	if !strings.Contains(output, "1.1") {
-		t.Errorf("expected output to contain child ID '1.1', got: %q", output)
-	}
-
-	// Verify the dependency was recorded
 	svc, err := service.NewProofService(tmpDir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	assumeID, _ := service.ParseNodeID("1.1")
+	if err := svc.ClaimNode(assumeID, "test-agent", time.Hour); err != nil {
+		t.Fatalf("claiming local_assume failed: %v", err)
+	}
+
+	cmd2 := newRefineTestCmd()
+	output, err := executeCommand(cmd2, "refine", "1.1",
+		"--owner", "test-agent",
+		"From the hypothesis P",
+		"--depends", "1.1",
+		"--dir", tmpDir,
+	)
+	if err != nil {
+		t.Fatalf("expected hypothesis-use of the enclosing local_assume to be accepted, got: %v", err)
+	}
+	if !strings.Contains(output, "1.1.1") {
+		t.Errorf("expected output to contain child ID '1.1.1', got: %q", output)
 	}
 
 	st, err := svc.LoadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	childID, _ := service.ParseNodeID("1.1")
+	childID, _ := service.ParseNodeID("1.1.1")
 	child := st.GetNode(childID)
 	if child == nil {
-		t.Fatal("expected child node 1.1 to exist")
+		t.Fatal("expected child node 1.1.1 to exist")
 	}
-
-	if len(child.Dependencies) != 1 || child.Dependencies[0].String() != "1" {
-		t.Errorf("expected dependency on '1', got %v", child.Dependencies)
+	if len(child.Dependencies) != 1 || child.Dependencies[0].String() != "1.1" {
+		t.Errorf("expected dependency on the enclosing local_assume '1.1', got %v", child.Dependencies)
 	}
 }
 

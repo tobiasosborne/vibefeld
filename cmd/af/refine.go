@@ -345,7 +345,7 @@ Workflow:
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "Proof directory")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format (text/json)")
 	cmd.Flags().StringVar(&childrenJSON, "children", "", "JSON array of child specs for complex cases (different types per child)")
-	cmd.Flags().StringVar(&depends, "depends", "", "Comma-separated list of node IDs this node depends on (e.g., 1.1,1.2)")
+	cmd.Flags().StringVar(&depends, "depends", "", "Comma-separated result-use deps (e.g. 1.1,1.2); citing a claim ancestor is circular, an enclosing local_assume is allowed")
 	cmd.Flags().StringVar(&requiresValidated, "requires-validated", "", "Comma-separated list of node IDs that must be validated before this node can be accepted")
 	cmd.Flags().BoolVar(&draft, "draft", false, "Create node in draft state (work-in-progress, challenges non-blocking)")
 	cmd.Flags().BoolVar(&crux, "crux", false, "Mark node as critical path (requires passing claim-test before acceptance)")
