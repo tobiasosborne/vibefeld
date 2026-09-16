@@ -184,6 +184,10 @@ af status --limit 10 --offset 5  # Pagination: 10 nodes starting from 6th
 
 **Next Steps:** Use `af jobs` to see available work, or `af get <node-id>` for node details.
 
+**Jobs summary:** the `Prover:` / `Verifier:` counts in `af status` are computed
+by the authoritative `internal/jobs` classifier over the whole workspace, so
+they always match `af jobs` (including for a workspace with a mix of states).
+
 ---
 
 ### `get`
@@ -224,6 +228,13 @@ af get 1.1 --checklist      # Verification checklist for verifiers
 ```
 
 **Next Steps:** Use `af claim` to work on the node, or `af challenge` to raise an objection.
+
+**Detail fields:** `af get` surfaces the recorded acceptance provenance
+(`validated_by`, `validation_batch_id`, `validated_content_hash`), the claim
+owner and times (`claimed_by`, `claimed_at`, `claim_expires_at`), and the
+authoritative job readiness (`prover_ready`, `verifier_ready`) in both text and
+JSON. Job readiness comes from the same `internal/jobs` classifier that
+`af jobs` uses.
 
 ---
 
@@ -1770,18 +1781,28 @@ af health [flags]
 |------|-------|------|---------|-------------|
 | `--dir` | `-d` | string | "." | Proof directory path |
 | `--format` | `-f` | string | "text" | Output format |
+| `--hotspots` | | int | 5 | Number of top rework hotspots to report |
+| `--rework-warn` | | int | 5 | Rework events per node at which a hotspot is a warning |
 
 **Health Statuses:**
 | Status | Description |
 |--------|-------------|
-| `healthy` | Proof has available work and is making progress |
+| `healthy` | Proof has available work and no warnings |
 | `warning` | Proof has potential issues but is not stuck |
 | `stuck` | Proof cannot make progress without intervention |
 
 **Detects:**
 - All leaf nodes have open challenges
 - No available prover or verifier jobs
-- Circular dependencies
+- Open challenges, with severity and age (informational)
+- Stalled claims (held longer than the lock timeout) and stale claims (expired), with owner and expiry
+- Untouched critical outline stages
+
+**Rework is descriptive, not an alarm.** For each node health counts resolved
+challenges, statement and dependency amendments, and refuted children. The top
+`--hotspots` nodes are listed; a node at or above `--rework-warn` is marked as
+a warning. Repeated scrutiny of a hard node is normal and is *not* evidence
+that the node or the conjecture is false.
 
 ---
 

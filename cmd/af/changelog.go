@@ -9,6 +9,17 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version:    "0.1.10",
+		Date:       "unreleased",
+		Unreleased: true,
+		Items: []string{
+			"`af health` no longer infers that repeated scrutiny means a claim is false. The absolute subtree repair-fatigue alarm is removed and replaced with descriptive per-node rework: resolved challenges, statement and dependency amendments, and refuted children. The top hotspots are listed (configurable with `--hotspots`, default 5) and a per-node `--rework-warn` threshold (default 5) marks a warning, explicitly labelled rework rather than evidence of falsity. Health blockers now also report open challenges with severity and age, and stalled (held longer than the lock timeout) or stale (expired) claims with their owner and expiry; claims record their acquisition time separately from their expiry.",
+			"One jobs classifier: `af status`'s Prover/Verifier summary, `af status --urgent`, `af get`, `af export --graph json` and `af health` now all use `internal/jobs` (`FindJobs` / `IsProverJob` / `IsVerifierJob`), and the render-side workflow-only heuristic is deleted, so the surfaces can no longer disagree.",
+			"`af get` surfaces `validated_by` and `validation_batch_id`, the claim owner/claimed-at/expiry, and `prover_ready` / `verifier_ready` from the authoritative classifier in both text and JSON.",
+			"CLI help and error examples no longer show removed flags (`af refine ... -s/--statement`, `af challenge --owner`); `scripts/auto-prove.sh` uses `accept --with-note`, carries a per-worker identity on every generated claim/challenge/refine command, and treats completion as root validated AND taint clean AND no pending external reference cited by a validated node.",
+		},
+	},
+	{
 		Version: "0.1.9",
 		Date:    "2026-09-16",
 		Items: []string{

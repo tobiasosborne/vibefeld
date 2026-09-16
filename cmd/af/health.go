@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/service"
 	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // Health status constants
@@ -19,12 +21,38 @@ const (
 	HealthStatusWarning = "warning"
 )
 
-// Blocker represents a condition that blocks proof progress.
+// Default thresholds for the descriptive rework section.
+const (
+	DefaultReworkWarnThreshold = 5
+	DefaultReworkHotspots      = 5
+)
+
+// Blocker represents a condition that blocks proof progress. Severity, Age,
+// Owner and Expires are optional descriptive fields added for open challenges
+// and stalled/stale claims; they are omitted when not applicable so the
+// original type/message/suggestion/node_ids shape is unchanged.
 type Blocker struct {
 	Type       string   `json:"type"`
+	Level      string   `json:"level,omitempty"` // "info" or "warning"
 	Message    string   `json:"message"`
 	Suggestion string   `json:"suggestion"`
 	NodeIDs    []string `json:"node_ids,omitempty"`
+	Severity   string   `json:"severity,omitempty"`
+	Age        string   `json:"age,omitempty"`
+	Owner      string   `json:"owner,omitempty"`
+	Expires    string   `json:"expires,omitempty"`
+}
+
+// ReworkHotspot describes descriptive per-node rework. It is deliberately not
+// an alarm: repeated scrutiny is normal on a hard proof and is not evidence
+// that the claim is false.
+type ReworkHotspot struct {
+	NodeID             string `json:"node_id"`
+	ResolvedChallenges int    `json:"resolved_challenges"`
+	Amendments         int    `json:"amendments"`
+	RefutedChildren    int    `json:"refuted_children"`
+	Rework             int    `json:"rework"`
+	Warn               bool   `json:"warn,omitempty"`
 }
 
 // HealthStatistics contains proof health metrics.
@@ -41,6 +69,8 @@ type HealthStatistics struct {
 	LeafNodes                int `json:"leaf_nodes"`
 	BlockedLeaves            int `json:"blocked_leaves"`
 	FatiguedSubtrees         int `json:"fatigued_subtrees"`
+	ReworkNodes              int `json:"rework_nodes,omitempty"`
+	ReworkWarned             int `json:"rework_warned,omitempty"`
 	OutlineStages            int `json:"outline_stages,omitempty"`
 	OutlineMapped            int `json:"outline_mapped,omitempty"`
 	OutlineCriticalUntouched int `json:"outline_critical_untouched,omitempty"`
@@ -48,9 +78,19 @@ type HealthStatistics struct {
 
 // HealthReport contains the complete health assessment of a proof.
 type HealthReport struct {
-	Status     string           `json:"status"`
-	Blockers   []Blocker        `json:"blockers"`
-	Statistics HealthStatistics `json:"statistics"`
+	Status       string           `json:"status"`
+	Blockers     []Blocker        `json:"blockers"`
+	Rework       []ReworkHotspot  `json:"rework"`
+	ReworkWarn   int              `json:"rework_warn_threshold"`
+	HotspotLimit int              `json:"hotspot_limit"`
+	Statistics   HealthStatistics `json:"statistics"`
+}
+
+// healthOptions carries the configurable thresholds for a health run.
+type healthOptions struct {
+	ReworkWarn  int
+	Hotspots    int
+	LockTimeout time.Duration
 }
 
 // newHealthCmd creates the health command.
@@ -64,27 +104,39 @@ func newHealthCmd() *cobra.Command {
 The health command detects:
   - All leaf nodes have open challenges (every proof path is blocked)
   - No available prover or verifier jobs (nothing to work on)
-  - Circular dependencies (if any)
+  - Open challenges, with severity and age
+  - Stalled claims (held longer than the lock timeout) and stale claims (expired)
+  - Untouched critical outline stages
+
+Rework is reported, not judged. For each node it counts resolved challenges,
+statement and dependency amendments, and refuted children, and lists the
+top hotspots. A hotspot at or above --rework-warn is marked as a warning,
+but this is rework, not evidence that the node or the conjecture is false.
 
 Health statuses:
-  - healthy: Proof has available work and is making progress
+  - healthy: Proof has available work and no warnings
   - warning: Proof has potential issues but is not completely stuck
   - stuck: Proof cannot make progress without intervention
 
 Output includes:
   - Overall health status
   - List of blockers with suggestions for resolution
+  - Per-node rework hotspots
   - Statistics about nodes, challenges, and jobs
 
 Examples:
   af health                      Check health in current directory
   af health --dir /path/to/proof Check health for specific proof
-  af health --format json        Output in JSON format`,
+  af health --format json        Output in JSON format
+  af health --hotspots 10        Show the 10 most-reworked nodes
+  af health --rework-warn 8      Warn at 8 rework events per node`,
 		RunE: runHealth,
 	}
 
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
+	cmd.Flags().Int("hotspots", DefaultReworkHotspots, "Number of top rework hotspots to report")
+	cmd.Flags().Int("rework-warn", DefaultReworkWarnThreshold, "Rework events per node at which a hotspot is a warning")
 
 	return cmd
 }
@@ -94,11 +146,19 @@ func runHealth(cmd *cobra.Command, args []string) error {
 	// Get flags
 	dir := service.MustString(cmd, "dir")
 	format := service.MustString(cmd, "format")
+	hotspots := service.MustInt(cmd, "hotspots")
+	reworkWarn := service.MustInt(cmd, "rework-warn")
 
 	// Validate format
 	format = strings.ToLower(format)
 	if format != "" && format != "text" && format != "json" {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
+	}
+	if hotspots < 0 {
+		return fmt.Errorf("invalid hotspots %d: must be non-negative", hotspots)
+	}
+	if reworkWarn < 0 {
+		return fmt.Errorf("invalid rework-warn %d: must be non-negative", reworkWarn)
 	}
 
 	// Create proof service
@@ -127,8 +187,17 @@ func runHealth(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading proof state: %w", err)
 	}
 
+	lockTimeout, err := svc.LockTimeout()
+	if err != nil {
+		return fmt.Errorf("error reading lock timeout: %w", err)
+	}
+
 	// Build the health report
-	report := analyzeHealth(st)
+	report := analyzeHealth(st, healthOptions{
+		ReworkWarn:  reworkWarn,
+		Hotspots:    hotspots,
+		LockTimeout: lockTimeout,
+	})
 
 	// Output based on format
 	if format == "json" {
@@ -148,7 +217,7 @@ func runHealth(cmd *cobra.Command, args []string) error {
 }
 
 // analyzeHealth analyzes the proof state and returns a health report.
-func analyzeHealth(st *service.State) *HealthReport {
+func analyzeHealth(st *service.State, opts healthOptions) *HealthReport {
 	nodes := st.AllNodes()
 
 	// Build node map and identify leaf nodes
@@ -175,15 +244,15 @@ func analyzeHealth(st *service.State) *HealthReport {
 	challengeMap := st.ChallengeMapForJobs()
 
 	// Count open challenges
-	openChallengeCount := len(st.OpenChallenges())
+	openChallenges := st.OpenChallenges()
 
-	// Find jobs
+	// Find jobs using the one authoritative classifier.
 	jobResult := service.FindJobs(nodes, nodeMap, challengeMap)
 
 	// Calculate statistics
 	stats := HealthStatistics{
 		TotalNodes:     len(nodes),
-		OpenChallenges: openChallengeCount,
+		OpenChallenges: len(openChallenges),
 		ProverJobs:     len(jobResult.ProverJobs),
 		VerifierJobs:   len(jobResult.VerifierJobs),
 		LeafNodes:      len(leafNodes),
@@ -216,6 +285,15 @@ func analyzeHealth(st *service.State) *HealthReport {
 		}
 	}
 
+	// Per-node rework (descriptive, not an alarm).
+	rework := collectRework(st, nodes, opts.ReworkWarn)
+	stats.ReworkNodes = len(rework)
+	for _, r := range rework {
+		if r.Warn {
+			stats.ReworkWarned++
+		}
+	}
+
 	// Detect blockers
 	var blockers []Blocker
 	status := HealthStatusHealthy
@@ -230,6 +308,7 @@ func analyzeHealth(st *service.State) *HealthReport {
 	if pendingLeaves > 0 && stats.BlockedLeaves == pendingLeaves {
 		blockers = append(blockers, Blocker{
 			Type:       "all_leaves_challenged",
+			Level:      "warning",
 			Message:    "All pending leaf nodes have open challenges - every proof path is blocked",
 			Suggestion: "Address challenges on leaf nodes by resolving them, or add new child nodes to extend the proof",
 			NodeIDs:    blockedLeafIDs,
@@ -242,6 +321,7 @@ func analyzeHealth(st *service.State) *HealthReport {
 		if stats.PendingNodes > 0 {
 			blockers = append(blockers, Blocker{
 				Type:       "no_available_jobs",
+				Level:      "warning",
 				Message:    "No prover or verifier jobs available, but pending nodes exist",
 				Suggestion: "Check if nodes are blocked or claimed. Release claimed nodes or resolve blockers.",
 				NodeIDs:    nil,
@@ -258,6 +338,7 @@ func analyzeHealth(st *service.State) *HealthReport {
 		if blockerRatio > 0.5 {
 			blockers = append(blockers, Blocker{
 				Type:       "high_blocked_ratio",
+				Level:      "warning",
 				Message:    fmt.Sprintf("%d of %d pending leaves have open challenges (%.0f%%)", stats.BlockedLeaves, pendingLeaves, blockerRatio*100),
 				Suggestion: "Consider addressing challenges to unblock proof paths",
 				NodeIDs:    blockedLeafIDs,
@@ -268,31 +349,21 @@ func analyzeHealth(st *service.State) *HealthReport {
 		}
 	}
 
-	// Check 4: Repair fatigue — subtrees with chronic challenge/amendment cycles
-	fatigued := st.FindFatiguedSubtrees(state.DefaultRepairWarningThreshold, state.DefaultRepairAlarmThreshold)
-	stats.FatiguedSubtrees = len(fatigued)
-	for _, f := range fatigued {
-		severity := "warning"
-		msg := fmt.Sprintf("Subtree %s shows repair fatigue: %d repair cycles (%d challenges, %d amendments, %d refuted)",
-			f.NodeID, f.RepairCycles, f.Metrics.TotalChallenges, f.Metrics.TotalAmendments, f.Metrics.RefutedDescendants)
-		suggestion := "Investigate whether the parent claim or root conjecture may be false"
-		if f.Level == state.FatigueAlarm {
-			severity = "alarm"
-			suggestion = "ALARM: Repeated repairs strongly suggest the claim or root conjecture is false. Re-examine foundational assumptions."
-		}
-		_ = severity // used implicitly by blocker type
-		blockers = append(blockers, Blocker{
-			Type:       "repair_fatigue",
-			Message:    msg,
-			Suggestion: suggestion,
-			NodeIDs:    []string{f.NodeID},
-		})
+	// Check 4: Open challenges, with severity and age. These are informational:
+	// a challenge is normal adversarial scrutiny, not a defect in the proof.
+	blockers = append(blockers, openChallengeBlockers(openChallenges, time.Now())...)
+
+	// Check 5: Stalled and stale claims.
+	stalled, stale := claimBlockers(nodes, opts.LockTimeout, time.Now())
+	blockers = append(blockers, stalled...)
+	blockers = append(blockers, stale...)
+	if len(stalled) > 0 || len(stale) > 0 {
 		if status == HealthStatusHealthy {
 			status = HealthStatusWarning
 		}
 	}
 
-	// Check 5: Untouched critical outline stages
+	// Check 6: Untouched critical outline stages
 	if st.HasOutline() {
 		coverageReport := st.GetOutlineCoverage()
 		stats.OutlineStages = coverageReport.StagesTotal
@@ -303,6 +374,7 @@ func analyzeHealth(st *service.State) *HealthReport {
 			labels := strings.Join(coverageReport.CriticalUntouched, ", ")
 			blockers = append(blockers, Blocker{
 				Type:       "critical_stages_untouched",
+				Level:      "warning",
 				Message:    fmt.Sprintf("%d critical outline stage(s) not started: %s", len(coverageReport.CriticalUntouched), labels),
 				Suggestion: "Map stages to nodes with 'af outline map' and begin work",
 			})
@@ -317,10 +389,134 @@ func analyzeHealth(st *service.State) *HealthReport {
 		blockers = []Blocker{}
 	}
 
+	// Hotspots: the top N reworked nodes. Warned nodes sort first so a
+	// threshold breach is not hidden behind a node with more raw rework.
+	hotspots := selectHotspots(rework, opts.Hotspots)
+
 	return &HealthReport{
-		Status:     status,
-		Blockers:   blockers,
-		Statistics: stats,
+		Status:       status,
+		Blockers:     blockers,
+		Rework:       hotspots,
+		ReworkWarn:   opts.ReworkWarn,
+		HotspotLimit: opts.Hotspots,
+		Statistics:   stats,
+	}
+}
+
+// collectRework computes descriptive rework for every node with a nonzero
+// count, sorted by rework descending (ties broken by node ID for stability).
+func collectRework(st *service.State, nodes []*node.Node, warnThreshold int) []ReworkHotspot {
+	var out []ReworkHotspot
+	for _, n := range nodes {
+		m := st.GetReworkMetrics(n.ID)
+		if m.Rework == 0 {
+			continue
+		}
+		out = append(out, ReworkHotspot{
+			NodeID:             m.NodeID,
+			ResolvedChallenges: m.ResolvedChallenges,
+			Amendments:         m.Amendments,
+			RefutedChildren:    m.RefutedChildren,
+			Rework:             m.Rework,
+			Warn:               warnThreshold > 0 && m.Rework >= warnThreshold,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Rework != out[j].Rework {
+			return out[i].Rework > out[j].Rework
+		}
+		return out[i].NodeID < out[j].NodeID
+	})
+	return out
+}
+
+// selectHotspots returns the top limit nodes, or all of them when limit is 0.
+func selectHotspots(rework []ReworkHotspot, limit int) []ReworkHotspot {
+	if limit <= 0 || limit >= len(rework) {
+		return rework
+	}
+	return rework[:limit]
+}
+
+// openChallengeBlockers returns one informational blocker per open challenge,
+// naming its severity and age.
+func openChallengeBlockers(challenges []*state.Challenge, now time.Time) []Blocker {
+	blockers := make([]Blocker, 0, len(challenges))
+	for _, c := range challenges {
+		if c.Status != state.ChallengeStatusOpen {
+			continue
+		}
+		age := ""
+		if !c.Created.IsZero() {
+			age = formatAge(now.Sub(c.Created.Time()))
+		}
+		blockers = append(blockers, Blocker{
+			Type:       "open_challenge",
+			Level:      "info",
+			Message:    fmt.Sprintf("Open %s challenge %s on node %s: %s", c.Severity, c.ID, c.NodeID.String(), c.Reason),
+			Suggestion: "Address the challenge, or withdraw it if it is no longer relevant",
+			NodeIDs:    []string{c.NodeID.String()},
+			Severity:   c.Severity,
+			Age:        age,
+		})
+	}
+	return blockers
+}
+
+// claimBlockers returns stalled and stale claim blockers. A stale claim is one
+// whose expiry has passed; a stalled claim is still active but has been held
+// longer than the configured lock timeout.
+func claimBlockers(nodes []*node.Node, lockTimeout time.Duration, now time.Time) (stalled, stale []Blocker) {
+	for _, n := range nodes {
+		if n.WorkflowState != service.WorkflowClaimed {
+			continue
+		}
+		blk := Blocker{
+			NodeIDs: []string{n.ID.String()},
+			Owner:   n.ClaimedBy,
+		}
+		if !n.ClaimedAt.IsZero() {
+			blk.Expires = n.ClaimedAt.String()
+		}
+		if !n.ClaimedSince.IsZero() {
+			blk.Age = formatAge(now.Sub(n.ClaimedSince.Time()))
+		}
+
+		if !n.ClaimedAt.IsZero() && n.ClaimedAt.Before(types.FromTime(now)) {
+			blk.Type = "stale_claim"
+			blk.Level = "warning"
+			blk.Message = fmt.Sprintf("Claim on node %s by %s expired at %s", n.ID.String(), n.ClaimedBy, blk.Expires)
+			blk.Suggestion = "Release it with 'af release <id>' or reap it with 'af reap'"
+			stale = append(stale, blk)
+			continue
+		}
+
+		if lockTimeout > 0 && !n.ClaimedSince.IsZero() && now.Sub(n.ClaimedSince.Time()) > lockTimeout {
+			blk.Type = "stalled_claim"
+			blk.Level = "warning"
+			blk.Message = fmt.Sprintf("Claim on node %s by %s has been held for %s (longer than the %s lock timeout)",
+				n.ID.String(), n.ClaimedBy, blk.Age, lockTimeout)
+			blk.Suggestion = "Check the owner is still alive; release it with 'af release <id>' or reap it"
+			stalled = append(stalled, blk)
+		}
+	}
+	return stalled, stale
+}
+
+// formatAge renders a duration as a compact human-readable age.
+func formatAge(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+	default:
+		return fmt.Sprintf("%dd%dh", int(d.Hours())/24, int(d.Hours())%24)
 	}
 }
 
@@ -364,8 +560,8 @@ func renderHealthText(report *HealthReport) string {
 	sb.WriteString(fmt.Sprintf("  Open challenges:  %d\n", report.Statistics.OpenChallenges))
 	sb.WriteString(fmt.Sprintf("  Leaf nodes:       %d\n", report.Statistics.LeafNodes))
 	sb.WriteString(fmt.Sprintf("  Blocked leaves:   %d\n", report.Statistics.BlockedLeaves))
-	if report.Statistics.FatiguedSubtrees > 0 {
-		sb.WriteString(fmt.Sprintf("  Fatigued subtrees:%d\n", report.Statistics.FatiguedSubtrees))
+	if report.Statistics.ReworkNodes > 0 {
+		sb.WriteString(fmt.Sprintf("  Reworked nodes:   %d (%d at or above the warn threshold)\n", report.Statistics.ReworkNodes, report.Statistics.ReworkWarned))
 	}
 	if report.Statistics.OutlineStages > 0 {
 		sb.WriteString(fmt.Sprintf("  Outline stages:   %d (%d mapped, %d critical untouched)\n", report.Statistics.OutlineStages, report.Statistics.OutlineMapped, report.Statistics.OutlineCriticalUntouched))
@@ -377,12 +573,52 @@ func renderHealthText(report *HealthReport) string {
 	sb.WriteString(fmt.Sprintf("  Verifier jobs:    %d\n", report.Statistics.VerifierJobs))
 	sb.WriteString("\n")
 
+	// Rework hotspots (descriptive, never an alarm)
+	if len(report.Rework) > 0 {
+		sb.WriteString(fmt.Sprintf("Rework hotspots (top %d by rework; warn at %d per node):\n", report.HotspotLimit, report.ReworkWarn))
+		sb.WriteString("  Rework is repeated scrutiny of a hard node. It is not evidence the claim is false.\n")
+		for _, r := range report.Rework {
+			flag := ""
+			if r.Warn {
+				flag = " [warn]"
+			}
+			sb.WriteString(fmt.Sprintf("  %s%s: %d rework events (%d resolved challenges, %d amendments, %d refuted children)\n",
+				r.NodeID, flag, r.Rework, r.ResolvedChallenges, r.Amendments, r.RefutedChildren))
+			sb.WriteString(fmt.Sprintf("     %d resolved challenge(s) on this node; this is rework, not evidence of falsity\n", r.ResolvedChallenges))
+		}
+		sb.WriteString("\n")
+	}
+
 	// Blockers
 	if len(report.Blockers) > 0 {
 		sb.WriteString("Blockers:\n")
 		for i, blocker := range report.Blockers {
-			sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, blocker.Message))
+			level := ""
+			if blocker.Level != "" {
+				level = fmt.Sprintf(" (%s)", blocker.Level)
+			}
+			sb.WriteString(fmt.Sprintf("  %d. %s%s\n", i+1, blocker.Message, level))
 			sb.WriteString(fmt.Sprintf("     Suggestion: %s\n", blocker.Suggestion))
+			if blocker.Severity != "" || blocker.Age != "" {
+				detail := []string{}
+				if blocker.Severity != "" {
+					detail = append(detail, "severity: "+blocker.Severity)
+				}
+				if blocker.Age != "" {
+					detail = append(detail, "age: "+blocker.Age)
+				}
+				sb.WriteString(fmt.Sprintf("     %s\n", strings.Join(detail, ", ")))
+			}
+			if blocker.Owner != "" || blocker.Expires != "" {
+				detail := []string{}
+				if blocker.Owner != "" {
+					detail = append(detail, "owner: "+blocker.Owner)
+				}
+				if blocker.Expires != "" {
+					detail = append(detail, "expires: "+blocker.Expires)
+				}
+				sb.WriteString(fmt.Sprintf("     %s\n", strings.Join(detail, ", ")))
+			}
 			if len(blocker.NodeIDs) > 0 {
 				// Sort node IDs for consistent output
 				sortedIDs := make([]string, len(blocker.NodeIDs))

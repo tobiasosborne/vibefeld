@@ -31,6 +31,41 @@ type SubtreeRepairMetrics struct {
 	HighestNodeID         string `json:"highest_node_id"`         // Node with most challenges
 }
 
+// ReworkMetrics describes descriptive per-node rework. Unlike the old
+// absolute subtree repair-fatigue alarm, it carries no inference that a claim
+// is false: sustained challenge, amendment and refutation activity on a hard
+// node is normal scrutiny. Rework is resolved challenges + amendments
+// (statement and dependency) + refuted direct children.
+type ReworkMetrics struct {
+	NodeID             string `json:"node_id"`
+	ResolvedChallenges int    `json:"resolved_challenges"`
+	Amendments         int    `json:"amendments"`
+	RefutedChildren    int    `json:"refuted_children"`
+	Rework             int    `json:"rework"`
+}
+
+// GetReworkMetrics returns descriptive rework metrics for a single node.
+func (s *State) GetReworkMetrics(nodeID types.NodeID) ReworkMetrics {
+	m := ReworkMetrics{NodeID: nodeID.String()}
+	for _, c := range s.GetChallengesForNode(nodeID) {
+		if c.Status == ChallengeStatusResolved {
+			m.ResolvedChallenges++
+		}
+	}
+	m.Amendments = len(s.GetAmendmentHistory(nodeID))
+	for _, child := range s.nodes {
+		parent, ok := child.ID.Parent()
+		if !ok || parent.String() != nodeID.String() {
+			continue
+		}
+		if child.EpistemicState == schema.EpistemicRefuted {
+			m.RefutedChildren++
+		}
+	}
+	m.Rework = m.ResolvedChallenges + m.Amendments + m.RefutedChildren
+	return m
+}
+
 // GetRepairMetrics returns repair fatigue metrics for a single node.
 func (s *State) GetRepairMetrics(nodeID types.NodeID) RepairMetrics {
 	m := RepairMetrics{
