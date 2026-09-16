@@ -234,7 +234,10 @@ af get 1.1 --checklist      # Verification checklist for verifiers
 owner and times (`claimed_by`, `claimed_at`, `claim_expires_at`), and the
 authoritative job readiness (`prover_ready`, `verifier_ready`) in both text and
 JSON. Job readiness comes from the same `internal/jobs` classifier that
-`af jobs` uses.
+`af jobs` uses. `verifier_ready` means bottom-up ready: the node is a verifier
+job (pending, available, no open blocking challenge) **and every child is
+cleared** (validated, admitted or archived), matching `af jobs` and
+`af export --graph json`.
 
 ---
 
@@ -257,7 +260,7 @@ af jobs [flags]
 
 **Job Types:**
 
-- **Verifier jobs**: Nodes ready for review (pending, available, no open challenges)
+- **Verifier jobs**: Nodes ready for review (pending, available, no open blocking challenges, and every child cleared — the bottom-up-ready `verifier_ready` condition)
 - **Prover jobs**: Nodes with open challenges that need addressing
 
 **Examples:**
@@ -1781,6 +1784,7 @@ af health [flags]
 | `--format` | `-f` | string | "text" | Output format |
 | `--hotspots` | | int | 5 | Number of top rework hotspots to report |
 | `--rework-warn` | | int | 5 | Rework events per node at which a hotspot is a warning |
+| `--claim-stall` | | duration | 0 | Warn when a claim has not been refreshed within this window (0 = each claim's own lease length) |
 
 **Health Statuses:**
 | Status | Description |
@@ -1793,7 +1797,7 @@ af health [flags]
 - All leaf nodes have open challenges
 - No available prover or verifier jobs
 - Open challenges, with severity and age (informational)
-- Stalled claims (held longer than the lock timeout) and stale claims (expired), with owner and expiry
+- Stalled claims (no refresh within the claim-stall window; default is each claim's own lease length, independent of the ledger-lock timeout) and stale claims (expired), with owner and expiry
 - Untouched critical outline stages
 
 **Rework is descriptive, not an alarm.** For each node health counts resolved
