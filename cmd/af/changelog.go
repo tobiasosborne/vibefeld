@@ -9,10 +9,11 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
-		Version:    "0.1.9",
-		Date:       "unreleased",
-		Unreleased: true,
+		Version: "0.1.9",
+		Date:    "2026-09-16",
 		Items: []string{
+			"Commit primitive: every mutating command now validates and appends against one state read (loaded outside the ledger lock), with a batch-wide sequence check under the lock and a directory fsync after each event, so a crash leaves a valid ledger prefix and a concurrent write is refused rather than interleaved. `af verdicts apply` checks `expect_hash`, verifier readiness and reviewer≠author on the same read it accepts against. Events may carry an optional `operation_id`; the ledger lock records pid and a release token; `af reap --ledger-lock` removes only a dead or expired ledger lock.",
+			"Cycle and scope checks on every creation path (`refine`, bulk refine, `record-proof`, node creation): dependencies are result-use edges (children and cited nodes that are not local assumptions) checked from the new node's own position over the whole prospective batch; citing a `claim` ancestor is a cycle, citing an enclosing `local_assume` is allowed, and citing a node inside a local assumption that does not enclose the citer is a scope leak (SCOPE_LEAK, exit 3).",
 			"Workspace format activation: `meta.json` now records a workspace format, new workspaces are stamped 1.1, and `af version -f json` advertises `format` and `policy`. This binary reads formats 1.0 and 1.1 but refuses a newer or unknown format with a structured error (FORMAT_TOO_NEW, exit 3).",
 			"`af workspace upgrade --to 1.1 [--dry-run] [-f json]` migrates a 1.0 workspace: it takes the ledger lock, copies `ledger/*.json` and `meta.json` into `backup/<UTC timestamp>/`, fsyncs them, and writes the new stamp atomically. Downgrades are refused; restore the backup to revert.",
 			"Event types now carry a minimum workspace format; a 1.0 workspace refuses a 1.1 event type with the instruction to run `af workspace upgrade --to 1.1`. Replay, which bypasses the service entry point, enforces the same gate before replaying.",
