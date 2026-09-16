@@ -57,29 +57,40 @@ func runClaimTests(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("node %q does not exist", nodeIDStr)
 	}
 
+	targetNode := st.GetNode(nodeID)
 	results := st.GetClaimTests(nodeID)
+
+	// D3: a test is stale when it recorded a non-empty content hash that no
+	// longer matches the node's current content; acceptance ignores it.
+	isStale := func(contentHash string) bool {
+		return contentHash != "" && contentHash != targetNode.ContentHash
+	}
 
 	switch strings.ToLower(format) {
 	case "json":
 		type jsonResult struct {
-			Timestamp  string `json:"timestamp"`
-			Engine     string `json:"engine"`
-			ScriptPath string `json:"script_path,omitempty"`
-			Expression string `json:"expression,omitempty"`
-			Passed     bool   `json:"passed"`
-			Output     string `json:"output,omitempty"`
-			Agent      string `json:"agent,omitempty"`
+			Timestamp   string `json:"timestamp"`
+			Engine      string `json:"engine"`
+			ScriptPath  string `json:"script_path,omitempty"`
+			Expression  string `json:"expression,omitempty"`
+			Passed      bool   `json:"passed"`
+			Output      string `json:"output,omitempty"`
+			Agent       string `json:"agent,omitempty"`
+			ContentHash string `json:"content_hash,omitempty"`
+			Stale       bool   `json:"stale,omitempty"`
 		}
 		jsonResults := make([]jsonResult, len(results))
 		for i, r := range results {
 			jsonResults[i] = jsonResult{
-				Timestamp:  r.Timestamp.String(),
-				Engine:     r.Engine,
-				ScriptPath: r.ScriptPath,
-				Expression: r.Expression,
-				Passed:     r.Passed,
-				Output:     r.Output,
-				Agent:      r.Agent,
+				Timestamp:   r.Timestamp.String(),
+				Engine:      r.Engine,
+				ScriptPath:  r.ScriptPath,
+				Expression:  r.Expression,
+				Passed:      r.Passed,
+				Output:      r.Output,
+				Agent:       r.Agent,
+				ContentHash: r.ContentHash,
+				Stale:       isStale(r.ContentHash),
 			}
 		}
 		out := map[string]interface{}{
@@ -107,7 +118,11 @@ func runClaimTests(cmd *cobra.Command, args []string) error {
 			if r.Agent != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), " agent=%s", r.Agent)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), " at %s\n", r.Timestamp.String())
+			fmt.Fprintf(cmd.OutOrStdout(), " at %s", r.Timestamp.String())
+			if isStale(r.ContentHash) {
+				fmt.Fprintf(cmd.OutOrStdout(), " [stale: recorded for hash %s]", r.ContentHash)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "\n")
 			if r.Output != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "     Output: %s\n", strings.TrimSpace(r.Output))
 			}
