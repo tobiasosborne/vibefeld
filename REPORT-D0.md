@@ -113,3 +113,89 @@ go test -tags integration -run NONE_MATCH ./...   # all tagged tests compile
 - `service.Init` (a raw `Append` site) was migrated to `commit` as well.
 - `getLedger` remains only for read-only operations (`LoadState`,
   `isInitialized`, `Status`, taint-audit scan).
+
+## Review fixes
+
+An independent review of D0 found seven issues; all are fixed on this branch.
+The fixes are grouped in the commits after `docs: D0 report`.
+
+1. **Reap released claims from a stale read (CRITICAL).** `af reap` picked
+   expired nodes from one state read and then `ReleaseNodes` emitted a blanket
+   `NodesReleased`. A claim refreshed in between was wrongly released, and an
+   already-available node produced an invalid `available -> available` event
+   that breaks replay. `ReleaseNodes` now takes a predicate and does the
+   selection *inside* the commit closure, against the same state the CAS
+   protects; only nodes actually claimed in that state are emitted. New
+   `ReleaseExpiredClaims(now)` and `ReleaseAllClaims` wrap it, and `af reap`
+   reports exactly what was released. Tests:
+   `TestReleaseExpiredClaims_RefreshInWindowNotReleased` (one-shot barrier
+   hook; the release is refused), `TestReleaseAllClaims_AlreadyAvailableNoEvent`
+   (no event, no sequence bump), and the existing reap integration tests.
+
+2. **ExtractLemma preconditions lived only in the CLI (HIGH).** The
+   "source is validated" and "no open scope" checks now run inside
+   `ExtractLemma`'s commit closure and return typed `ErrInvalidState`, sharing
+   one state read with the CAS. The CLI keeps its existing messages.
+   `TestExtractLemma_RechecksSourceInCommit` unvalidates before the service
+   call and asserts no `LemmaExtracted` event.
+
+3. **UnvalidateBatch re-read per node (HIGH).** It loaded state once, then
+   called `UnvalidateNode` per node (multiple reads/appends), so a node
+   revalidated under a different batch before its turn could still be revoked.
+   Rebuilt as one commit closure that finds matching nodes in that state,
+   re-checks each `ValidationBatchID` and the `validated -> pending`
+   transition, and appends the ordered `NodeUnvalidated` events as one batch.
+   Public signature and report shape are unchanged.
+   `TestUnvalidateBatch_BatchChangedBeforeCommitLeavesNodes` uses a one-shot
+   hook and fails against the old per-node implementation (verified).
+
+4. **Directory fsync only at the end of a batch (HIGH).** `AppendBatchIfSequence`
+   and `AppendBatch` now fsync the directory after *each* rename, and fsync
+   before returning on a rename failure, so the durable set is always a
+   contiguous prefix. `fsyncDir` keeps its `EINVAL`/`ENOTSUP` tolerance.
+   Tests: a re-exec crash test (`AF_TEST_CRASH_AFTER_RENAME`) asserts exactly
+   N files survive, contiguous and replayable through `state.Replay`, and the
+   rename-failure prefix test moved to `internal/service` so it can replay.
+
+5. **Lock release/staleness TOCTOU (HIGH).** The lock file now carries a
+   random `token` generated at `Acquire`; `Release` removes the file only when
+   the on-disk token matches (legacy plain-text files fall back to the agent
+   id). New `RemoveIfStale(timeout)` re-reads immediately before unlink and
+   removes only if the token (or, for legacy content, the bytes and mtime) is
+   unchanged; a live pid is never removed. The residual re-read/unlink window
+   is documented in one comment on `RemoveIfStale`. `af reap --ledger-lock`
+   uses it. Tests cover token mismatch, live/dead pid, legacy old/fresh, and
+   the compare-and-remove identity check.
+
+6. **Init was two reads and two commits (MEDIUM).** `Init` now builds the root
+   node first, then in one commit closure checks `st.LatestSeq() == 0` and
+   returns `ProofInitialized` + `NodeCreated` as one CAS batch. Concurrent
+   inits cannot both pass the emptiness check.
+   `TestInit_ConcurrentOnlyOneWins` runs eight racers and asserts exactly one
+   success and exactly two events.
+
+7. **Tests that did not test what they claimed (MEDIUM).**
+   - Added the test-only `ProofService.beforeAppend` hook, called by `commit()`
+     between `build()` and `AppendBatchIfSequence`. The barrier test and the
+     verdicts-apply hash race now inject the concurrent writer/amendment in
+     that exact window (`ErrConcurrentModification` / rejected, no
+     `NodeValidated`).
+   - Added the child-process crash test for `AppendBatchIfSequence` (7.4
+     above).
+   - Added `findOperation` + `TestCommit_OperationIDRetryShortCircuits`: a
+     committed `operation_id` is found via `LoadState`/`HasOperationID`, and a
+     retry whose build checks it first appends nothing. This is the D2
+     lost-response recovery path.
+   - Rewrote the prefix test with semantically valid events
+     (`proof_initialized` + `node_created` + `nodes_claimed`) and moved it to
+     `internal/service` so it replays through `state.Replay`.
+
+### Verification (review fixes)
+
+```
+go build ./cmd/af
+go vet ./...
+go test ./...
+go test -tags integration -run NONE_MATCH ./...   # integration tests compile
+gofmt -l .                                        # clean
+```
