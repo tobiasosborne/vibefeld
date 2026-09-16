@@ -153,9 +153,12 @@ func TestUnvalidateBatch_BatchChangedBeforeCommitLeavesNodes(t *testing.T) {
 	}
 	defer func() { svc.beforeAppend = nil }()
 
-	_, err := svc.UnvalidateBatch("b1", "revoke b1", "verifier-1")
+	report, err := svc.UnvalidateBatch("b1", "revoke b1", "verifier-1")
 	if !errors.Is(err, ErrConcurrentModification) {
 		t.Fatalf("UnvalidateBatch err = %v, want ErrConcurrentModification", err)
+	}
+	if report.Count != 0 {
+		t.Fatalf("report.Count = %d, want 0 (nothing appended on a conflict)", report.Count)
 	}
 
 	st, err := svc.LoadState()
