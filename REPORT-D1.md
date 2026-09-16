@@ -136,3 +136,100 @@ a4d4f11 support: typed result-use/hypothesis-use relation with cycle and scope c
 d085563 service: run support checks on every creation path
 d9b6ab5 docs+cli: state the result-use/hypothesis-use rule
 ```
+
+## Review fixes
+
+An independent review found five issues. All are fixed on
+`work/d1-support-relation`, TDD (tests first where they could be isolated),
+with `go build ./cmd/af`, `go vet ./...`, `go test ./...` green, `gofmt`
+clean, and no push. Commits:
+
+```
+433a6de support: branch-local scopes and new-edge-only cycle checks
+6827d75 service: reject ParentID divergence from the child ID
+```
+
+### 1. Branch-local scope derivation (HIGH)
+
+`computeScopes` no longer keeps one global preorder stack. Each child list is
+its own scope interval: a `local_assume` opens a scope over its subtree and its
+later siblings in the same list, a `local_discharge` closes the innermost scope
+that either structurally encloses it or was opened in the same child list, and
+the whole list's scopes are dropped when the list ends. An undischarged
+assumption nested under `1.1` therefore does not enclose `1.2`, and a discharge
+in one branch cannot pop a scope opened in another. The docs form (a discharge
+inside the assumption's subtree closes it) and the plan form (a sibling
+discharge) both still work.
+
+Tests: `TestCheckCreation_NestedUndischargedAssumeDoesNotEncloseLaterSibling`,
+`TestCheckCreation_ForeignDischargeCannotCloseSiblingScope`; the pre-existing
+`TestCheckCreation_ForeignScopeLeakRejected` and
+`TestCheckCreation_LaterSiblingScopeLeak` still pass.
+
+### 2. Discharge pre-close vs post-close context (HIGH)
+
+The universe now records two enclosing sets. `ownEncl` is the context a node's
+own dependencies are checked against (pre-close for a `local_discharge`);
+`encl` is what other nodes see when citing the node (post-close for a
+discharge). A discharge's premise from inside the assumption it closes is
+accepted, a later sibling citing the discharge is accepted, and a later sibling
+citing a node still inside the closed assumption is a scope leak.
+
+Test: `TestCheckCreation_DischargePreAndPostContext`.
+
+### 3. ParentID / ChildID divergence (HIGH)
+
+`Refine` now rejects inside the commit closure when
+`spec.ParentID != spec.ChildID.Parent()` with the typed
+`service.ErrParentIDMismatch` (code `INVALID_PARENT`, exit 3) and derives the
+overlay parent from `ChildID`. `buildChildEvents` derives the overlay parent
+from the generated child ID and asserts it equals the requested parent;
+`CreateNode` already had no caller-supplied parent and derives it from the ID.
+
+Tests: `TestRefine_RejectsParentIDMismatch`, plus the existing create/refine
+paths.
+
+### 4. Re-validate existing nodes whose scope changed (MEDIUM)
+
+After overlaying, `CheckCreation` derives the scope of every pre-existing node
+before and after the overlay and re-runs the scope check on any whose
+enclosing-assumption set changed. Inserting a `local_discharge` before an
+existing later sibling now rejects the sibling's newly orphaned hypothesis-use
+even though the sibling is not in the prospective batch.
+
+Test: `TestCheckCreation_InsertedDischargeOrphansExistingHypothesisUse` and the
+service-level `TestCreateNode_RejectsOrphanedHypothesisUse`.
+
+### 5. Reject only newly added edges that close a cycle (MEDIUM)
+
+`CheckCreation` no longer runs `DetectCycleFrom` and rejects any reachable
+cycle. It compares the pre- and post-overlay result-use graphs, and rejects only
+when an edge new relative to the pre-overlay graph has a target that can reach
+its source in the post-overlay graph. A removal-only amendment that keeps a
+path into an unrelated legacy cycle is accepted; an added edge that closes a
+cycle is rejected.
+
+Tests: `TestCheckCreation_RemovalOnlyKeepsLegacyCyclePath`,
+`TestCheckCreation_AddedEdgeClosingNewCycleRejected`; the existing
+`TestCheckCreation_RemovalOnlyWithLegacyCycle` and batch/ancestor cycle tests
+still pass.
+
+### Child/parent `local_assume` edge decision
+
+The recorded decision is implemented and tested: a child result-use edge is
+excluded when the child is a `local_assume` (hypotheses are introduced, not
+established) and additionally when the parent is a `local_assume`.
+
+Test: `TestResultUseEdges_LocalAssumeOnEitherSideExcluded`.
+
+### Quality gates
+
+```
+$ gofmt -l internal/ cmd/   # clean
+$ go build ./cmd/af         # OK
+$ go vet ./...              # OK
+$ go test ./...             # all packages pass
+$ go test -tags integration ./cmd/af/ ./internal/service/ ./e2e/   # all pass
+```
+
+Branch remains unpushed.
