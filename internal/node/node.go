@@ -115,6 +115,14 @@ type Node struct {
 	ValidatedContentHash string `json:"validated_content_hash,omitempty"`
 	ValidatedHashChecked bool   `json:"validated_hash_checked,omitempty"`
 
+	// ClaimSeq is the ledger sequence of the NodesClaimed event that created
+	// the node's current claim. It is derived state, stamped by replay (never
+	// an event field, hence json:"-" so embedding Node in an event does not
+	// change the event shape), and is cleared on release — whether the release
+	// is an explicit NodesReleased event or the fenced auto-release carried by
+	// a terminal state event (D5). 0 means the node has no current claim.
+	ClaimSeq int `json:"-"`
+
 	// VerdictSeq is the ledger sequence of the NodeValidated OR NodeAdmitted
 	// event that most recently moved this node to a terminal verdict state,
 	// stamped by replay (it is derived state, never an event field, hence

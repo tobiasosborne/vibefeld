@@ -179,8 +179,28 @@ func applyNodesReleased(s *State, e ledger.NodesReleased) error {
 		n.WorkflowState = schema.WorkflowAvailable
 		n.ClaimedBy = ""
 		n.ClaimedAt = types.Timestamp{}
+		n.ClaimSeq = 0
 	}
 	return nil
+}
+
+// maybeReleaseClaim applies D5's fenced auto-release carried on a terminal
+// state event (NodeValidated/NodeAdmitted/NodeRefuted/NodeArchived). It is a
+// no-op on legacy events (ReleaseClaim false or ClaimSeq 0) and when the
+// event's claim generation does not match the node's current one, so a
+// delayed or retried release cannot evict a later claim even under the same
+// owner string. A released claim always returns the node to available.
+func maybeReleaseClaim(n *node.Node, claimSeq int, release bool) {
+	if !release || claimSeq == 0 || n == nil {
+		return
+	}
+	if n.ClaimSeq != claimSeq || n.WorkflowState != schema.WorkflowClaimed {
+		return
+	}
+	n.WorkflowState = schema.WorkflowAvailable
+	n.ClaimedBy = ""
+	n.ClaimedAt = types.Timestamp{}
+	n.ClaimSeq = 0
 }
 
 // applyNodeValidated handles the NodeValidated event.
@@ -200,6 +220,8 @@ func applyNodeValidated(s *State, e ledger.NodeValidated) error {
 	n.ValidatedContentHash = e.ContentHash
 	n.ValidatedHashChecked = e.ExpectedHashChecked
 
+	maybeReleaseClaim(n, e.ClaimSeq, e.ReleaseClaim)
+
 	return nil
 }
 
@@ -215,6 +237,8 @@ func applyNodeAdmitted(s *State, e ledger.NodeAdmitted) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicAdmitted
+
+	maybeReleaseClaim(n, e.ClaimSeq, e.ReleaseClaim)
 
 	return nil
 }
@@ -236,6 +260,8 @@ func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 	// Auto-supersede any open challenges on this node
 	supersedeOpenChallengesForNode(s, e.NodeID)
 
+	maybeReleaseClaim(n, e.ClaimSeq, e.ReleaseClaim)
+
 	return nil
 }
 
@@ -255,6 +281,8 @@ func applyNodeArchived(s *State, e ledger.NodeArchived) error {
 
 	// Auto-supersede any open challenges on this node
 	supersedeOpenChallengesForNode(s, e.NodeID)
+
+	maybeReleaseClaim(n, e.ClaimSeq, e.ReleaseClaim)
 
 	return nil
 }

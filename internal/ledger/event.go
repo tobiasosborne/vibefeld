@@ -147,9 +147,13 @@ type NodesClaimed struct {
 }
 
 // NodesReleased is emitted when one or more nodes are released from a claim.
+// ClaimSeq carries the claim generation the caller meant to release when it
+// is known (D5); the explicit release path releases by owner and does not
+// require it, so it is omitted on legacy and owner-based events.
 type NodesReleased struct {
 	BaseEvent
-	NodeIDs []types.NodeID `json:"node_ids"`
+	NodeIDs  []types.NodeID `json:"node_ids"`
+	ClaimSeq int            `json:"claim_seq,omitempty"`
 }
 
 // ChallengeRaised is emitted when a verifier raises a challenge against a node.
@@ -221,24 +225,55 @@ type NodeValidated struct {
 	// or `af accept --expect-hash`). Plain `af accept` records false. Omitted
 	// on legacy events.
 	ExpectedHashChecked bool `json:"expected_hash_checked,omitempty"`
+	// ClaimSeq and ReleaseClaim implement D5's fenced auto-release: when the
+	// accept is performed by the holder of the node's current claim, the same
+	// event releases it. Replay releases only if ClaimSeq equals the node's
+	// claim generation at that point, so a retried or delayed event cannot
+	// evict a later claim even under the same owner string. Omitted on legacy
+	// events and on accepts by a caller who did not hold the claim (no release).
+	ClaimSeq     int  `json:"claim_seq,omitempty"`
+	ReleaseClaim bool `json:"release_claim,omitempty"`
+	// SelfAccepted records that the verifier identity equals a recorded
+	// contributor (author, proof author, or an amender) and the caller
+	// explicitly allowed it with --allow-self. Absent when no self-accept was
+	// allowed. Recorded provenance, not proof of independence.
+	SelfAccepted bool `json:"self_accepted,omitempty"`
 }
 
 // NodeAdmitted is emitted when a verifier admits a node without full verification.
+// By is the acting agent identity (driver-supplied provenance, same caveat as
+// NodeValidated.VerifiedBy). ClaimSeq/ReleaseClaim are D5's fenced
+// auto-release, identical to NodeValidated's fields.
 type NodeAdmitted struct {
 	BaseEvent
-	NodeID types.NodeID `json:"node_id"`
+	NodeID       types.NodeID `json:"node_id"`
+	By           string       `json:"by,omitempty"`
+	ClaimSeq     int          `json:"claim_seq,omitempty"`
+	ReleaseClaim bool         `json:"release_claim,omitempty"`
 }
 
-// NodeRefuted is emitted when a verifier refutes a node as incorrect.
+// NodeRefuted is emitted when a verifier refutes a node as incorrect. By and
+// the D5 claim-release fields mirror NodeAdmitted.
 type NodeRefuted struct {
 	BaseEvent
-	NodeID types.NodeID `json:"node_id"`
+	NodeID       types.NodeID `json:"node_id"`
+	By           string       `json:"by,omitempty"`
+	ClaimSeq     int          `json:"claim_seq,omitempty"`
+	ReleaseClaim bool         `json:"release_claim,omitempty"`
 }
 
-// NodeArchived is emitted when a node is archived (branch abandoned).
+// NodeArchived is emitted when a node is archived (branch abandoned). Reason
+// and Forced record a D9 forced archive performed while a challenge was open
+// on the node or an active descendant; By is the acting agent identity. The
+// D5 claim-release fields mirror NodeAdmitted.
 type NodeArchived struct {
 	BaseEvent
-	NodeID types.NodeID `json:"node_id"`
+	NodeID       types.NodeID `json:"node_id"`
+	Reason       string       `json:"reason,omitempty"`
+	Forced       bool         `json:"forced,omitempty"`
+	By           string       `json:"by,omitempty"`
+	ClaimSeq     int          `json:"claim_seq,omitempty"`
+	ReleaseClaim bool         `json:"release_claim,omitempty"`
 }
 
 // TaintRecomputed is emitted when a node's taint state is recalculated.
