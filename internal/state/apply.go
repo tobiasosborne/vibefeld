@@ -166,11 +166,21 @@ func applyClaimRefreshed(s *State, e ledger.ClaimRefreshed) error {
 
 // applyNodesReleased handles the NodesReleased event.
 // This clears the claim on released nodes.
+//
+// D5 fencing: when the event carries a non-zero claim generation for a node
+// (ClaimSeqs aligned with NodeIDs), that node is released only if the
+// generation still matches its current claim generation. A stale or retried
+// release therefore cannot evict a later claim. An absent or zero generation
+// is a legacy unfenced release and releases as before.
 func applyNodesReleased(s *State, e ledger.NodesReleased) error {
-	for _, nodeID := range e.NodeIDs {
+	for i, nodeID := range e.NodeIDs {
 		n := s.GetNode(nodeID)
 		if n == nil {
 			return fmt.Errorf("node %s not found in state", nodeID.String())
+		}
+		if i < len(e.ClaimSeqs) && e.ClaimSeqs[i] != 0 && n.ClaimSeq != e.ClaimSeqs[i] {
+			// Stale generation: leave the current (later) claim in place.
+			continue
 		}
 		// Validate the workflow state transition
 		if err := schema.ValidateWorkflowTransition(n.WorkflowState, schema.WorkflowAvailable); err != nil {

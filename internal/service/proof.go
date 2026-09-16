@@ -573,7 +573,7 @@ func (s *ProofService) ReleaseNode(id types.NodeID, owner string) error {
 			return nil, ErrOwnerMismatch
 		}
 
-		return []ledger.Event{ledger.NewNodesReleased([]types.NodeID{id})}, nil
+		return []ledger.Event{newFencedNodesReleased(st, []types.NodeID{id})}, nil
 	})
 	return wrapSequenceMismatch(err, "ReleaseNode")
 }
@@ -823,6 +823,11 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 // external credential — the trust anchor remains the driver's process
 // discipline, same as it always has been for ClaimedBy.
 //
+// When verifiedBy is non-empty the reviewer≠contributor check is enforced
+// exactly as on the interactive and verdict-file paths; this public path has
+// no AllowSelf bypass. Pass an empty verifiedBy to accept without a recorded
+// identity.
+//
 // Returns an error if the node doesn't exist.
 // Returns ErrBlockingChallenges if the node has unresolved critical or major challenges.
 //
@@ -855,19 +860,17 @@ func (s *ProofService) acceptNodeWithExpectation(id types.NodeID, note, verified
 	})
 }
 
-// AcceptNodeInteractive is the interactive `af accept` path. It differs from
-// AcceptNodeWithExpectation in that every accept runs the reviewer≠contributor
-// check (against author, proof author and amendment owners) and may explicitly
-// allow a self-accept with allowSelf, recording self_accepted on the event.
-// A self-accept always sets CheckReviewerAuthor; verdict files keep the same
-// shared check and cannot opt out (they never set AllowSelf).
+// AcceptNodeInteractive is the interactive `af accept` path. Every accept runs
+// the reviewer≠contributor check (against author, proof author and amendment
+// owners) and may explicitly allow a self-accept with allowSelf, recording
+// self_accepted on the event. Verdict files keep the same check and cannot
+// opt out (they never set AllowSelf).
 func (s *ProofService) AcceptNodeInteractive(id types.NodeID, note, verifiedBy, expectHash string, allowSelf bool) error {
 	return s.acceptNodeWithOptions(id, AcceptOptions{
-		Note:                note,
-		VerifiedBy:          verifiedBy,
-		ExpectHash:          expectHash,
-		CheckReviewerAuthor: true,
-		AllowSelf:           allowSelf,
+		Note:       note,
+		VerifiedBy: verifiedBy,
+		ExpectHash: expectHash,
+		AllowSelf:  allowSelf,
 	})
 }
 
@@ -903,7 +906,7 @@ func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, opts 
 		return nil, err
 	}
 	ev := ledger.NewNodeValidatedWithHash(id, opts.Note, opts.VerifiedBy, opts.BatchID, n.ContentHash, opts.ExpectHash != "")
-	if opts.CheckReviewerAuthor && opts.AllowSelf && contributorRole(st, n, opts.VerifiedBy) != "" {
+	if opts.AllowSelf && contributorRole(st, n, opts.VerifiedBy) != "" {
 		ev.SelfAccepted = true
 	}
 	setFencedClaimRelease(n, opts.VerifiedBy, &ev.ReleaseClaim, &ev.ClaimSeq)

@@ -147,13 +147,15 @@ type NodesClaimed struct {
 }
 
 // NodesReleased is emitted when one or more nodes are released from a claim.
-// ClaimSeq carries the claim generation the caller meant to release when it
-// is known (D5); the explicit release path releases by owner and does not
-// require it, so it is omitted on legacy and owner-based events.
+// ClaimSeqs carries the claim generation the caller meant to release for each
+// node, aligned positionally with NodeIDs (D5). Replay releases a node only
+// when its generation is present and still matches the node's current one, so
+// a stale or retried release cannot evict a later claim. Nil/omitted on
+// legacy events, which release unfenced exactly as before.
 type NodesReleased struct {
 	BaseEvent
-	NodeIDs  []types.NodeID `json:"node_ids"`
-	ClaimSeq int            `json:"claim_seq,omitempty"`
+	NodeIDs   []types.NodeID `json:"node_ids"`
+	ClaimSeqs []int          `json:"claim_seqs,omitempty"`
 }
 
 // ChallengeRaised is emitted when a verifier raises a challenge against a node.
@@ -274,6 +276,12 @@ type NodeArchived struct {
 	By           string       `json:"by,omitempty"`
 	ClaimSeq     int          `json:"claim_seq,omitempty"`
 	ReleaseClaim bool         `json:"release_claim,omitempty"`
+	// AbandonedObligations lists the node IDs whose open challenges were
+	// abandoned by this archive (the node itself and/or an active descendant),
+	// captured at write time (D9). It is the durable snapshot the verification
+	// checklist reads, so a descendant-only obligation still surfaces on an
+	// ancestor's checklist. Omitted when no obligation was abandoned.
+	AbandonedObligations []string `json:"abandoned_obligations,omitempty"`
 }
 
 // TaintRecomputed is emitted when a node's taint state is recalculated.
