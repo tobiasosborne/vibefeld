@@ -12,9 +12,9 @@ Initialize a workspace and build a root with two children:
 ```bash
 af init --conjecture "A implies C by way of B" --author prover-1
 af claim 1 --owner prover-1
-af refine 1 --owner prover-1 --child 1.1 -s "A holds" -t claim -i assumption
-af refine 1 --owner prover-1 --child 1.2 -s "A implies B" -t claim -i modus_ponens
-af refine 1 --owner prover-1 --child 1.3 -s "A implies C" -t claim -i modus_ponens
+af refine 1 "A holds" --owner prover-1 -j assumption               # creates 1.1
+af refine 1 "A implies B" --owner prover-1 -j modus_ponens          # creates 1.2
+af refine 1 "A implies C" --owner prover-1 -j modus_ponens --depends 1.2   # creates 1.3
 ```
 
 Suppose node `1.3` was recorded as depending on `1.2` but should depend on both
