@@ -163,3 +163,112 @@ changelog entry is extended.
   in that package (`node.go`, `json.go`, `status.go`, `adapters.go`,
   `examples.go`) and not the checklist, so the change is isolated.
 - No push was performed; `git status` is clean at `d64e9c7`.
+
+---
+
+## Review fixes
+
+An independent review of the D5/D9 branch found six issues. All are fixed on
+this branch; the quality gates below were re-run.
+
+```
+gofmt -l cmd internal e2e          # clean
+go build ./cmd/af                  # ok
+go vet ./...                       # ok
+go test -count=1 ./...             # all packages ok
+go test -tags=integration -count=1 ./cmd/af   # ok
+go test -race -count=1 ./internal/lock        # ok
+```
+
+Commits (oldest first):
+
+| Commit | Topic |
+|---|---|
+| `0891dfa` | D5: fence explicit `NodesReleased` per-node claim generation |
+| `0a4779d` | D9: archive/support invalidation and durable abandoned obligations |
+| `080cbb3` | D9: enforce reviewer-contributor on public accept paths; warn on identity |
+
+### 1. `NodesReleased` was inert (CRITICAL)
+
+The single `claim_seq` field could not describe a multi-node release and was
+never written. It is replaced by `ClaimSeqs []int` (`omitempty`), aligned
+positionally with `NodeIDs`. Every explicit release path — `ReleaseNode`,
+`ReleaseNodes` (and therefore `ReleaseExpiredClaims`/`ReleaseAllClaims`) and
+`RecordProof` — now goes through `newFencedNodesReleased`, which reads each
+node's current `ClaimSeq` from the same state read the commit was built
+against. Replay releases a node only when a non-zero generation is present and
+still equals the node's current generation; an absent/zero generation remains a
+legacy unfenced release. A stale hand-built event therefore leaves a later
+claim intact.
+
+Tests (`internal/service/claim_release_test.go`): stale generation leaves the
+newer claim, matching generation releases, legacy event still releases, and
+`ReleaseAllClaims` stamps each of two differently-generated nodes in position.
+
+### 2. Archiving could restore a stale ancestor verdict (HIGH)
+
+`support_current` now treats a direct child archived at a ledger sequence later
+than the parent's `VerdictSeq` as `CHILD_ARCHIVED_AFTER_VERDICT` (new cause,
+`internal/support/current.go`), so an archived child no longer silently makes
+the parent current again. A fresh accept after the archive is current because
+the parent's verdict then post-dates the child's `ArchivedSeq`. The archival
+sequence is also folded into `LatestRevisionSeq` so it propagates to an older
+ancestor verdict through a target that was re-accepted in between, matching the
+existing amendment-revision propagation. `ArchivedSeq` is derived (`json:"-"`)
+and stamped by replay from the `NodeArchived` event sequence.
+
+Tests (`internal/support/current_test.go`): the reviewer's scenario (child
+archived after verdict → parent not current; re-accept → current) and the
+descendant-archive-through-current-target propagation.
+
+### 3. Descendant-only archive obligations vanished (HIGH)
+
+`NodeArchived` gains `abandoned_obligations []string` (`omitempty`), the node
+IDs whose open challenges the archive abandoned (captured from
+`OpenChallengeObligations` at write time). Replay stamps them on a derived
+`node.AbandonedObligations` (`json:"-"`). The checklist now reads the durable
+snapshot via `state.ArchivedObligations` and falls back to the old
+challenge-trace derivation for legacy archives. A forced archive of 1.1 caused
+by a challenge on 1.1.1 therefore still appears on 1's checklist as 1.1.1.
+
+Tests: `internal/service/claim_release_test.go`
+(`TestArchiveNode_RecordsDescendantAbandonedObligation`) and
+`internal/render/verification_checklist_archive_test.go`
+(`TestChecklist_ListsDescendantAbandonedObligation`).
+
+### 4. Public accept paths bypassed the reviewer check (MEDIUM)
+
+`AcceptOptions.CheckReviewerAuthor` is removed. The reviewer≠contributor check
+now runs whenever `VerifiedBy` is non-empty, on every accept path; `AllowSelf`
+is the only bypass and records `self_accepted`. `AcceptNodeWithVerifier`,
+`AcceptNodeWithExpectation` and `AcceptNodesBulk` therefore enforce it, and
+verdict files cannot opt out (they never set `AllowSelf`).
+
+Tests (`TestPublicAcceptPaths_EnforceReviewerContributor`,
+`TestVerdicts_RealFileCannotAllowSelf`).
+
+### 5. Missing-identity warning suppressed under `-f json` (MEDIUM)
+
+`af accept` prints the missing-identity warning on stderr in every format and
+adds a `warnings` array to the JSON result (single, bulk, no-pending and
+blocking-challenge outputs). The cmd/af JSON tests were updated to separate
+stdout from stderr so stdout stays parseable.
+
+Test: `TestAcceptCmd_MissingIdentityWarningEveryFormat` (text, JSON, and
+agent-supplied).
+
+### 6. Test gaps
+
+- `internal/service/claim_release_test.go` now drives a real verdict file
+  through `verdicts.ParseFile` + `ApplyVerdicts` and asserts the contributor
+  accept is `rejected:reviewer-equals-author`.
+- `internal/lock/info_tolerance_test.go` adds
+  `TestGetLockInfo_ConcurrentWithMarkReleased`, and
+  `go test -race ./internal/lock` is clean.
+
+### Note on the integration suite
+
+`go test -tags=integration ./...` is green except for the pre-existing flaky
+`internal/fs` test `TestAtomicWrite_ConcurrentSameFile` (20 writers racing the
+same temp file), which also fails on the merge-base commit and is untouched by
+this branch. The brief's required gates (`go test ./...`) are clean.
