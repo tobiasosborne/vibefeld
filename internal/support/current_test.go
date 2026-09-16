@@ -171,6 +171,74 @@ func TestCurrent_DescendantRevisionCarriesThroughCurrentTarget(t *testing.T) {
 	}
 }
 
+// TestCurrent_ChildArchivedAfterVerdictBreaksParent is the reviewer's
+// regression: a validated parent whose child was reopened is non-current, and
+// archiving that child must not silently restore the parent's old verdict.
+func TestCurrent_ChildArchivedAfterVerdictBreaksParent(t *testing.T) {
+	st := state.NewState()
+	addNode(t, st, "1", schema.NodeTypeClaim)
+	c := addNode(t, st, "1.1", schema.NodeTypeClaim)
+	validateNode(t, st, "1", 2)
+	c.EpistemicState = schema.EpistemicArchived
+	c.ArchivedSeq = 5
+
+	got := Current(st)
+	if got["1"].Current {
+		t.Fatalf("parent of a child archived after its verdict must not be current: %+v", got["1"])
+	}
+	if got["1"].Cause != CauseChildArchivedAfterVerdict {
+		t.Fatalf("cause = %q, want %q", got["1"].Cause, CauseChildArchivedAfterVerdict)
+	}
+	if got["1"].Node.String() != "1.1" || got["1"].Seq != 5 {
+		t.Fatalf("responsible = %s/%d, want 1.1/5", got["1"].Node, got["1"].Seq)
+	}
+}
+
+// A parent re-accepted after the child's archival (verdict seq > ArchivedSeq)
+// is current: the fresh accept covers the abandoned branch.
+func TestCurrent_ParentReacceptedAfterChildArchiveIsCurrent(t *testing.T) {
+	st := state.NewState()
+	addNode(t, st, "1", schema.NodeTypeClaim)
+	c := addNode(t, st, "1.1", schema.NodeTypeClaim)
+	c.EpistemicState = schema.EpistemicArchived
+	c.ArchivedSeq = 5
+	validateNode(t, st, "1", 6)
+
+	got := Current(st)
+	if !got["1"].Current {
+		t.Fatalf("parent re-accepted after the archive should be current: %+v", got["1"])
+	}
+}
+
+// A descendant archival propagates to an ancestor through a target that was
+// itself re-accepted afterwards, exactly like an amendment revision.
+func TestCurrent_DescendantArchiveCarriesThroughCurrentTarget(t *testing.T) {
+	st := state.NewState()
+	addNode(t, st, "1", schema.NodeTypeClaim)          // R
+	addNode(t, st, "1.1", schema.NodeTypeClaim)        // B
+	c := addNode(t, st, "1.1.1", schema.NodeTypeClaim) // C
+	validateNode(t, st, "1.1.1", 2)
+	validateNode(t, st, "1.1", 3)
+	validateNode(t, st, "1", 4)
+
+	// C is archived at seq 5; B is re-accepted at 6, but R's older verdict
+	// predates the archival and must remain non-current.
+	c.EpistemicState = schema.EpistemicArchived
+	c.ArchivedSeq = 5
+	validateNode(t, st, "1.1", 6)
+
+	got := Current(st)
+	if !got["1.1"].Current {
+		t.Fatalf("B re-accepted after C's archive: expected current, got %+v", got["1.1"])
+	}
+	if got["1"].Current {
+		t.Fatalf("R predates C's archive and must not be current: %+v", got["1"])
+	}
+	if got["1"].Cause != CauseTargetRevised || got["1"].Seq != 5 {
+		t.Fatalf("R = %+v, want TARGET_REVISED seq 5", got["1"])
+	}
+}
+
 // TestCurrent_PendingLocalAssumeChildStaysCurrent locks that local_assume
 // children are not result-use edges: a pending hypothesis must not break its
 // parent's support.

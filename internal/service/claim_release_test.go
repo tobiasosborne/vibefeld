@@ -10,6 +10,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/types"
+	"github.com/tobiasosborne/vibefeld/internal/verdicts"
 )
 
 // claimGeneration returns the node's current derived claim generation.
@@ -284,24 +285,262 @@ func TestReviewerContributorChecks(t *testing.T) {
 	})
 }
 
-// D9: verdict files cannot opt out of the reviewer check (no AllowSelf path),
-// and the broader contributor check applies to them too.
-func TestVerdicts_CannotAllowSelf(t *testing.T) {
+// D9: a real verdict file cannot opt out of the reviewer≠contributor check.
+// The check compares against every recorded contributor, so an accept by the
+// node's proof author is rejected:reviewer-equals-author even though the file
+// schema has no AllowSelf knob.
+func TestVerdicts_RealFileCannotAllowSelf(t *testing.T) {
 	svc, _ := setupTestProof(t)
 	rootID := parseNodeID(t, "1")
 	if _, err := ledger.Append(svc.ledgerDir(), ledger.NewNodeProofAuthored(rootID, "prover-7")); err != nil {
 		t.Fatalf("append proof author: %v", err)
 	}
+
+	data := `{
+		"schema_version": "1", "batch_id": "b-self", "verified_by": "prover-7",
+		"items": [{"node": "1", "verdict": "accept", "reason": "self-review via a real verdict file"}]
+	}`
+	f, err := verdicts.ParseFile([]byte(data))
+	if err != nil {
+		t.Fatalf("verdicts.ParseFile: %v", err)
+	}
+	report, err := svc.ApplyVerdicts(f)
+	if err == nil {
+		t.Fatal("expected a non-nil error for a self-accepting verdict file")
+	}
+	if report.Items[0].Status != "rejected:reviewer-equals-author" {
+		t.Fatalf("status = %q, want rejected:reviewer-equals-author", report.Items[0].Status)
+	}
+}
+
+// D5: hand-built stale-generation NodesReleased must not evict a newer claim.
+func TestReplay_StaleNodesReleasedDoesNotEvictNewerClaim(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	rootID := parseNodeID(t, "1")
+	if err := svc.ClaimNode(rootID, "agent-1", time.Hour); err != nil {
+		t.Fatalf("ClaimNode: %v", err)
+	}
+	gen := claimGeneration(t, svc, "1")
+
+	ev := ledger.NewNodesReleased([]types.NodeID{rootID})
+	ev.ClaimSeqs = []int{gen - 1}
+	if _, err := ledger.Append(svc.ledgerDir(), ev); err != nil {
+		t.Fatalf("append stale release: %v", err)
+	}
+
+	if got := workflowState(t, svc, "1"); got != schema.WorkflowClaimed {
+		t.Errorf("stale release changed workflow to %q, want claimed", got)
+	}
+	if got := claimGeneration(t, svc, "1"); got != gen {
+		t.Errorf("claim generation = %d, want unchanged %d", got, gen)
+	}
+}
+
+// D5: a fenced release whose generation matches releases the node.
+func TestReplay_MatchingNodesReleasedReleases(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	rootID := parseNodeID(t, "1")
+	if err := svc.ClaimNode(rootID, "agent-1", time.Hour); err != nil {
+		t.Fatalf("ClaimNode: %v", err)
+	}
+	gen := claimGeneration(t, svc, "1")
+
+	ev := ledger.NewNodesReleased([]types.NodeID{rootID})
+	ev.ClaimSeqs = []int{gen}
+	if _, err := ledger.Append(svc.ledgerDir(), ev); err != nil {
+		t.Fatalf("append release: %v", err)
+	}
+	if got := workflowState(t, svc, "1"); got != schema.WorkflowAvailable {
+		t.Errorf("workflow = %q, want available", got)
+	}
+}
+
+// D5: legacy NodesReleased (no ClaimSeqs) still releases.
+func TestReplay_LegacyNodesReleasedStillReleases(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	rootID := parseNodeID(t, "1")
+	if err := svc.ClaimNode(rootID, "agent-1", time.Hour); err != nil {
+		t.Fatalf("ClaimNode: %v", err)
+	}
+	if _, err := ledger.Append(svc.ledgerDir(), ledger.NewNodesReleased([]types.NodeID{rootID})); err != nil {
+		t.Fatalf("append legacy release: %v", err)
+	}
+	if got := workflowState(t, svc, "1"); got != schema.WorkflowAvailable {
+		t.Errorf("legacy release did not release: workflow = %q", got)
+	}
+}
+
+// D5: a multi-node release stamps each node's own generation, so a reap frees
+// both nodes even though their generations differ and remain aligned by
+// position.
+func TestReleaseAllClaims_StampsPerNodeGenerations(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	rootID := parseNodeID(t, "1")
+	if err := svc.ClaimNode(rootID, "agent-1", time.Hour); err != nil {
+		t.Fatalf("ClaimNode root: %v", err)
+	}
+	rootGen := claimGeneration(t, svc, "1")
+
+	childID := parseNodeID(t, "1.1")
+	if err := svc.Refine(RefineSpec{
+		ParentID:  rootID,
+		Owner:     "agent-1",
+		ChildID:   childID,
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "child step",
+		Inference: schema.InferenceModusPonens,
+	}); err != nil {
+		t.Fatalf("Refine: %v", err)
+	}
+	if err := svc.ClaimNode(childID, "agent-2", time.Hour); err != nil {
+		t.Fatalf("ClaimNode child: %v", err)
+	}
+	childGen := claimGeneration(t, svc, "1.1")
+	if childGen == rootGen {
+		t.Fatalf("test setup: generations should differ, both %d", rootGen)
+	}
+
+	released, err := svc.ReleaseAllClaims()
+	if err != nil {
+		t.Fatalf("ReleaseAllClaims: %v", err)
+	}
+	if len(released) != 2 {
+		t.Fatalf("released = %v, want both nodes", released)
+	}
+
+	ev := lastNodesReleasedFor(t, svc)
+	if len(ev.NodeIDs) != 2 || ev.NodeIDs[0].String() != "1" || ev.NodeIDs[1].String() != "1.1" {
+		t.Fatalf("NodeIDs = %v, want [1 1.1]", ev.NodeIDs)
+	}
+	if len(ev.ClaimSeqs) != 2 || ev.ClaimSeqs[0] != rootGen || ev.ClaimSeqs[1] != childGen {
+		t.Fatalf("ClaimSeqs = %v, want [%d %d]", ev.ClaimSeqs, rootGen, childGen)
+	}
+	for _, id := range []string{"1", "1.1"} {
+		if got := workflowState(t, svc, id); got != schema.WorkflowAvailable {
+			t.Errorf("node %s workflow = %q, want available", id, got)
+		}
+	}
+}
+
+// lastNodesReleasedFor returns the most recent NodesReleased event.
+func lastNodesReleasedFor(t *testing.T, svc *ProofService) ledger.NodesReleased {
+	t.Helper()
+	ldg, err := svc.getLedger()
+	if err != nil {
+		t.Fatalf("getLedger: %v", err)
+	}
+	records, err := ldg.ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	var found *ledger.NodesReleased
+	for _, record := range records {
+		var header struct {
+			Type ledger.EventType `json:"type"`
+		}
+		if err := json.Unmarshal(record, &header); err != nil || header.Type != ledger.EventNodesReleased {
+			continue
+		}
+		var ev ledger.NodesReleased
+		if err := json.Unmarshal(record, &ev); err != nil {
+			t.Fatalf("unmarshal NodesReleased: %v", err)
+		}
+		e := ev
+		found = &e
+	}
+	if found == nil {
+		t.Fatal("no NodesReleased event found")
+	}
+	return *found
+}
+
+// D9: the public accept surfaces enforce reviewer≠contributor whenever
+// VerifiedBy is non-empty (no AllowSelf bypass).
+func TestPublicAcceptPaths_EnforceReviewerContributor(t *testing.T) {
+	t.Run("AcceptNodeWithVerifier", func(t *testing.T) {
+		svc, _ := setupTestProof(t)
+		err := svc.AcceptNodeWithVerifier(parseNodeID(t, "1"), "", "test-author", "")
+		if !errors.Is(err, errVerdictReviewerIsAuthor) {
+			t.Fatalf("error = %v, want reviewer-is-contributor", err)
+		}
+	})
+
+	t.Run("AcceptNodeWithExpectation", func(t *testing.T) {
+		svc, _ := setupTestProof(t)
+		rootID := parseNodeID(t, "1")
+		st, err := svc.LoadState()
+		if err != nil {
+			t.Fatalf("LoadState: %v", err)
+		}
+		h := st.GetNode(rootID).ContentHash
+		err = svc.AcceptNodeWithExpectation(rootID, "", "test-author", "", h)
+		if !errors.Is(err, errVerdictReviewerIsAuthor) {
+			t.Fatalf("error = %v, want reviewer-is-contributor", err)
+		}
+	})
+
+	t.Run("AcceptNodesBulk", func(t *testing.T) {
+		svc, _ := setupTestProof(t)
+		report, err := svc.AcceptNodesBulk([]types.NodeID{parseNodeID(t, "1")}, "test-author", "")
+		if err == nil {
+			t.Fatal("expected a rejection, got nil")
+		}
+		if report.Applied != 0 || report.Rejected != 1 {
+			t.Fatalf("report = %+v, want 1 rejected", report)
+		}
+	})
+}
+
+// D9: archiving a node with an open challenge on a descendant records the
+// abandoned obligation node IDs on the event (and the derived state), so the
+// ancestor's checklist can surface it.
+func TestArchiveNode_RecordsDescendantAbandonedObligation(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	rootID := parseNodeID(t, "1")
+	if err := svc.ClaimNode(rootID, "prover-1", time.Hour); err != nil {
+		t.Fatalf("ClaimNode root: %v", err)
+	}
+	ids, err := svc.RefineNodeBulk(rootID, "prover-1", []ChildSpec{{
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "child 1.1",
+		Inference: schema.InferenceModusPonens,
+	}})
+	if err != nil {
+		t.Fatalf("RefineNodeBulk 1.1: %v", err)
+	}
+	childID := ids[0]
+	if err := svc.ClaimNode(childID, "prover-1", time.Hour); err != nil {
+		t.Fatalf("ClaimNode 1.1: %v", err)
+	}
+	grandIDs, err := svc.RefineNodeBulk(childID, "prover-1", []ChildSpec{{
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "grandchild 1.1.1",
+		Inference: schema.InferenceModusPonens,
+	}})
+	if err != nil {
+		t.Fatalf("RefineNodeBulk 1.1.1: %v", err)
+	}
+	grandID := grandIDs[0]
+	if err := svc.RaiseChallengeWithBatch(grandID, "ch-grand", "gap", "missing", "major", "verifier-9", "", ""); err != nil {
+		t.Fatalf("RaiseChallengeWithBatch: %v", err)
+	}
+
+	if err := svc.ArchiveNodeWithOptions(childID, ArchiveOptions{Force: true, Reason: "abandon branch", By: "agent-1"}); err != nil {
+		t.Fatalf("forced archive: %v", err)
+	}
+
+	ev := lastNodeArchivedFor(t, svc, childID.String())
+	if len(ev.AbandonedObligations) != 1 || ev.AbandonedObligations[0] != grandID.String() {
+		t.Fatalf("AbandonedObligations = %v, want [%s]", ev.AbandonedObligations, grandID)
+	}
+
 	st, err := svc.LoadState()
 	if err != nil {
 		t.Fatalf("LoadState: %v", err)
 	}
-	err = checkAcceptEligibility(st, st.GetNode(rootID), AcceptOptions{
-		VerifiedBy:          "prover-7",
-		CheckReviewerAuthor: true,
-	})
-	if !errors.Is(err, errVerdictReviewerIsAuthor) {
-		t.Fatalf("verdict-style check error = %v, want reviewer-is-contributor", err)
+	n := st.GetNode(childID)
+	if len(n.AbandonedObligations) != 1 || n.AbandonedObligations[0] != grandID.String() {
+		t.Fatalf("derived AbandonedObligations = %v, want [%s]", n.AbandonedObligations, grandID)
 	}
 }
 

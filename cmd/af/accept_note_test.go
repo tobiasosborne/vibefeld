@@ -73,9 +73,9 @@ func TestAcceptWithNote_JSONOutput(t *testing.T) {
 	defer cleanup()
 
 	cmd := newAcceptCmd()
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
+	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
 	cmd.SetArgs([]string{"1", "-d", tmpDir, "--with-note", "Minor issue but acceptable", "-f", "json"})
 
 	err := cmd.Execute()
@@ -83,7 +83,7 @@ func TestAcceptWithNote_JSONOutput(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	output := buf.String()
+	output := stdout.String()
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatalf("failed to parse JSON output: %v", err)
@@ -143,9 +143,9 @@ func TestAcceptWithNote_EmptyNote(t *testing.T) {
 	defer cleanup()
 
 	cmd := newAcceptCmd()
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
+	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
 	cmd.SetArgs([]string{"1", "-d", tmpDir, "-f", "json"})
 
 	err := cmd.Execute()
@@ -153,7 +153,7 @@ func TestAcceptWithNote_EmptyNote(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	output := buf.String()
+	output := stdout.String()
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatalf("failed to parse JSON output: %v", err)

@@ -67,13 +67,15 @@ func executeBulkAcceptCommand(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 
 	cmd := newAcceptCmd()
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
+	// Separate streams: advisory warnings go to stderr, so stdout always
+	// carries only the requested output format.
+	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
 	cmd.SetArgs(args)
 
 	err := cmd.Execute()
-	return buf.String(), err
+	return stdout.String(), err
 }
 
 // =============================================================================

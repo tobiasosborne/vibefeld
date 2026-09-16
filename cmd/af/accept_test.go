@@ -75,13 +75,15 @@ func executeAcceptCommand(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 
 	cmd := newAcceptCmd()
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
+	// Separate streams: advisory warnings (e.g. the missing-identity warning)
+	// go to stderr, so stdout always carries only the requested output format.
+	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
 	cmd.SetArgs(args)
 
 	err := cmd.Execute()
-	return buf.String(), err
+	return stdout.String(), err
 }
 
 // newAcceptCmd is now implemented in accept.go
@@ -1776,4 +1778,83 @@ func TestAcceptCmd_WarnsTaintedDeps(t *testing.T) {
 	if !strings.Contains(warning, "1.1") {
 		t.Errorf("expected warning to mention child 1.1, got: %q", warning)
 	}
+}
+
+// TestAcceptCmd_MissingIdentityWarningEveryFormat covers the 0.1.10 identity
+// warning: it must reach stderr in both text and JSON output, and the JSON
+// result must carry it in a warnings array.
+func TestAcceptCmd_MissingIdentityWarningEveryFormat(t *testing.T) {
+	t.Setenv("AF_AGENT_ID", "")
+
+	t.Run("text", func(t *testing.T) {
+		tmpDir, cleanup := setupAcceptTestWithNode(t)
+		defer cleanup()
+
+		cmd := newAcceptCmd()
+		stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+		cmd.SetOut(stdout)
+		cmd.SetErr(stderr)
+		cmd.SetArgs([]string{"1", "-d", tmpDir})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("accept: %v", err)
+		}
+		if !strings.Contains(stderr.String(), "no --agent/AF_AGENT_ID given") {
+			t.Errorf("missing-identity warning not on stderr: %q", stderr.String())
+		}
+		if strings.Contains(stdout.String(), "no --agent/AF_AGENT_ID given") {
+			t.Errorf("warning leaked into stdout: %q", stdout.String())
+		}
+	})
+
+	t.Run("json", func(t *testing.T) {
+		tmpDir, cleanup := setupAcceptTestWithNode(t)
+		defer cleanup()
+
+		cmd := newAcceptCmd()
+		stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+		cmd.SetOut(stdout)
+		cmd.SetErr(stderr)
+		cmd.SetArgs([]string{"1", "-d", tmpDir, "-f", "json"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("accept: %v", err)
+		}
+		if !strings.Contains(stderr.String(), "no --agent/AF_AGENT_ID given") {
+			t.Errorf("missing-identity warning not on stderr under -f json: %q", stderr.String())
+		}
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(stdout.String()), &result); err != nil {
+			t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout.String())
+		}
+		warnings, ok := result["warnings"].([]interface{})
+		if !ok || len(warnings) != 1 {
+			t.Fatalf("warnings = %v, want one entry", result["warnings"])
+		}
+		if !strings.Contains(warnings[0].(string), "no --agent/AF_AGENT_ID given") {
+			t.Errorf("warnings[0] = %q, want the missing-identity warning", warnings[0])
+		}
+	})
+
+	t.Run("agent-supplied-no-warning", func(t *testing.T) {
+		tmpDir, cleanup := setupAcceptTestWithNode(t)
+		defer cleanup()
+
+		cmd := newAcceptCmd()
+		stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+		cmd.SetOut(stdout)
+		cmd.SetErr(stderr)
+		cmd.SetArgs([]string{"1", "-d", tmpDir, "--agent", "verifier-x", "--confirm", "-f", "json"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("accept: %v", err)
+		}
+		if strings.Contains(stderr.String(), "no --agent/AF_AGENT_ID given") {
+			t.Errorf("unexpected missing-identity warning: %q", stderr.String())
+		}
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(stdout.String()), &result); err != nil {
+			t.Fatalf("stdout is not valid JSON: %v", err)
+		}
+		if _, ok := result["warnings"]; ok {
+			t.Errorf("warnings present even though an identity was supplied: %v", result["warnings"])
+		}
+	})
 }

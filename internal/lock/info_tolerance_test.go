@@ -85,3 +85,44 @@ func TestGetLockInfo_ConcurrentWithRefresh(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// MarkReleased running concurrently with GetLockInfo must be clean under -race.
+// A released lock must always be reported expired once the release lands.
+func TestGetLockInfo_ConcurrentWithMarkReleased(t *testing.T) {
+	nodeID, err := types.Parse("1")
+	if err != nil {
+		t.Fatalf("parse node: %v", err)
+	}
+	lk, err := NewClaimLock(nodeID, "agent-1", time.Hour)
+	if err != nil {
+		t.Fatalf("NewClaimLock: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := GetLockInfo(lk); err != nil {
+				t.Errorf("GetLockInfo: %v", err)
+			}
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		lk.MarkReleased()
+		close(done)
+	}()
+	wg.Wait()
+	<-done
+
+	info, err := GetLockInfo(lk)
+	if err != nil {
+		t.Fatalf("GetLockInfo: %v", err)
+	}
+	if !info.IsExpired {
+		t.Error("IsExpired = false for a released lock, want true")
+	}
+}

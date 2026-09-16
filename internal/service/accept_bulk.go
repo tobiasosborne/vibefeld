@@ -116,9 +116,8 @@ func (s *ProofService) AcceptNodesBulk(ids []types.NodeID, verifiedBy, batchID s
 // files keep the same check and never allow self.
 func (s *ProofService) AcceptNodesBulkInteractive(ids []types.NodeID, verifiedBy string, allowSelf bool) (*BulkAcceptReport, error) {
 	return s.acceptNodesBulkWithOptions(ids, AcceptOptions{
-		VerifiedBy:          verifiedBy,
-		CheckReviewerAuthor: true,
-		AllowSelf:           allowSelf,
+		VerifiedBy: verifiedBy,
+		AllowSelf:  allowSelf,
 	})
 }
 
@@ -197,7 +196,7 @@ func scheduleBulkAccept(st *state.State, ids []types.NodeID, base AcceptOptions,
 			err := checkAcceptEligibility(st, it.n, opts)
 			if err == nil {
 				ev := ledger.NewNodeValidatedWithHash(it.id, "", base.VerifiedBy, base.BatchID, it.n.ContentHash, false)
-				if base.CheckReviewerAuthor && base.AllowSelf && contributorRole(st, it.n, base.VerifiedBy) != "" {
+				if base.AllowSelf && contributorRole(st, it.n, base.VerifiedBy) != "" {
 					ev.SelfAccepted = true
 				}
 				setFencedClaimRelease(it.n, base.VerifiedBy, &ev.ReleaseClaim, &ev.ClaimSeq)

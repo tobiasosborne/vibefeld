@@ -94,15 +94,10 @@ type AcceptOptions struct {
 	// available when an expected hash was supplied. Verdict files set this; the
 	// interactive and bulk accept paths do not.
 	RequireVerifierReady bool
-	// CheckReviewerAuthor rejects a validation whose verifier identity equals
-	// the node's recorded author. Verdict files set this (rk PRD C3); the
-	// interactive CLI sets it and adds AllowSelf for an explicit self-accept.
-	// It compares against every recorded contributor (author, proof author and
-	// amendment owners), not just the node's Author.
-	CheckReviewerAuthor bool
-	// AllowSelf, when CheckReviewerAuthor is set, lets a verifier who equals a
-	// recorded contributor accept anyway. The resulting NodeValidated records
-	// SelfAccepted=true, so the choice is provenance that can be audited.
+	// AllowSelf lets a verifier who equals a recorded contributor accept
+	// anyway, recording SelfAccepted=true on the resulting NodeValidated so the
+	// choice is auditable provenance. It is the only bypass of the
+	// reviewer-contributor check.
 	AllowSelf bool
 	// AcceptedInBatch names nodes this same bulk batch has already scheduled for
 	// acceptance (or already appended), so prerequisite checks treat them as
@@ -158,14 +153,15 @@ func checkAcceptEligibility(st *state.State, n *node.Node, opts AcceptOptions) e
 		}
 	}
 
-	// Reviewer != contributor, when a verifier identity was recorded and the
-	// caller asked for the check (verdict files, and the interactive CLI). A
-	// "contributor" is any identity recorded as the node's author, its proof
-	// author (record-proof), or an owner of a statement/edge amendment. This
-	// is recorded provenance that can be mechanically checked, not proof of
+	// Reviewer ≠ contributor is enforced whenever a verifier identity is
+	// recorded, on every accept path (interactive, bulk and verdict files);
+	// AllowSelf is the only bypass and records self_accepted. A "contributor"
+	// is any identity recorded as the node's author, its proof author
+	// (record-proof), or an owner of a statement/edge amendment. This is
+	// recorded provenance that can be mechanically checked, not proof of
 	// independence: the identity strings are driver-supplied.
-	if opts.CheckReviewerAuthor && opts.VerifiedBy != "" {
-		if role := contributorRole(st, n, opts.VerifiedBy); role != "" && !opts.AllowSelf {
+	if opts.VerifiedBy != "" && !opts.AllowSelf {
+		if role := contributorRole(st, n, opts.VerifiedBy); role != "" {
 			return &AcceptRejectedError{
 				Node: n.ID, Code: CodeReviewerIsAuthor,
 				Err: fmt.Errorf("%w: verifier %q is also the recorded %s of node %s; pass --allow-self to accept anyway",
