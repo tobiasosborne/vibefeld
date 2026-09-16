@@ -22,8 +22,9 @@ Without a node ID, scans the entire proof for fatigued subtrees.
 With a node ID, shows detailed metrics for that node and its subtree.
 
 Repair cycles = resolved challenges + amendments (proxy for rework effort).
-Warning threshold (default 3): subtree may have deeper issues.
-Alarm threshold (default 5): repeated repairs suggest the claim or root conjecture may be false.
+Warning threshold (default 3): subtree has sustained rework.
+Alarm threshold (default 5): subtree has heavy rework. This is repeated
+scrutiny of a hard node, not evidence that the claim is false.
 
 Examples:
   af repair-stats              Scan entire proof for fatigue
@@ -130,10 +131,9 @@ func renderNodeRepairStats(cmd *cobra.Command, st *service.State, nodeID types.N
 
 	sb.WriteString(fmt.Sprintf("Fatigue Level: %s\n", fatigueLabel(level)))
 	if level == state.FatigueAlarm {
-		sb.WriteString("  ALARM: Repeated repairs may indicate the parent claim or root conjecture is false.\n")
-		sb.WriteString("  Consider re-examining foundational assumptions.\n")
+		sb.WriteString("  ALARM: This subtree has sustained rework. This is repeated scrutiny, not evidence the claim is false.\n")
 	} else if level == state.FatigueWarning {
-		sb.WriteString("  WARNING: Subtree shows signs of chronic instability.\n")
+		sb.WriteString("  WARNING: Subtree shows sustained rework.\n")
 	}
 
 	fmt.Fprint(cmd.OutOrStdout(), sb.String())
