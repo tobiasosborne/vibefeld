@@ -7,6 +7,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/jobs"
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -61,85 +62,67 @@ func (s *ProofService) RecordProof(spec RecordProofSpec) (*RecordProofResult, er
 		return nil, err
 	}
 
-	st, err := s.LoadState()
-	if err != nil {
-		return nil, err
-	}
-	expectedSeq := st.LatestSeq()
-
-	parent := st.GetNode(spec.ParentID)
-	if parent == nil {
-		return nil, fmt.Errorf("%w: %s", ErrParentNotFound, spec.ParentID.String())
-	}
-
-	// rk B1: current prover-job classification (same classifier the export's
-	// prover_ready flag uses). Refuses a proof recorded against a node no
-	// longer classified for prover work (e.g. its challenge was resolved by
-	// someone else during the model turn).
-	challengeMap := st.ChallengeMapForJobs()
-	if !jobs.IsProverJob(parent, challengeMap) {
-		return nil, fmt.Errorf("%w: node %s is not a prover job (needs an open blocking challenge, or a draft/needs_refinement state) — refusing a stale-role prover write", ErrInvalidState, spec.ParentID.String())
-	}
-
-	// rk B1: expected-hash guard.
-	if spec.ExpectHash != "" && parent.ContentHash != spec.ExpectHash {
-		return nil, fmt.Errorf("%w: node %s content hash changed since dispatch (expected %s, current %s)", ErrInvalidState, spec.ParentID.String(), spec.ExpectHash, parent.ContentHash)
-	}
-
-	// Ownership: refuse a node claimed by someone else; note if we hold it.
-	claimedByOwner := false
-	if parent.WorkflowState == schema.WorkflowClaimed {
-		if parent.ClaimedBy != spec.Owner {
-			return nil, fmt.Errorf("%w: node %s is claimed by %s, not %s", ErrOwnerMismatch, spec.ParentID.String(), parent.ClaimedBy, spec.Owner)
+	var result *RecordProofResult
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		parent := st.GetNode(spec.ParentID)
+		if parent == nil {
+			return nil, fmt.Errorf("%w: %s", ErrParentNotFound, spec.ParentID.String())
 		}
-		claimedByOwner = true
-	}
 
-	// (4) Children (rk B2 dependency resolution inside buildChildEvents).
-	events, childIDs, err := s.buildChildEvents(st, spec.ParentID, spec.Owner, spec.Children)
-	if err != nil {
-		return nil, err
-	}
-
-	// (4a) rk GAP 9: stamp the DECOMPOSED PARENT with the acting prover as its
-	// proof-of-record author. The decomposition IS this prover's proof of the
-	// parent, symmetric with the author stamp buildChildEvents just put on the
-	// CHILDREN — so a cross-vendor check has a family-tagged prover identity to
-	// read for THIS node's own validation, not just its children's. Records
-	// ProofAuthor only (never touches the node's content Author); part of the
-	// SAME atomic append batch as the children/challenge/release below, so the
-	// stamp lands iff the proof does. A later re-decomposition emits it again,
-	// updating the field to the new decomposer.
-	events = append(events, ledger.NewNodeProofAuthored(spec.ParentID, spec.Owner))
-
-	// (5) rk FU3: dispose every open challenge on the parent. Resolving the
-	// challenge(s) plus adding children returns the node to verifier territory
-	// once its new children clear (bottom-up). We resolve ALL open challenges
-	// on the node — the job classifier treats any open challenge as blocking
-	// (state.ChallengeMapForJobs drops severity), so a residual open challenge
-	// would keep the node prover-classified and defeat the hand-off.
-	var resolvedIDs []string
-	for _, c := range st.GetChallengesForNode(spec.ParentID) {
-		if c.Status == ChallengeStatusOpen {
-			events = append(events, ledger.NewChallengeResolved(c.ID))
-			resolvedIDs = append(resolvedIDs, c.ID)
+		// rk B1: current prover-job classification (same classifier the export's
+		// prover_ready flag uses).
+		challengeMap := st.ChallengeMapForJobs()
+		if !jobs.IsProverJob(parent, challengeMap) {
+			return nil, fmt.Errorf("%w: node %s is not a prover job (needs an open blocking challenge, or a draft/needs_refinement state) — refusing a stale-role prover write", ErrInvalidState, spec.ParentID.String())
 		}
-	}
 
-	// (6) rk FU3: release the claim if the prover held it.
-	released := false
-	if claimedByOwner {
-		events = append(events, ledger.NewNodesReleased([]types.NodeID{spec.ParentID}))
-		released = true
-	}
+		// rk B1: expected-hash guard.
+		if spec.ExpectHash != "" && parent.ContentHash != spec.ExpectHash {
+			return nil, fmt.Errorf("%w: node %s content hash changed since dispatch (expected %s, current %s)", ErrInvalidState, spec.ParentID.String(), spec.ExpectHash, parent.ContentHash)
+		}
 
-	ldg, err := s.getLedger()
+		// Ownership: refuse a node claimed by someone else; note if we hold it.
+		claimedByOwner := false
+		if parent.WorkflowState == schema.WorkflowClaimed {
+			if parent.ClaimedBy != spec.Owner {
+				return nil, fmt.Errorf("%w: node %s is claimed by %s, not %s", ErrOwnerMismatch, spec.ParentID.String(), parent.ClaimedBy, spec.Owner)
+			}
+			claimedByOwner = true
+		}
+
+		// (4) Children (rk B2 dependency resolution inside buildChildEvents).
+		events, childIDs, err := s.buildChildEvents(st, spec.ParentID, spec.Owner, spec.Children)
+		if err != nil {
+			return nil, err
+		}
+
+		// (4a) rk GAP 9: stamp the DECOMPOSED PARENT with the acting prover as
+		// its proof-of-record author. Part of the SAME batch as the
+		// children/challenge/release below.
+		events = append(events, ledger.NewNodeProofAuthored(spec.ParentID, spec.Owner))
+
+		// (5) rk FU3: dispose every open challenge on the parent.
+		var resolvedIDs []string
+		for _, c := range st.GetChallengesForNode(spec.ParentID) {
+			if c.Status == ChallengeStatusOpen {
+				events = append(events, ledger.NewChallengeResolved(c.ID))
+				resolvedIDs = append(resolvedIDs, c.ID)
+			}
+		}
+
+		// (6) rk FU3: release the claim if the prover held it.
+		released := false
+		if claimedByOwner {
+			events = append(events, ledger.NewNodesReleased([]types.NodeID{spec.ParentID}))
+			released = true
+		}
+
+		result = &RecordProofResult{ChildIDs: childIDs, ResolvedChallenges: resolvedIDs, Released: released}
+		return events, nil
+	})
 	if err != nil {
-		return nil, err
-	}
-	if _, err := s.appendBulkIfSequence(ldg, events, expectedSeq); err != nil {
 		return nil, wrapSequenceMismatch(err, "RecordProof")
 	}
 
-	return &RecordProofResult{ChildIDs: childIDs, ResolvedChallenges: resolvedIDs, Released: released}, nil
+	return result, nil
 }
