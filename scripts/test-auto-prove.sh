@@ -123,40 +123,64 @@ exit "$status"
 STUB
 chmod +x "$STUB_BIN/claude"
 
-set +e
-(
-    cd "$PROOF_DIR" || exit 4
-    AF_CMD="$STUB_BIN/af" \
-    AF_AGENT_BACKEND=claude \
-    AF_STUB_AF="$STUB_BIN/af" \
-    AF_STUB_LOG="$STUB_LOG" \
-    PATH="$STUB_BIN:$PATH" \
-        bash "$SCRIPT_DIR/auto-prove.sh" \
-        --agent-backend claude \
-        --proof-dir "$PROOF_DIR" \
-        --max-iterations 5 \
-        --max-agents 4 \
-        --parallel 1 \
-        --delay-seconds 0 \
-        --burst-pause 0
-) >"$OUTPUT" 2>&1
-set -e
+run_auto_prove() {
+    local proof_dir="$1" output="$2" max_iter="$3" max_agents="$4"
+    set +e
+    (
+        cd "$proof_dir" || exit 4
+        AF_CMD="$STUB_BIN/af" \
+        AF_AGENT_BACKEND=claude \
+        AF_STUB_AF="$STUB_BIN/af" \
+        AF_STUB_LOG="$STUB_LOG" \
+        PATH="$STUB_BIN:$PATH" \
+            bash "$SCRIPT_DIR/auto-prove.sh" \
+            --agent-backend claude \
+            --proof-dir "$proof_dir" \
+            --max-iterations "$max_iter" \
+            --max-agents "$max_agents" \
+            --parallel 1 \
+            --delay-seconds 0 \
+            --burst-pause 0
+    ) >"$output" 2>&1
+    set -e
+}
 
+# Scenario 1: a verifier job. The root is claimed and accepted (the accept
+# branch), so this exercises claim/accept/release and the completion check.
+OUTPUT="$TMP_DIR/auto-prove.log"
+run_auto_prove "$PROOF_DIR" "$OUTPUT" 5 4
 cat "$OUTPUT"
+
+# Scenario 2: a prover job. A blocking challenge makes the root prover work,
+# exercising the generated refine/amend/resolve-challenge templates.
+PROVER_DIR="$TMP_DIR/prover-proof"
+mkdir -p "$PROVER_DIR"
+"$AF_BIN" init -c "Prover stub conjecture" -a stub-author -d "$PROVER_DIR" >/dev/null
+"$AF_BIN" challenge 1 --severity critical --reason "needs work" -d "$PROVER_DIR" >/dev/null
+PROVER_OUTPUT="$TMP_DIR/auto-prove-prover.log"
+run_auto_prove "$PROVER_DIR" "$PROVER_OUTPUT" 1 1
+cat "$PROVER_OUTPUT"
+
 if [[ -s "$STUB_LOG" ]]; then
     echo "--- stub agent log ---"
     cat "$STUB_LOG"
 fi
 
-if grep -Eq "unknown flag|flag provided but not defined|unknown shorthand flag" "$OUTPUT" "$STUB_LOG"; then
-    echo "test-auto-prove.sh: generated command used an unknown flag (bead ujp4 regression)" >&2
-    exit 1
-fi
+for f in "$OUTPUT" "$PROVER_OUTPUT" "$STUB_LOG"; do
+    if grep -Eq "unknown flag|flag provided but not defined|unknown shorthand flag" "$f"; then
+        echo "test-auto-prove.sh: generated command used an unknown flag (bead ujp4 regression)" >&2
+        exit 1
+    fi
+done
 
 # A stub run must not silently do nothing: at least one generated command has
-# to have been executed.
+# to have been executed, and the prover path must have exercised refine.
 if ! grep -q "STUB-RUN:" "$STUB_LOG"; then
     echo "test-auto-prove.sh: stub agent never executed a generated command" >&2
+    exit 1
+fi
+if ! grep -q "STUB-RUN:.*refine" "$STUB_LOG"; then
+    echo "test-auto-prove.sh: prover path never exercised the generated refine command" >&2
     exit 1
 fi
 

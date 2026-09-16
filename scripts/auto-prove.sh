@@ -604,7 +604,8 @@ INSTRUCTIONS:
 1. First, claim the node: $AF_CMD claim $job_id --owner $worker_id --role prover
 2. Review the open challenges on this node
 3. For each challenge:
-   - If you can fix it: $AF_CMD refine $job_id "Sub-step statement" --owner $worker_id, $AF_CMD amend $job_id --owner $worker_id --statement "Corrected statement", or other commands
+   - To fix it by adding a step: $AF_CMD refine $job_id "Sub-step statement" --owner $worker_id
+   - To correct the statement: $AF_CMD amend $job_id --owner $worker_id --statement "Corrected statement"
    - If the challenge is resolved: AF_AGENT_ID=$worker_id $AF_CMD resolve-challenge <challenge-id> --response "Fixed by..."
    - If the proof step is actually wrong: Consider $AF_CMD archive or $AF_CMD refute
 4. After addressing challenges, release: $AF_CMD release $job_id --owner $worker_id
