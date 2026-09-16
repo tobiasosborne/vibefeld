@@ -226,11 +226,11 @@ func runAmendDepsManifest(cmd *cobra.Command, dir, format, path string, dryRun b
 // findings with the exact strict command. It is the amend-deps migration
 // preflight/postcheck (D8).
 func auditSummaryLine(svc *service.ProofService) (string, error) {
-	st, err := svc.LoadState()
+	st, pass, err := svc.LoadStateWithPass()
 	if err != nil {
 		return "", fmt.Errorf("audit summary: %w", err)
 	}
-	report := audit.Run(st, audit.Options{})
+	report := audit.RunWithPass(st, pass, audit.Options{})
 	return fmt.Sprintf("%d strict-current finding(s), %d historical; run: af audit --strict",
 		report.Summary.StrictCurrent, report.Summary.Historical), nil
 }

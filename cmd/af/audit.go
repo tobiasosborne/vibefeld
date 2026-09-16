@@ -21,7 +21,8 @@ func newAuditCmd() *cobra.Command {
 		Use:     "audit",
 		GroupID: GroupAdmin,
 		Short:   "Audit the proof for trust gaps (read-only)",
-		Long: `Audit the proof for trust gaps, computed from one pass over derived state.
+		Long: `Audit the proof for trust gaps, computed from an ordered ledger pass
+plus one immutable snapshot of derived state.
 
 The audit is read-only: it appends no events and takes no ledger lock. Findings
 carry a stable code, a severity (error/warning/info), a current or historical
@@ -95,20 +96,19 @@ func runAudit(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("error accessing proof directory: %w", err)
 	}
-	pstatus, err := svc.Status()
-	if err != nil {
-		return fmt.Errorf("error checking proof status: %w", err)
-	}
-	if !pstatus.Initialized {
-		return fmt.Errorf("proof not initialized")
-	}
 
-	st, err := svc.LoadState()
+	// One ledger replay supplies both the final state and the ordered pass, so
+	// the audit never loads state twice and the sequence-sensitive checks agree
+	// with the state they run on.
+	st, pass, err := svc.LoadStateWithPass()
 	if err != nil {
 		return fmt.Errorf("error loading proof state: %w", err)
 	}
+	if st.LatestSeq() == 0 {
+		return fmt.Errorf("proof not initialized")
+	}
 
-	report := audit.Run(st, audit.Options{
+	report := audit.RunWithPass(st, pass, audit.Options{
 		Strict:     service.MustBool(cmd, "strict"),
 		Codes:      service.MustStringSlice(cmd, "code"),
 		NodePrefix: service.MustString(cmd, "node"),

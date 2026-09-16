@@ -21,7 +21,14 @@ func analyzeSupportHealth(st *service.State, status string, blockers []Blocker) 
 	if st == nil {
 		return status, blockers
 	}
-	report := audit.Run(st, audit.Options{})
+	// Only the two producers health reads run: SUPPORT_NOT_CURRENT for the
+	// blockers below, and VALIDATED_WITH_OPEN_BLOCKING_CHALLENGE so the open
+	// challenge producer shares this one snapshot. Every other producer is
+	// skipped before computation.
+	report := audit.Run(st, audit.Options{Codes: []string{
+		audit.CodeSupportNotCurrent,
+		audit.CodeValidatedWithOpenBlockingChallenge,
+	}})
 
 	type failure struct {
 		node        string
