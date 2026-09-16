@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
@@ -191,6 +193,49 @@ func TestInit_AlreadyInitialized(t *testing.T) {
 	err = Init(proofDir, "Second conjecture", "agent-002")
 	if err == nil {
 		t.Error("Second Init() expected error, got nil")
+	}
+}
+
+// TestInit_ConcurrentOnlyOneWins verifies that concurrent inits cannot both
+// pass the emptiness check: the check and the two init events share one CAS
+// commit, so exactly one caller wins and the ledger holds exactly one
+// ProofInitialized and one NodeCreated. Losers may see either ErrAlreadyExists
+// or a concurrent-modification error.
+func TestInit_ConcurrentOnlyOneWins(t *testing.T) {
+	tmpDir := t.TempDir()
+	proofDir := filepath.Join(tmpDir, "proof")
+
+	const workers = 8
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	start := make(chan struct{})
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			errs[i] = Init(proofDir, "conjecture", "author")
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	wins := 0
+	for _, err := range errs {
+		if err == nil {
+			wins++
+		}
+	}
+	if wins != 1 {
+		t.Fatalf("Init succeeded %d times, want exactly 1 (errs: %v)", wins, errs)
+	}
+
+	count, err := ledger.Count(filepath.Join(proofDir, "ledger"))
+	if err != nil {
+		t.Fatalf("ledger.Count: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("ledger has %d events, want exactly 2 (ProofInitialized + NodeCreated)", count)
 	}
 }
 
@@ -1595,6 +1640,11 @@ func TestExtractLemma_Success(t *testing.T) {
 	svc, _ := setupTestProof(t)
 
 	rootID := parseNodeID(t, "1")
+
+	// Extraction requires a validated source; validate the root first.
+	if err := svc.AcceptNode(rootID); err != nil {
+		t.Fatalf("AcceptNode() failed: %v", err)
+	}
 
 	lemmaID, err := svc.ExtractLemma(rootID, "Useful lemma statement")
 	if err != nil {

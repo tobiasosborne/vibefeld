@@ -46,6 +46,13 @@ func (s *ProofService) commit(build func(st *state.State) ([]ledger.Event, error
 		return nil, nil
 	}
 
+	// Test-only hook: runs in the exact window between the state read used
+	// for build/validation and the CAS append, so tests can inject a
+	// concurrent writer.
+	if s.beforeAppend != nil {
+		s.beforeAppend()
+	}
+
 	seqs, err := ledger.AppendBatchIfSequence(s.ledgerDir(), events, st.LatestSeq())
 	if err != nil {
 		return nil, wrapSequenceMismatch(err, "commit")

@@ -122,6 +122,12 @@ type RecomputeTaintResult struct {
 type ProofService struct {
 	path string
 	cfg  *config.Config // cached config, loaded lazily
+
+	// beforeAppend is a test-only hook invoked by commit() between build()
+	// and AppendBatchIfSequence(). It lets tests append a concurrent event in
+	// the exact window the optimistic commit protocol is designed to close.
+	// It is nil in production.
+	beforeAppend func()
 }
 
 // NewProofService creates a new ProofService for the given proof directory.
@@ -245,25 +251,10 @@ func Init(proofDir, conjecture, author string) error {
 		return err
 	}
 
-	// Check if already initialized
-	count, err := ldgCount(svc.ledgerDir())
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return fmt.Errorf("%w: proof already initialized", ErrAlreadyExists)
-	}
-
-	// Append the initialization event through the same optimistic commit
-	// primitive as every other mutating path (here on an empty state).
-	_, err = svc.commit(func(st *state.State) ([]ledger.Event, error) {
-		return []ledger.Event{ledger.NewProofInitialized(conjecture, author)}, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	// Create the root node (node "1") with the conjecture as the statement
+	// Create the root node (node "1") with the conjecture as the statement.
+	// Building it before the commit is fine: the emptiness check and both
+	// events share one commit closure, so two concurrent inits cannot both
+	// pass an emptiness check and land.
 	rootID, err := types.Parse("1")
 	if err != nil {
 		return err
@@ -276,20 +267,20 @@ func Init(proofDir, conjecture, author string) error {
 		return err
 	}
 
+	// Append the initialization and root-node events through the same
+	// optimistic commit primitive as every other mutating path. The ledger
+	// emptiness check happens inside the closure against the same state read
+	// that supplies the CAS sequence, so a concurrent init is refused.
 	_, err = svc.commit(func(st *state.State) ([]ledger.Event, error) {
-		return []ledger.Event{ledger.NewNodeCreated(*rootNode)}, nil
+		if st.LatestSeq() != 0 {
+			return nil, fmt.Errorf("%w: proof already initialized", ErrAlreadyExists)
+		}
+		return []ledger.Event{
+			ledger.NewProofInitialized(conjecture, author),
+			ledger.NewNodeCreated(*rootNode),
+		}, nil
 	})
 	return err
-}
-
-// ldgCount returns the number of events in a ledger directory, creating no
-// state. Used by Init to refuse a re-initialization.
-func ldgCount(ledgerDir string) (int, error) {
-	ldg, err := ledger.NewLedger(ledgerDir)
-	if err != nil {
-		return 0, err
-	}
-	return ldg.Count()
 }
 
 // Init initializes a new proof with the given conjecture and author.
@@ -1213,13 +1204,29 @@ func (s *ProofService) ExtractLemma(sourceNodeID types.NodeID, statement string)
 		return "", fmt.Errorf("%w: lemma statement", ErrEmptyInput)
 	}
 
-	// Load state and capture sequence for CAS
+	// Load state and capture sequence for CAS. The source must be validated
+	// and free of an open local scope; both checks run inside the commit
+	// closure against the same state read the CAS uses, so a concurrent
+	// unvalidation/scope change is caught rather than overwritten.
 	var lemmaID string
 	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
 		// Check if source node exists
 		n := st.GetNode(sourceNodeID)
 		if n == nil {
 			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, sourceNodeID.String())
+		}
+
+		// Check if node is validated
+		if n.EpistemicState != schema.EpistemicValidated {
+			return nil, fmt.Errorf("%w: node %s is not validated (current state: %s); only validated nodes can be extracted as lemmas",
+				ErrInvalidState, sourceNodeID.String(), n.EpistemicState)
+		}
+
+		// Check for independence: the node must not depend on local
+		// assumptions from a parent scope.
+		if len(n.Scope) > 0 {
+			return nil, fmt.Errorf("%w: node %s is not independent: it depends on local assumptions (%s); lemmas cannot rely on local scope",
+				ErrInvalidState, sourceNodeID.String(), strings.Join(n.Scope, ", "))
 		}
 
 		// Create the lemma
