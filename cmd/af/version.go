@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tobiasosborne/vibefeld/internal/config"
+	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
 )
 
 // Version information. VersionInfo is the single source of truth for af's
@@ -82,7 +83,7 @@ func runVersion(cmd *cobra.Command, args []string) error {
 	case "json":
 		jsonOutput = true
 	default:
-		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
+		return aferrors.Newf(aferrors.INVALID_TYPE, "invalid format %q: must be 'text' or 'json'", format)
 	}
 
 	goVersion := runtime.Version()

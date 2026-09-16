@@ -114,7 +114,14 @@ func TestVersionCmd_FormatFlagJSON(t *testing.T) {
 
 func TestVersionCmd_FormatFlagInvalid(t *testing.T) {
 	cmd := newTestVersionCmd()
-	if _, err := executeVersionCommand(cmd, "version", "-f", "xml"); err == nil {
-		t.Error("version -f xml must error")
+	_, err := executeVersionCommand(cmd, "version", "-f", "xml")
+	if err == nil {
+		t.Fatal("version -f xml must error")
+	}
+	if aferrors.Code(err) != aferrors.INVALID_TYPE {
+		t.Errorf("code = %v, want INVALID_TYPE", aferrors.Code(err))
+	}
+	if aferrors.ExitCode(err) != 3 {
+		t.Errorf("exit code = %d, want 3", aferrors.ExitCode(err))
 	}
 }

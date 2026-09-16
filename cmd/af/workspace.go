@@ -79,6 +79,28 @@ type workspaceUpgradeResult struct {
 	Events  int    `json:"events,omitempty"`
 }
 
+// workspaceUpgradeLockTimeout is the lock timeout used while acquiring the
+// ledger lock. The workspace's configured lock_timeout lives in meta.json,
+// which is deliberately read *after* the lock so a concurrent upgrade cannot
+// race the stamp or the backup directory; this default is used until then.
+// Tests override it to avoid waiting on a held lock.
+var workspaceUpgradeLockTimeout = 5 * time.Minute
+
+// workspaceUpgradeNow returns the timestamp used to name a backup directory.
+// Tests override it to force a deterministic name and exercise collisions.
+var workspaceUpgradeNow = time.Now
+
+// upgradeSteps records the ordered side effects of a real upgrade for tests.
+// It is nil in production, so recording is a no-op unless a test installs a
+// recorder.
+var upgradeSteps []string
+
+func recordUpgradeStep(step string) {
+	if upgradeSteps != nil {
+		upgradeSteps = append(upgradeSteps, step)
+	}
+}
+
 // runWorkspaceUpgrade executes `af workspace upgrade`.
 func runWorkspaceUpgrade(cmd *cobra.Command, args []string) error {
 	dir := cli.MustString(cmd, "dir")
@@ -87,16 +109,35 @@ func runWorkspaceUpgrade(cmd *cobra.Command, args []string) error {
 	dryRun := isDryRun(cmd)
 
 	if format != "" && format != "text" && format != "json" {
-		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
+		return aferrors.Newf(aferrors.INVALID_TYPE, "invalid format %q: must be 'text' or 'json'", format)
 	}
 	if target == "" {
-		return fmt.Errorf("--to is required (e.g. --to %s)", config.FormatCurrent)
+		return aferrors.Newf(aferrors.EMPTY_INPUT, "--to is required (e.g. --to %s)", config.FormatCurrent)
 	}
 	if !config.IsFormatReadable(target) {
 		return aferrors.Newf(aferrors.INVALID_TARGET,
 			"target workspace format %q is not readable by this af (reads %s)",
 			target, strings.Join(config.FormatsReadable, ", "))
 	}
+
+	// Acquire the ledger lock before reading meta.json or choosing the backup
+	// path. Two concurrent upgrades therefore cannot both act on the same
+	// stamp, and each creates its own backup directory exclusively below.
+	ledgerDir := filepath.Join(dir, "ledger")
+	lock := ledger.NewLedgerLock(ledgerDir)
+	if err := lock.Acquire("workspace-upgrade", workspaceUpgradeLockTimeout); err != nil {
+		return fmt.Errorf("error acquiring ledger lock: %w", err)
+	}
+	recordUpgradeStep("lock")
+
+	// The lock is released explicitly on the success/no-op paths and via defer
+	// on any error path, so an interrupted upgrade cannot strand it.
+	released := false
+	defer func() {
+		if !released {
+			_ = lock.Release()
+		}
+	}()
 
 	metaPath := filepath.Join(dir, "meta.json")
 	cfg, err := config.Load(metaPath)
@@ -106,6 +147,7 @@ func runWorkspaceUpgrade(cmd *cobra.Command, args []string) error {
 		}
 		return fmt.Errorf("error reading workspace config: %w", err)
 	}
+	recordUpgradeStep("load-config")
 
 	current := cfg.Version
 	cmp := config.CompareFormats(target, current)
@@ -117,51 +159,56 @@ func runWorkspaceUpgrade(cmd *cobra.Command, args []string) error {
 
 	// Already at the target: no-op, exit 0.
 	if cmp == 0 {
+		if err := lock.Release(); err != nil {
+			return fmt.Errorf("error releasing ledger lock: %w", err)
+		}
+		released = true
 		return outputWorkspaceUpgrade(cmd, format, workspaceUpgradeResult{
 			Current: current, Target: target, Changed: false, DryRun: dryRun,
 		})
 	}
 
-	backupPath := filepath.Join(dir, "backup", time.Now().UTC().Format("20060102T150405Z"))
-
 	if dryRun {
 		return outputWorkspaceUpgrade(cmd, format, workspaceUpgradeResult{
-			Current: current, Target: target, Changed: true, DryRun: true, Backup: backupPath,
+			Current: current, Target: target, Changed: true, DryRun: true,
+			Backup: prospectiveBackupPath(dir),
 		})
 	}
 
-	// Serialise the upgrade against ledger writers.
-	ledgerDir := filepath.Join(dir, "ledger")
-	lock := ledger.NewLedgerLock(ledgerDir)
-	if err := lock.Acquire("workspace-upgrade", cfg.LockTimeout); err != nil {
-		return fmt.Errorf("error acquiring ledger lock: %w", err)
+	// 1. Create the backup directory exclusively so a concurrent upgrade (or a
+	// previous run in the same instant) can never share or overwrite it.
+	backupPath, err := createBackupDir(dir)
+	if err != nil {
+		return err
 	}
+	recordUpgradeStep("backup-dir")
 
-	// The lock is released explicitly on the success path and via defer on any
-	// error path, so an interrupted upgrade cannot strand it.
-	released := false
-	defer func() {
-		if !released {
-			_ = lock.Release()
-		}
-	}()
-
-	// 1. Copy ledger/*.json and meta.json into the backup directory.
+	// 2. Copy ledger/*.json and meta.json into the backup directory.
 	events, err := backupWorkspace(dir, ledgerDir, metaPath, backupPath)
 	if err != nil {
 		return err
 	}
+	recordUpgradeStep("backup")
 
-	// 2. Re-read the sequence after the copy so the reported count is stable.
+	// 3. Make the backup durable before writing the new stamp: fsync the
+	// workspace root (parent of backup/) so a crash cannot leave a durable 1.1
+	// stamp whose backup entry is not durable.
+	if err := syncDirIfExists(dir); err != nil {
+		return fmt.Errorf("error syncing workspace root: %w", err)
+	}
+	recordUpgradeStep("fsync-root")
+
+	// 4. Re-read the sequence after the copy so the reported count is stable.
 	if _, err := ledger.NextSequence(ledgerDir); err != nil {
 		return fmt.Errorf("error reading ledger sequence: %w", err)
 	}
 
-	// 3. Persist the new stamp atomically.
+	// 5. Persist the new stamp atomically.
 	cfg.Version = target
 	if err := config.Save(cfg, metaPath); err != nil {
 		return fmt.Errorf("error writing workspace format: %w", err)
 	}
+	recordUpgradeStep("write-stamp")
 
 	if err := lock.Release(); err != nil {
 		return fmt.Errorf("error releasing ledger lock: %w", err)
@@ -171,6 +218,46 @@ func runWorkspaceUpgrade(cmd *cobra.Command, args []string) error {
 	return outputWorkspaceUpgrade(cmd, format, workspaceUpgradeResult{
 		Current: current, Target: target, Changed: true, Backup: backupPath, Events: events,
 	})
+}
+
+// backupTimestamp is the crash- and collision-friendly name of a backup
+// directory: UTC, second precision, plus nanoseconds.
+func backupTimestamp() string {
+	return workspaceUpgradeNow().UTC().Format("20060102T150405.000000000Z")
+}
+
+// prospectiveBackupPath returns the backup path a dry-run would use, without
+// creating anything.
+func prospectiveBackupPath(dir string) string {
+	return filepath.Join(dir, "backup", backupTimestamp())
+}
+
+// createBackupDir exclusively creates a fresh backup leaf directory under
+// dir/backup. It retries with an incrementing suffix if the timestamped name
+// already exists, so two upgrades can never share or overwrite a backup.
+func createBackupDir(dir string) (string, error) {
+	parent := filepath.Join(dir, "backup")
+	if err := os.MkdirAll(parent, 0755); err != nil {
+		return "", fmt.Errorf("error creating backup directory: %w", err)
+	}
+
+	stamp := backupTimestamp()
+	for i := 0; i < 1000; i++ {
+		name := stamp
+		if i > 0 {
+			name = fmt.Sprintf("%s-%d", stamp, i)
+		}
+		path := filepath.Join(parent, name)
+		err := os.Mkdir(path, 0755)
+		if err == nil {
+			return path, nil
+		}
+		if os.IsExist(err) {
+			continue
+		}
+		return "", fmt.Errorf("error creating backup directory: %w", err)
+	}
+	return "", fmt.Errorf("error creating backup directory: too many name collisions")
 }
 
 // backupWorkspace copies the ledger event files and meta.json into
