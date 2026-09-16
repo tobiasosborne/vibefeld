@@ -8,9 +8,33 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 )
+
+// crashAfterRenameEnv is a test-only hook: when set to a positive integer n,
+// AppendBatchIfSequence exits the process immediately after the n-th successful
+// rename. It lets a test re-exec the test binary to reproduce a mid-batch
+// crash and assert that only a contiguous prefix of the batch was committed.
+// It is never set in production.
+const crashAfterRenameEnv = "AF_TEST_CRASH_AFTER_RENAME"
+
+// maybeCrashAfterRename exits the process if the test-only crash hook asks for a
+// crash after rename number n (1-based). No-op otherwise.
+func maybeCrashAfterRename(n int) {
+	v := os.Getenv(crashAfterRenameEnv)
+	if v == "" {
+		return
+	}
+	want, err := strconv.Atoi(v)
+	if err != nil || want <= 0 {
+		return
+	}
+	if n == want {
+		os.Exit(3)
+	}
+}
 
 // Default lock timeout for append operations.
 const defaultLockTimeout = 5 * time.Second
@@ -345,8 +369,10 @@ func AppendBatch(dir string, events []Event) ([]int, error) {
 		}
 	}
 
-	// Rename all temp files to final paths atomically.
-	// If any rename fails, rollback all previously renamed files to preserve atomicity.
+	// Rename all temp files to final paths, making each one durable before the
+	// next. If any rename fails, rollback all previously renamed files (this
+	// function keeps its historical all-or-nothing semantics) and fsync the
+	// rollback so the durable set is never a torn mixture.
 	finalPaths := make([]string, len(events))
 	for i := range events {
 		seq := seqs[i]
@@ -358,13 +384,18 @@ func AppendBatch(dir string, events []Event) ([]int, error) {
 			}
 			// Cleanup remaining temp files
 			cleanupTempFiles(tempPaths, i, len(events))
+			_ = fsyncDir(dir)
 			return nil, fmt.Errorf("failed to rename event %d: %w", i, err)
 		}
-	}
-
-	// Make the renames durable before reporting success.
-	if err := fsyncDir(dir); err != nil {
-		return nil, err
+		// Make each rename durable immediately so a crash after rename i leaves
+		// exactly the contiguous prefix [1, i].
+		if err := fsyncDir(dir); err != nil {
+			for j := 0; j <= i; j++ {
+				_ = os.Remove(finalPaths[j])
+			}
+			cleanupTempFiles(tempPaths, i+1, len(events))
+			return nil, err
+		}
 	}
 
 	return seqs, nil
@@ -457,20 +488,23 @@ func AppendBatchIfSequenceWithTimeout(dir string, events []Event, expectedSeq in
 		}
 	}
 
-	// Rename sequentially. On failure, keep the valid prefix already renamed
-	// (crash/partial-write semantics: a valid prefix, never a corrupt ledger)
-	// and clean up the remaining temp files.
+	// Rename sequentially, making each rename durable before the next. On
+	// failure, keep the valid prefix already renamed (crash/partial-write
+	// semantics: a valid prefix, never a corrupt ledger), fsync it, and clean
+	// up the remaining temp files. The test-only crash hook fires right after
+	// the n-th rename to reproduce a mid-batch process death.
 	for i := range events {
 		finalPath := filepath.Join(dir, GenerateFilename(seqs[i]))
 		if err := os.Rename(tempPaths[i], finalPath); err != nil {
 			cleanupTempFiles(tempPaths, i, len(events))
+			_ = fsyncDir(dir)
 			return seqs[:i], fmt.Errorf("failed to rename event %d: %w", i, err)
 		}
-	}
-
-	// Make the renames durable before reporting success.
-	if err := fsyncDir(dir); err != nil {
-		return seqs, err
+		maybeCrashAfterRename(i + 1)
+		if err := fsyncDir(dir); err != nil {
+			cleanupTempFiles(tempPaths, i+1, len(events))
+			return seqs[:i+1], err
+		}
 	}
 
 	return seqs, nil
