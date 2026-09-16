@@ -25,7 +25,7 @@ import (
 //
 //	go build -ldflags "-X main.VersionInfo=0.1.8 -X main.GitCommit=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 var (
-	VersionInfo = "0.1.9"
+	VersionInfo = "0.1.10"
 	GitCommit   = "unknown"
 	BuildDate   = "unknown"
 )
