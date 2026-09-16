@@ -132,27 +132,30 @@ func runReap(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Build result
-	result := reapResult{
-		DryRun: dryRun,
-		Count:  len(toReap),
-		Reaped: service.ToStringSlice(toReap),
-	}
-
-	// If not dry run, actually release the nodes
-	if !dryRun && len(toReap) > 0 {
-		if err := releaseNodes(svc, toReap); err != nil {
+	// Build result. For a dry run we report the stale-lock preview from the
+	// state read above; for a real reap we report exactly what the service
+	// released, re-selected inside the commit against the CAS state.
+	result := reapResult{DryRun: dryRun}
+	if dryRun {
+		result.Count = len(toReap)
+		result.Reaped = service.ToStringSlice(toReap)
+	} else {
+		var released []service.NodeID
+		var err error
+		if all {
+			released, err = svc.ReleaseAllClaims()
+		} else {
+			released, err = svc.ReleaseExpiredClaims(time.Now())
+		}
+		if err != nil {
 			return fmt.Errorf("error releasing nodes: %w", err)
 		}
+		result.Count = len(released)
+		result.Reaped = service.ToStringSlice(released)
 	}
 
 	// Output result based on format
 	return outputReapResult(cmd, result, format, dryRun)
-}
-
-// releaseNodes releases the given nodes through the service's commit primitive.
-func releaseNodes(svc *service.ProofService, nodeIDs []service.NodeID) error {
-	return svc.ReleaseNodes(nodeIDs)
 }
 
 // ledgerLockResult is the machine-readable outcome of `af reap --ledger-lock`.
@@ -215,8 +218,15 @@ func runReapLedgerLock(cmd *cobra.Command, svc *service.ProofService, format str
 		return outputLedgerLockResult(cmd, result, format)
 	}
 
-	if err := ledger.RemoveLockFile(ledgerDir); err != nil {
+	// RemoveIfStale re-checks staleness and the lock's identity immediately
+	// before unlinking, so a lock re-acquired in the meantime is left alone.
+	removed, err := ledger.RemoveIfStale(ledgerDir, timeout)
+	if err != nil {
 		return fmt.Errorf("error removing ledger lock: %w", err)
+	}
+	if !removed {
+		result.Message = "ledger lock changed concurrently (or is no longer stale); not reaped"
+		return outputLedgerLockResult(cmd, result, format)
 	}
 	result.Reaped = true
 	result.Message = "reaped stale ledger lock: " + reason
