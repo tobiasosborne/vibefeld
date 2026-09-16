@@ -5,13 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tobiasosborne/vibefeld/internal/cli"
-	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
 // newResolveChallengeCmd creates the resolve-challenge command.
@@ -97,91 +95,23 @@ func runResolveChallenge(cmd *cobra.Command, args []string) error {
 		return errors.New("response is required and cannot be empty")
 	}
 
-	// Validate directory exists and is a directory
-	info, err := os.Stat(dir)
+	// Access the proof service (validates the directory and loads state).
+	svc, err := service.NewProofService(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return errors.New("proof directory does not exist")
-		}
 		return fmt.Errorf("error accessing proof directory: %w", err)
-	}
-	if !info.IsDir() {
-		return errors.New("path is not a directory")
-	}
-
-	// Get ledger
-	ledgerDir := filepath.Join(dir, "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
-	if err != nil {
-		return fmt.Errorf("error accessing ledger: %w", err)
 	}
 
 	// Check if proof is initialized
-	count, err := ldg.Count()
+	status, err := svc.Status()
 	if err != nil {
 		return fmt.Errorf("error reading ledger: %w", err)
 	}
-	if count == 0 {
+	if !status.Initialized {
 		return errors.New("proof not initialized")
 	}
 
-	// Scan ledger to find challenge state
-	state := &resolveChallengeState{
-		id:     challengeID,
-		exists: false,
-		status: "",
-	}
-
-	err = ldg.Scan(func(seq int, data []byte) error {
-		// Parse base event to get type
-		var base struct {
-			Type        string `json:"type"`
-			ChallengeID string `json:"challenge_id"`
-		}
-		if err := json.Unmarshal(data, &base); err != nil {
-			return nil // Skip unparseable events
-		}
-
-		// Track challenge state changes
-		switch base.Type {
-		case string(ledger.EventChallengeRaised):
-			if base.ChallengeID == challengeID {
-				state.exists = true
-				state.status = "open"
-			}
-		case string(ledger.EventChallengeResolved):
-			if base.ChallengeID == challengeID {
-				state.status = "resolved"
-			}
-		case string(ledger.EventChallengeWithdrawn):
-			if base.ChallengeID == challengeID {
-				state.status = "withdrawn"
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("error scanning ledger: %w", err)
-	}
-
-	// Validate challenge state
-	if !state.exists {
-		return fmt.Errorf("challenge %q does not exist", challengeID)
-	}
-
-	if state.status == "resolved" {
-		return fmt.Errorf("challenge %q is not open (already resolved)", challengeID)
-	}
-
-	if state.status == "withdrawn" {
-		return fmt.Errorf("challenge %q is not open (already withdrawn)", challengeID)
-	}
-
-	// Append ChallengeResolved event
-	event := ledger.NewChallengeResolved(challengeID)
-	_, err = ldg.Append(event)
-	if err != nil {
+	// Resolve through the service's one-read commit primitive.
+	if err := svc.ResolveChallenge(challengeID); err != nil {
 		return fmt.Errorf("error resolving challenge: %w", err)
 	}
 
@@ -205,13 +135,6 @@ func runResolveChallenge(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-// resolveChallengeState tracks the state of a challenge as we replay events.
-type resolveChallengeState struct {
-	id     string
-	exists bool
-	status string // "open", "resolved", "withdrawn"
 }
 
 func init() {

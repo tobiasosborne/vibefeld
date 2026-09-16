@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
 	cmd.Flags().Bool("dry-run", false, "Preview what would be reaped without making changes")
 	cmd.Flags().Bool("all", false, "Reap all locks regardless of expiration")
+	cmd.Flags().Bool("ledger-lock", false, "Reap the ledger write lock instead of node claim locks")
 
 	return cmd
 }
@@ -72,6 +74,10 @@ func runReap(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	ledgerLock, err := cmd.Flags().GetBool("ledger-lock")
+	if err != nil {
+		return err
+	}
 
 	// Validate format
 	format = strings.ToLower(format)
@@ -83,6 +89,11 @@ func runReap(cmd *cobra.Command, args []string) error {
 	svc, err := service.NewProofService(dir)
 	if err != nil {
 		return fmt.Errorf("error accessing proof directory: %w", err)
+	}
+
+	// Ledger-lock mode is a separate operation from node claim reaping.
+	if ledgerLock {
+		return runReapLedgerLock(cmd, svc, format, dryRun)
 	}
 
 	// Check if proof is initialized
@@ -139,18 +150,93 @@ func runReap(cmd *cobra.Command, args []string) error {
 	return outputReapResult(cmd, result, format, dryRun)
 }
 
-// releaseNodes releases the given nodes by appending NodesReleased events.
+// releaseNodes releases the given nodes through the service's commit primitive.
 func releaseNodes(svc *service.ProofService, nodeIDs []service.NodeID) error {
-	// Get the ledger directly
-	ldg, err := ledger.NewLedger(svc.Path() + "/ledger")
+	return svc.ReleaseNodes(nodeIDs)
+}
+
+// ledgerLockResult is the machine-readable outcome of `af reap --ledger-lock`.
+type ledgerLockResult struct {
+	DryRun     bool   `json:"dry_run"`
+	Present    bool   `json:"present"`
+	Reaped     bool   `json:"reaped"`
+	Stale      bool   `json:"stale"`
+	AgentID    string `json:"agent_id,omitempty"`
+	PID        int    `json:"pid,omitempty"`
+	AcquiredAt string `json:"acquired_at,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+// runReapLedgerLock reports or clears a stale ledger write lock. A lock whose
+// recorded pid is alive is never removed; one whose pid is dead, or which has
+// no pid and is older than the configured lock timeout, is removed (unless
+// --dry-run). No lock file at all is a clean no-op.
+func runReapLedgerLock(cmd *cobra.Command, svc *service.ProofService, format string, dryRun bool) error {
+	ledgerDir := filepath.Join(svc.Path(), "ledger")
+
+	agentID, pid, acquiredAt, present, err := ledger.Inspect(ledgerDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("error reading ledger lock: %w", err)
 	}
 
-	// Release nodes one at a time or in a batch
-	event := ledger.NewNodesReleased(nodeIDs)
-	_, err = ldg.Append(event)
-	return err
+	result := ledgerLockResult{DryRun: dryRun, Present: present, AgentID: agentID, PID: pid}
+	if present && !acquiredAt.IsZero() {
+		result.AcquiredAt = acquiredAt.UTC().Format(time.RFC3339Nano)
+	}
+
+	if !present {
+		result.Message = "no ledger lock present"
+		return outputLedgerLockResult(cmd, result, format)
+	}
+
+	timeout, err := svc.LockTimeout()
+	if err != nil {
+		return fmt.Errorf("error reading lock timeout: %w", err)
+	}
+
+	stale, reason, _, err := ledger.StaleLock(ledgerDir, timeout)
+	if err != nil {
+		return fmt.Errorf("error inspecting ledger lock: %w", err)
+	}
+	result.Stale = stale
+	result.Reason = reason
+
+	if !stale {
+		result.Message = fmt.Sprintf("ledger lock is held by %q (pid %d); not reaping a live lock", agentID, pid)
+		if err := outputLedgerLockResult(cmd, result, format); err != nil {
+			return err
+		}
+		return fmt.Errorf("ledger lock is held by %q (pid %d): %s", agentID, pid, reason)
+	}
+
+	if dryRun {
+		result.Message = "would reap stale ledger lock: " + reason
+		return outputLedgerLockResult(cmd, result, format)
+	}
+
+	if err := ledger.RemoveLockFile(ledgerDir); err != nil {
+		return fmt.Errorf("error removing ledger lock: %w", err)
+	}
+	result.Reaped = true
+	result.Message = "reaped stale ledger lock: " + reason
+	return outputLedgerLockResult(cmd, result, format)
+}
+
+// outputLedgerLockResult emits the ledger-lock result in text or JSON.
+func outputLedgerLockResult(cmd *cobra.Command, result ledgerLockResult, format string) error {
+	if format == "json" {
+		out, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("error marshaling JSON: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(out))
+		return nil
+	}
+	if result.Message != "" {
+		fmt.Fprintln(cmd.OutOrStdout(), result.Message)
+	}
+	return nil
 }
 
 // outputReapResult formats and outputs the reap result.
