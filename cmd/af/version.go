@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobiasosborne/vibefeld/internal/config"
 )
 
 // Version information. VersionInfo is the single source of truth for af's
@@ -28,11 +30,15 @@ var (
 )
 
 // versionJSON represents the JSON output structure for the version command.
+// format is the newest workspace format this binary reads (config.FormatCurrent);
+// policy is the acceptance/claim policy number, which changes independently.
 type versionJSON struct {
 	Version   string `json:"version"`
 	Commit    string `json:"commit"`
 	BuildDate string `json:"build_date"`
 	GoVersion string `json:"go_version"`
+	Format    string `json:"format"`
+	Policy    string `json:"policy"`
 }
 
 // newVersionCmd creates the version command for displaying build information.
@@ -59,6 +65,7 @@ Examples:
 	}
 
 	cmd.Flags().Bool("json", false, "Output version information in JSON format")
+	cmd.Flags().StringP("format", "f", "text", "Output format (text or json; same as --json)")
 
 	return cmd
 }
@@ -66,6 +73,17 @@ Examples:
 // runVersion executes the version command.
 func runVersion(cmd *cobra.Command, args []string) error {
 	jsonOutput, _ := cmd.Flags().GetBool("json")
+	format, _ := cmd.Flags().GetString("format")
+	format = strings.ToLower(strings.TrimSpace(format))
+
+	switch format {
+	case "", "text":
+		// fall through to the --json check below
+	case "json":
+		jsonOutput = true
+	default:
+		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
+	}
 
 	goVersion := runtime.Version()
 
@@ -83,6 +101,8 @@ func outputVersionJSON(cmd *cobra.Command, goVersion string) error {
 		Commit:    GitCommit,
 		BuildDate: BuildDate,
 		GoVersion: goVersion,
+		Format:    config.FormatCurrent,
+		Policy:    config.PolicyVersion,
 	}
 
 	data, err := json.Marshal(output)
@@ -102,6 +122,8 @@ func outputVersionText(cmd *cobra.Command, goVersion string) error {
 	fmt.Fprintf(out, "  Commit:  %s\n", GitCommit)
 	fmt.Fprintf(out, "  Built:   %s\n", BuildDate)
 	fmt.Fprintf(out, "  Go:      %s\n", goVersion)
+	fmt.Fprintf(out, "  Format:  %s\n", config.FormatCurrent)
+	fmt.Fprintf(out, "  Policy:  %s\n", config.PolicyVersion)
 
 	return nil
 }
