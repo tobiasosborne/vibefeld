@@ -16,17 +16,21 @@ const (
 )
 
 type treeTaints struct {
-	nodes    []*node.Node
-	children map[string][]*node.Node
-	down     map[string]taintComponent
-	up       map[string]taintComponent
-	final    map[string]node.TaintState
+	nodes []*node.Node
+	down  map[string]taintComponent
+	up    map[string]taintComponent // D6 support component (result-use fold)
+	final map[string]node.TaintState
 }
 
-// PropagateTaint recomputes taint for root, its ancestors, and its descendants.
-// Descendant-derived taint is used only while walking upward, so it cannot leak
-// back down into siblings. The complete tree is inspected in linear time so an
-// ancestor's subtree contribution includes every relevant branch.
+// PropagateTaint recomputes taint for root and every node whose taint the
+// change can reach: ancestors, descendants, and — because reference and
+// validation dependencies now carry taint exactly like children — the reverse
+// dependents that cite the changed node, transitively. It applies and returns
+// every node whose stored taint actually changed.
+//
+// Descendant-derived taint is used only while folding upward, so it cannot
+// leak back down into siblings. The complete graph is inspected in linear time
+// so an ancestor's support contribution includes every relevant branch.
 //
 // Returns list of nodes whose taint actually changed.
 // Root is included when its taint changed.
@@ -43,9 +47,6 @@ func PropagateTaint(root *node.Node, allNodes []*node.Node) []*node.Node {
 	computed := computeTreeTaints(allNodes)
 	var changed []*node.Node
 	for _, n := range computed.nodes {
-		if !n.ID.Equal(root.ID) && !root.ID.IsAncestorOf(n.ID) && !n.ID.IsAncestorOf(root.ID) {
-			continue
-		}
 		newTaint := computed.final[n.ID.String()]
 		if n.TaintState != newTaint {
 			n.TaintState = newTaint
@@ -79,10 +80,9 @@ func RecomputeAll(allNodes []*node.Node) []*node.Node {
 
 func computeTreeTaints(allNodes []*node.Node) treeTaints {
 	result := treeTaints{
-		children: make(map[string][]*node.Node),
-		down:     make(map[string]taintComponent),
-		up:       make(map[string]taintComponent),
-		final:    make(map[string]node.TaintState),
+		down:  make(map[string]taintComponent),
+		up:    make(map[string]taintComponent),
+		final: make(map[string]node.TaintState),
 	}
 
 	nodeMap := make(map[string]*node.Node, len(allNodes))
@@ -121,9 +121,6 @@ func computeTreeTaints(allNodes []*node.Node) treeTaints {
 		for _, n := range byDepth[depth] {
 			parent := nearestExistingParent(n, nodeMap, nearestCache)
 			parentFor[n.ID.String()] = parent
-			if parent != nil {
-				result.children[parent.ID.String()] = append(result.children[parent.ID.String()], n)
-			}
 		}
 	}
 
@@ -142,28 +139,14 @@ func computeTreeTaints(allNodes []*node.Node) treeTaints {
 		}
 	}
 
-	// Compute the subtree component deepest-first. An admitted child contributes
-	// tainted without inspecting its subtree; a severed child cuts off its branch.
-	for depth := maxDepth; depth >= 1; depth-- {
-		for _, n := range byDepth[depth] {
-			up := componentClean
-			for _, child := range result.children[n.ID.String()] {
-				if isSevered(child) {
-					continue
-				}
-				if isUnresolvedState(child.EpistemicState) {
-					up = combineComponents(up, componentUnresolved)
-				} else if schema.IntroducesTaint(child.EpistemicState) {
-					up = combineComponents(up, componentTainted)
-				} else {
-					up = combineComponents(up, result.up[child.ID.String()])
-				}
-				if up == componentUnresolved {
-					break
-				}
-			}
-			result.up[n.ID.String()] = up
-		}
+	// Compute the support component (children, reference and validation
+	// dependencies) with the shared D6 fold over one prepared result-use graph.
+	// This replaces the 0.1.7 subtree walk: reference and validation targets now
+	// carry taint exactly like children, severed dependency targets and legacy
+	// cycles are unresolved, and admitted targets are not descended.
+	supportVals := supportComponents(result.nodes)
+	for key, v := range supportVals {
+		result.up[key] = v.comp
 	}
 
 	for _, n := range result.nodes {

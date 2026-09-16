@@ -3,7 +3,6 @@ package support
 import (
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
-	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -59,7 +58,7 @@ type SupportStatus struct {
 //
 // A legacy result-use cycle is reported as CYCLE rather than erroring:
 // validation remains a recorded verdict, it just cannot be current.
-func Current(st *state.State) map[string]SupportStatus {
+func Current(st State) map[string]SupportStatus {
 	if st == nil {
 		return map[string]SupportStatus{}
 	}
@@ -70,13 +69,13 @@ func Current(st *state.State) map[string]SupportStatus {
 	})
 }
 
-func currentFor(st *state.State, n *node.Node, targets []Folded[SupportStatus], children []*node.Node) SupportStatus {
+func currentFor(st State, n *node.Node, targets []Folded[SupportStatus], children []*node.Node) SupportStatus {
 	// Carry the latest content revision at or below this node: its own
 	// revisions plus every result-use target's carried value. This is what lets
 	// an older ancestor verdict see a descendant revision through a target that
 	// has since been re-accepted (the R -> B -> C regression).
 	latest := 0
-	if seq, ok := latestRevisionSeq(st, n.ID); ok {
+	if seq, ok := st.LatestAmendmentSeq(n.ID); ok {
 		latest = seq
 	}
 	for _, t := range targets {
@@ -104,14 +103,14 @@ func currentFor(st *state.State, n *node.Node, targets []Folded[SupportStatus], 
 
 // classifyCurrent decides the status of one node from its own state and its
 // fold targets, ignoring LatestRevisionSeq plumbing (which currentFor sets).
-func classifyCurrent(st *state.State, n *node.Node, targets []Folded[SupportStatus], children []*node.Node) SupportStatus {
+func classifyCurrent(st State, n *node.Node, targets []Folded[SupportStatus], children []*node.Node) SupportStatus {
 	if n.EpistemicState != schema.EpistemicValidated && n.EpistemicState != schema.EpistemicAdmitted {
 		return SupportStatus{Cause: CauseNotValidated, Node: n.ID}
 	}
-	if len(st.GetBlockingChallengesForNode(n.ID)) > 0 {
+	if st.HasBlockingChallenges(n.ID) {
 		return SupportStatus{Cause: CauseOpenBlockingChallenge, Node: n.ID}
 	}
-	if seq, ok := latestRevisionSeq(st, n.ID); ok && n.VerdictSeq > 0 && seq > n.VerdictSeq {
+	if seq, ok := st.LatestAmendmentSeq(n.ID); ok && n.VerdictSeq > 0 && seq > n.VerdictSeq {
 		return SupportStatus{Cause: CauseSelfRevised, Node: n.ID, Seq: seq}
 	}
 
@@ -151,7 +150,7 @@ func classifyCurrent(st *state.State, n *node.Node, targets []Folded[SupportStat
 
 // classifyTarget reports whether one folded result-use target breaks n's
 // support, and if so the status naming the target as responsible.
-func classifyTarget(st *state.State, n *node.Node, t Folded[SupportStatus]) (SupportStatus, bool) {
+func classifyTarget(st State, n *node.Node, t Folded[SupportStatus]) (SupportStatus, bool) {
 	if t.Cycle {
 		return SupportStatus{Cause: CauseCycle, Node: t.ID}, true
 	}
@@ -200,14 +199,6 @@ func classifyTarget(st *state.State, n *node.Node, t Folded[SupportStatus]) (Sup
 // latestRevisionSeq returns the latest ledger sequence among a node's recorded
 // content revisions (statement and dependency amendments, including reopened
 // ones), and whether any revision was recorded.
-func latestRevisionSeq(st *state.State, id types.NodeID) (int, bool) {
-	best := 0
-	found := false
-	for _, a := range st.GetAmendmentHistory(id) {
-		if a.Seq > best {
-			best = a.Seq
-			found = true
-		}
-	}
-	return best, found
+func latestRevisionSeq(st State, id types.NodeID) (int, bool) {
+	return st.LatestAmendmentSeq(id)
 }

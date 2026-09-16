@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
-	"github.com/tobiasosborne/vibefeld/internal/taint"
 )
 
 // Replay reads all events from the ledger and applies them to build the current state.
@@ -100,10 +99,12 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 		return nil, err
 	}
 
-	// TaintRecomputed events are retained and applied as audit records, but
-	// taint itself is derived. Recompute it authoritatively after the complete
-	// event stream so ledgers produced by older versions self-heal on load.
-	taint.RecomputeAll(state.AllNodes())
+	// Taint is derived, not event-sourced: TaintRecomputed events are retained
+	// and applied as audit records, but a full authoritative recompute runs
+	// after replay so stale historical audit values cannot override derived
+	// state. Replay itself stays free of the taint package so the support graph
+	// (internal/support) can be folded by taint without an import cycle; the
+	// service layer applies taint.RecomputeAll to the returned state.
 
 	return state, nil
 }

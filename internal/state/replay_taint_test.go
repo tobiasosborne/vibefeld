@@ -6,6 +6,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/taint"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -37,6 +38,9 @@ func TestReplay_DerivedTaintOverridesOldStyleAuditEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// State replay is pure event sourcing; the authoritative taint pass is
+	// applied by the service layer (and here explicitly).
+	taint.RecomputeAll(replayed.AllNodes())
 	if got := replayed.GetNode(rootID).TaintState; got != node.TaintTainted {
 		t.Errorf("root taint after replay = %q, want %q", got, node.TaintTainted)
 	}

@@ -20,9 +20,20 @@ import (
 
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
-	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
+
+// State is the read-only slice of derived state the support graph needs. It is
+// satisfied by *state.State. It exists so this package does not import
+// internal/state: internal/state imports internal/taint, and internal/taint
+// folds over the graph this package prepares, so a support -> state import
+// would close the cycle state -> taint -> support -> state (v3.1 amendment 4).
+type State interface {
+	AllNodes() []*node.Node
+	GetNode(types.NodeID) *node.Node
+	HasBlockingChallenges(types.NodeID) bool
+	LatestAmendmentSeq(types.NodeID) (int, bool)
+}
 
 // EdgeKind distinguishes the two support edges.
 type EdgeKind int
@@ -130,11 +141,25 @@ func (p *Provider) Dangling() []DanglingDep {
 	return p.dangling
 }
 
+// EdgesFrom returns the result-use edges leaving id, with their origin kind.
+// It is the read-only view folds and traces use to name an edge (child,
+// reference dependency, validation dependency).
+func (p *Provider) EdgesFrom(id types.NodeID) []GraphEdge {
+	return p.edges[id.String()]
+}
+
 // ResultUseEdges builds the result-use graph over state plus the prospective
 // overlay. Only result-use edges are present; local_assume targets are
 // hypothesis-use and are therefore absent.
-func ResultUseEdges(st *state.State, overlay []ProspectiveNode) Provider {
+func ResultUseEdges(st State, overlay []ProspectiveNode) Provider {
 	return resultUseEdges(newUniverse(st, overlay))
+}
+
+// ResultUseEdgesFromNodes builds the result-use graph from a bare node slice,
+// with no state handle. It is what internal/taint uses to fold over the same
+// prepared graph without importing internal/state.
+func ResultUseEdgesFromNodes(nodes []*node.Node) Provider {
+	return resultUseEdges(newUniverseFromNodes(nodes, nil))
 }
 
 // resultUseEdges builds the adjacency for an already-constructed universe.
@@ -243,7 +268,7 @@ func dedupeGraphEdges(edges []GraphEdge) []GraphEdge {
 // DanglingDeps reports result-use dependencies on missing or severed nodes for
 // the given state and overlay. It is a thin wrapper over ResultUseEdges for
 // callers (e.g. audit) that only need the blockers.
-func DanglingDeps(st *state.State, overlay []ProspectiveNode) []DanglingDep {
+func DanglingDeps(st State, overlay []ProspectiveNode) []DanglingDep {
 	p := ResultUseEdges(st, overlay)
 	return p.dangling
 }
@@ -271,25 +296,30 @@ type universe struct {
 	enclDone bool
 }
 
-func newUniverse(st *state.State, overlay []ProspectiveNode) *universe {
+func newUniverse(st State, overlay []ProspectiveNode) *universe {
+	if st == nil {
+		return newUniverseFromNodes(nil, overlay)
+	}
+	return newUniverseFromNodes(st.AllNodes(), overlay)
+}
+
+func newUniverseFromNodes(nodes []*node.Node, overlay []ProspectiveNode) *universe {
 	u := &universe{nodes: make(map[string]*nodeInfo)}
-	if st != nil {
-		for _, n := range st.AllNodes() {
-			if n == nil {
-				continue
-			}
-			parent, hasParent := n.ID.Parent()
-			u.nodes[n.ID.String()] = &nodeInfo{
-				id:        n.ID,
-				typ:       n.Type,
-				parent:    parent,
-				hasParent: hasParent,
-				severed:   isSeveredState(n.EpistemicState),
-				exists:    true,
-				deps:      n.Dependencies,
-				valDeps:   n.ValidationDeps,
-				node:      n,
-			}
+	for _, n := range nodes {
+		if n == nil {
+			continue
+		}
+		parent, hasParent := n.ID.Parent()
+		u.nodes[n.ID.String()] = &nodeInfo{
+			id:        n.ID,
+			typ:       n.Type,
+			parent:    parent,
+			hasParent: hasParent,
+			severed:   isSeveredState(n.EpistemicState),
+			exists:    true,
+			deps:      n.Dependencies,
+			valDeps:   n.ValidationDeps,
+			node:      n,
 		}
 	}
 	for i := range overlay {

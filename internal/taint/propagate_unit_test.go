@@ -999,9 +999,13 @@ func TestPropagateTaint_SparseMissingParents(t *testing.T) {
 			t.Errorf("deepChild.TaintState = %v, want %v", deepChild.TaintState, node.TaintTainted)
 		}
 
-		// The admitted node, its descendant, and the validated root change.
-		if len(changed) != 3 {
-			t.Errorf("PropagateTaint() returned %d changed nodes, want 3", len(changed))
+		// The admitted node and its descendant change. The validated root does
+		// not: under the D6 result-use relation a child edge requires the direct
+		// parent ID to exist, so a node whose intermediate ancestors are absent
+		// from allNodes contributes no support component upward. (In a real
+		// ledger the intermediate nodes exist; this is a synthetic sparse input.)
+		if len(changed) != 2 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
 		}
 	})
 
@@ -1030,9 +1034,11 @@ func TestPropagateTaint_SparseMissingParents(t *testing.T) {
 			t.Errorf("deepChild.TaintState = %v, want %v", deepChild.TaintState, node.TaintUnresolved)
 		}
 
-		// Both sparse descendants and the validated root should change.
-		if len(changed) != 3 {
-			t.Errorf("PropagateTaint() returned %d changed nodes, want 3", len(changed))
+		// Both sparse descendants change. The validated root does not: with the
+		// intermediate parent 1.1 absent there is no direct child edge to either
+		// node, so neither contributes a support component upward.
+		if len(changed) != 2 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
 		}
 	})
 }

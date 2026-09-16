@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
-	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -78,7 +77,7 @@ func newScopeLeakError(node, dep, assumption types.NodeID) *ScopeLeakError {
 //
 // The batch is checked as a whole: a cycle that only exists between two nodes
 // of the batch is found.
-func CheckCreation(st *state.State, batch []ProspectiveNode) error {
+func CheckCreation(st State, batch []ProspectiveNode) error {
 	preUniverse := newUniverse(st, nil)
 	preProvider := resultUseEdges(preUniverse)
 
@@ -140,7 +139,7 @@ func CheckCreation(st *state.State, batch []ProspectiveNode) error {
 // read-only audit counterpart of CheckCreation: it reports every offending node
 // instead of failing on the first, and it never rejects the workspace. Results
 // are ordered by citing node ID.
-func ScopeLeaks(st *state.State) []ScopeLeakError {
+func ScopeLeaks(st State) []ScopeLeakError {
 	if st == nil {
 		return nil
 	}

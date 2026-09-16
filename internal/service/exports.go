@@ -10,6 +10,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/fuzzy"
 	"github.com/tobiasosborne/vibefeld/internal/hooks"
 	"github.com/tobiasosborne/vibefeld/internal/jobs"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/lemma"
 	"github.com/tobiasosborne/vibefeld/internal/metrics"
 	"github.com/tobiasosborne/vibefeld/internal/node"
@@ -19,6 +20,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/shell"
 	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/strategy"
+	"github.com/tobiasosborne/vibefeld/internal/taint"
 	"github.com/tobiasosborne/vibefeld/internal/templates"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
@@ -685,13 +687,27 @@ const (
 // Re-export of state.NewState.
 var NewState = state.NewState
 
-// Replay replays all events from the ledger to rebuild the state.
-// Re-export of state.Replay.
-var Replay = state.Replay
+// Replay replays all events from the ledger to rebuild the state, then applies
+// the one authoritative taint pass (state.Replay is pure event sourcing).
+func Replay(ldg *ledger.Ledger) (*state.State, error) {
+	st, err := state.Replay(ldg)
+	if err != nil {
+		return nil, err
+	}
+	taint.RecomputeAll(st.AllNodes())
+	return st, nil
+}
 
-// ReplayWithVerify replays events and verifies state consistency.
-// Re-export of state.ReplayWithVerify.
-var ReplayWithVerify = state.ReplayWithVerify
+// ReplayWithVerify replays events, verifies state consistency, then applies the
+// authoritative taint pass.
+func ReplayWithVerify(ldg *ledger.Ledger) (*state.State, error) {
+	st, err := state.ReplayWithVerify(ldg)
+	if err != nil {
+		return nil, err
+	}
+	taint.RecomputeAll(st.AllNodes())
+	return st, nil
+}
 
 // NodeSummary is a view model containing only the fields needed for CLI display.
 // This decouples the CLI from the internal node.Node type, allowing the CLI

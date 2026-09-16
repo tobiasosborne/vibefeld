@@ -640,6 +640,23 @@ func (s *State) GetAmendmentHistory(nodeID types.NodeID) []Amendment {
 	return s.amendments[nodeID.String()]
 }
 
+// LatestAmendmentSeq returns the highest ledger sequence among a node's
+// recorded content revisions (statement and dependency amendments) and whether
+// any revision was recorded. It is the read-only view internal/support folds
+// for support_current's revision guard; it lives here so support need not
+// depend on the concrete State type.
+func (s *State) LatestAmendmentSeq(nodeID types.NodeID) (int, bool) {
+	best := 0
+	found := false
+	for _, a := range s.amendments[nodeID.String()] {
+		if a.Seq > best {
+			best = a.Seq
+			found = true
+		}
+	}
+	return best, found
+}
+
 // SetLastAmendmentSeq stamps the ledger sequence onto the most recent
 // amendment record for nodeID. Replay calls it after applying an amendment
 // event, which is how the event's sequence reaches the export projection

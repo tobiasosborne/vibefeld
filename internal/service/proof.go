@@ -336,6 +336,10 @@ func (s *ProofService) LoadState() (*state.State, error) {
 		return nil, err
 	}
 
+	// Replay is pure event sourcing; apply the one authoritative taint pass
+	// here so every loaded state carries derived taint (D6).
+	taint.RecomputeAll(st.AllNodes())
+
 	// Load assumptions from filesystem
 	if err := s.loadAssumptionsIntoState(st); err != nil {
 		// Ignore errors if directory doesn't exist
@@ -1323,9 +1327,14 @@ func (s *ProofService) emitTaintRecomputedEvents(nodeID types.NodeID, oldTaints 
 
 		// Compare against the caller's pre-transition snapshot. This is necessary
 		// because replay derives correct taint before this audit-emission step runs.
+		// Every changed node is emitted, not only ancestors and descendants:
+		// reference and validation dependencies carry taint, so a node that cites
+		// the transitioned node (a reverse dependent) must record its new taint
+		// too. A node whose taint did not change is skipped, so the filter is
+		// exactly the affected set the fold computed.
 		var events []ledger.Event
 		for _, changed := range allNodes {
-			if changed == nil || (!changed.ID.Equal(nodeID) && !nodeID.IsAncestorOf(changed.ID) && !changed.ID.IsAncestorOf(nodeID)) {
+			if changed == nil {
 				continue
 			}
 			key := changed.ID.String()
