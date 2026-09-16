@@ -4,13 +4,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/tobiasosborne/vibefeld/internal/config"
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -70,6 +73,80 @@ func TestGenerateFormatFixtures(t *testing.T) {
 			}
 		})
 	}
+
+	// The 1.1 fixture also carries a real node_deps_amended event so the
+	// previous-binary probe hits the unknown-event path.
+	generateFormat11DepsAmendment(t)
+}
+
+// TestGenerateFormat11DepsAmendment appends one real node_deps_amended event to
+// the 1.1 fixture. It is idempotent and only runs when AF_GEN_FIXTURES is set:
+//
+//	AF_GEN_FIXTURES=1 go test ./e2e -run TestGenerateFormat11DepsAmendment
+func TestGenerateFormat11DepsAmendment(t *testing.T) {
+	if os.Getenv("AF_GEN_FIXTURES") == "" {
+		t.Skip("set AF_GEN_FIXTURES=1 to regenerate e2e/fixtures")
+	}
+	generateFormat11DepsAmendment(t)
+}
+
+// generateFormat11DepsAmendment makes the 1.1 fixture exercise the
+// node_deps_amended event. It is a no-op if the event is already present.
+func generateFormat11DepsAmendment(t *testing.T) {
+	t.Helper()
+	dir := filepath.Join(fixturesDir, "format-1.1")
+	ledgerDir := filepath.Join(dir, "ledger")
+
+	ldg, err := ledger.NewLedger(ledgerDir)
+	if err != nil {
+		t.Fatalf("NewLedger: %v", err)
+	}
+	st, err := state.Replay(ldg)
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	if hasDepsAmendment(t, ldg) {
+		return // already generated
+	}
+
+	node := mustParse(t, "1.1")
+	n := st.GetNode(node)
+	if n == nil {
+		t.Fatalf("fixture node 1.1 missing")
+	}
+	target := mustParse(t, "1")
+	ev := ledger.NewNodeDepsAmended(node, n.Dependencies, []types.NodeID{target}, n.ValidationDeps, nil,
+		"fixture-author", "fixture dependency amendment", n.ContentHash, true)
+	ev.OperationID = "fixture-op-deps-1"
+	ev.RequestFingerprint = "fixture"
+	if _, err := ledger.AppendBatchIfSequence(ledgerDir, []ledger.Event{ev}, st.LatestSeq()); err != nil {
+		t.Fatalf("append deps amendment: %v", err)
+	}
+
+	// The ledger must remain valid: replay --verify passes.
+	ldg2, err := ledger.NewLedger(ledgerDir)
+	if err != nil {
+		t.Fatalf("reopen ledger: %v", err)
+	}
+	if _, err := state.ReplayWithVerify(ldg2); err != nil {
+		t.Fatalf("replay --verify failed after appending: %v", err)
+	}
+}
+
+// hasDepsAmendment reports whether the ledger already contains a
+// node_deps_amended event.
+func hasDepsAmendment(t *testing.T, ldg *ledger.Ledger) bool {
+	t.Helper()
+	found := false
+	if err := ldg.Scan(func(_ int, data []byte) error {
+		if strings.Contains(string(data), string(ledger.EventNodeDepsAmended)) {
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("scan ledger: %v", err)
+	}
+	return found
 }
 
 func mustParse(t *testing.T, s string) types.NodeID {
@@ -171,6 +248,11 @@ func TestFormatFixture_PreviousBinary(t *testing.T) {
 	t.Logf("previous binary %s status on %s (err=%v):\n%s", bin, dir, err, out)
 	if err == nil {
 		t.Error("previous binary unexpectedly succeeded on a 1.1 workspace")
+	}
+	// A 1.0 reader must fail on the unknown 1.1 event, naming it.
+	if !strings.Contains(string(out), string(ledger.EventNodeDepsAmended)) {
+		t.Errorf("previous binary error does not mention the unknown event %q:\n%s",
+			ledger.EventNodeDepsAmended, out)
 	}
 }
 
