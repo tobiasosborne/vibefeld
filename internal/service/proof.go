@@ -64,6 +64,13 @@ var ErrNodeNotFound = aferrors.New(aferrors.NODE_NOT_FOUND, "node not found")
 // Exit code: 3 (logic error)
 var ErrParentNotFound = aferrors.New(aferrors.PARENT_NOT_FOUND, "parent node not found")
 
+// ErrParentIDMismatch is returned when a caller-supplied ParentID does not
+// match the structural parent encoded in the child's ID. The committed node's
+// structure is derived from the child ID, so accepting a mismatched ParentID
+// would validate one graph and commit another.
+// Exit code: 3 (logic error)
+var ErrParentIDMismatch = aferrors.New(aferrors.INVALID_PARENT, "parent ID does not match child ID")
+
 // ErrEmptyInput is returned when a required input is empty or whitespace.
 // Exit code: 3 (logic error)
 var ErrEmptyInput = aferrors.New(aferrors.EMPTY_INPUT, "required input cannot be empty")
@@ -432,7 +439,9 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 			return nil, err
 		}
 
-		// D1: run the same support check every creation path uses. A node
+		// D1: run the same support check every creation path uses. The overlay
+		// parent is derived from the child ID (there is no caller-supplied
+		// ParentID here), matching the committed NodeCreated's structure. A node
 		// created without dependencies cannot itself close a cycle, but this
 		// keeps the invariant in one place as the graph grows.
 		parent, hasParent := id.Parent()
@@ -645,6 +654,16 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 
 	var oldTaints map[string]node.TaintState
 	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// The committed NodeCreated derives structure from the child ID, so a
+		// caller-supplied ParentID that disagrees would validate one graph and
+		// commit another. Reject the mismatch and derive the overlay parent from
+		// the child ID below.
+		derivedParent, hasDerived := spec.ChildID.Parent()
+		if !hasDerived || derivedParent.String() != spec.ParentID.String() {
+			return nil, fmt.Errorf("%w: parent %s does not match child %s's parent %s",
+				ErrParentIDMismatch, spec.ParentID.String(), spec.ChildID.String(), derivedParent.String())
+		}
+
 		// Check if parent node exists
 		parent := st.GetNode(spec.ParentID)
 		if parent == nil {
@@ -695,7 +714,7 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 		// claim, but may hypothesis-use an enclosing local_assume.
 		if err := checkSupportBatch(st, []support.ProspectiveNode{{
 			ID:             spec.ChildID,
-			ParentID:       spec.ParentID,
+			ParentID:       derivedParent,
 			Type:           spec.NodeType,
 			Dependencies:   spec.Dependencies,
 			ValidationDeps: spec.ValidationDeps,
@@ -1649,6 +1668,13 @@ func (s *ProofService) buildChildEvents(st *State, parentID types.NodeID, owner 
 			return nil, nil, fmt.Errorf("child %d: failed to generate child ID: %w", i+1, err)
 		}
 		childIDs[i] = childID
+		// The committed child's structure comes from its ID; derive the overlay
+		// parent from that ID and never from the caller-supplied parentID.
+		derivedParent, ok := childID.Parent()
+		if !ok || derivedParent.String() != parentID.String() {
+			return nil, nil, fmt.Errorf("child %d: %w: %s is not a child of %s",
+				i+1, ErrParentIDMismatch, childID.String(), parentID.String())
+		}
 
 		// Resolve per-child dependencies (rk B2): "#N" is a backward sibling
 		// ref into THIS batch (only known now, at allocation), anything else an
@@ -1665,7 +1691,7 @@ func (s *ProofService) buildChildEvents(st *State, parentID types.NodeID, owner 
 		events[i] = ledger.NewNodeCreated(*childNode)
 		batch[i] = support.ProspectiveNode{
 			ID:             childID,
-			ParentID:       parentID,
+			ParentID:       derivedParent,
 			Type:           spec.NodeType,
 			Dependencies:   childNode.Dependencies,
 			ValidationDeps: childNode.ValidationDeps,
