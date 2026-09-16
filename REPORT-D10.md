@@ -108,3 +108,75 @@ Branch: `work/d10-format` (worktree `/home/tobiasosborne/Projects/vibefeld-wt-d1
 - `go vet ./...` — pass (`go vet -tags integration ./...` also pass)
 - `go test ./...` — pass (including new `e2e` package tests)
 - `gofmt -l cmd internal e2e` — clean
+
+## Review fixes
+
+An independent review of the branch raised five issues; all are fixed with
+TDD (tests added first, then the fix) and the full gate suite is green again.
+
+**1. Complete the entry-point fence.** A shared helper
+`openWorkspaceLedger(dir) (*ledger.Ledger, *config.Config, error)` now lives in
+`cmd/af/workspace_open.go`. It calls `config.Load` and `config.CheckFormat`
+before constructing a ledger; a missing `meta.json` falls back to
+`config.Default()` exactly like `service.ProofService.LoadConfig`, so pre-init
+reads still work. Every `cmd/af` file that built a ledger directly now goes
+through it: `history.go`, `log.go`, `watch.go`, `replay.go`, `agents.go`,
+`defs.go`. `replay.go`'s private `checkReplayFormat` now takes the already
+loaded config so the ledger is still not touched before the gate. Per the
+brief, `resolve_challenge.go`, `withdraw_challenge.go`, `challenge.go`, and
+`reap.go` were left for the other branch. Tests:
+`TestFormatGate_UnreadableWorkspaceRefused` now also covers `af log`,
+`af history`, and `af watch --once` on a `9.9` workspace and asserts both the
+`FORMAT_TOO_NEW` code and exit code 3.
+
+**2. Lock before config/backup; exclusive backup dir.** `runWorkspaceUpgrade`
+now acquires `ledger.LedgerLock` before reading `meta.json`, and only then
+decides no-op / downgrade / proceed and creates the backup directory. The
+pre-lock timeout is `workspaceUpgradeLockTimeout` (default 5m; injectable in
+tests). `createBackupDir` names the leaf with a UTC second+nanosecond UTC stamp
+and creates it with `os.Mkdir`, retrying with a `-N` suffix on `EEXIST`, so two
+concurrent upgrades can never share or overwrite a backup. Tests:
+`TestWorkspaceUpgrade_BackupNameCollisionUsesDistinctDir` (pre-creates the
+timestamped dir, asserts a distinct dir is used and the existing one is
+untouched) and `TestWorkspaceUpgrade_LockHeldBeforeMetaRead` (holds the lock,
+puts deliberately corrupt JSON in `meta.json`, asserts the upgrade fails on the
+lock and never on a parse error), plus
+`TestWorkspaceUpgrade_InvalidInputExitCodes`.
+
+**3. Durability order.** After the backup completes the workspace root (the
+parent of `backup/`) is fsynced, and only then is the new stamp written, so a
+crash cannot leave a durable 1.1 stamp without a durable backup entry. A
+package-level `upgradeSteps` recorder (nil in production) records
+`lock → load-config → backup-dir → backup → fsync-root → write-stamp`;
+`TestWorkspaceUpgrade_DurabilityOrder` asserts that ordering.
+
+**4. Exit codes for invalid input.** Invalid `--to` target, missing `--to`, and
+invalid `-f` for `af workspace upgrade`, plus invalid `-f` for `af version`, now
+return structured `internal/errors` errors that map to exit 3 instead of plain
+exit-1 errors: `INVALID_TARGET` (unreadable target), `EMPTY_INPUT` (missing
+`--to`), and `INVALID_TYPE` (bad `-f`). Tests assert both the code and exit 3
+(`TestWorkspaceUpgrade_InvalidInputExitCodes`, `TestVersionCmd_FormatFlagInvalid`).
+
+**5. Corpus manifest and check (v3.1 amendment 3).**
+- `scripts/corpus-manifest.sh` prints `<relative-path> <sha256(concat
+  ledger/*.json in filename order)> <event-count>` for every workspace with a
+  `ledger/` under the corpus root (`AF_CORPUS_DIR`, default
+  `../almost-idempotent-stochastic-maps/proofs`), and `--check <manifest>`
+  diffs and exits 1 on any difference.
+- `scripts/corpus-check.sh` runs `af replay --verify --dir <ws> -f json` and
+  `af export --graph json --dir <ws>` for every manifest entry, failing on a
+  non-zero exit or a `"valid": false` replay.
+- `docs/corpus-manifest.txt` was generated and checked in from the local
+  corpus: **211 workspaces**, manifest self-check passes.
+- `scripts/corpus-check.sh ./af` against the current build: **corpus check OK
+  (211 workspaces)** — replay makes no semantic change on this branch, so all
+  entries pass. No Go changes were needed for this item.
+
+## Review-fix commits (branch `work/d10-format`, not pushed)
+
+- `1551a95` af: route direct ledger reads through shared workspace format gate
+- `6c295a0` af: lock before config read, exclusive backups, durable order, exit-3 input errors
+- `d6c683e` corpus: add manifest/check scripts and the v3.1 corpus manifest
+
+Re-run of the quality gates after all fixes: `go build ./cmd/af` pass,
+`go vet ./...` pass, `go test ./...` pass, `gofmt -l cmd internal e2e` clean.
