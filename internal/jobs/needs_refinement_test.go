@@ -13,11 +13,11 @@ import (
 // becomes verifier work once they are.
 func TestNeedsRefinement_ChildStatesDecideRole(t *testing.T) {
 	cases := []struct {
-		name          string
-		childState    schema.EpistemicState
-		hasChild      bool
-		wantProver    bool
-		wantVerifier  bool
+		name         string
+		childState   schema.EpistemicState
+		hasChild     bool
+		wantProver   bool
+		wantVerifier bool
 	}{
 		{"no children stays prover", "", false, true, false},
 		{"pending child stays prover", schema.EpistemicPending, true, true, false},
