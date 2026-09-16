@@ -30,21 +30,35 @@ type Folded[T any] struct {
 	Cycle    bool
 }
 
-// Walk is the single memoised topological traversal over the result-use graph.
-// It folds every node once, after all of its result-use targets have been
-// folded, and returns the results keyed by node ID string. Only nodes backed by
-// a *node.Node are folded; targets that are not (missing dependencies or
-// prospective overlay entries) are reported to the fold as Folded sentinels.
+// Graph is a result-use dependency graph whose Tarjan strongly-connected
+// components (and therefore its dependency-first condensation order) are
+// precomputed exactly once. Several folds — support_current today, taint in D6
+// — run over one prepared Graph without rerunning Tarjan or rebuilding the
+// adjacency.
 //
-// Legacy cycles in the data (result-use edges are required to be acyclic for
-// new writes, but old workspaces may contain them) are handled without error:
-// the strongly connected components are found with Tarjan's algorithm, and a
-// node folding a target in its own component receives Folded{Cycle: true}. The
-// component is still folded exactly once so every node gets a result.
-//
-// D4 (support_current) and D6 (taint) both use this one walk, each with its own
-// fold; D6 adds a fold, never a second traversal (v3.1 amendment 4).
-func Walk[T any](p Provider, fold func(n *node.Node, targets []Folded[T]) T) map[string]T {
+// It also retains the adjacency with edge kinds and a direct-child index, so a
+// fold can inspect children the result-use relation excludes or severs (a
+// local_assume child, or a refuted child dropped as a severed edge).
+type Graph struct {
+	nodes    map[string]*node.Node
+	order    []types.NodeID
+	deps     map[string][]types.NodeID
+	edges    map[string][]GraphEdge
+	children map[string][]*node.Node
+
+	// sccs holds the strongly connected components in dependency-first order
+	// (a component appears only after every component it can reach); cyclic is
+	// parallel to sccs and marks components that are a real cycle (more than
+	// one member, or a self-loop).
+	sccs   [][]string
+	cyclic []bool
+}
+
+// Prepare runs the one-off graph analysis (Tarjan SCCs) over a result-use
+// Provider and returns a Graph that any number of folds can walk. It is
+// deterministic: vertices and dependency lists are processed in stable
+// hierarchical-ID order, so sccs and every fold built on it are reproducible.
+func Prepare(p Provider) *Graph {
 	// The vertices are the graph's real nodes, in stable ID order.
 	ids := make([]types.NodeID, 0, len(p.nodes))
 	for _, id := range p.order {
@@ -66,23 +80,54 @@ func Walk[T any](p Provider, fold func(n *node.Node, targets []Folded[T]) T) map
 		}
 	}
 
-	results := make(map[string]T, len(ids))
+	g := &Graph{
+		nodes:    p.nodes,
+		order:    append([]types.NodeID(nil), p.order...),
+		deps:     p.deps,
+		edges:    p.edges,
+		children: p.children,
+		sccs:     ts.sccs,
+	}
 	for _, comp := range ts.sccs {
+		g.cyclic = append(g.cyclic, len(comp) > 1 || ts.hasSelfLoop(comp[0], p))
+	}
+	return g
+}
+
+// Walk is the single memoised topological traversal over a prepared Graph. It
+// folds every node once, after all of its result-use targets have been folded,
+// and returns the results keyed by node ID string. Only nodes backed by a
+// *node.Node are folded; targets that are not (missing dependencies or
+// prospective overlay entries) are reported to the fold as Folded sentinels.
+//
+// Legacy cycles in the data (result-use edges are required to be acyclic for
+// new writes, but old workspaces may contain them) are handled without error:
+// a node folding a target in its own component receives Folded{Cycle: true}.
+// The component is still folded exactly once so every node gets a result.
+//
+// Walk is a free function, not a method, because Go does not permit generic
+// methods; the prepared Graph it takes is the "prepare once, fold many" seam.
+//
+// D4 (support_current) and D6 (taint) both use this one walk, each with its own
+// fold; D6 adds a fold, never a second traversal (v3.1 amendment 4).
+func Walk[T any](g *Graph, fold func(n *node.Node, targets []Folded[T]) T) map[string]T {
+	results := make(map[string]T, len(g.nodes))
+	for ci, comp := range g.sccs {
 		compSet := make(map[string]bool, len(comp))
 		for _, id := range comp {
 			compSet[id] = true
 		}
-		cyclic := len(comp) > 1 || ts.hasSelfLoop(comp[0], p)
+		cyclic := g.cyclic[ci]
 		for _, idStr := range comp {
-			n := p.nodes[idStr]
-			targets := make([]Folded[T], 0, len(p.deps[idStr]))
-			for _, dep := range sortedDeps(p.deps[idStr]) {
+			n := g.nodes[idStr]
+			targets := make([]Folded[T], 0, len(g.deps[idStr]))
+			for _, dep := range sortedDeps(g.deps[idStr]) {
 				depStr := dep.String()
 				if compSet[depStr] && cyclic {
 					targets = append(targets, Folded[T]{ID: dep, Cycle: true})
 					continue
 				}
-				if p.nodes[depStr] == nil {
+				if g.nodes[depStr] == nil {
 					targets = append(targets, Folded[T]{ID: dep, Missing: true})
 					continue
 				}

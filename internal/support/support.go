@@ -68,6 +68,28 @@ type DanglingDep struct {
 	Severed bool
 }
 
+// GraphEdgeKind records why a result-use edge exists. Children are a parent's
+// proof step nodes; dependency edges come from n.Dependencies; validation-dep
+// edges from n.ValidationDeps (both minus local_assume targets).
+type GraphEdgeKind uint8
+
+const (
+	// EdgeChild is a parent -> non-local_assume child result edge.
+	EdgeChild GraphEdgeKind = iota
+	// EdgeDependency is a node -> n.Dependencies target result edge.
+	EdgeDependency
+	// EdgeValidationDep is a node -> n.ValidationDeps target result edge.
+	EdgeValidationDep
+)
+
+// GraphEdge is one result-use edge with its origin kind, retained on the
+// prepared Graph so folds can tell children from explicit dependencies.
+type GraphEdge struct {
+	From types.NodeID
+	To   types.NodeID
+	Kind GraphEdgeKind
+}
+
 // Provider is the result-use adjacency over state with an optional overlay of
 // prospective nodes. It implements cycle.DependencyProvider.
 type Provider struct {
@@ -79,6 +101,13 @@ type Provider struct {
 	// Overlay-only (prospective) nodes have no entry. The memoised Walk uses
 	// it to hand the fold the *node.Node it is folding.
 	nodes map[string]*node.Node
+
+	// edges lists every result-use edge with its origin kind, and children is
+	// the direct-child index (all children, including severed and local_assume
+	// ones), sorted by hierarchical ID. Both are retained so Prepare can build
+	// the prepared Graph once for several folds.
+	edges    map[string][]GraphEdge
+	children map[string][]*node.Node
 }
 
 // GetNodeDependencies implements cycle.DependencyProvider.
@@ -110,7 +139,12 @@ func ResultUseEdges(st *state.State, overlay []ProspectiveNode) Provider {
 
 // resultUseEdges builds the adjacency for an already-constructed universe.
 func resultUseEdges(u *universe) Provider {
-	p := Provider{deps: make(map[string][]types.NodeID), nodes: make(map[string]*node.Node)}
+	p := Provider{
+		deps:     make(map[string][]types.NodeID),
+		nodes:    make(map[string]*node.Node),
+		edges:    make(map[string][]GraphEdge),
+		children: make(map[string][]*node.Node),
+	}
 	for id, info := range u.nodes {
 		if info.node != nil {
 			p.nodes[id] = info.node
@@ -124,12 +158,31 @@ func resultUseEdges(u *universe) Provider {
 			children[key] = append(children[key], info)
 		}
 	}
-	for _, siblings := range children {
+	for parent, siblings := range children {
 		sort.Slice(siblings, func(i, j int) bool { return siblings[i].id.Less(siblings[j].id) })
+		// Retain the state-backed child pointers for folds (Current) that must
+		// inspect children the result-use relation severs or excludes.
+		for _, info := range siblings {
+			if info.node != nil {
+				p.children[parent] = append(p.children[parent], info.node)
+			}
+		}
 	}
 
 	for _, info := range u.nodes {
 		edges := make([]types.NodeID, 0, len(info.deps)+len(info.valDeps))
+		var gEdges []GraphEdge
+		add := func(to types.NodeID, kind GraphEdgeKind) {
+			edges = append(edges, to)
+			gEdges = append(gEdges, GraphEdge{From: info.id, To: to, Kind: kind})
+		}
+		dangling := func(to types.NodeID) {
+			if !u.exists(to) {
+				p.dangling = append(p.dangling, DanglingDep{From: info.id, To: to})
+			} else if u.isSevered(to) {
+				p.dangling = append(p.dangling, DanglingDep{From: info.id, To: to, Severed: true})
+			}
+		}
 		if !info.severed && info.typ != schema.NodeTypeLocalAssume {
 			// (i) children: a parent's proof is its non-local_assume children,
 			// and a local_assume parent introduces hypotheses rather than
@@ -138,22 +191,26 @@ func resultUseEdges(u *universe) Provider {
 				if c.typ == schema.NodeTypeLocalAssume || c.severed {
 					continue
 				}
-				edges = append(edges, c.id)
+				add(c.id, EdgeChild)
 			}
 			// (ii) explicit dependencies, minus local_assume targets.
-			for _, t := range info.allDeps() {
+			for _, t := range info.deps {
 				if u.isLocalAssume(t) {
 					continue
 				}
-				edges = append(edges, t)
-				if !u.exists(t) {
-					p.dangling = append(p.dangling, DanglingDep{From: info.id, To: t})
-				} else if u.isSevered(t) {
-					p.dangling = append(p.dangling, DanglingDep{From: info.id, To: t, Severed: true})
+				add(t, EdgeDependency)
+				dangling(t)
+			}
+			for _, t := range info.valDeps {
+				if u.isLocalAssume(t) {
+					continue
 				}
+				add(t, EdgeValidationDep)
+				dangling(t)
 			}
 		}
 		p.deps[info.id.String()] = dedupe(edges)
+		p.edges[info.id.String()] = dedupeGraphEdges(gEdges)
 	}
 
 	for _, info := range u.nodes {
@@ -161,6 +218,26 @@ func resultUseEdges(u *universe) Provider {
 	}
 	sort.Slice(p.order, func(i, j int) bool { return p.order[i].Less(p.order[j]) })
 	return p
+}
+
+// dedupeGraphEdges drops later edges to the same target, keeping the first
+// origin kind. Dependency target order is not meaningful (the content hash
+// sorts), so this matches dedupe while carrying kind metadata.
+func dedupeGraphEdges(edges []GraphEdge) []GraphEdge {
+	if len(edges) <= 1 {
+		return edges
+	}
+	seen := make(map[string]bool, len(edges))
+	out := edges[:0]
+	for _, e := range edges {
+		key := e.To.String()
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, e)
+	}
+	return out
 }
 
 // DanglingDeps reports result-use dependencies on missing or severed nodes for
@@ -184,13 +261,6 @@ type nodeInfo struct {
 	// node is the state-backed node pointer when this entry came from state;
 	// nil for an overlay-only prospective node.
 	node *node.Node
-}
-
-func (n *nodeInfo) allDeps() []types.NodeID {
-	out := make([]types.NodeID, 0, len(n.deps)+len(n.valDeps))
-	out = append(out, n.deps...)
-	out = append(out, n.valDeps...)
-	return out
 }
 
 // universe is the node set over state + overlay, keyed by ID string.

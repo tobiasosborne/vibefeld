@@ -18,7 +18,7 @@ func TestAnalyzeSupportHealth_FlagsNotCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	root.EpistemicState = schema.EpistemicValidated
-	root.ValidatedSeq = 2
+	root.VerdictSeq = 2
 	st.AddNode(root)
 
 	childID, _ := types.Parse("1.1")
@@ -53,7 +53,7 @@ func TestAnalyzeSupportHealth_HealthyWhenCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	root.EpistemicState = schema.EpistemicValidated
-	root.ValidatedSeq = 2
+	root.VerdictSeq = 2
 	st.AddNode(root)
 	// A validated leaf child makes the tree current.
 	childID, _ := types.Parse("1.1")
@@ -62,7 +62,7 @@ func TestAnalyzeSupportHealth_HealthyWhenCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	child.EpistemicState = schema.EpistemicValidated
-	child.ValidatedSeq = 1
+	child.VerdictSeq = 1
 	st.AddNode(child)
 
 	status, blockers := analyzeSupportHealth(st, HealthStatusHealthy, nil)

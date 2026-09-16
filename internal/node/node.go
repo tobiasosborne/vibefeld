@@ -115,13 +115,16 @@ type Node struct {
 	ValidatedContentHash string `json:"validated_content_hash,omitempty"`
 	ValidatedHashChecked bool   `json:"validated_hash_checked,omitempty"`
 
-	// ValidatedSeq is the ledger sequence of the NodeValidated event that most
-	// recently moved this node to validated, stamped by replay (it is derived
-	// state, never an event field). support_current compares it against later
-	// amendments to detect a revision the recorded verdict no longer covers.
-	// Cleared when the node is unvalidated or reopened; 0 for nodes that are
-	// not validated or whose validation predates this derived field.
-	ValidatedSeq int `json:"validated_seq,omitempty"`
+	// VerdictSeq is the ledger sequence of the NodeValidated OR NodeAdmitted
+	// event that most recently moved this node to a terminal verdict state,
+	// stamped by replay (it is derived state, never an event field, hence
+	// json:"-" so embedding Node in an event does not change the event shape).
+	// support_current compares it against later amendments to detect a revision
+	// the recorded verdict no longer covers. Cleared when the node is
+	// unvalidated, unadmitted, reopened, or sent back for refinement; 0 for
+	// nodes that are not validated/admitted or whose verdict predates this
+	// derived field.
+	VerdictSeq int `json:"-"`
 
 	// ProofAuthor is the identity of the prover that RECORDED THE PROOF of this
 	// node — i.e. decomposed it into children via `af record-proof` (recorded

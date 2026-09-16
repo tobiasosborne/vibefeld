@@ -15,7 +15,7 @@ func validateNode(t *testing.T, st *state.State, id string, seq int) {
 		t.Fatalf("node %s not found", id)
 	}
 	n.EpistemicState = schema.EpistemicValidated
-	n.ValidatedSeq = seq
+	n.VerdictSeq = seq
 }
 
 func TestCurrent_AllValidatedClean(t *testing.T) {
@@ -133,5 +133,83 @@ func TestCurrent_Cycle(t *testing.T) {
 	got := Current(st)
 	if got["1.1"].Cause != CauseCycle && got["1.2"].Cause != CauseCycle {
 		t.Fatalf("cycle members should report CYCLE: %+v", got)
+	}
+}
+
+// TestCurrent_DescendantRevisionCarriesThroughCurrentTarget is the R -> B -> C
+// regression an independent review found: C is revised, then C and B are
+// re-accepted. B is current again, but R's older verdict predates C's revision
+// and R was never re-accepted, so R must not be current. The fold carries each
+// node's latest descendant revision sequence forward so R can see C's revision
+// through the (now current) B.
+func TestCurrent_DescendantRevisionCarriesThroughCurrentTarget(t *testing.T) {
+	st := state.NewState()
+	addNode(t, st, "1", schema.NodeTypeClaim)     // R
+	addNode(t, st, "1.1", schema.NodeTypeClaim)   // B
+	addNode(t, st, "1.1.1", schema.NodeTypeClaim) // C
+	validateNode(t, st, "1.1.1", 2)
+	validateNode(t, st, "1.1", 3)
+	validateNode(t, st, "1", 4)
+
+	// C is revised at seq 5, then re-accepted at 6; B is re-accepted at 7.
+	st.AddAmendment(mustID(t, "1.1.1"), state.Amendment{Kind: state.AmendmentKindStatement, Seq: 5})
+	validateNode(t, st, "1.1.1", 6)
+	validateNode(t, st, "1.1", 7)
+
+	got := Current(st)
+	if !got["1.1"].Current {
+		t.Fatalf("B re-accepted after C: expected current, got %+v", got["1.1"])
+	}
+	if got["1"].Current {
+		t.Fatalf("R predates C's revision and must not be current: %+v", got["1"])
+	}
+	if got["1"].Cause != CauseTargetRevised {
+		t.Fatalf("R cause = %q, want %q", got["1"].Cause, CauseTargetRevised)
+	}
+	if got["1"].Seq != 5 {
+		t.Fatalf("R revision seq = %d, want 5", got["1"].Seq)
+	}
+}
+
+// TestCurrent_PendingLocalAssumeChildStaysCurrent locks that local_assume
+// children are not result-use edges: a pending hypothesis must not break its
+// parent's support.
+func TestCurrent_PendingLocalAssumeChildStaysCurrent(t *testing.T) {
+	st := state.NewState()
+	addNode(t, st, "1", schema.NodeTypeClaim)
+	addNode(t, st, "1.1", schema.NodeTypeLocalAssume)
+	validateNode(t, st, "1", 2)
+
+	got := Current(st)
+	if !got["1"].Current {
+		t.Fatalf("pending local_assume child should not break the parent: %+v", got["1"])
+	}
+
+	// The same holds for the children of a local_assume parent: its pending
+	// child is not a result-use edge of the local_assume either.
+	addNode(t, st, "1.1.1", schema.NodeTypeClaim)
+	validateNode(t, st, "1.1", 3)
+	got = Current(st)
+	if !got["1.1"].Current {
+		t.Fatalf("pending child of a local_assume should not break it: %+v", got["1.1"])
+	}
+}
+
+// TestCurrent_AdmittedConsumerTargetRevised locks that an admitted node's
+// verdict baseline is compared against later target revisions exactly like a
+// validated one.
+func TestCurrent_AdmittedConsumerTargetRevised(t *testing.T) {
+	st := state.NewState()
+	addNode(t, st, "1", schema.NodeTypeClaim)
+	addNode(t, st, "1.1", schema.NodeTypeClaim)
+	validateNode(t, st, "1.1", 2)
+	p := st.GetNode(mustID(t, "1"))
+	p.EpistemicState = schema.EpistemicAdmitted
+	p.VerdictSeq = 5
+	st.AddAmendment(mustID(t, "1.1"), state.Amendment{Kind: state.AmendmentKindStatement, Seq: 6})
+
+	got := Current(st)
+	if got["1"].Current || got["1"].Cause != CauseTargetRevised {
+		t.Fatalf("admitted consumer with a later target revision: %+v", got["1"])
 	}
 }

@@ -27,7 +27,7 @@ func mkNode(t *testing.T, id string, es schema.EpistemicState) *node.Node {
 func TestRenderStatus_SupportMarkerAndJSON(t *testing.T) {
 	st := state.NewState()
 	root := mkNode(t, "1", schema.EpistemicValidated)
-	root.ValidatedSeq = 2
+	root.VerdictSeq = 2
 	st.AddNode(root)
 	child := mkNode(t, "1.1", schema.EpistemicPending)
 	st.AddNode(child)

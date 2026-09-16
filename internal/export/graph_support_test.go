@@ -19,7 +19,7 @@ func TestGraphExport_SupportCurrentCapabilityAndFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	root.EpistemicState = schema.EpistemicValidated
-	root.ValidatedSeq = 2
+	root.VerdictSeq = 2
 	st.AddNode(root)
 
 	childID, _ := types.Parse("1.1")

@@ -36,7 +36,7 @@ func TestWalk_DAG(t *testing.T) {
 	addNode(t, st, "1.1.1", schema.NodeTypeClaim, "1.2")
 
 	f := &foldVisits{seen: map[string]int{}}
-	depth := Walk(ResultUseEdges(st, nil), f.fold)
+	depth := Walk(Prepare(ResultUseEdges(st, nil)), f.fold)
 
 	for _, id := range []string{"1", "1.1", "1.2", "1.1.1"} {
 		if f.seen[id] != 1 {
@@ -65,7 +65,7 @@ func TestWalk_Diamond(t *testing.T) {
 	addNode(t, st, "1.1.1", schema.NodeTypeClaim)
 
 	f := &foldVisits{seen: map[string]int{}}
-	depth := Walk(ResultUseEdges(st, nil), f.fold)
+	depth := Walk(Prepare(ResultUseEdges(st, nil)), f.fold)
 
 	for _, id := range []string{"1", "1.1", "1.2", "1.1.1"} {
 		if f.seen[id] != 1 {
@@ -86,7 +86,7 @@ func TestWalk_LegacyCycle(t *testing.T) {
 	addNode(t, st, "1.2", schema.NodeTypeClaim, "1.1")
 
 	f := &foldVisits{seen: map[string]int{}}
-	depth := Walk(ResultUseEdges(st, nil), f.fold)
+	depth := Walk(Prepare(ResultUseEdges(st, nil)), f.fold)
 
 	// The walk terminates and visits every node exactly once despite the cycle.
 	for _, id := range []string{"1", "1.1", "1.2"} {
@@ -107,7 +107,7 @@ func TestWalk_SelfLoop(t *testing.T) {
 	addNode(t, st, "1.1", schema.NodeTypeClaim, "1.1")
 
 	sawCycle := false
-	Walk(ResultUseEdges(st, nil), func(n *node.Node, targets []Folded[int]) int {
+	Walk(Prepare(ResultUseEdges(st, nil)), func(n *node.Node, targets []Folded[int]) int {
 		for _, t := range targets {
 			if t.ID.String() == "1.1" && t.Cycle {
 				sawCycle = true
@@ -117,5 +117,63 @@ func TestWalk_SelfLoop(t *testing.T) {
 	})
 	if !sawCycle {
 		t.Fatal("self-loop was not reported as a cycle sentinel")
+	}
+}
+
+// TestWalk_MultipleFoldsOnePreparedGraph locks D4's "prepare once, fold many"
+// seam: one Prepare call (one Tarjan pass) backs two independent folds, and the
+// prepared graph retains edge kinds and the direct-child index.
+func TestWalk_MultipleFoldsOnePreparedGraph(t *testing.T) {
+	st := state.NewState()
+	addNode(t, st, "1", schema.NodeTypeClaim)
+	addNode(t, st, "1.1", schema.NodeTypeClaim)
+	addNode(t, st, "1.2", schema.NodeTypeClaim, "1.1")
+
+	g := Prepare(ResultUseEdges(st, nil))
+
+	// Two different folds over the same graph, no second Prepare.
+	depth := Walk(g, func(n *node.Node, targets []Folded[int]) int {
+		best := 0
+		for _, t := range targets {
+			if t.Resolved && t.Value > best {
+				best = t.Value
+			}
+		}
+		return best + 1
+	})
+	count := Walk(g, func(n *node.Node, targets []Folded[int]) int {
+		return len(targets)
+	})
+	if depth["1"] != 3 {
+		t.Errorf("depth[1] = %d, want 3", depth["1"])
+	}
+	if count["1"] != 2 || count["1.2"] != 1 {
+		t.Errorf("target counts wrong: %+v", count)
+	}
+
+	// Edge kinds are retained: the child edge of 1 and the dependency edge of
+	// 1.2 both land on 1.1 but for different reasons.
+	kinds := map[GraphEdgeKind]int{}
+	for _, e := range g.edges["1"] {
+		if e.To.String() == "1.1" {
+			kinds[e.Kind]++
+		}
+	}
+	if kinds[EdgeChild] != 1 {
+		t.Errorf("expected a child edge 1 -> 1.1, got %+v", g.edges["1"])
+	}
+	depKinds := map[GraphEdgeKind]int{}
+	for _, e := range g.edges["1.2"] {
+		if e.To.String() == "1.1" {
+			depKinds[e.Kind]++
+		}
+	}
+	if depKinds[EdgeDependency] != 1 {
+		t.Errorf("expected a dependency edge 1.2 -> 1.1, got %+v", g.edges["1.2"])
+	}
+
+	// The child index includes direct children for folds that need them.
+	if len(g.children["1"]) != 2 || g.children["1"][0].ID.String() != "1.1" || g.children["1"][1].ID.String() != "1.2" {
+		t.Errorf("child index wrong: %+v", g.children["1"])
 	}
 }
