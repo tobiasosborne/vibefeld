@@ -11,7 +11,9 @@
 # The generator is deterministic for a given --seed: the pseudo-random choices
 # (cross-reference targets, which nodes to challenge / amend / accept) come from
 # a seeded 31-bit LCG, not from $RANDOM, so reruns with the same seed produce
-# the same workspace.
+# the same shape, decisions and event count. af generates challenge IDs with
+# crypto/rand internally, so the raw challenge_id bytes differ between runs;
+# those IDs are not part of the structural seed.
 #
 # Portability: bash >= 4 is required (same rule as scripts/auto-prove.sh), and
 # jq must be on PATH for parsing `af ... -f json` output.
