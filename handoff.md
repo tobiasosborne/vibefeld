@@ -1,3 +1,74 @@
+# Handoff - 2026-09-16 (scale-hardening v3.1 adopted; D0, D10, D1, D3 merged; D2 in flight)
+
+Plan v3.1 adopted (last section of `docs/plans/scale-hardening.md`): 0.1.9 is
+the minimum set (D0, D10 reduced, D1, D3, D2 + manifest); D4/D7/D8/D11 move
+to 0.1.10; D0 is optimistic (state read outside the ledger lock, batch tail
+check under it); D10 drops the multi-binary matrix. Draft reply to GitHub #3
+is in `docs/plans/issue-3-reply.md` (Tobias to post).
+
+## Merged into main this session (each: pi deepseek-flash implementation,
+## one codex gpt-5.6-sol xhigh review, fixes, Claude review, merge)
+
+- **D10** (`work/d10-format`): `config.FormatCurrent`="1.1", `CheckFormat` at
+  every entry point (service ctor, replay, and the direct-ledger commands via
+  `cmd/af/workspace_open.go`), `ledger.RegisterEventMinFormat`,
+  `af workspace upgrade --to 1.1 [--dry-run]` (lock first, exclusive backup
+  dir, fsync root before stamp), `af version` advertises format/policy,
+  `af replay -f json` exits 4 on failure, `scripts/corpus-manifest.sh` +
+  `corpus-check.sh` + `docs/corpus-manifest.txt` (211 workspaces, all pass).
+  New workspaces are stamped 1.1. Closed q6os, xk7c.
+- **D0** (`work/d0-commit-primitive`): `internal/service/commit.go`
+  `commit(build)` is the only write path; `ledger.AppendBatchIfSequence`
+  (batch-wide CAS, per-rename dir fsync, prefix on crash); `operation_id` on
+  BaseEvent + `state.HasOperationID` + `findOperation`; lock file carries
+  pid + token, `Release` checks the token, `RemoveIfStale`, `af reap
+  --ledger-lock`; verdicts apply gates and accept share one state read;
+  ReleaseNodes/UnvalidateBatch/Init/ExtractLemma preconditions inside the
+  closure; format gate runs inside commit. Closed qgjg, tlh1.
+- **D3** (`work/d3-accept-hash`): `NodeValidated.content_hash` /
+  `expected_hash_checked`, `ClaimTested.content_hash`, `af accept
+  --expect-hash`, stale claim tests do not count (`CLAIM_TEST_REQUIRED` code,
+  exit 2), export fields `validated_content_hash(_checked)`. Closed w3vz.
+- **D1** (`work/d1-support-relation`): `internal/support` (result-use /
+  hypothesis-use edges, branch-local structural scopes with pre/post-close
+  context for discharges, `CheckCreation` over the whole prospective batch,
+  new-edge-only cycle rejection, re-validation of existing nodes whose scope
+  changed, `SCOPE_LEAK` code); wired into Refine, RefineNodeBulk, RecordProof,
+  CreateNode via `service.checkSupportBatch`; ParentID/ChildID divergence
+  rejected. Closed k336, 0ko0.
+
+Reports: `docs/plans/reports/D{0,1,3,10}.md`. Reviews and briefs live in the
+session scratchpad only.
+
+## In flight
+
+- **D2** `af amend-deps` (`work/d2-amend-deps`, worktree `../vibefeld-wt-d2`,
+  bead 4hut): brief covers the event, service, CLI, manifest with
+  `--dry-run/--resume`, surfaces, export fields, tests, docs.
+
+## Next steps
+
+1. D2: gates, codex review, fixes, Claude review, merge. Add a real 1.1 event
+   to `e2e/fixtures/format-1.1` and tighten the previous-binary test.
+2. Tag v0.1.9 after bumping VersionInfo (changelog 0.1.9 entry is marked
+   unreleased; the version test skips unreleased entries). Update #3.
+3. 0.1.10: D4 (support_current; one DAG walk shared with D6), D7, D8, D11,
+   D5, D9. File beads per item under epic 67y5.
+4. Open bug filed this session: vibefeld-8rjx (fs.WriteNode concurrent
+   corruption flake).
+
+## Operational notes
+
+- pi launch that passes the auto-mode classifier: brief in a file,
+  `pi -p --provider deepseek --model deepseek-flash --session-dir <dir> -n <name> @brief.md "Implement the brief."`,
+  run under `setsid nohup ... & disown` (the harness killed wrapper shells
+  and left orphaned agents editing the same worktree once). codex reviews:
+  `codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh --sandbox read-only -o out.md - < prompt.md`
+  (must feed stdin, otherwise it blocks on "Reading additional input").
+- Worktrees: `../vibefeld-wt-d{0,1,2,3,10}`; delete after merge.
+
+---
+
 # Handoff - 2026-09-15 (scale-hardening plan v3; no code changes)
 
 Planning session only. No source changed; `gofmt`, `go vet`, `go build`,
