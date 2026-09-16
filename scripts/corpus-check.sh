@@ -6,8 +6,11 @@
 #
 #   <af> replay --verify --dir <workspace> -f json
 #   <af> export --graph json --dir <workspace>
+#   <af> audit -f json --dir <workspace>
 #
-# and fail on any non-zero exit, or when replay reports "valid": false.
+# and fail on any non-zero exit, or when replay reports "valid": false. The
+# audit is non-strict: findings are expected on historical corpora and are not
+# a failure, only an audit that errors is.
 #
 # Usage:
 #   scripts/corpus-check.sh [AF_BINARY]     # AF_BINARY defaults to ./af
@@ -58,6 +61,12 @@ while IFS=' ' read -r rel _hash _events; do
 
   if ! "$AF" export --graph json --dir "$ws" >/dev/null 2>&1; then
     echo "FAIL export $rel" >&2
+    fail=1
+    continue
+  fi
+
+  if ! "$AF" audit -f json --dir "$ws" >/dev/null 2>&1; then
+    echo "FAIL audit $rel" >&2
     fail=1
     continue
   fi

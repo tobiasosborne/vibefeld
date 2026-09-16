@@ -5,21 +5,30 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/audit"
 	"github.com/tobiasosborne/vibefeld/internal/service"
-	"github.com/tobiasosborne/vibefeld/internal/support"
 )
 
 // analyzeSupportHealth appends D4's support_current failures to a health report:
 // every validated or admitted node whose derived support is no longer current,
 // grouped by stable cause code and naming the responsible node (and revision
-// sequence where one applies). It never leaves the status healthier than
-// warning. Kept in its own file so the rest of health's analysis is untouched.
+// sequence where one applies). The findings come from the one shared audit
+// engine (internal/audit, code SUPPORT_NOT_CURRENT) rather than a second
+// support.Current call, so health and audit cannot disagree. It never leaves the
+// status healthier than warning. Kept in its own file so the rest of health's
+// analysis is untouched.
 func analyzeSupportHealth(st *service.State, status string, blockers []Blocker) (string, []Blocker) {
 	if st == nil {
 		return status, blockers
 	}
-	statuses := support.Current(st)
+	// Only the two producers health reads run: SUPPORT_NOT_CURRENT for the
+	// blockers below, and VALIDATED_WITH_OPEN_BLOCKING_CHALLENGE so the open
+	// challenge producer shares this one snapshot. Every other producer is
+	// skipped before computation.
+	report := audit.Run(st, audit.Options{Codes: []string{
+		audit.CodeSupportNotCurrent,
+		audit.CodeValidatedWithOpenBlockingChallenge,
+	}})
 
 	type failure struct {
 		node        string
@@ -27,18 +36,25 @@ func analyzeSupportHealth(st *service.State, status string, blockers []Blocker) 
 		seq         int
 	}
 	byCause := make(map[string][]failure)
-	for _, n := range st.AllNodes() {
-		if n.EpistemicState != schema.EpistemicValidated && n.EpistemicState != schema.EpistemicAdmitted {
+	for _, f := range report.Findings {
+		if f.Code != audit.CodeSupportNotCurrent {
 			continue
 		}
-		sup := statuses[n.ID.String()]
-		if sup.Current || sup.Cause == "" {
+		if len(f.Nodes) == 0 {
 			continue
 		}
-		byCause[sup.Cause] = append(byCause[sup.Cause], failure{
-			node:        n.ID.String(),
-			responsible: sup.Node.String(),
-			seq:         sup.Seq,
+		responsible := ""
+		if len(f.Nodes) > 1 {
+			responsible = f.Nodes[1].String()
+		}
+		seq := 0
+		if len(f.Seqs) > 0 {
+			seq = f.Seqs[0]
+		}
+		byCause[f.Cause] = append(byCause[f.Cause], failure{
+			node:        f.Nodes[0].String(),
+			responsible: responsible,
+			seq:         seq,
 		})
 	}
 	if len(byCause) == 0 {

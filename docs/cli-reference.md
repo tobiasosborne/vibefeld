@@ -61,6 +61,7 @@ Multiple AI agents work concurrently as adversarial provers and verifiers, refin
 | `extend-claim` | Extend duration of an existing claim |
 | `reap` | Clean up stale/expired locks |
 | `health` | Check proof health and detect stuck states |
+| `audit` | Read-only trust audit of the workspace |
 | `progress` | Show proof progress metrics |
 | `metrics` | Show proof quality metrics |
 | `watch` | Stream events in real-time |
@@ -1877,6 +1878,77 @@ challenges, statement and dependency amendments, and refuted children. The top
 `--hotspots` nodes are listed; a node at or above `--rework-warn` is marked as
 a warning. Repeated scrutiny of a hard node is normal and is *not* evidence
 that the node or the conjecture is false.
+
+---
+
+### `audit`
+
+Read-only trust audit of the proof workspace, computed from one ordered pass
+over derived state. `af audit` appends no events and takes no ledger lock.
+
+**Syntax:**
+```
+af audit [flags]
+```
+
+**Flags:**
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--dir` | `-d` | string | "." | Proof directory path |
+| `--format` | `-f` | string | "text" | Output format (`text` or `json`) |
+| `--strict` | | bool | false | Exit 3 when a current finding gates |
+| `--code` | | strings | | Only findings with these codes (comma-separated) |
+| `--node` | | string | | Only findings involving a node ID with this prefix (dotted-segment aware) |
+| `--status` | | string | | Only `current` or `historical` findings |
+| `--limit` | | int | 200 | Maximum findings to print (0 = unlimited) |
+
+**Report shape:** `schema_version: 1`, `findings`, `summary` (total, current,
+historical, strict_current, by_code, by_severity), `strict`, `passed`. Each
+finding carries `code`, `severity` (`error`/`warning`/`info`), `status`
+(`current`/`historical`), `nodes`, `seqs`, `message` and `remediation` (plus
+`cause` for `SUPPORT_NOT_CURRENT`).
+
+**Finding codes:**
+
+| Code | Status | Severity | Meaning |
+|------|--------|----------|---------|
+| `SUPPORT_NOT_CURRENT` | current | error | A validated/admitted node's verdict is no longer supported; carries the stable cause (`NOT_VALIDATED`, `OPEN_BLOCKING_CHALLENGE`, `TARGET_NOT_CURRENT`, `TARGET_PENDING`, `TARGET_REFUTED`, `TARGET_REVISED`, `SELF_REVISED`, `CYCLE`) and the responsible node/seq |
+| `HASH_MISMATCH` | current | error | A validated node's current content hash differs from the hash recorded at acceptance |
+| `HASH_MISMATCH` | historical | warning | Validation predates recorded hashes; the comparison is reconstructed and never gates |
+| `CYCLE` | current | error | A legacy result-use cycle (strongly-connected component) |
+| `SCOPE_LEAK` | current | error | A node result-uses a node inside a `local_assume` whose scope does not enclose it |
+| `CITES_SEVERED` | current | error | A dependency on an archived, refuted or missing target |
+| `AMENDED_NOT_REVERIFIED` | current | error | A validated node (or a target it relies on) was amended after its verdict |
+| `SELF_ACCEPT` | current | error | Recorded verifier equals the author, proof author or an amender |
+| `VALIDATED_WITH_OPEN_BLOCKING_CHALLENGE` | current | error | A validated node carries an open critical/major challenge |
+| `ADMITTED` | historical | info | An admitted node (cleared with taint) |
+| `ARCHIVED_WITH_OPEN_CHALLENGE` | historical | warning | An archived node (or an active descendant) has an open challenge |
+| `AMENDMENTS_PER_NODE` | historical | info | Top amendment hotspots |
+| `PENDING_EXTERNAL_CITED_BY_VALIDATED` | historical | warning | A validated node cites an external reference that is still pending |
+| `UNKNOWN_PROVENANCE` | historical | info | A validated node has no recorded verifier identity |
+
+**Strictness:** only current findings with the first eight codes fail
+`--strict`. Every historical code is always reported and never gates.
+
+**Exit codes:** `0` always without `--strict` (and with `--strict` when it
+passes); `3` `AUDIT_FAILED` when `--strict` and a strict-current finding exists.
+
+**Examples:**
+```bash
+af audit
+af audit --strict
+af audit -f json
+af audit --code CYCLE,SCOPE_LEAK
+af audit --node 1.2 --status current
+af audit --limit 50
+```
+
+**Migration preflight/postcheck:** with `af amend-deps --file m.json`, both
+`--dry-run` and the real run end with a one-line audit summary of the current
+workspace (strict-current and historical counts) and the exact
+`af audit --strict` command. In `-f json` mode the summary is the
+`audit_summary` field, so stdout remains a single valid JSON document.
 
 ---
 
