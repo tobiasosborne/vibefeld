@@ -304,6 +304,7 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 	}
 	if !n.ClaimedAt.IsZero() {
 		result["claim_expires_at"] = n.ClaimedAt.String()
+		result["expires_at"] = n.ClaimedAt.String()
 	}
 
 	// Job readiness from the one authoritative classifier (D11). st may be nil
