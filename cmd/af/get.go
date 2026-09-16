@@ -386,7 +386,7 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		// Single node: always show full/verbose output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
 		fmt.Fprint(cmd.OutOrStdout(), render.RenderNodeVerbose(nodes[0]))
-		if sup := support.Current(st)[nodes[0].ID.String()]; !sup.Current && sup.Cause != "" {
+		if sup := support.Current(st)[nodes[0].ID.String()]; !sup.Current && sup.Cause != "" && sup.Cause != support.CauseNotValidated {
 			fmt.Fprintf(cmd.OutOrStdout(), "\nSupport: NOT CURRENT (%s)", sup.Cause)
 			if sup.Node.String() != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), " - responsible node %s", sup.Node.String())
@@ -449,7 +449,7 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 				fmt.Fprintln(cmd.OutOrStdout(), "---")
 			}
 			fmt.Fprint(cmd.OutOrStdout(), render.RenderNodeVerbose(n))
-			if sup := support.Current(st)[n.ID.String()]; !sup.Current && sup.Cause != "" {
+			if sup := support.Current(st)[n.ID.String()]; !sup.Current && sup.Cause != "" && sup.Cause != support.CauseNotValidated {
 				fmt.Fprintf(cmd.OutOrStdout(), "\nSupport: NOT CURRENT (%s)", sup.Cause)
 				if sup.Node.String() != "" {
 					fmt.Fprintf(cmd.OutOrStdout(), " - responsible node %s", sup.Node.String())

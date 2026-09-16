@@ -10,6 +10,38 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
+// TestRefineNodeBulk_ValidatedParentRefused wires the gate into bulk refine.
+func TestRefineNodeBulk_ValidatedParentRefused(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	claimRoot(t, svc)
+	refinePendingChild(t, svc, "1.1")
+	if _, err := svc.AcceptNodesBulk([]types.NodeID{parseNodeID(t, "1.1"), parseNodeID(t, "1")}, "verifier", ""); err != nil {
+		t.Fatalf("accept fixtures: %v", err)
+	}
+
+	_, err := svc.RefineNodeBulk(parseNodeID(t, "1"), "agent1", []ChildSpec{{Statement: "child", NodeType: schema.NodeTypeClaim, Inference: schema.InferenceModusPonens}})
+	var pse *ParentStateError
+	if !errors.As(err, &pse) || pse.Remedy != "run af request-refinement 1" {
+		t.Fatalf("error = %v, want ParentStateError remedy 'run af request-refinement 1'", err)
+	}
+}
+
+// TestCreateNode_ValidatedParentRefused wires the gate into direct creation.
+func TestCreateNode_ValidatedParentRefused(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	claimRoot(t, svc)
+	refinePendingChild(t, svc, "1.1")
+	if _, err := svc.AcceptNodesBulk([]types.NodeID{parseNodeID(t, "1.1"), parseNodeID(t, "1")}, "verifier", ""); err != nil {
+		t.Fatalf("accept fixtures: %v", err)
+	}
+
+	err := svc.CreateNode(parseNodeID(t, "1.2"), schema.NodeTypeClaim, "child", schema.InferenceModusPonens)
+	var pse *ParentStateError
+	if !errors.As(err, &pse) || pse.Remedy != "run af request-refinement 1" {
+		t.Fatalf("error = %v, want ParentStateError remedy 'run af request-refinement 1'", err)
+	}
+}
+
 // TestCheckParentCreationGate locks the D4 creation rule: children are allowed
 // only under pending, draft or needs_refinement parents, and the refusals name
 // the exact remedy where one exists.
