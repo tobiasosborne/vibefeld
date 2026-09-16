@@ -80,6 +80,14 @@ const (
 	// no currently-validated node (exit 7 — clean no-op, not an error).
 	UNVALIDATE_BATCH_NOT_FOUND
 
+	// af amend-deps --file manifest outcomes (D2), mirroring the verdict-batch
+	// tiers. AMEND_DEPS_FILE_INVALID is exit 3; the others use the same 5/6/7
+	// tiers as af verdicts apply so a driver reads one contract.
+	AMEND_DEPS_FILE_INVALID      // exit 3 — malformed/schema-invalid manifest; nothing attempted
+	AMEND_DEPS_PARTIALLY_APPLIED // exit 5 — at least one item applied, at least one rejected or blocked
+	AMEND_DEPS_NONE_APPLIED      // exit 6 — manifest valid but zero items applied
+	AMEND_DEPS_ALL_UNCHANGED     // exit 7 — every item was already satisfied; nothing to do (clean no-op)
+
 	// Claim-test gate (blocked = exit 2). Distinct from NODE_BLOCKED so
 	// errors.Is can tell a missing/stale claim-test apart from unresolved
 	// blocking challenges; both are blocked, neither is a challenge.
@@ -88,40 +96,44 @@ const (
 
 // errorCodeNames maps error codes to their string representations.
 var errorCodeNames = map[ErrorCode]string{
-	ALREADY_CLAIMED:             "ALREADY_CLAIMED",
-	NOT_CLAIM_HOLDER:            "NOT_CLAIM_HOLDER",
-	NODE_BLOCKED:                "NODE_BLOCKED",
-	INVALID_PARENT:              "INVALID_PARENT",
-	INVALID_TYPE:                "INVALID_TYPE",
-	INVALID_INFERENCE:           "INVALID_INFERENCE",
-	INVALID_TARGET:              "INVALID_TARGET",
-	EMPTY_INPUT:                 "EMPTY_INPUT",
-	INVALID_STATE:               "INVALID_STATE",
-	ALREADY_EXISTS:              "ALREADY_EXISTS",
-	INVALID_TIMEOUT:             "INVALID_TIMEOUT",
-	NODE_NOT_FOUND:              "NODE_NOT_FOUND",
-	PARENT_NOT_FOUND:            "PARENT_NOT_FOUND",
-	CHALLENGE_NOT_FOUND:         "CHALLENGE_NOT_FOUND",
-	DEF_NOT_FOUND:               "DEF_NOT_FOUND",
-	ASSUMPTION_NOT_FOUND:        "ASSUMPTION_NOT_FOUND",
-	EXTERNAL_NOT_FOUND:          "EXTERNAL_NOT_FOUND",
-	SCOPE_VIOLATION:             "SCOPE_VIOLATION",
-	SCOPE_UNCLOSED:              "SCOPE_UNCLOSED",
-	SCOPE_LEAK:                  "SCOPE_LEAK",
-	DEPENDENCY_CYCLE:            "DEPENDENCY_CYCLE",
-	CONTENT_HASH_MISMATCH:       "CONTENT_HASH_MISMATCH",
-	VALIDATION_INVARIANT_FAILED: "VALIDATION_INVARIANT_FAILED",
-	LEDGER_INCONSISTENT:         "LEDGER_INCONSISTENT",
-	DEPTH_EXCEEDED:              "DEPTH_EXCEEDED",
-	CHALLENGE_LIMIT_EXCEEDED:    "CHALLENGE_LIMIT_EXCEEDED",
-	REFINEMENT_LIMIT_EXCEEDED:   "REFINEMENT_LIMIT_EXCEEDED",
-	EXTRACTION_INVALID:          "EXTRACTION_INVALID",
-	FORMAT_TOO_NEW:              "FORMAT_TOO_NEW",
-	VERDICTS_FILE_INVALID:       "VERDICTS_FILE_INVALID",
-	VERDICTS_PARTIALLY_APPLIED:  "VERDICTS_PARTIALLY_APPLIED",
-	VERDICTS_NONE_APPLIED:       "VERDICTS_NONE_APPLIED",
-	UNVALIDATE_BATCH_NOT_FOUND:  "UNVALIDATE_BATCH_NOT_FOUND",
-	CLAIM_TEST_REQUIRED:         "CLAIM_TEST_REQUIRED",
+	ALREADY_CLAIMED:              "ALREADY_CLAIMED",
+	NOT_CLAIM_HOLDER:             "NOT_CLAIM_HOLDER",
+	NODE_BLOCKED:                 "NODE_BLOCKED",
+	INVALID_PARENT:               "INVALID_PARENT",
+	INVALID_TYPE:                 "INVALID_TYPE",
+	INVALID_INFERENCE:            "INVALID_INFERENCE",
+	INVALID_TARGET:               "INVALID_TARGET",
+	EMPTY_INPUT:                  "EMPTY_INPUT",
+	INVALID_STATE:                "INVALID_STATE",
+	ALREADY_EXISTS:               "ALREADY_EXISTS",
+	INVALID_TIMEOUT:              "INVALID_TIMEOUT",
+	NODE_NOT_FOUND:               "NODE_NOT_FOUND",
+	PARENT_NOT_FOUND:             "PARENT_NOT_FOUND",
+	CHALLENGE_NOT_FOUND:          "CHALLENGE_NOT_FOUND",
+	DEF_NOT_FOUND:                "DEF_NOT_FOUND",
+	ASSUMPTION_NOT_FOUND:         "ASSUMPTION_NOT_FOUND",
+	EXTERNAL_NOT_FOUND:           "EXTERNAL_NOT_FOUND",
+	SCOPE_VIOLATION:              "SCOPE_VIOLATION",
+	SCOPE_UNCLOSED:               "SCOPE_UNCLOSED",
+	SCOPE_LEAK:                   "SCOPE_LEAK",
+	DEPENDENCY_CYCLE:             "DEPENDENCY_CYCLE",
+	CONTENT_HASH_MISMATCH:        "CONTENT_HASH_MISMATCH",
+	VALIDATION_INVARIANT_FAILED:  "VALIDATION_INVARIANT_FAILED",
+	LEDGER_INCONSISTENT:          "LEDGER_INCONSISTENT",
+	DEPTH_EXCEEDED:               "DEPTH_EXCEEDED",
+	CHALLENGE_LIMIT_EXCEEDED:     "CHALLENGE_LIMIT_EXCEEDED",
+	REFINEMENT_LIMIT_EXCEEDED:    "REFINEMENT_LIMIT_EXCEEDED",
+	EXTRACTION_INVALID:           "EXTRACTION_INVALID",
+	FORMAT_TOO_NEW:               "FORMAT_TOO_NEW",
+	VERDICTS_FILE_INVALID:        "VERDICTS_FILE_INVALID",
+	VERDICTS_PARTIALLY_APPLIED:   "VERDICTS_PARTIALLY_APPLIED",
+	VERDICTS_NONE_APPLIED:        "VERDICTS_NONE_APPLIED",
+	UNVALIDATE_BATCH_NOT_FOUND:   "UNVALIDATE_BATCH_NOT_FOUND",
+	CLAIM_TEST_REQUIRED:          "CLAIM_TEST_REQUIRED",
+	AMEND_DEPS_FILE_INVALID:      "AMEND_DEPS_FILE_INVALID",
+	AMEND_DEPS_PARTIALLY_APPLIED: "AMEND_DEPS_PARTIALLY_APPLIED",
+	AMEND_DEPS_NONE_APPLIED:      "AMEND_DEPS_NONE_APPLIED",
+	AMEND_DEPS_ALL_UNCHANGED:     "AMEND_DEPS_ALL_UNCHANGED",
 }
 
 // String returns the string representation of an ErrorCode.
@@ -156,15 +168,15 @@ func (c ErrorCode) ExitCode() int {
 		return 4
 
 	// Exit 5: verdict batch partially applied
-	case VERDICTS_PARTIALLY_APPLIED:
+	case VERDICTS_PARTIALLY_APPLIED, AMEND_DEPS_PARTIALLY_APPLIED:
 		return 5
 
 	// Exit 6: verdict batch, nothing applied
-	case VERDICTS_NONE_APPLIED:
+	case VERDICTS_NONE_APPLIED, AMEND_DEPS_NONE_APPLIED:
 		return 6
 
-	// Exit 7: unvalidate --batch, batch id not found
-	case UNVALIDATE_BATCH_NOT_FOUND:
+	// Exit 7: unvalidate --batch / amend-deps, batch id not found / all unchanged
+	case UNVALIDATE_BATCH_NOT_FOUND, AMEND_DEPS_ALL_UNCHANGED:
 		return 7
 
 	// Exit 3: logic errors (all others, including VERDICTS_FILE_INVALID)

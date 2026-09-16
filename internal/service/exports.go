@@ -659,6 +659,12 @@ type Challenge = state.Challenge
 // Re-export of state.Amendment.
 type Amendment = state.Amendment
 
+// Amendment kind constants. Re-export of state.AmendmentKind* .
+const (
+	AmendmentKindStatement    = state.AmendmentKindStatement
+	AmendmentKindDependencies = state.AmendmentKindDependencies
+)
+
 // NewState creates a new empty State with all maps initialized.
 // Re-export of state.NewState.
 var NewState = state.NewState
