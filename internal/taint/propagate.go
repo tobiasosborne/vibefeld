@@ -58,9 +58,9 @@ func PropagateTaint(root *node.Node, allNodes []*node.Node) []*node.Node {
 }
 
 // RecomputeAll recomputes and applies taint for every node in a proof tree.
-// It returns every node whose stored taint changed. Both the shallow ancestor
-// pass and deepest-first subtree pass are linear in the number of nodes (plus
-// the size of sparse node-ID paths).
+// It returns every node whose stored taint changed. The ancestor pass is linear
+// in the number of nodes (plus the size of sparse node-ID paths), and the D6
+// support component is one fold over one prepared result-use graph.
 func RecomputeAll(allNodes []*node.Node) []*node.Node {
 	if len(allNodes) == 0 {
 		return nil
