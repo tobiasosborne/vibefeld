@@ -173,14 +173,17 @@ ledger_events() {
 # output names a lock wait.
 
 writer_worker() {
-    local w="$1" ws="$2" deadline="$3" log="$4" cands="$5"
+    local w="$1" ws="$2" deadline="$3" log="$4" cands="$5" writers="$6"
     local -a ids=()
     mapfile -t ids < "$cands" || true
     local n=${#ids[@]}
     if (( n == 0 )); then return; fi
     local node out rc t0 t1 lock i=0
+    # Partition candidates across writers (stride = writer count) so writers do
+    # not all slide through the same window; the ledger lock and CAS retries
+    # remain the shared contention this benchmark is about.
     while (( $(now_ns) < deadline )); do
-        node="${ids[$(( (w + i) % n ))]}"
+        node="${ids[$(( (w + i * writers) % n ))]}"
         i=$(( i + 1 ))
 
         t0=$(now_ns)
@@ -272,7 +275,7 @@ run_load() {
     local deadline=$(( $(now_ns) + duration * 1000000000 ))
     local pid w pids=()
     for (( w = 0; w < writers; w++ )); do
-        writer_worker "$w" "$ws" "$deadline" "$logdir/writer-$w.log" "$cands" &
+        writer_worker "$w" "$ws" "$deadline" "$logdir/writer-$w.log" "$cands" "$writers" &
         pids+=($!)
     done
     for (( w = 0; w < nver; w++ )); do
@@ -400,7 +403,7 @@ jq -s 'from_entries' "$SINGLE_JSON" > "$SINGLE_JSON.tmp" && mv "$SINGLE_JSON.tmp
 # Bulk accept of 20 verifier-ready nodes. Take 60 ready nodes and measure three
 # disjoint batches so every run accepts fresh nodes.
 "$AF_CMD" jobs -d "$SINGLE_WS" -f json 2>/dev/null \
-    | jq -r '.verifier_jobs[].node_id' | head -60 > "$WORKDIR/bulk-ids.txt"
+    | jq -r '.verifier_jobs[0:60][].node_id' > "$WORKDIR/bulk-ids.txt"
 mapfile -t BULK_IDS < "$WORKDIR/bulk-ids.txt"
 bulk_vals=()
 for (( r = 0; r < 3; r++ )); do
@@ -414,14 +417,15 @@ for (( r = 0; r < 3; r++ )); do
     bulk_vals+=("$(( t1 - t0 ))")
 done
 if (( ${#bulk_vals[@]} == 0 )); then
-    bulk_count=0; bulk_p50=0
+    bulk_count=0; bulk_p50=0; bulk_p95=0
 else
     printf '%s\n' "${bulk_vals[@]}" | sort -n > "$WORKDIR/single-bulk_accept_20.txt"
     bulk_count=${#bulk_vals[@]}
     bulk_p50=$(percentile_ns "$WORKDIR/single-bulk_accept_20.txt" 50)
+    bulk_p95=$(percentile_ns "$WORKDIR/single-bulk_accept_20.txt" 95)
 fi
-jq -n --argjson count "$bulk_count" --argjson p50 "$bulk_p50" \
-    '{ bulk_accept_20: { count: $count, p50_ms: ($p50/1000000), nodes: 20 } }' > "$WORKDIR/bulk.json"
+jq -n --argjson count "$bulk_count" --argjson p50 "$bulk_p50" --argjson p95 "$bulk_p95" \
+    '{ bulk_accept_20: { count: $count, p50_ms: ($p50/1000000), p95_ms: ($p95/1000000), nodes: 20 } }' > "$WORKDIR/bulk.json"
 
 # --- fsync cost ---------------------------------------------------------------
 # 200 sequential single-node refines (claim+refine+release; all three append)
