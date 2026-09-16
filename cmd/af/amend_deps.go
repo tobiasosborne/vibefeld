@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tobiasosborne/vibefeld/internal/audit"
 	"github.com/tobiasosborne/vibefeld/internal/service"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
@@ -189,7 +190,11 @@ func runAmendDepsManifest(cmd *cobra.Command, dir, format, path string, dryRun b
 		if err := persistAmendDepsManifest(path, manifest); err != nil {
 			return err
 		}
-		return outputAmendDepsReport(cmd, report, format, true)
+		summary, err := auditSummaryLine(svc)
+		if err != nil {
+			return err
+		}
+		return outputAmendDepsReport(cmd, report, format, true, summary)
 	}
 
 	// Persist generated operation ids to the manifest BEFORE the first commit,
@@ -203,10 +208,31 @@ func runAmendDepsManifest(cmd *cobra.Command, dir, format, path string, dryRun b
 	}
 
 	report, applyErr := svc.ApplyAmendDepsManifest(manifest)
-	if outputErr := outputAmendDepsReport(cmd, report, format, false); outputErr != nil {
+	// The postcheck audit runs after the batch (whether it partially applied or
+	// not) and reports the workspace's strict-current findings plus the exact
+	// command a migration operator should run next.
+	summary, sumErr := auditSummaryLine(svc)
+	if sumErr != nil {
+		return sumErr
+	}
+	if outputErr := outputAmendDepsReport(cmd, report, format, false, summary); outputErr != nil {
 		return outputErr
 	}
 	return applyErr
+}
+
+// auditSummaryLine runs the read-only audit engine over the workspace's current
+// state and returns a one-line summary of strict-current and historical
+// findings with the exact strict command. It is the amend-deps migration
+// preflight/postcheck (D8).
+func auditSummaryLine(svc *service.ProofService) (string, error) {
+	st, err := svc.LoadState()
+	if err != nil {
+		return "", fmt.Errorf("audit summary: %w", err)
+	}
+	report := audit.Run(st, audit.Options{})
+	return fmt.Sprintf("%d strict-current finding(s), %d historical; run: af audit --strict",
+		report.Summary.StrictCurrent, report.Summary.Historical), nil
 }
 
 // persistAmendDepsManifest renders the manifest (including any operation ids
@@ -298,10 +324,19 @@ func parseFlagIDs(cmd *cobra.Command, name string) ([]types.NodeID, error) {
 	return out, nil
 }
 
-// outputAmendDepsReport renders a manifest report; dryRun controls the header.
-func outputAmendDepsReport(cmd *cobra.Command, report *service.AmendDepsManifestReport, format string, dryRun bool) error {
+// outputAmendDepsReport renders a manifest report; dryRun controls the header
+// and auditLine is appended (text) or embedded as audit_summary (JSON) so the
+// migration preflight/postcheck always ends with the one-line audit summary.
+func outputAmendDepsReport(cmd *cobra.Command, report *service.AmendDepsManifestReport, format string, dryRun bool, auditLine string) error {
 	if format == "json" {
-		data, err := json.MarshalIndent(report, "", "  ")
+		// Embed the summary as a trailing JSON field without changing the
+		// service report shape. The anonymous embedding flattens report's
+		// fields inline and keeps stdout valid JSON.
+		wrapped := struct {
+			*service.AmendDepsManifestReport
+			AuditSummary string `json:"audit_summary,omitempty"`
+		}{report, auditLine}
+		data, err := json.MarshalIndent(wrapped, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
@@ -339,6 +374,9 @@ func outputAmendDepsReport(cmd *cobra.Command, report *service.AmendDepsManifest
 		fmt.Fprintln(cmd.OutOrStdout(), "\nRe-verify with:")
 		fmt.Fprintln(cmd.OutOrStdout(), "  af verdicts apply <verdict-file>")
 		fmt.Fprintln(cmd.OutOrStdout(), "  af export --graph json")
+	}
+	if auditLine != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "\nAudit summary: %s\n", auditLine)
 	}
 	return nil
 }
