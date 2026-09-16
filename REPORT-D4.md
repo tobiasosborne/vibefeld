@@ -133,3 +133,73 @@ go test -tags integration ./cmd/af/ ./internal/service/   # ok
 * `support.Current` is computed once per render where performance matters
   (status/export); `af get` computes it for the requested subtree.
 * `internal/render`'s job classifier was not changed, per the brief.
+
+## Review fixes
+
+An independent review of the branch found seven defects; all are fixed on top
+of the original commits, each with a regression test. Full `go build ./cmd/af
+&& go vet ./... && go test ./...` is green, as are the integration suites
+(`go test -tags integration ./cmd/af/ ./internal/service/ ./internal/state/
+./internal/ledger/`).
+
+1. **Descendant revisions are not lost through a current target**
+   (`internal/support/current.go`). With `R -> B -> C`, C revised, then C and
+   B re-accepted, B is current but R's verdict predates C's revision, so R must
+   not be current. `SupportStatus` now carries `LatestRevisionSeq`, the max over
+   the node's own content revisions and every result-use target's carried value;
+   a consumer is `TARGET_REVISED` when that carried sequence exceeds its own
+   `VerdictSeq`. Regression test: `TestCurrent_DescendantRevisionCarriesThroughCurrentTarget`.
+
+2. **Verdict baseline is stamped on the wrong events**
+   (`internal/node/node.go`, `internal/state/replay.go`, `apply.go`).
+   `ValidatedSeq` is renamed `VerdictSeq`, stamped by replay on `NodeValidated`
+   *and* `NodeAdmitted`, and cleared on unvalidate, unadmit, refinement request
+   and both amendment reopen paths (`node_deps_amended` with reopened,
+   `node_amended_reopened`). Both revision guards use it. Tests:
+   `TestCurrent_AdmittedConsumerTargetRevised` and
+   `TestReplay_VerdictSeq` (validated/admitted stamping, refinement/unvalidate/
+   unadmit clearing).
+
+3. **The explicit child scan counted non-result-use children**
+   (`internal/support/current.go`). The scan now inspects only severed
+   (refuted) non-local_assume result children; archived is cleared and ordinary
+   pending children already arrive through targets. This also stops a
+   `local_assume` child, or a child of a `local_assume` parent, from breaking
+   its parent. Test: `TestCurrent_PendingLocalAssumeChildStaysCurrent`.
+
+4. **The graph was rebuilt and Tarjan rerun per fold** (`internal/support/`).
+   `Prepare(p Provider) *Graph` builds the vertices, the result-use edges with
+   kind metadata (`EdgeChild` / `EdgeDependency` / `EdgeValidationDep`), the
+   direct-child index and the SCC condensation order once; `Walk` folds that
+   prepared graph and `Current` uses its child index instead of a private pass.
+   Note: Go does not allow type parameters on methods, so `Walk` stays a free
+   generic function taking `*Graph` — the "prepare once" seam is the Graph
+   argument, and D6's taint fold will pass the same `*Graph`. Tests:
+   `TestWalk_MultipleFoldsOnePreparedGraph` plus the existing walk tests
+   (updated to `Walk(Prepare(...), ...)`).
+
+5. **A `needs_refinement` node with cleared children and an open blocking
+   challenge fell through both job roles** (`internal/jobs/prover.go`). It now
+   stays a prover job while it has an open blocking challenge *or* uncleared
+   children, and only becomes a verifier job once children are cleared and no
+   blocking challenge remains. Test:
+   `TestNeedsRefinement_OpenBlockingChallengeStaysProver` (non-empty challenge
+   map, then resolved).
+
+6. **`support_current=false` was dropped from the graph export**
+   (`internal/export/graph.go`). The `omitempty` tag is removed for
+   `support_current` (kept for `support_cause`), and the assertion is on the
+   marshalled JSON, not the Go struct. Test:
+   `TestGraphExport_SupportCurrentSerializedFalse`.
+
+7. **The derived sequence field changed the `NodeCreated` event shape**
+   (`internal/node/node.go`). `VerdictSeq` is tagged `json:"-"`, so embedding
+   `node.Node` in `NodeCreated` no longer emits it. Test:
+   `TestNodeCreatedEvent_OmitsDerivedVerdictSeq` (marshals a `NodeCreated` with
+   a non-zero `VerdictSeq` and asserts the JSON carries neither `verdict_seq`
+   nor `validated_seq`).
+
+Commits: `jobs: needs_refinement stays prover while a blocking challenge is
+open`; `export: always emit support_current (false is meaningful), keep cause
+omitempty`; `support: prepared graph, carried descendant revisions, verdict
+baseline`; plus this report.
