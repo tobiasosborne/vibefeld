@@ -91,6 +91,50 @@ go build ./cmd/af
 ./af --version
 ```
 
+### Benchmarks and scale tests
+
+The 0.1.10 benchmark job needs two things: a synthetic workspace at scale and a
+repeatable way to measure commands under concurrent load.
+
+`scripts/synth-workspace.sh` builds a workspace of N nodes (default 1000) with
+high fan-out, depth 3-4, a fraction of cross-reference dependencies, and R
+verification rounds of challenges, resolutions, amendments and accepts. It uses
+only real `af` commands (selected with `AF_CMD` or the first positional binary)
+and is deterministic for a given `--seed`. It prints the workspace path and the
+event count as its last two lines:
+
+```bash
+scripts/build.sh
+scripts/synth-workspace.sh -n 1000 -s 1 -r 2 -o /tmp/synth
+```
+
+`scripts/benchmark.sh` then runs the load benchmark: for each (N, W) it builds a
+workspace, then runs W prover workers (`claim` -> `refine` one child -> `release`)
+and a verifier pool (`accept --confirm` on verifier-ready nodes) for a fixed
+wall time (default 30 s). It records per command the count, p50/p95 latency,
+retries (exit 1 concurrent modification) and lock waits; events appended and
+ledger bytes; and the single-command latency of `status`, `jobs`, `health`,
+`audit`, `export --graph json` and a 20-node bulk `accept` on the 1000-node
+workspace. It also measures the per-event directory-fsync cost by running 200
+sequential refines with and without the test-only `AF_TEST_NO_FSYNC=1` switch
+(unsafe for durability; never set in production). The markdown table goes to
+stdout and the full result to `benchmark-results.json`:
+
+```bash
+scripts/benchmark.sh                         # 100/1000 nodes x 10/50 writers, 30 s each
+scripts/benchmark.sh -t 10 -n 100 -w 5       # quick smoke run
+```
+
+The e2e scale test is behind the `integration` build tag and builds a 1000-node
+workspace through the Go service API (faster than the shell script). It asserts
+invariants only — replay `--verify` valid, contiguous sequence numbers,
+`af audit` non-strict exiting 0, and `support.Current` computing for every node
+— with no wall-time assertions:
+
+```bash
+go test -tags integration ./e2e/ -run TestScale_SyntheticWorkspace1000 -v
+```
+
 ## Code Style and Conventions
 
 ### TDD (Test-Driven Development)
