@@ -108,13 +108,13 @@ Typical Workflow:
 
   4. Verifier reviews and challenges or accepts:
        af claim 1.1 --owner verifier-1 --role verifier
-       af challenge 1.1 --reason "Needs justification"
+       AF_AGENT_ID=verifier-1 af challenge 1.1 --reason "Needs justification"
        af release 1.1 --owner verifier-1
 
   5. Prover addresses challenges:
        af claim 1.1 --owner prover-1 --role prover
        af refine 1.1 "Detailed justification" --owner prover-1
-       af resolve-challenge 1.1:c1 --owner prover-1
+       AF_AGENT_ID=prover-1 af resolve-challenge ch-abc123 --response "Added the missing case"
        af release 1.1 --owner prover-1
 
   6. Verifier accepts completed nodes:
