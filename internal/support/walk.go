@@ -94,6 +94,31 @@ func Prepare(p Provider) *Graph {
 	return g
 }
 
+// CyclicComponents returns the result-use strongly-connected components that
+// are real cycles: a component with more than one member, or a single node with
+// a self-loop. Components are returned in dependency-first (Tarjan) order and
+// each component's IDs are sorted hierarchically. It is the read-only audit view
+// of the legacy cycles the walk already handles without error.
+func (g *Graph) CyclicComponents() [][]types.NodeID {
+	var out [][]types.NodeID
+	for ci, comp := range g.sccs {
+		if !g.cyclic[ci] {
+			continue
+		}
+		ids := make([]types.NodeID, 0, len(comp))
+		for _, s := range comp {
+			id, err := types.Parse(s)
+			if err != nil {
+				continue
+			}
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i].Less(ids[j]) })
+		out = append(out, ids)
+	}
+	return out
+}
+
 // Walk is the single memoised topological traversal over a prepared Graph. It
 // folds every node once, after all of its result-use targets have been folded,
 // and returns the results keyed by node ID string. Only nodes backed by a

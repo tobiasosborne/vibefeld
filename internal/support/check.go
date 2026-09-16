@@ -1,6 +1,7 @@
 package support
 
 import (
+	"errors"
 	"sort"
 	"strings"
 
@@ -132,6 +133,49 @@ func CheckCreation(st *state.State, batch []ProspectiveNode) error {
 		}
 	}
 	return nil
+}
+
+// ScopeLeaks reports every existing node whose recorded dependencies violate
+// the scope rule, reusing checkScope over the state-backed graph. It is the
+// read-only audit counterpart of CheckCreation: it reports every offending node
+// instead of failing on the first, and it never rejects the workspace. Results
+// are ordered by citing node ID.
+func ScopeLeaks(st *state.State) []ScopeLeakError {
+	if st == nil {
+		return nil
+	}
+	u := newUniverse(st, nil)
+	u.computeScopes()
+
+	ids := make([]string, 0, len(u.nodes))
+	for id := range u.nodes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	var leaks []ScopeLeakError
+	for _, id := range ids {
+		info := u.nodes[id]
+		if !info.exists {
+			continue
+		}
+		pn := ProspectiveNode{
+			ID:             info.id,
+			Type:           info.typ,
+			Dependencies:   info.deps,
+			ValidationDeps: info.valDeps,
+		}
+		if info.hasParent {
+			pn.ParentID = info.parent
+		}
+		if err := checkScope(u, pn); err != nil {
+			var leak *ScopeLeakError
+			if errors.As(err, &leak) {
+				leaks = append(leaks, *leak)
+			}
+		}
+	}
+	return leaks
 }
 
 // checkNewCycles rejects a batch only when the overlay actually adds an edge
