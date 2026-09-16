@@ -39,6 +39,7 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
 	cmd.Flags().String("reason", "", "Reason for refutation")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+	cmd.Flags().String("agent", "", "Agent ID (recorded as the acting identity; falls back to AF_AGENT_ID)")
 
 	return cmd
 }
@@ -56,6 +57,7 @@ func runRefute(cmd *cobra.Command, args []string) error {
 	format := cli.MustString(cmd, "format")
 	reason := cli.MustString(cmd, "reason")
 	skipConfirm := cli.MustBool(cmd, "yes")
+	agent := resolveAgent(cmd)
 
 	// Handle confirmation for destructive action
 	action := fmt.Sprintf("refute node %s", nodeIDStr)
@@ -75,7 +77,7 @@ func runRefute(cmd *cobra.Command, args []string) error {
 	}
 
 	// Refute the node
-	if err := svc.RefuteNode(nodeID); err != nil {
+	if err := svc.RefuteNodeWithAgent(nodeID, agent); err != nil {
 		return fmt.Errorf("error refuting node: %w", err)
 	}
 

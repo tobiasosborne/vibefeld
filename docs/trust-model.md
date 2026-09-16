@@ -23,14 +23,23 @@ closed structurally.
 1. **Archive-the-hard-step.** `af accept` requires every child cleared, and
    `archived` counts as cleared. A prover facing an unanswerable challenge can
    archive that child; the parent becomes acceptable with one fewer step, and
-   archived branches are clean by design. `af archive` does not check for
-   open challenges. *Audit:* `af audit` reports `ARCHIVED_WITH_OPEN_CHALLENGE`
-   (historical, never gating) for archived nodes with an open challenge on the
-   node or an active descendant. D9's archival obligations are not on this
-   branch, so this is derived from current state rather than the challenge set
-   at archival time. *Fix candidates:* refuse archive while a challenge is open
-   unless `--force` with a reason; flag "parent accepted after child
-   archived" in `af health`. Tracked: vibefeld-a7p5.
+   archived branches are clean by design. *Audit:* `af audit` reports
+   `ARCHIVED_WITH_OPEN_CHALLENGE` (historical, never gating) for archived nodes
+   where `NodeArchived` recorded abandoned obligations, falling back to the
+   challenges open on the node or an active descendant at the archival sequence.
+   *Fix candidates:* refuse archive while a challenge is open unless `--force`
+   with a reason; flag "parent accepted after child archived" in `af health`.
+   Tracked: vibefeld-a7p5.
+
+   *Narrowed in 0.1.10:* `af archive` now refuses when a challenge is open on
+   the node or on an active (non-severed) descendant, unless `--force --reason`
+   is given; `NodeArchived` records `reason` and `forced`, and the parent's
+   verification checklist lists children archived with a challenge open so the
+   next accept acknowledges the abandoned obligation. This prevents the silent
+   version and leaves an attributed audit trail. It does **not** prove the
+   obligation was discharged, that a forced archive was justified, or that the
+   accepting verifier read the checklist: `--force`, the reason text and the
+   accept are all recorded provenance, not enforcement of rigor.
 2. **Cross-references do not carry taint.** Taint flows along the tree only.
    A node's reference `dependencies` and external references are not
    consulted, so lemma A can cite an admitted lemma B and stay `clean`. This
@@ -49,6 +58,17 @@ closed structurally.
    (validated with no recorded verifier) and `VALIDATED_WITH_OPEN_BLOCKING_CHALLENGE`.
    *Fix:* `accept` refuses self-acceptance unless `--allow-self` (for
    single-agent use). Tracked: vibefeld-gwps.
+
+   *Narrowed in 0.1.10:* with an `--agent`/`AF_AGENT_ID` identity, the shared
+   accept validator refuses when the verifier is recorded as the node's author,
+   its proof author (`af record-proof`), or an owner in its amendment history;
+   `--allow-self` overrides and records `self_accepted: true`. Verdict files run
+   the same check and cannot opt out, and from 0.1.11 the identity is required.
+   This is **recorded provenance, not proof of independence**: the identity
+   strings are driver-supplied, so it makes an accidental or off-the-record
+   self-accept visible and refusable, but a driver can still supply different
+   strings or pass `--allow-self`. It does not enforce role separation between
+   processes, and `resolve-challenge` remains a prover action.
 4. **Ledger is append-only but not tamper-evident.** Node content is hashed
    but events are not hash-chained, so an agent with shell access to the
    workspace could rewrite history without replay noticing. Relevant when

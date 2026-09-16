@@ -170,11 +170,21 @@ func applyClaimRefreshed(s *State, e ledger.ClaimRefreshed) error {
 
 // applyNodesReleased handles the NodesReleased event.
 // This clears the claim on released nodes.
+//
+// D5 fencing: when the event carries a non-zero claim generation for a node
+// (ClaimSeqs aligned with NodeIDs), that node is released only if the
+// generation still matches its current claim generation. A stale or retried
+// release therefore cannot evict a later claim. An absent or zero generation
+// is a legacy unfenced release and releases as before.
 func applyNodesReleased(s *State, e ledger.NodesReleased) error {
-	for _, nodeID := range e.NodeIDs {
+	for i, nodeID := range e.NodeIDs {
 		n := s.GetNode(nodeID)
 		if n == nil {
 			return fmt.Errorf("node %s not found in state", nodeID.String())
+		}
+		if i < len(e.ClaimSeqs) && e.ClaimSeqs[i] != 0 && n.ClaimSeq != e.ClaimSeqs[i] {
+			// Stale generation: leave the current (later) claim in place.
+			continue
 		}
 		// Validate the workflow state transition
 		if err := schema.ValidateWorkflowTransition(n.WorkflowState, schema.WorkflowAvailable); err != nil {
@@ -185,8 +195,28 @@ func applyNodesReleased(s *State, e ledger.NodesReleased) error {
 		n.ClaimedAt = types.Timestamp{}
 		n.ClaimedSince = types.Timestamp{}
 		n.ClaimLastActive = types.Timestamp{}
+		n.ClaimSeq = 0
 	}
 	return nil
+}
+
+// maybeReleaseClaim applies D5's fenced auto-release carried on a terminal
+// state event (NodeValidated/NodeAdmitted/NodeRefuted/NodeArchived). It is a
+// no-op on legacy events (ReleaseClaim false or ClaimSeq 0) and when the
+// event's claim generation does not match the node's current one, so a
+// delayed or retried release cannot evict a later claim even under the same
+// owner string. A released claim always returns the node to available.
+func maybeReleaseClaim(n *node.Node, claimSeq int, release bool) {
+	if !release || claimSeq == 0 || n == nil {
+		return
+	}
+	if n.ClaimSeq != claimSeq || n.WorkflowState != schema.WorkflowClaimed {
+		return
+	}
+	n.WorkflowState = schema.WorkflowAvailable
+	n.ClaimedBy = ""
+	n.ClaimedAt = types.Timestamp{}
+	n.ClaimSeq = 0
 }
 
 // applyNodeValidated handles the NodeValidated event.
@@ -206,6 +236,8 @@ func applyNodeValidated(s *State, e ledger.NodeValidated) error {
 	n.ValidatedContentHash = e.ContentHash
 	n.ValidatedHashChecked = e.ExpectedHashChecked
 
+	maybeReleaseClaim(n, e.ClaimSeq, e.ReleaseClaim)
+
 	return nil
 }
 
@@ -221,6 +253,8 @@ func applyNodeAdmitted(s *State, e ledger.NodeAdmitted) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicAdmitted
+
+	maybeReleaseClaim(n, e.ClaimSeq, e.ReleaseClaim)
 
 	return nil
 }
@@ -242,6 +276,8 @@ func applyNodeRefuted(s *State, e ledger.NodeRefuted) error {
 	// Auto-supersede any open challenges on this node
 	supersedeOpenChallengesForNode(s, e.NodeID)
 
+	maybeReleaseClaim(n, e.ClaimSeq, e.ReleaseClaim)
+
 	return nil
 }
 
@@ -261,6 +297,8 @@ func applyNodeArchived(s *State, e ledger.NodeArchived) error {
 
 	// Auto-supersede any open challenges on this node
 	supersedeOpenChallengesForNode(s, e.NodeID)
+
+	maybeReleaseClaim(n, e.ClaimSeq, e.ReleaseClaim)
 
 	return nil
 }

@@ -94,10 +94,11 @@ type AcceptOptions struct {
 	// available when an expected hash was supplied. Verdict files set this; the
 	// interactive and bulk accept paths do not.
 	RequireVerifierReady bool
-	// CheckReviewerAuthor rejects a validation whose verifier identity equals
-	// the node's recorded author. Verdict files set this (rk PRD C3); the
-	// interactive and bulk paths do not.
-	CheckReviewerAuthor bool
+	// AllowSelf lets a verifier who equals a recorded contributor accept
+	// anyway, recording SelfAccepted=true on the resulting NodeValidated so the
+	// choice is auditable provenance. It is the only bypass of the
+	// reviewer-contributor check.
+	AllowSelf bool
 	// AcceptedInBatch names nodes this same bulk batch has already scheduled for
 	// acceptance (or already appended), so prerequisite checks treat them as
 	// validated. Verdict files leave it nil and keep file order.
@@ -152,13 +153,20 @@ func checkAcceptEligibility(st *state.State, n *node.Node, opts AcceptOptions) e
 		}
 	}
 
-	// Reviewer != author, when both identities were recorded and the caller
-	// asked for the check (verdict files, rk PRD C3).
-	if opts.CheckReviewerAuthor && n.Author != "" && n.Author == opts.VerifiedBy {
-		return &AcceptRejectedError{
-			Node: n.ID, Code: CodeReviewerIsAuthor,
-			Err: fmt.Errorf("%w: verifier %q is also the recorded author of node %s",
-				errVerdictReviewerIsAuthor, opts.VerifiedBy, n.ID.String()),
+	// Reviewer ≠ contributor is enforced whenever a verifier identity is
+	// recorded, on every accept path (interactive, bulk and verdict files);
+	// AllowSelf is the only bypass and records self_accepted. A "contributor"
+	// is any identity recorded as the node's author, its proof author
+	// (record-proof), or an owner of a statement/edge amendment. This is
+	// recorded provenance that can be mechanically checked, not proof of
+	// independence: the identity strings are driver-supplied.
+	if opts.VerifiedBy != "" && !opts.AllowSelf {
+		if role := contributorRole(st, n, opts.VerifiedBy); role != "" {
+			return &AcceptRejectedError{
+				Node: n.ID, Code: CodeReviewerIsAuthor,
+				Err: fmt.Errorf("%w: verifier %q is also the recorded %s of node %s; pass --allow-self to accept anyway",
+					errVerdictReviewerIsAuthor, opts.VerifiedBy, role, n.ID.String()),
+			}
 		}
 	}
 
@@ -243,6 +251,30 @@ func checkAcceptEligibility(st *state.State, n *node.Node, opts AcceptOptions) e
 		return &AcceptRejectedError{Node: n.ID, Code: CodeInvalidTransition, Err: err}
 	}
 	return nil
+}
+
+// contributorRole returns the role under which id is recorded as a
+// contributor to n ("author", "proof author" or "amender"), or "" if the
+// identity is not a recorded contributor. Amendment history covers statement
+// and dependency-edge amendments alike.
+func contributorRole(st *state.State, n *node.Node, id string) string {
+	if id == "" || n == nil {
+		return ""
+	}
+	if n.Author != "" && n.Author == id {
+		return "author"
+	}
+	if n.ProofAuthor != "" && n.ProofAuthor == id {
+		return "proof author"
+	}
+	if st != nil {
+		for _, a := range st.GetAmendmentHistory(n.ID) {
+			if a.Owner != "" && a.Owner == id {
+				return "amender"
+			}
+		}
+	}
+	return ""
 }
 
 // asAcceptBlocked / asAcceptRejected are small helpers for callers that switch

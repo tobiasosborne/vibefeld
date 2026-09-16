@@ -37,6 +37,10 @@ func RenderVerificationChecklist(n *node.Node, s *state.State) string {
 	// 3. Dependencies check
 	renderDependenciesCheck(&sb, n, s)
 
+	// 3b. Abandoned obligations (archived children with a challenge open at
+	// archival) — the next accept must acknowledge them (D9).
+	renderArchiveObligationsCheck(&sb, n, s)
+
 	// 4. Hidden assumptions check
 	renderHiddenAssumptionsCheck(&sb)
 
@@ -158,6 +162,36 @@ func renderDependenciesCheck(sb *strings.Builder, n *node.Node, s *state.State) 
 	sb.WriteString("\n")
 }
 
+// renderArchiveObligationsCheck lists direct children that were archived
+// while a challenge was open on them, so a verifier accepting the parent sees
+// the abandoned obligation. It prints nothing when there is none.
+func renderArchiveObligationsCheck(sb *strings.Builder, n *node.Node, s *state.State) {
+	obligations := s.ArchivedObligations(n.ID)
+	if len(obligations) == 0 {
+		return
+	}
+
+	sb.WriteString("[ ] ABANDONED OBLIGATIONS\n")
+	sb.WriteString("    Archived children that had a challenge open when they were archived:\n")
+	for _, childID := range obligations {
+		sb.WriteString("      ")
+		sb.WriteString(childID.String())
+		sb.WriteString(" (archived)")
+		if child := s.GetNode(childID); child != nil {
+			sb.WriteString(": ")
+			stmt := sanitizeStatement(child.Statement)
+			if len(stmt) > 50 {
+				stmt = stmt[:47] + "..."
+			}
+			sb.WriteString(stmt)
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("    - The parent's proof relies on an abandoned obligation. Accept only\n")
+	sb.WriteString("      if abandoning it was justified; record why in the accept note.\n")
+	sb.WriteString("\n")
+}
+
 // renderDependencyStatus returns a human-readable status indicator for a dependency's epistemic state.
 func renderDependencyStatus(es schema.EpistemicState) string {
 	switch es {
@@ -257,11 +291,19 @@ func renderSeverityExplanation(sb *strings.Builder) {
 
 // JSONVerificationChecklist represents a verification checklist in JSON format.
 type JSONVerificationChecklist struct {
-	NodeID           string                    `json:"node_id"`
-	Items            []JSONChecklistItem       `json:"items"`
-	Dependencies     []JSONChecklistDependency `json:"dependencies"`
-	ChallengeCommand string                    `json:"challenge_command"`
-	Severities       []JSONChallengeSeverity   `json:"severities"`
+	NodeID             string                           `json:"node_id"`
+	Items              []JSONChecklistItem              `json:"items"`
+	Dependencies       []JSONChecklistDependency        `json:"dependencies"`
+	ArchiveObligations []JSONChecklistArchiveObligation `json:"archive_obligations,omitempty"`
+	ChallengeCommand   string                           `json:"challenge_command"`
+	Severities         []JSONChallengeSeverity          `json:"severities"`
+}
+
+// JSONChecklistArchiveObligation is an archived child that had a challenge
+// open when it was archived (D9).
+type JSONChecklistArchiveObligation struct {
+	NodeID    string `json:"node_id"`
+	Statement string `json:"statement,omitempty"`
 }
 
 // JSONChecklistItem represents a single checklist item for verification.
@@ -304,11 +346,12 @@ func RenderVerificationChecklistJSON(n *node.Node, s *state.State) string {
 	}
 
 	checklist := JSONVerificationChecklist{
-		NodeID:           n.ID.String(),
-		Items:            buildChecklistItems(n),
-		Dependencies:     buildDependenciesList(n, s),
-		ChallengeCommand: buildChallengeCommand(n),
-		Severities:       buildSeveritiesList(),
+		NodeID:             n.ID.String(),
+		Items:              buildChecklistItems(n),
+		Dependencies:       buildDependenciesList(n, s),
+		ArchiveObligations: buildArchiveObligationsList(n, s),
+		ChallengeCommand:   buildChallengeCommand(n),
+		Severities:         buildSeveritiesList(),
 	}
 
 	data, err := marshalJSON(checklist)
@@ -440,6 +483,25 @@ func buildChecklistItems(n *node.Node) []JSONChecklistItem {
 	})
 
 	return items
+}
+
+// buildArchiveObligationsList returns direct children archived while a
+// challenge was open on them, so the next accept acknowledges the abandoned
+// obligation (D9).
+func buildArchiveObligationsList(n *node.Node, s *state.State) []JSONChecklistArchiveObligation {
+	ids := s.ArchivedObligations(n.ID)
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]JSONChecklistArchiveObligation, 0, len(ids))
+	for _, id := range ids {
+		item := JSONChecklistArchiveObligation{NodeID: id.String()}
+		if child := s.GetNode(id); child != nil {
+			item.Statement = child.Statement
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 // buildDependenciesList creates the list of dependencies with their status.

@@ -351,6 +351,14 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 		result["scope"] = n.Scope
 	}
 
+	if n.ClaimedBy != "" {
+		result["claimed_by"] = n.ClaimedBy
+	}
+
+	if n.ClaimSeq > 0 {
+		result["claim_seq"] = n.ClaimSeq
+	}
+
 	if n.ValidatedContentHash != "" {
 		result["validated_content_hash"] = n.ValidatedContentHash
 		result["validated_hash_checked"] = n.ValidatedHashChecked
@@ -428,6 +436,9 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		// Single node: always show full/verbose output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
 		fmt.Fprint(cmd.OutOrStdout(), render.RenderNodeVerbose(nodes[0]))
+		if nodes[0].ClaimSeq > 0 {
+			fmt.Fprintf(cmd.OutOrStdout(), "Claim generation: %d\n", nodes[0].ClaimSeq)
+		}
 		if sup := support.Current(st)[nodes[0].ID.String()]; !sup.Current && sup.Cause != "" && sup.Cause != support.CauseNotValidated {
 			fmt.Fprintf(cmd.OutOrStdout(), "\nSupport: NOT CURRENT (%s)", sup.Cause)
 			if sup.Node.String() != "" {

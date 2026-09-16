@@ -1,3 +1,49 @@
+# Handoff - 2026-09-16 (later): 0.1.10 in progress — D4, D7, D11 merged; D5/D9 under review; D8 building
+
+Continues the v0.1.9 handoff below. Same cadence per item (pi deepseek-flash
+build, one codex gpt-5.6-sol xhigh review, deepseek fix pass, Claude review,
+merge; corpus check on every merge).
+
+- **D4 merged** (`docs/plans/reports/D4.md`): `internal/support` Prepare/Walk
+  (one prepared graph, SCC order, reusable by D6), `support.Current` with
+  stable causes and carried descendant revision seqs, `node.VerdictSeq`
+  (derived, json:"-"), shared `checkAcceptEligibility`, prerequisite-scheduled
+  bulk accept in one commit with per-item outcomes (exit 5 partial), creation
+  gate on validated/admitted/refuted/archived parents, needs_refinement
+  classifier. Closed 4tjt, hspn, gxa7.
+- **D7 + D11 merged** (`docs/plans/reports/D7-D11.md`): health has no
+  "probably false"/subtree alarm; per-node rework hotspots; blockers = open
+  challenges, stalled claims (dedicated `--claim-stall`, last-activity
+  tracked), stale claims, support failures. One jobs classifier for
+  status/get/export/health; `verifier_ready` = children cleared everywhere;
+  help examples parsed by a test; `af get` shows validated_by, batch id,
+  claim fields; `scripts/auto-prove.sh` uses `--with-note`, identities, a
+  fail-closed completion test (root validated + support_current true + clean
+  taint + no validated node citing a pending external); stub-agent test in
+  e2e (integration tag). Closed 429g, 7ze3, ywsu, ujp4, c8yb, xr7g, 0l3d.
+- **D5 + D9** (`work/d5-d9-claims-guardrails`, worktree `../vibefeld-wt-d5`,
+  beads 562f, epu4): built and green; codex review in progress at handoff
+  time. Fenced auto-release (`claim_seq`/`release_claim` optional fields on
+  terminal events, `node.ClaimSeq` derived), identities on admit/refute/
+  archive, `af release` no-op after auto-release, uj18 lock fix, archive
+  guardrail (`--force --reason`, `reason`/`forced` recorded, abandoned
+  obligations on the parent checklist), reviewer≠contributor validator,
+  `--allow-self` recorded, missing-identity warning.
+- **D8** (`work/d8-audit`, worktree `../vibefeld-wt-d8`, bead fza2): building
+  at handoff time: `internal/audit` + `af audit [--strict]` with the strict
+  codes, historical classes, migration preflight/postcheck summary in
+  amend-deps, health reading from the findings engine.
+
+Remaining for 0.1.10 after D5/D9 and D8 merge: benchmark job (plan D10
+paragraph; 100 and 1000 nodes, 10-50 writers, p50/p95, lock waits), then
+bump VersionInfo to 0.1.10 (changelog entry exists, Unreleased: true), tag.
+Then 0.1.11 = D6 (taint over the prepared support graph, differential fuzz).
+
+Flakes filed: vibefeld-8rjx (fs.WriteNode), vibefeld-bsb1 (ledger lock
+timeout under load since per-event fsync).
+
+---
+
 # Handoff - 2026-09-16 (v0.1.9 tagged: scale-hardening plan v3.1 0.1.9 set complete)
 
 All five 0.1.9 items (D0, D10 reduced, D1, D3, D2 + manifest) are merged on

@@ -33,7 +33,13 @@ Examples:
   af archive 1 -y       Archive without confirmation
   af archive 1.2.3      Archive a specific child node
   af archive 1 -d ./proof  Archive using specific directory
-  af archive 1 --reason "Taking different approach"  Archive with explanation`,
+  af archive 1 --reason "Taking different approach"  Archive with explanation
+  af archive 1 --force --reason "abandoning the branch"  Archive with an open challenge
+
+An archive is refused while a challenge is open on the node or on an active
+descendant; pass --force --reason to override, which records the reason and
+forced=true on the event. The reason is stored in the ledger (it was only
+printed before).`,
 		Args: cobra.ExactArgs(1),
 		RunE: runArchive,
 	}
@@ -42,6 +48,8 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
 	cmd.Flags().String("reason", "", "Reason for archiving")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+	cmd.Flags().Bool("force", false, "Archive even while a challenge is open on the node or an active descendant (requires --reason)")
+	cmd.Flags().String("agent", "", "Agent ID (recorded as the acting identity; falls back to AF_AGENT_ID)")
 
 	return cmd
 }
@@ -59,6 +67,8 @@ func runArchive(cmd *cobra.Command, args []string) error {
 	format := cli.MustString(cmd, "format")
 	reason := cli.MustString(cmd, "reason")
 	skipConfirm := cli.MustBool(cmd, "yes")
+	force := cli.MustBool(cmd, "force")
+	agent := resolveAgent(cmd)
 
 	// Handle confirmation for destructive action
 	action := fmt.Sprintf("archive node %s", nodeIDStr)
@@ -78,7 +88,7 @@ func runArchive(cmd *cobra.Command, args []string) error {
 	}
 
 	// Archive the node
-	if err := svc.ArchiveNode(nodeID); err != nil {
+	if err := svc.ArchiveNodeWithOptions(nodeID, service.ArchiveOptions{Reason: reason, Force: force, By: agent}); err != nil {
 		return fmt.Errorf("error archiving node: %w", err)
 	}
 
@@ -92,6 +102,9 @@ func runArchive(cmd *cobra.Command, args []string) error {
 		}
 		if reason != "" {
 			result["reason"] = reason
+		}
+		if force {
+			result["forced"] = true
 		}
 		output, err := json.Marshal(result)
 		if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,12 +26,35 @@ func writeJSONOutput(cmd *cobra.Command, data interface{}) error {
 	return nil
 }
 
+// missingIdentityWarning is printed to stderr on every `af accept` run that
+// has no --agent/AF_AGENT_ID, in every output format. It is also carried in
+// the JSON result's warnings array, so a machine consumer sees it too.
+const missingIdentityWarning = "Warning: no --agent/AF_AGENT_ID given; verifier identity is not recorded and reviewer-contributor separation cannot be checked. This will be required in 0.1.11."
+
+// identityWarnings returns the warnings a run with the given identity should
+// surface (empty when an identity was supplied).
+func identityWarnings(agent string) []string {
+	if strings.TrimSpace(agent) != "" {
+		return nil
+	}
+	return []string{missingIdentityWarning}
+}
+
+// addWarnings attaches a warnings array to a JSON result when non-empty.
+func addWarnings(result map[string]interface{}, warnings []string) {
+	if len(warnings) == 0 {
+		return
+	}
+	result["warnings"] = warnings
+}
+
 func newAcceptCmd() *cobra.Command {
 	var acceptAll bool
 	var withNote string
 	var confirm bool
 	var agent string
 	var expectHash string
+	var allowSelf bool
 
 	cmd := &cobra.Command{
 		Use:     "accept [node-id]...",
@@ -63,6 +87,13 @@ If you provide --agent, the tool will check if you have raised any
 challenges for the node. Accepting without having raised any challenges
 requires --confirm to ensure thorough verification.
 
+Verifier identity (--agent, or AF_AGENT_ID when the flag is empty) is
+recorded on the accept and used for the reviewer-contributor check: the tool
+refuses when the verifier is the node's author, proof author, or an amender.
+Use --allow-self to accept anyway (recorded as self_accepted). Without an
+identity, af prints a warning in 0.1.10 and still accepts; the identity
+becomes REQUIRED in 0.1.11.
+
 Examples:
   af accept 1              Accept the root node
   af accept 1.2.3          Accept a specific child node
@@ -74,6 +105,7 @@ Examples:
   af accept 1 -d ./proof   Accept using specific directory
   af accept 1 --agent verifier-1  Accept with agent verification
   af accept 1 --agent v1 --confirm  Accept without having raised challenges
+  af accept 1 --agent v1 --allow-self  Accept even though v1 is a recorded contributor (recorded)
 
 Workflow:
   After accepting, use 'af status' to see the updated proof tree and
@@ -81,7 +113,7 @@ Workflow:
   node to verify.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAccept(cmd, args, acceptAll, withNote, confirm, agent, expectHash)
+			return runAccept(cmd, args, acceptAll, withNote, confirm, agent, expectHash, allowSelf)
 		},
 	}
 
@@ -92,6 +124,7 @@ Workflow:
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Confirm acceptance without having raised challenges")
 	cmd.Flags().StringVar(&agent, "agent", "", "Agent ID (verifier identity for challenge verification)")
 	cmd.Flags().StringVar(&expectHash, "expect-hash", "", "Content hash the accept was authored against; refuse if the node changed since (single node only)")
+	cmd.Flags().BoolVar(&allowSelf, "allow-self", false, "Allow accepting a node you are recorded as a contributor to (recorded as self_accepted)")
 
 	return cmd
 }
@@ -105,6 +138,7 @@ type acceptParams struct {
 	confirm    bool
 	agent      string
 	expectHash string
+	allowSelf  bool
 	args       []string
 }
 
@@ -141,7 +175,7 @@ func validateAcceptInput(params acceptParams) error {
 
 // getNodeIDsToAccept collects the node IDs to accept, either from args or pending nodes.
 // Returns nil if --all was used but there are no pending nodes (after outputting appropriate message).
-func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params acceptParams) ([]service.NodeID, error) {
+func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params acceptParams, warnings []string) ([]service.NodeID, error) {
 	examples := render.GetExamples("af accept")
 
 	if params.acceptAll {
@@ -151,7 +185,7 @@ func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params ac
 		}
 
 		if len(pendingSummaries) == 0 {
-			outputNoPendingNodes(cmd, params.format)
+			outputNoPendingNodes(cmd, params.format, warnings)
 			return nil, nil
 		}
 
@@ -174,13 +208,15 @@ func getNodeIDsToAccept(cmd *cobra.Command, svc *service.ProofService, params ac
 }
 
 // outputNoPendingNodes outputs the "no pending nodes" message in the appropriate format.
-func outputNoPendingNodes(cmd *cobra.Command, format string) {
+func outputNoPendingNodes(cmd *cobra.Command, format string, warnings []string) {
 	switch strings.ToLower(format) {
 	case "json":
-		_ = writeJSONOutput(cmd, map[string]interface{}{
+		result := map[string]interface{}{
 			"accepted": []string{},
 			"message":  "no pending nodes to accept",
-		})
+		}
+		addWarnings(result, warnings)
+		_ = writeJSONOutput(cmd, result)
 	default:
 		fmt.Fprintln(cmd.OutOrStdout(), "No pending nodes to accept.")
 	}
@@ -209,8 +245,8 @@ func verifyAgentChallenges(svc *service.ProofService, nodeIDs []service.NodeID, 
 // non-empty, is recorded as the verifier identity on the resulting
 // NodeValidated event (driver-supplied provenance — see
 // service.AcceptNodeWithVerifier).
-func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format, agent, expectHash string) error {
-	acceptErr := svc.AcceptNodeWithExpectation(nodeID, withNote, agent, "", expectHash)
+func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format, agent, expectHash string, allowSelf bool, warnings []string) error {
+	acceptErr := svc.AcceptNodeInteractive(nodeID, withNote, agent, expectHash, allowSelf)
 	if acceptErr != nil {
 		if errors.Is(acceptErr, service.ErrClaimTestStale) {
 			return fmt.Errorf("node %s is marked as crux and its only passing claim-test is stale (it was run against an older revision of the node).\nRe-run 'af claim-test %s --script <path>' and accept again: %w", nodeID.String(), nodeID.String(), acceptErr)
@@ -219,7 +255,7 @@ func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, node
 			return fmt.Errorf("node %s is marked as crux and has no passing claim-test.\nRun 'af claim-test %s --script <path>' first: %w", nodeID.String(), nodeID.String(), acceptErr)
 		}
 		if errors.Is(acceptErr, service.ErrBlockingChallenges) {
-			return handleBlockingChallengesError(cmd, svc, nodeID, format, acceptErr)
+			return handleBlockingChallengesError(cmd, svc, nodeID, format, acceptErr, warnings)
 		}
 		return fmt.Errorf("error accepting node: %w", acceptErr)
 	}
@@ -230,11 +266,11 @@ func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, node
 		summary = getVerificationSummary(st, nodeID, withNote)
 	}
 
-	return outputSingleAcceptance(cmd, nodeID, withNote, format, summary, stateErr == nil)
+	return outputSingleAcceptance(cmd, nodeID, withNote, format, summary, stateErr == nil, warnings)
 }
 
 // outputSingleAcceptance outputs the result of a single node acceptance.
-func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote, format string, summary verificationSummary, hasSummary bool) error {
+func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote, format string, summary verificationSummary, hasSummary bool, warnings []string) error {
 	switch strings.ToLower(format) {
 	case "json":
 		result := map[string]interface{}{
@@ -266,6 +302,7 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote,
 			result["verification_summary"] = verificationSummaryJSON
 		}
 
+		addWarnings(result, warnings)
 		return writeJSONOutput(cmd, result)
 	default:
 		fmt.Fprintf(cmd.OutOrStdout(), "Node %s accepted and validated.\n", nodeID.String())
@@ -282,10 +319,10 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote,
 // scheduled by actual prerequisites (a child before its parent; ID order as
 // tie-break) and the per-item outcomes are reported. A partial success returns
 // the report's exit-5 AFError so the CLI exits 5, matching `af verdicts apply`.
-func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format, agent string) error {
-	report, err := svc.AcceptNodesBulk(nodeIDs, agent, "")
+func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format, agent string, allowSelf bool, warnings []string) error {
+	report, err := svc.AcceptNodesBulkInteractive(nodeIDs, agent, allowSelf)
 	if report != nil {
-		if outErr := outputBulkAcceptance(cmd, report, format); outErr != nil {
+		if outErr := outputBulkAcceptance(cmd, report, format, warnings); outErr != nil {
 			return outErr
 		}
 	}
@@ -303,7 +340,7 @@ func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID
 	if errors.Is(err, service.ErrBlockingChallenges) {
 		nodeID := extractNodeIDFromBlockingError(err)
 		if nodeID != nil {
-			return handleBlockingChallengesError(cmd, svc, *nodeID, format, err)
+			return handleBlockingChallengesError(cmd, svc, *nodeID, format, err, warnings)
 		}
 	}
 	return err
@@ -312,7 +349,7 @@ func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID
 // outputBulkAcceptance outputs the per-item result of a bulk node acceptance.
 // It keeps the pre-D4 fields (accepted/count/status in JSON) and adds items
 // with each node's outcome.
-func outputBulkAcceptance(cmd *cobra.Command, report *service.BulkAcceptReport, format string) error {
+func outputBulkAcceptance(cmd *cobra.Command, report *service.BulkAcceptReport, format string, warnings []string) error {
 	appliedStrs := make([]string, 0, report.Applied)
 	for _, it := range report.Items {
 		if it.Status == "applied" {
@@ -322,7 +359,7 @@ func outputBulkAcceptance(cmd *cobra.Command, report *service.BulkAcceptReport, 
 
 	switch strings.ToLower(format) {
 	case "json":
-		return writeJSONOutput(cmd, map[string]interface{}{
+		result := map[string]interface{}{
 			"accepted": appliedStrs,
 			"count":    len(appliedStrs),
 			"status":   "validated",
@@ -330,7 +367,9 @@ func outputBulkAcceptance(cmd *cobra.Command, report *service.BulkAcceptReport, 
 			"applied":  report.Applied,
 			"blocked":  report.Blocked,
 			"rejected": report.Rejected,
-		})
+		}
+		addWarnings(result, warnings)
+		return writeJSONOutput(cmd, result)
 	default:
 		if report.Applied == len(report.Items) {
 			fmt.Fprintf(cmd.OutOrStdout(), "Accepted %d nodes:\n", report.Applied)
@@ -386,9 +425,23 @@ func warnTaintedDeps(cmd *cobra.Command, svc *service.ProofService, nodeIDs []se
 	}
 }
 
-func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent, expectHash string) error {
+func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent, expectHash string, allowSelf bool) error {
 	dir := cli.MustString(cmd, "dir")
 	format := cli.MustString(cmd, "format")
+
+	// Agent identity is --agent, falling back to AF_AGENT_ID, matching the
+	// convention `af challenge` already uses. Without one, the reviewer≠
+	// contributor check cannot run; warn once (0.1.10) and require the
+	// identity from 0.1.11 (documented in --help and the changelog).
+	if strings.TrimSpace(agent) == "" {
+		agent = strings.TrimSpace(os.Getenv("AF_AGENT_ID"))
+	}
+	warnings := identityWarnings(agent)
+	// The warning goes to stderr in every format; JSON also carries it in the
+	// result's warnings array for machine consumers.
+	for _, w := range warnings {
+		fmt.Fprintln(cmd.ErrOrStderr(), w)
+	}
 
 	params := acceptParams{
 		dir:        dir,
@@ -398,6 +451,7 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 		confirm:    confirm,
 		agent:      agent,
 		expectHash: expectHash,
+		allowSelf:  allowSelf,
 		args:       args,
 	}
 
@@ -410,7 +464,7 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 		return fmt.Errorf("error accessing proof directory: %w", err)
 	}
 
-	nodeIDs, err := getNodeIDsToAccept(cmd, svc, params)
+	nodeIDs, err := getNodeIDsToAccept(cmd, svc, params, warnings)
 	if err != nil {
 		return err
 	}
@@ -426,14 +480,14 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 	warnTaintedDeps(cmd, svc, nodeIDs)
 
 	if len(nodeIDs) == 1 {
-		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format, agent, expectHash)
+		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format, agent, expectHash, allowSelf, warnings)
 	}
-	return performBulkAcceptance(cmd, svc, nodeIDs, format, agent)
+	return performBulkAcceptance(cmd, svc, nodeIDs, format, agent, allowSelf, warnings)
 }
 
 // handleBlockingChallengesError displays blocking challenges that prevent acceptance.
 // It formats the error output based on the requested format (text or json).
-func handleBlockingChallengesError(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, format string, origErr error) error {
+func handleBlockingChallengesError(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, format string, origErr error, warnings []string) error {
 	// Load state to get the blocking challenges
 	st, err := svc.LoadState()
 	if err != nil {
@@ -445,7 +499,7 @@ func handleBlockingChallengesError(cmd *cobra.Command, svc *service.ProofService
 
 	switch strings.ToLower(format) {
 	case "json":
-		return outputBlockingChallengesJSON(cmd, nodeID, blockingChallenges, origErr)
+		return outputBlockingChallengesJSON(cmd, nodeID, blockingChallenges, origErr, warnings)
 	default:
 		return outputBlockingChallengesText(cmd, nodeID, blockingChallenges, origErr)
 	}
@@ -483,7 +537,7 @@ func outputBlockingChallengesText(cmd *cobra.Command, nodeID service.NodeID, cha
 }
 
 // outputBlockingChallengesJSON displays blocking challenges in JSON format.
-func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID service.NodeID, challenges []*service.Challenge, origErr error) error {
+func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID service.NodeID, challenges []*service.Challenge, origErr error, warnings []string) error {
 	type challengeInfo struct {
 		ID       string `json:"id"`
 		Target   string `json:"target"`
@@ -496,6 +550,7 @@ func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID service.NodeID, cha
 		NodeID             string          `json:"node_id"`
 		BlockingChallenges []challengeInfo `json:"blocking_challenges"`
 		HowToResolve       []string        `json:"how_to_resolve"`
+		Warnings           []string        `json:"warnings,omitempty"`
 	}
 
 	challengeList := make([]challengeInfo, len(challenges))
@@ -512,6 +567,7 @@ func outputBlockingChallengesJSON(cmd *cobra.Command, nodeID service.NodeID, cha
 		Error:              "blocking_challenges",
 		NodeID:             nodeID.String(),
 		BlockingChallenges: challengeList,
+		Warnings:           warnings,
 		HowToResolve: []string{
 			"Use 'af refine' to address the challenges by improving the proof",
 			"Use 'af resolve <challenge-id>' to resolve a challenge with an explanation",

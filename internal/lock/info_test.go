@@ -162,8 +162,9 @@ func TestLockInfo_RemainingTime_Expired(t *testing.T) {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
 
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	// Move expiration beyond ClockSkewTolerance: a nominally expired lock is
+	// still live for the grace period, so the test must age it past that.
+	lock.ExpireForTest(lk)
 
 	info, err := lock.GetLockInfo(lk)
 	if err != nil {
@@ -257,8 +258,8 @@ func TestLockInfo_Stringer_Expired(t *testing.T) {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
 
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	// Age it past ClockSkewTolerance.
+	lock.ExpireForTest(lk)
 
 	info, err := lock.GetLockInfo(lk)
 	if err != nil {
@@ -404,8 +405,8 @@ func TestLockInfo_JSON_ExpiredLock(t *testing.T) {
 		t.Fatalf("NewLock() unexpected error: %v", err)
 	}
 
-	// Wait for expiration
-	time.Sleep(10 * time.Millisecond)
+	// Age it past ClockSkewTolerance.
+	lock.ExpireForTest(lk)
 
 	info, err := lock.GetLockInfo(lk)
 	if err != nil {

@@ -142,15 +142,15 @@ func TestReleaseCmd_NodeNotClaimed(t *testing.T) {
 	defer cleanup()
 
 	cmd := newTestReleaseCmd()
-	_, err := executeCommand(cmd, "release", "1", "--owner", "test-agent", "--dir", tmpDir)
+	output, err := executeCommand(cmd, "release", "1", "--owner", "test-agent", "--dir", tmpDir)
 
-	if err == nil {
-		t.Fatal("expected error for unclaimed node, got nil")
+	// Releasing an available node is a documented no-op: exit 0 with a message,
+	// not an error. A terminal action may have auto-released the claim already.
+	if err != nil {
+		t.Fatalf("expected no error for an already-available node, got: %v", err)
 	}
-
-	errStr := err.Error()
-	if !strings.Contains(errStr, "not claimed") {
-		t.Errorf("expected 'not claimed' error, got: %q", errStr)
+	if !strings.Contains(output, "already available") {
+		t.Errorf("expected no-op message, got: %q", output)
 	}
 }
 

@@ -18,14 +18,21 @@ type LockInfo struct {
 
 // GetLockInfo retrieves lock information from a ClaimLock.
 // Returns an error if the lock is nil.
+//
+// The lock's fields are read under its mutex, so a concurrent Refresh or
+// MarkReleased cannot race the read, and IsExpired applies the same
+// ClockSkewTolerance grace period as ClaimLock.IsExpired (uj18).
 func GetLockInfo(lk *ClaimLock) (*LockInfo, error) {
 	if lk == nil {
 		return nil, errors.New("lock is nil")
 	}
 
+	lk.mu.Lock()
+	defer lk.mu.Unlock()
+
 	now := time.Now().UTC()
 	remaining := lk.expiresAt.Sub(now)
-	isExpired := now.After(lk.expiresAt)
+	isExpired := lk.released || now.After(lk.expiresAt.Add(ClockSkewTolerance))
 
 	return &LockInfo{
 		NodeID:    lk.nodeID.String(),
