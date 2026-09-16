@@ -23,10 +23,12 @@ closed structurally.
 1. **Archive-the-hard-step.** `af accept` requires every child cleared, and
    `archived` counts as cleared. A prover facing an unanswerable challenge can
    archive that child; the parent becomes acceptable with one fewer step, and
-   archived branches are clean by design. *Audit:* archived nodes that had an
-   open challenge at archival time. *Fix candidates:* refuse archive while a
-   challenge is open unless `--force` with a reason; flag "parent accepted after
-   child archived" in `af health`. Tracked: vibefeld-a7p5.
+   archived branches are clean by design. *Audit:* `af audit` reports
+   `ARCHIVED_WITH_OPEN_CHALLENGE` (historical, never gating) for archived nodes
+   with an open challenge on the node or an active descendant. *Fix candidates:*
+   refuse archive while a challenge is open unless `--force` with a reason; flag
+   "parent accepted after child archived" in `af health`. Tracked:
+   vibefeld-a7p5.
 
    *Narrowed in 0.1.10:* `af archive` now refuses when a challenge is open on
    the node or on an active (non-severed) descendant, unless `--force --reason`
@@ -41,15 +43,18 @@ closed structurally.
    A node's reference `dependencies` and external references are not
    consulted, so lemma A can cite an admitted lemma B and stay `clean`. This
    matters for DAG-shaped arguments (many lemmas citing each other) far more
-   than for tree-shaped ones. *Audit:* nodes whose dependencies include an
-   admitted/tainted/pending node; `af pending-refs`. *Fix:* include
-   dependency targets in the down-component of taint (the cycle package
-   already guarantees a DAG). Tracked: vibefeld-0ry1.
+   than for tree-shaped ones. *Audit:* `af audit` reports `CITES_SEVERED`
+   (missing/archived/refuted dependency targets), `SUPPORT_NOT_CURRENT`
+   (`TARGET_PENDING`, `TARGET_REFUTED`, `TARGET_REVISED` causes) and
+   `PENDING_EXTERNAL_CITED_BY_VALIDATED`; `af pending-refs` lists the pending
+   externals. *Fix:* include dependency targets in the down-component of taint
+   (the cycle package already guarantees a DAG). Tracked: vibefeld-0ry1.
 3. **Roles are convention, not enforcement.** Nothing stops one process from
    calling `refine` and `accept` on the same node. Author and verifier
    identities are recorded (0.1.6) but `accept` does not refuse when they
-   match; `resolve-challenge` is a prover action. *Audit:* accepts where
-   verifier == author; accepts seconds after a resolve with no new challenge.
+   match; `resolve-challenge` is a prover action. *Audit:* `af audit` reports
+   `SELF_ACCEPT` (verifier equals author/proof author/amender), `UNKNOWN_PROVENANCE`
+   (validated with no recorded verifier) and `VALIDATED_WITH_OPEN_BLOCKING_CHALLENGE`.
    *Fix:* `accept` refuses self-acceptance unless `--allow-self` (for
    single-agent use). Tracked: vibefeld-gwps.
 
@@ -66,13 +71,28 @@ closed structurally.
 4. **Ledger is append-only but not tamper-evident.** Node content is hashed
    but events are not hash-chained, so an agent with shell access to the
    workspace could rewrite history without replay noticing. Relevant when
-   agents have write access beyond the `af` binary. *Fix:* per-event hash
+   agents have write access beyond the `af` binary. *Audit:* `af audit` reports
+   `HASH_MISMATCH` for a validated node whose current content hash differs from
+   the hash recorded at acceptance, but that detects content moving after
+   acceptance, not a coordinated ledger rewrite. *Fix:* per-event hash
    chain, verified by `af replay --verify`. Belongs to the v0.2 kernel work
    (docs/prd.md, "v0.2 Target"). Tracked: vibefeld-8x16.
 
-## Audit script (planned)
+## Audit
 
-A read-only `af audit` (or script over `af export --graph json` + the ledger)
-reporting: admitted nodes; archived nodes with challenges open at archival;
-self-accepts; nodes citing admitted/pending/tainted nodes; pending external
-refs; amendments per node. Tracked: vibefeld-5qrx.
+`af audit` is the read-only audit these gaps point to (0.1.10). It is computed
+from one ordered pass over derived state, appends no events and takes no lock.
+It reports stable codes with a `current | historical` status; only current
+findings with a strict code fail `af audit --strict` (exit 3, `AUDIT_FAILED`).
+
+| Gap | Finding codes |
+|-----|---------------|
+| Archive-the-hard-step | `ARCHIVED_WITH_OPEN_CHALLENGE` (historical) |
+| Cross-references do not carry taint | `CITES_SEVERED`, `SUPPORT_NOT_CURRENT`, `PENDING_EXTERNAL_CITED_BY_VALIDATED` |
+| Roles are convention, not enforcement | `SELF_ACCEPT`, `UNKNOWN_PROVENANCE`, `VALIDATED_WITH_OPEN_BLOCKING_CHALLENGE` |
+| Ledger is append-only but not tamper-evident | `HASH_MISMATCH` (content moved after acceptance only) |
+
+`af health` reads its `support_current` blockers from the same findings engine,
+and `af amend-deps --file` runs the audit as a migration preflight/postcheck
+(`--dry-run` and the real run both end with a one-line summary and the exact
+`af audit --strict` command). Tracked: vibefeld-5qrx.

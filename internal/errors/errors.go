@@ -97,6 +97,12 @@ const (
 	// errors.Is can tell a missing/stale claim-test apart from unresolved
 	// blocking challenges; both are blocked, neither is a challenge.
 	CLAIM_TEST_REQUIRED
+
+	// AUDIT_FAILED: `af audit --strict` found at least one current finding with
+	// a strict-current code. Exit 3 — a logic/trust failure the caller must
+	// resolve, not a transient conflict. The structured code is stable so a
+	// driver need not parse the report text.
+	AUDIT_FAILED
 )
 
 // errorCodeNames maps error codes to their string representations.
@@ -135,6 +141,7 @@ var errorCodeNames = map[ErrorCode]string{
 	VERDICTS_NONE_APPLIED:        "VERDICTS_NONE_APPLIED",
 	UNVALIDATE_BATCH_NOT_FOUND:   "UNVALIDATE_BATCH_NOT_FOUND",
 	CLAIM_TEST_REQUIRED:          "CLAIM_TEST_REQUIRED",
+	AUDIT_FAILED:                 "AUDIT_FAILED",
 	AMEND_DEPS_FILE_INVALID:      "AMEND_DEPS_FILE_INVALID",
 	AMEND_DEPS_PARTIALLY_APPLIED: "AMEND_DEPS_PARTIALLY_APPLIED",
 	AMEND_DEPS_NONE_APPLIED:      "AMEND_DEPS_NONE_APPLIED",
