@@ -35,12 +35,37 @@ type Challenge struct {
 	BatchID    string          // Batch identifier, if raised as part of a batch (af verdicts apply); "" otherwise
 }
 
-// Amendment represents a single amendment to a node's statement.
+// Amendment kinds. An empty Kind is treated as AmendmentKindStatement so
+// amendment records written before dependency amendments existed replay
+// unchanged.
+const (
+	AmendmentKindStatement    = "statement"
+	AmendmentKindDependencies = "dependencies"
+)
+
+// Amendment represents a single amendment to a node. Kind distinguishes a
+// statement amendment (the original, and the only kind before D2) from a
+// dependency amendment. Statement fields are set for a statement amendment;
+// dependency fields are set for a dependency amendment. Both are kept in one
+// history so `af amendments` can list them in ledger order while statement
+// version numbering stays unchanged (a dependency amendment does not consume a
+// statement version).
 type Amendment struct {
+	Kind              string          // "" or "statement" = statement amendment; "dependencies" = edge amendment
+	Seq               int             // Ledger sequence of the event that recorded this amendment (0 if unknown)
 	Timestamp         types.Timestamp // When the amendment occurred
-	PreviousStatement string          // The statement before this amendment
-	NewStatement      string          // The statement after this amendment
+	PreviousStatement string          // The statement before this amendment (statement kind)
+	NewStatement      string          // The statement after this amendment (statement kind)
 	Owner             string          // Who made the amendment
+	Reason            string          // Why (dependency kind; empty for statement kind)
+
+	// Dependency amendment fields (Kind == AmendmentKindDependencies).
+	PreviousDependencies   []types.NodeID
+	NewDependencies        []types.NodeID
+	PreviousValidationDeps []types.NodeID
+	NewValidationDeps      []types.NodeID
+	PreviousContentHash    string
+	Reopened               bool
 }
 
 // Evidence represents computational evidence attached to a proof node.
@@ -583,6 +608,18 @@ func (s *State) AddAmendment(nodeID types.NodeID, amendment Amendment) {
 // Returns an empty slice if no amendments have been made.
 func (s *State) GetAmendmentHistory(nodeID types.NodeID) []Amendment {
 	return s.amendments[nodeID.String()]
+}
+
+// SetLastAmendmentSeq stamps the ledger sequence onto the most recent
+// amendment record for nodeID. Replay calls it after applying an amendment
+// event, which is how the event's sequence reaches the export projection
+// without changing Apply's signature.
+func (s *State) SetLastAmendmentSeq(nodeID types.NodeID, seq int) {
+	hist := s.amendments[nodeID.String()]
+	if len(hist) == 0 {
+		return
+	}
+	hist[len(hist)-1].Seq = seq
 }
 
 // AddFailedApproach adds a failed approach record for a node.

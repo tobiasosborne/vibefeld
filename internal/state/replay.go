@@ -59,6 +59,15 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 		// Track the latest sequence number for optimistic concurrency control
 		state.SetLatestSeq(seq)
 
+		// Stamp the ledger sequence onto the amendment record just appended, so
+		// the export projection can report amendment sequences.
+		switch ev := event.(type) {
+		case ledger.NodeAmended:
+			state.SetLastAmendmentSeq(ev.NodeID, seq)
+		case ledger.NodeDepsAmended:
+			state.SetLastAmendmentSeq(ev.NodeID, seq)
+		}
+
 		// Index an optional operation id so a retried operation can find the
 		// sequence of its already-committed result.
 		if opIDCarrier, ok := event.(interface{ GetOperationID() string }); ok {
@@ -180,6 +189,7 @@ var eventFactories = map[ledger.EventType]eventFactory{
 	ledger.EventClaimTested:         func() ledger.Event { return &ledger.ClaimTested{} },
 	ledger.EventDefChecked:          func() ledger.Event { return &ledger.DefChecked{} },
 	ledger.EventNodeProofAuthored:   func() ledger.Event { return &ledger.NodeProofAuthored{} },
+	ledger.EventNodeDepsAmended:     func() ledger.Event { return &ledger.NodeDepsAmended{} },
 }
 
 // parseEvent parses raw JSON bytes into a typed Event.
@@ -282,6 +292,8 @@ func derefEvent(eventPtr ledger.Event) ledger.Event {
 	case *ledger.DefChecked:
 		return *e
 	case *ledger.NodeProofAuthored:
+		return *e
+	case *ledger.NodeDepsAmended:
 		return *e
 	default:
 		// Should never happen since factory already validated the type

@@ -73,7 +73,16 @@ const (
 	EventClaimTested         EventType = "claim_tested"
 	EventDefChecked          EventType = "def_checked"
 	EventNodeProofAuthored   EventType = "node_proof_authored"
+	EventNodeDepsAmended     EventType = "node_deps_amended"
 )
+
+// init registers the minimum workspace format for 1.1 event types (D2).
+// node_deps_amended is the only event that requires a 1.1 workspace: a 1.0
+// reader cannot understand it, so the write path refuses it until the operator
+// runs `af workspace upgrade --to 1.1`.
+func init() {
+	RegisterEventMinFormat(EventNodeDepsAmended, "1.1")
+}
 
 // Event is the base interface for all ledger events.
 type Event interface {
@@ -274,12 +283,62 @@ type LockReaped struct {
 
 // NodeAmended is emitted when a prover corrects the statement of a node they own.
 // The original statement is preserved in the PreviousStatement field for history.
+//
+// Reopened (optional, format 1.1 semantics) records that the same event also
+// performed validated -> pending, mirroring NodeDepsAmended. It is omitted for
+// ordinary statement amendments, so existing ledgers replay identically.
 type NodeAmended struct {
 	BaseEvent
 	NodeID            types.NodeID `json:"node_id"`
 	PreviousStatement string       `json:"previous_statement"`
 	NewStatement      string       `json:"new_statement"`
 	Owner             string       `json:"owner"`
+	Reopened          bool         `json:"reopened,omitempty"`
+}
+
+// NodeDepsAmended is emitted when a prover corrects a node's dependency edges
+// (`af amend-deps`). It is format 1.1: a 1.0 reader cannot apply it.
+//
+// One event carries the whole semantic unit: the previous edges (verified by
+// replay against the state it holds, never overwritten blindly), the new edges,
+// the content hash before the change, and — when Reopened — the validated ->
+// pending transition. OperationID (BaseEvent) makes a retried batch item
+// recognisable from the ledger.
+type NodeDepsAmended struct {
+	BaseEvent
+	NodeID                 types.NodeID   `json:"node_id"`
+	PreviousDependencies   []types.NodeID `json:"previous_dependencies,omitempty"`
+	NewDependencies        []types.NodeID `json:"new_dependencies,omitempty"`
+	PreviousValidationDeps []types.NodeID `json:"previous_validation_deps,omitempty"`
+	NewValidationDeps      []types.NodeID `json:"new_validation_deps,omitempty"`
+	Owner                  string         `json:"owner"`
+	Reason                 string         `json:"reason,omitempty"`
+	PreviousContentHash    string         `json:"previous_content_hash,omitempty"`
+	Reopened               bool           `json:"reopened,omitempty"`
+}
+
+// NewNodeDepsAmended creates a NodeDepsAmended event.
+func NewNodeDepsAmended(
+	nodeID types.NodeID,
+	previousDeps, newDeps, previousValDeps, newValDeps []types.NodeID,
+	owner, reason, previousContentHash string,
+	reopened bool,
+) NodeDepsAmended {
+	return NodeDepsAmended{
+		BaseEvent: BaseEvent{
+			EventType: EventNodeDepsAmended,
+			EventTime: types.Now(),
+		},
+		NodeID:                 nodeID,
+		PreviousDependencies:   previousDeps,
+		NewDependencies:        newDeps,
+		PreviousValidationDeps: previousValDeps,
+		NewValidationDeps:      newValDeps,
+		Owner:                  owner,
+		Reason:                 reason,
+		PreviousContentHash:    previousContentHash,
+		Reopened:               reopened,
+	}
 }
 
 // NodeProofAuthored is emitted when a prover records a proof of a node by
