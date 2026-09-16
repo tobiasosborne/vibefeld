@@ -138,6 +138,27 @@ func TestHasPassingClaimTestForContent(t *testing.T) {
 	}
 }
 
+// TestHasPassingClaimTest_CountsHashBearingPass is a regression test for the
+// legacy wrapper: it must count any passing test, including one with a
+// non-empty recorded hash, even though it does not take a current hash.
+func TestHasPassingClaimTest_CountsHashBearingPass(t *testing.T) {
+	s, nodeID := newD3StateNode(t, "1")
+
+	if s.HasPassingClaimTest(nodeID) {
+		t.Error("no tests: HasPassingClaimTest = true, want false")
+	}
+
+	s.AddClaimTest(nodeID, ClaimTestResult{Passed: false, ContentHash: "hash-x"})
+	if s.HasPassingClaimTest(nodeID) {
+		t.Error("failing hash-bearing test must not count")
+	}
+
+	s.AddClaimTest(nodeID, ClaimTestResult{Passed: true, ContentHash: "hash-x"})
+	if !s.HasPassingClaimTest(nodeID) {
+		t.Error("passing hash-bearing test must count for the legacy wrapper")
+	}
+}
+
 func TestHasPassingClaimTestForContent_MatchingHashCounts(t *testing.T) {
 	s, nodeID := newD3StateNode(t, "1")
 	s.AddClaimTest(nodeID, ClaimTestResult{Passed: true, ContentHash: "current"})

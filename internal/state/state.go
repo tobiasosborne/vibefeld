@@ -651,7 +651,12 @@ func (s *State) GetClaimTests(nodeID types.NodeID) []ClaimTestResult {
 // against an older revision of the node still counts. Acceptance uses
 // HasPassingClaimTestForContent so a stale test cannot gate a crux accept.
 func (s *State) HasPassingClaimTest(nodeID types.NodeID) bool {
-	return s.HasPassingClaimTestForContent(nodeID, "")
+	for _, t := range s.claimTests[nodeID.String()] {
+		if t.Passed {
+			return true
+		}
+	}
+	return false
 }
 
 // HasPassingClaimTestForContent returns true if the node has at least one
