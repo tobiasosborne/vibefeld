@@ -44,6 +44,7 @@ const (
 	// Scope errors (logic = exit 3)
 	SCOPE_VIOLATION
 	SCOPE_UNCLOSED
+	SCOPE_LEAK
 	DEPENDENCY_CYCLE
 
 	// Corruption/integrity errors (exit 4)
@@ -101,6 +102,7 @@ var errorCodeNames = map[ErrorCode]string{
 	EXTERNAL_NOT_FOUND:          "EXTERNAL_NOT_FOUND",
 	SCOPE_VIOLATION:             "SCOPE_VIOLATION",
 	SCOPE_UNCLOSED:              "SCOPE_UNCLOSED",
+	SCOPE_LEAK:                  "SCOPE_LEAK",
 	DEPENDENCY_CYCLE:            "DEPENDENCY_CYCLE",
 	CONTENT_HASH_MISMATCH:       "CONTENT_HASH_MISMATCH",
 	VALIDATION_INVARIANT_FAILED: "VALIDATION_INVARIANT_FAILED",
