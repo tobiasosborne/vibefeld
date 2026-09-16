@@ -151,7 +151,20 @@ func NewProofService(path string) (*ProofService, error) {
 		return nil, fmt.Errorf("%w: path is not a directory", ErrInvalidState)
 	}
 
-	return &ProofService{path: path}, nil
+	svc := &ProofService{path: path}
+
+	// Refuse a workspace whose stamped format this binary cannot read. This is
+	// the format gate at the service entry point; the replay CLI bypasses
+	// ProofService and performs the same check itself.
+	cfg, err := svc.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+	if err := config.CheckFormat(cfg); err != nil {
+		return nil, err
+	}
+
+	return svc, nil
 }
 
 // LoadConfig loads and caches the config from meta.json.

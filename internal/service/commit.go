@@ -49,6 +49,16 @@ func (s *ProofService) commit(build func(st *state.State) ([]ledger.Event, error
 	// Test-only hook: runs in the exact window between the state read used
 	// for build/validation and the CAS append, so tests can inject a
 	// concurrent writer.
+	// Refuse event types that require a newer workspace format than the
+	// stamped one, so a 1.0 workspace cannot accumulate 1.1 events (D10).
+	cfg, err := s.Config()
+	if err != nil {
+		return nil, err
+	}
+	if err := checkEventFormats(cfg, events); err != nil {
+		return nil, err
+	}
+
 	if s.beforeAppend != nil {
 		s.beforeAppend()
 	}

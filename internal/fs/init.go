@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/tobiasosborne/vibefeld/internal/config"
 )
 
 // InitProofDir initializes a proof directory structure at the given path.
@@ -51,10 +53,11 @@ func InitProofDir(path string) error {
 		}
 	}
 
-	// Create meta.json if it doesn't exist
+	// Create meta.json if it doesn't exist. New workspaces are stamped with the
+	// current workspace format; they contain no 1.1 events yet, which is fine.
 	metaPath := filepath.Join(path, "meta.json")
 	if _, err := os.Stat(metaPath); os.IsNotExist(err) {
-		content := []byte(`{"version": "1.0"}`)
+		content := []byte(`{"version": "` + config.FormatCurrent + `"}`)
 		if err := os.WriteFile(metaPath, content, 0644); err != nil {
 			return err
 		}

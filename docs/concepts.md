@@ -11,6 +11,7 @@ This document explains the foundational concepts of AF (Adversarial Proof Framew
 5. [Definitions and Lemmas](#definitions-and-lemmas)
 6. [Taint Propagation](#taint-propagation)
 7. [Scope and Assumptions](#scope-and-assumptions)
+8. [Workspace Format](#workspace-format)
 
 ---
 
@@ -475,6 +476,39 @@ For proof by contradiction:
 ```
 
 The scope system ensures that assumptions from one branch of a case split cannot "leak" into another, and that conclusions drawn under a contradictory assumption are properly bounded.
+
+---
+
+## Workspace Format
+
+Every workspace records a *format* in `meta.json` (`"version"`). The format names
+the set of event types the ledger may contain:
+
+- **1.0** is the original format. Every event type that existed before 0.1.9
+  belongs to it.
+- **1.1** is introduced with 0.1.9. New event types added for corrections (D2)
+  require it. A 1.0 workspace refuses a 1.1 event type with
+  `run af workspace upgrade --to 1.1`; replay enforces the same gate before it
+  starts.
+
+New workspaces from `af init` are stamped `1.1` immediately. They contain no
+1.1 events yet, which is fine.
+
+`af version -f json` advertises the newest format this binary reads (`format`)
+and the acceptance/claim policy generation (`policy`). Policy and format are
+deliberately separate: two releases can both read 1.1 while differing in
+acceptance or taint policy.
+
+**Upgrading is deliberate.** Stop every writer (provers, verifiers, scripts)
+before running `af workspace upgrade --to 1.1`. The command takes the ledger
+lock, copies `ledger/*.json` and `meta.json` into
+`backup/<UTC timestamp>/` inside the workspace, fsyncs the copies, and writes
+the new stamp atomically. `--dry-run` shows the plan without writing.
+
+**Downgrade means restore.** Downgrading is refused. To go back to 1.0 after an
+upgrade, stop writers and restore the backup directory. A workspace this binary
+cannot read (newer or unknown format) is refused with a structured
+`FORMAT_TOO_NEW` error naming the workspace and running formats.
 
 ---
 

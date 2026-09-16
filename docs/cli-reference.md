@@ -74,6 +74,7 @@ Multiple AI agents work concurrently as adversarial provers and verifiers, refin
 | `patterns` | Manage challenge pattern library |
 | `completion` | Generate shell completion scripts |
 | `version` | Display version and build information |
+| `workspace upgrade` | Upgrade the workspace format stamp |
 
 ---
 
@@ -2350,6 +2351,38 @@ af completion powershell | Out-String | Invoke-Expression
 
 ---
 
+## Workspace
+
+### `workspace upgrade`
+
+Upgrade the workspace format recorded in `meta.json`. Run it after stopping every
+writer and installing the newer binary; a 1.0 workspace refuses 1.1 event types
+until it is upgraded.
+
+**Syntax:**
+```
+af workspace upgrade --to 1.1 [flags]
+```
+
+**Flags:**
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--to` | string | Target workspace format (required, e.g. `1.1`) |
+| `--dir, -d` | string | Proof directory path (default `.`) |
+| `--dry-run` | bool | Print the plan and exit 0 without writing |
+| `--format, -f` | string | Output format: `text` or `json` |
+
+**Behaviour:**
+- Idempotent: already at the target prints a no-op and exits 0.
+- Takes the ledger lock, copies `ledger/*.json` and `meta.json` into
+  `backup/<UTC timestamp>/` inside the workspace, fsyncs the copies, re-reads
+  the ledger sequence, then writes the new stamp atomically.
+- Refuses to downgrade. To revert a 1.1 workspace to 1.0, stop writers and
+  restore the backup directory.
+
+---
+
 ## Version
 
 ### `version`
@@ -2366,12 +2399,15 @@ af version [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--json` | bool | Output in JSON format |
+| `--format, -f` | string | Output format: `text` or `json` (same as `--json`) |
 
 **Shows:**
 - Version string
 - Git commit hash
 - Build date
 - Go version
+- `format`: newest workspace format this binary reads (currently `1.1`)
+- `policy`: acceptance/claim policy version, independent of the format
 
 ---
 
