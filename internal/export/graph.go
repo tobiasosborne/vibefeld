@@ -148,10 +148,12 @@ type GraphNode struct {
 	// SupportCurrent is D4's derived support_current: true iff the node's
 	// recorded verdict (validated/admitted) is still supported by the current
 	// result-use DAG, with no revision after the verdict, no open blocking
-	// challenge, and every target itself current. Additive field (omitempty),
-	// advertised by the support-current capability token. SupportCause is the
-	// stable failure code when it is false.
-	SupportCurrent bool   `json:"support_current,omitempty"`
+	// challenge, and every target itself current. Deliberately NOT omitempty:
+	// false is the meaningful "not currently supported" signal an external
+	// driver must be able to read, so the field is always present. Additive
+	// field, advertised by the support-current capability token. SupportCause is
+	// the stable failure code when it is false (omitted when empty).
+	SupportCurrent bool   `json:"support_current"`
 	SupportCause   string `json:"support_cause,omitempty"`
 }
 

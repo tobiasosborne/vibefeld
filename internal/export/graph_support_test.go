@@ -1,6 +1,8 @@
 package export
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/tobiasosborne/vibefeld/internal/node"
@@ -60,5 +62,35 @@ func TestGraphExport_SupportCurrentCapabilityAndFields(t *testing.T) {
 	}
 	if childNode.SupportCurrent {
 		t.Error("pending child should not be support_current")
+	}
+}
+
+// TestGraphExport_SupportCurrentSerializedFalse locks that support_current is
+// emitted even when false: an external driver must be able to read the
+// negative signal, so the field is not omitempty. The assertion is on the
+// marshalled JSON, not the Go struct (where false and absent are
+// indistinguishable).
+func TestGraphExport_SupportCurrentSerializedFalse(t *testing.T) {
+	st := state.NewState()
+	rootID, _ := types.Parse("1")
+	root, err := node.NewNode(rootID, schema.NodeTypeClaim, "root", schema.InferenceModusPonens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Not validated, so support_current is false.
+	st.AddNode(root)
+
+	ge := BuildGraphExport(st, "ws", nil)
+	data, err := json.Marshal(ge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(data)
+	if !strings.Contains(js, `"support_current":false`) {
+		t.Fatalf("marshalled export drops support_current=false:\n%s", js)
+	}
+	// support_cause keeps omitempty, so an empty cause is absent.
+	if strings.Contains(js, `"support_cause":""`) {
+		t.Fatalf("empty support_cause should stay omitted:\n%s", js)
 	}
 }
