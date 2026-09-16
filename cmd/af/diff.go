@@ -131,12 +131,17 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid version %d: node has %d amendment(s), valid versions are 0-%d", fromVersion, len(stmts), len(stmts))
 	}
 
+	// Only dependency amendments in the selected statement interval belong to
+	// this diff: from the statement at fromVersion (exclusive) to the statement
+	// at toVersion (inclusive), by ledger sequence.
+	intervalDeps := filterDepsBySeq(deps, statementVersionSeq(stmts, fromVersion), statementVersionSeq(stmts, toVersion))
+
 	diff := computeDiff(versions[fromVersion], versions[toVersion], fromVersion, toVersion)
 
 	if format == "json" {
-		return renderDiffJSON(cmd, nodeID, []diffResult{diff}, deps)
+		return renderDiffJSON(cmd, nodeID, []diffResult{diff}, intervalDeps)
 	}
-	renderDiffText(cmd, nodeID, []diffResult{diff}, deps)
+	renderDiffText(cmd, nodeID, []diffResult{diff}, intervalDeps)
 	return nil
 }
 
@@ -155,6 +160,7 @@ func buildVersionList(amendments []service.Amendment) []string {
 
 // depChange is one dependency amendment in the diff output.
 type depChange struct {
+	Seq                    int      `json:"seq,omitempty"`
 	Timestamp              string   `json:"timestamp,omitempty"`
 	Owner                  string   `json:"owner,omitempty"`
 	Reason                 string   `json:"reason,omitempty"`
@@ -173,6 +179,7 @@ func dependencyChanges(amendments []service.Amendment) []depChange {
 			continue
 		}
 		out = append(out, depChange{
+			Seq:                    a.Seq,
 			Timestamp:              a.Timestamp.String(),
 			Owner:                  a.Owner,
 			Reason:                 a.Reason,
@@ -186,11 +193,39 @@ func dependencyChanges(amendments []service.Amendment) []depChange {
 	return out
 }
 
-// filterDepsSince keeps dependency amendments at or after t.
-func filterDepsSince(deps []depChange, t service.Timestamp) []depChange {
+// statementVersionSeq returns the ledger sequence of the statement amendment
+// that produced version v (0 = the original statement, sequence 0).
+func statementVersionSeq(stmts []service.Amendment, version int) int {
+	if version <= 0 {
+		return 0
+	}
+	if version > len(stmts) {
+		version = len(stmts)
+	}
+	if version == 0 {
+		return 0
+	}
+	return stmts[version-1].Seq
+}
+
+// filterDepsBySeq keeps dependency amendments recorded after afterSeq and at or
+// before throughSeq, the ledger interval between two statement versions.
+func filterDepsBySeq(deps []depChange, afterSeq, throughSeq int) []depChange {
 	var out []depChange
 	for _, d := range deps {
-		if ts, err := service.ParseTimestamp(d.Timestamp); err == nil && !ts.Before(t) {
+		if d.Seq > afterSeq && d.Seq <= throughSeq {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// filterDepsSinceSeq keeps dependency amendments recorded after afterSeq
+// (exclusive), used by --since-challenge with the challenge's ledger sequence.
+func filterDepsSinceSeq(deps []depChange, afterSeq int) []depChange {
+	var out []depChange
+	for _, d := range deps {
+		if d.Seq > afterSeq {
 			out = append(out, d)
 		}
 	}
@@ -237,16 +272,16 @@ func diffSinceChallenge(cmd *cobra.Command, st *service.State, nodeID service.No
 		return fmt.Errorf("challenge %q not found", challengeID)
 	}
 
-	// Find the version that was active when the challenge was raised.
-	// The challenge was raised at challenge.Created; find the last statement amendment before that time.
+	// Find the version that was active when the challenge was raised: the last
+	// statement amendment recorded before the challenge's ledger sequence.
 	versionAtChallenge := 0 // default: original
 	for i, a := range stmts {
-		if !a.Timestamp.After(challenge.Created) {
+		if a.Seq < challenge.Seq {
 			versionAtChallenge = i + 1
 		}
 	}
 
-	depsSince := filterDepsSince(deps, challenge.Created)
+	depsSince := filterDepsSinceSeq(deps, challenge.Seq)
 
 	currentVersion := len(versions) - 1
 	if versionAtChallenge == currentVersion && len(depsSince) == 0 {
