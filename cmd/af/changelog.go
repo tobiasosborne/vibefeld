@@ -9,6 +9,16 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version:    "0.1.10",
+		Unreleased: true,
+		Items: []string{
+			"`support_current`: a derived, recursive, revision-aware signal for whether a node's recorded `validated` verdict is still supported by the proof under it. It is computed by one memoised walk over result-use edges (`internal/support`), treats legacy result-use cycles as unresolved, and reports a stable cause (`NOT_VALIDATED`, `OPEN_BLOCKING_CHALLENGE`, `TARGET_NOT_CURRENT`, `TARGET_PENDING`, `TARGET_REFUTED`, `TARGET_REVISED`, `SELF_REVISED`, `CYCLE`). `af status` marks not-current validated nodes with `!` and a legend line and adds `support_current` to JSON; `af get` shows the cause and responsible node/seq; `af health` adds a blocker per cause; `af export --graph json` gains per-node `support_current`/`support_cause` behind the new `support-current` capability token. Replay records each node's validation sequence as derived state (no event change).",
+			"One acceptance-eligibility validator (`internal/service/accept_eligibility.go`) is now shared by single accept, bulk accept and `af verdicts apply`, and bulk accept is scheduled by actual prerequisites (children and validation dependencies first, ID order as tie-break) in one commit with per-item outcomes (`applied` / `blocked:<code>` / `rejected:<code>`) and the `af verdicts apply` exit tiers (5 partial, 6 none). This closes the hole where bulk accept skipped the children-validated and validation-deps checks, and the hole where `af accept --all` could validate a parent before its pending child.",
+			"Creation gate: a node may only be created (refine, bulk refine, record-proof, direct create) under a `pending`, `draft` or `needs_refinement` parent. A `validated` parent is refused with `run af request-refinement <id>`; an `admitted` parent with `run af unadmit <id>`; a `refuted` or `archived` parent is refused with no remedy. Typed errors, exit 3. This closes the hole where refining a validated parent left it looking validated with pending children.",
+			"Jobs classifier: `needs_refinement` is a prover job until its children are cleared, then a verifier job (previously it was neither). `af jobs`, `af health` and `af handoff` use the one `internal/jobs` classifier.",
+		},
+	},
+	{
 		Version: "0.1.9",
 		Date:    "2026-09-16",
 		Items: []string{
