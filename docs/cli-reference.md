@@ -496,17 +496,15 @@ af refine <parent-id> [statement]... [flags]
 | Flag | Short | Type | Required | Default | Description |
 |------|-------|------|----------|---------|-------------|
 | `--owner` | `-o` | string | Yes | | Agent/owner name (must match claim) |
-| `--statement` | `-s` | string | No | | (Deprecated) Use positional args instead |
 | `--type` | `-t` | string | No | "claim" | Node type: claim, local_assume, local_discharge, case, qed |
 | `--justification` | `-j` | string | No | "assumption" | Inference type |
 | `--depends` | | string | No | | Comma-separated node IDs this node depends on |
 | `--requires-validated` | | string | No | | Node IDs that must be validated before acceptance |
-| `--sibling` | `-b` | bool | No | false | (Deprecated) Use `refine-sibling` command instead |
 | `--children` | | string | No | | JSON array of child specifications |
 | `--dir` | `-d` | string | No | "." | Proof directory |
 | `--format` | `-f` | string | No | "text" | Output format: text or json |
 
-**Note:** Prefer positional arguments over `--statement`. The `--statement` flag is deprecated.
+**Note:** Child statements are positional arguments; the old `--statement`/`-s` flag was removed. Use `af refine-sibling` for breadth.
 
 **Inference / justification:** a `--justification` (and per-child `"inference"`) is a free-text derivation label — any non-blank string is accepted and stored verbatim; an omitted justification defaults to `assumption`. The following are the *recognized* logical rules that carry extra name/form metadata (use them where they genuinely apply); domain steps such as `multiplication_by_positive` or `monotonicity` are equally valid:
 
@@ -515,22 +513,22 @@ af refine <parent-id> [statement]... [flags]
 **Examples:**
 ```bash
 # Single child
-af refine 1 --owner agent1 --statement "First subgoal"
+af refine 1 "First subgoal" --owner agent1
 
 # Multiple children via positional args
 af refine 1 "Step A" "Step B" "Step C" --owner agent1
 
 # With type and justification
-af refine 1 -o agent1 -s "Case 1" --type case --justification local_assume
+af refine 1 "Case 1" -o agent1 --type case --justification local_assume
 
 # With dependencies
-af refine 1 -o agent1 -s "By step 1.1, we have..." --depends 1.1
+af refine 1 "By step 1.1, we have..." -o agent1 --depends 1.1
 
 # Multiple dependencies
-af refine 1 -o agent1 -s "Combining steps 1.1 and 1.2..." --depends 1.1,1.2
+af refine 1 "Combining steps 1.1 and 1.2..." -o agent1 --depends 1.1,1.2
 
 # Validation dependencies
-af refine 1.5 -o agent1 -s "Step 1.5" --requires-validated 1.1,1.2,1.3,1.4
+af refine 1.5 "Step 1.5" -o agent1 --requires-validated 1.1,1.2,1.3,1.4
 
 # JSON children specification
 af refine 1 --owner agent1 --children '[{"statement":"Child 1"},{"statement":"Child 2","type":"case"}]'
