@@ -69,6 +69,13 @@ func (s *ProofService) RecordProof(spec RecordProofSpec) (*RecordProofResult, er
 			return nil, fmt.Errorf("%w: %s", ErrParentNotFound, spec.ParentID.String())
 		}
 
+		// D4 creation gate: a validated parent needs request-refinement before a
+		// prover write against it, and the remedy must name that command rather
+		// than the generic stale-role refusal below.
+		if err := checkParentCreationGate(parent); err != nil {
+			return nil, err
+		}
+
 		// rk B1: current prover-job classification (same classifier the export's
 		// prover_ready flag uses).
 		challengeMap := st.ChallengeMapForJobs()

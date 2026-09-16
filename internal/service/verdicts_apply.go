@@ -10,7 +10,6 @@ import (
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/node"
-	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 	"github.com/tobiasosborne/vibefeld/internal/verdicts"
@@ -172,36 +171,21 @@ var (
 
 // applyAcceptVerdict handles a single accept item. abortErr is non-nil only
 // for a concurrent-modification race; all other failure modes are reported
-// via status/detail and do not stop the batch.
+// via status/detail and do not stop the batch. The eligibility checks —
+// including the verdict-file-specific expect-hash, verifier-readiness and
+// reviewer≠author gates — live in the shared checkAcceptEligibility, run
+// through buildAcceptEvents against this item's one state read.
 func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Item, f *verdicts.File) (status, detail string, abortErr error) {
 	var oldTaints map[string]node.TaintState
 	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
-		n := st.GetNode(nodeID)
-		if n == nil {
-			return nil, fmt.Errorf("%w: node %s does not exist", ErrNodeNotFound, item.Node)
-		}
-
-		// rk B1: atomic readiness/hash re-check under this state read. When the
-		// item carries the hash it was authored against, reject a stale accept —
-		// the node was edited (hash changed) or is no longer verifier-ready
-		// (claimed/blocked) since the verifier dispatched. This closes the race a
-		// driver-side second export cannot: the check and the append share one
-		// CAS-protected state read.
-		if item.ExpectHash != "" {
-			if n.ContentHash != item.ExpectHash {
-				return nil, fmt.Errorf("%w: node %s content hash changed since the verdict was authored (expected %s, current %s)", errVerdictHashMismatch, item.Node, item.ExpectHash, n.ContentHash)
-			}
-			if n.WorkflowState != schema.WorkflowAvailable {
-				return nil, fmt.Errorf("%w: node %s is no longer verifier-ready: workflow_state is %q, not %q", errVerdictNotReady, item.Node, n.WorkflowState, schema.WorkflowAvailable)
-			}
-		}
-
-		// Reviewer != author, honestly stated.
-		if n.Author != "" && n.Author == f.VerifiedBy {
-			return nil, fmt.Errorf("%w: verifier %q is also the recorded author of node %s", errVerdictReviewerIsAuthor, f.VerifiedBy, item.Node)
-		}
-
-		events, err := s.buildAcceptEvents(st, nodeID, item.Reason, f.VerifiedBy, f.BatchID, item.ExpectHash)
+		events, err := s.buildAcceptEvents(st, nodeID, AcceptOptions{
+			Note:                 item.Reason,
+			VerifiedBy:           f.VerifiedBy,
+			BatchID:              f.BatchID,
+			ExpectHash:           item.ExpectHash,
+			RequireVerifierReady: true,
+			CheckReviewerAuthor:  true,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -217,29 +201,16 @@ func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Ite
 	if stderrors.Is(err, ErrConcurrentModification) {
 		return "rejected:concurrent-modification", err.Error(), err
 	}
-
-	switch {
-	case stderrors.Is(err, errVerdictHashMismatch):
-		return "rejected:content-hash-mismatch", err.Error(), nil
-	case stderrors.Is(err, errVerdictNotReady):
-		return "rejected:not-verifier-ready", err.Error(), nil
-	case stderrors.Is(err, errVerdictReviewerIsAuthor):
-		return "rejected:reviewer-equals-author", err.Error(), nil
-	case stderrors.Is(err, ErrNodeNotFound):
-		return "rejected:node-not-found", err.Error(), nil
-	case stderrors.Is(err, ErrClaimTestRequired):
-		return "blocked-by:claim-test-required", err.Error(), nil
-	case strings.Contains(err.Error(), "children not yet validated"):
-		return "blocked-by:children-not-validated", err.Error(), nil
-	case strings.Contains(err.Error(), "validation dependencies not yet validated"):
-		return "blocked-by:validation-deps-not-validated", err.Error(), nil
-	case strings.Contains(err.Error(), "needs_refinement"):
-		return "blocked-by:needs-refinement-no-children", err.Error(), nil
-	case stderrors.Is(err, ErrBlockingChallenges):
-		return "blocked-by:blocking-challenge", err.Error(), nil
-	default:
-		return "rejected:apply-error", err.Error(), nil
+	if blocked, ok := asAcceptBlocked(err); ok {
+		return "blocked-by:" + blocked.Code, err.Error(), nil
 	}
+	if rejected, ok := asAcceptRejected(err); ok {
+		return "rejected:" + rejected.Code, err.Error(), nil
+	}
+	if stderrors.Is(err, ErrNodeNotFound) {
+		return "rejected:node-not-found", err.Error(), nil
+	}
+	return "rejected:apply-error", err.Error(), nil
 }
 
 // applyChallengeVerdict handles a single challenge item. There is no
