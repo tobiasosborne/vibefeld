@@ -166,7 +166,7 @@ func renderDependenciesCheck(sb *strings.Builder, n *node.Node, s *state.State) 
 // while a challenge was open on them, so a verifier accepting the parent sees
 // the abandoned obligation. It prints nothing when there is none.
 func renderArchiveObligationsCheck(sb *strings.Builder, n *node.Node, s *state.State) {
-	obligations := s.ArchivedChildrenWithAbandonedChallenges(n.ID)
+	obligations := s.ArchivedObligations(n.ID)
 	if len(obligations) == 0 {
 		return
 	}
@@ -489,7 +489,7 @@ func buildChecklistItems(n *node.Node) []JSONChecklistItem {
 // challenge was open on them, so the next accept acknowledges the abandoned
 // obligation (D9).
 func buildArchiveObligationsList(n *node.Node, s *state.State) []JSONChecklistArchiveObligation {
-	ids := s.ArchivedChildrenWithAbandonedChallenges(n.ID)
+	ids := s.ArchivedObligations(n.ID)
 	if len(ids) == 0 {
 		return nil
 	}

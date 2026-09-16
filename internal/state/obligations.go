@@ -66,18 +66,28 @@ func nodeSevered(n *node.Node) bool {
 	return n.EpistemicState == schema.EpistemicArchived || n.EpistemicState == schema.EpistemicRefuted
 }
 
-// ArchivedChildrenWithAbandonedChallenges returns the direct children of
-// parentID that are archived and still carry the trace of a challenge that was
-// open when they were archived. Replay auto-supersedes a node's open
-// challenges on archive, so a superseded challenge on an archived child is the
-// durable record of an abandoned obligation; a still-open challenge (legacy or
-// raised after archival) also counts. The verification checklist surfaces
-// these so the next accept acknowledges them (D9).
-func (s *State) ArchivedChildrenWithAbandonedChallenges(parentID types.NodeID) []types.NodeID {
+// ArchivedObligations returns the IDs of open-challenge obligations abandoned
+// by the archive of a direct child of parentID. It reads the durable
+// abandoned_obligations snapshot recorded on the child's NodeArchived event
+// (D9), so a descendant-only obligation (e.g. a challenge on 1.1.1 abandoned
+// by archiving 1.1) still surfaces on 1's checklist. Legacy archives that
+// predate the snapshot fall back to the challenge-trace derivation: a
+// superseded (auto-closed on archive) or still-open challenge directly on the
+// archived child is the durable record of an abandoned obligation.
+func (s *State) ArchivedObligations(parentID types.NodeID) []types.NodeID {
 	if s == nil {
 		return nil
 	}
 	var out []types.NodeID
+	seen := make(map[string]bool)
+	add := func(id types.NodeID) {
+		if seen[id.String()] {
+			return
+		}
+		seen[id.String()] = true
+		out = append(out, id)
+	}
+
 	for _, n := range s.AllNodes() {
 		parent, ok := n.ID.Parent()
 		if !ok || parent.String() != parentID.String() {
@@ -86,9 +96,21 @@ func (s *State) ArchivedChildrenWithAbandonedChallenges(parentID types.NodeID) [
 		if n.EpistemicState != schema.EpistemicArchived {
 			continue
 		}
+
+		if len(n.AbandonedObligations) > 0 {
+			for _, raw := range n.AbandonedObligations {
+				if id, err := types.Parse(raw); err == nil {
+					add(id)
+				}
+			}
+			continue
+		}
+
+		// Legacy fallback: no durable snapshot, so a challenge trace on the
+		// archived child itself is the only recoverable obligation.
 		for _, c := range s.GetChallengesForNode(n.ID) {
 			if c.Status == ChallengeStatusSuperseded || c.Status == ChallengeStatusOpen {
-				out = append(out, n.ID)
+				add(n.ID)
 				break
 			}
 		}

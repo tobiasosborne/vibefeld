@@ -90,6 +90,15 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 			if n := state.GetNode(ev.NodeID); n != nil {
 				n.VerdictSeq = seq
 			}
+		case ledger.NodeArchived:
+			// Derived archival sequence (D9): support_current compares a
+			// direct child's archival against its parent's verdict, and the
+			// durable abandoned-obligation snapshot is copied onto the node
+			// so the checklist can read it without re-scanning the ledger.
+			if n := state.GetNode(ev.NodeID); n != nil {
+				n.ArchivedSeq = seq
+				n.AbandonedObligations = append([]string(nil), ev.AbandonedObligations...)
+			}
 		case ledger.ChallengeRaised:
 			if c := state.GetChallenge(ev.ChallengeID); c != nil {
 				c.Seq = seq

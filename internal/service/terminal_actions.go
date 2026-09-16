@@ -82,14 +82,21 @@ func (s *ProofService) ArchiveNodeWithOptions(id types.NodeID, opts ArchiveOptio
 			return nil, err
 		}
 
-		if obligations := st.OpenChallengeObligations(id); len(obligations) > 0 && !opts.Force {
+		obligations := st.OpenChallengeObligations(id)
+		if len(obligations) > 0 && !opts.Force {
 			return nil, fmt.Errorf("%w: node(s) %s", ErrOpenChallengeObligation, formatObligations(obligations))
 		}
 
+		// Capture the abandoned obligation node IDs on the event (D9) so the
+		// checklist can later surface a descendant-only obligation that would
+		// otherwise vanish from the archived child's own challenge trace.
 		ev := ledger.NewNodeArchived(id)
 		ev.Reason = opts.Reason
 		ev.Forced = opts.Force
 		ev.By = opts.By
+		if len(obligations) > 0 {
+			ev.AbandonedObligations = obligationStrings(obligations)
+		}
 		setFencedClaimRelease(n, opts.By, &ev.ReleaseClaim, &ev.ClaimSeq)
 		return []ledger.Event{ev}, nil
 	})
