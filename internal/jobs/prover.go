@@ -74,12 +74,13 @@ func isProverJob(n *node.Node, nodeMap map[string]*node.Node, challengeMap map[s
 		return true
 	}
 
-	// A node reopened for more proof work is a prover job until its children are
-	// cleared, at which point it becomes a verifier job again (D4). A
+	// A node reopened for more proof work is a prover job while it has an open
+	// blocking challenge or uncleared children. It hands over to the verifier
+	// only when children are cleared AND no blocking challenge remains (D4). A
 	// needs_refinement node with no children at all stays prover work: accept
 	// refuses it until refinement actually happened.
 	if n.EpistemicState == schema.EpistemicNeedsRefinement {
-		return !hasAnyChild(n, nodeMap) || !AllChildrenCleared(n, nodeMap)
+		return !hasAnyChild(n, nodeMap) || !AllChildrenCleared(n, nodeMap) || hasBlockingChallenges(n, challengeMap)
 	}
 
 	// Must be pending (not yet verified)

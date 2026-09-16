@@ -51,6 +51,36 @@ func TestNeedsRefinement_ChildStatesDecideRole(t *testing.T) {
 	}
 }
 
+// TestNeedsRefinement_OpenBlockingChallengeStaysProver locks the hole an
+// independent review found: a needs_refinement node whose children are all
+// cleared but which still carries an open blocking challenge must remain a
+// prover job, not fall through to neither role.
+func TestNeedsRefinement_OpenBlockingChallengeStaysProver(t *testing.T) {
+	parent := createTestNode(t, "1", schema.WorkflowAvailable, schema.EpistemicNeedsRefinement)
+	child := createTestNode(t, "1.1", schema.WorkflowAvailable, schema.EpistemicValidated)
+	nodes := []*node.Node{parent, child}
+	nodeMap := buildProverNodeMap(nodes)
+	challengeMap := buildProverChallengeMap([]*node.Challenge{
+		createProverTestChallenge(t, "c1", parent.ID, node.ChallengeStatusOpen),
+	})
+
+	if got := jobs.FindProverJobs(nodes, nodeMap, challengeMap); !containsNode(got, "1") {
+		t.Errorf("needs_refinement with an open blocking challenge and cleared children should stay a prover job, got %v", got)
+	}
+	if got := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap); containsNode(got, "1") {
+		t.Errorf("needs_refinement with an open blocking challenge must not be a verifier job, got %v", got)
+	}
+
+	// Resolving the challenge hands the cleared node back to the verifier.
+	challengeMap["1"][0].Status = node.ChallengeStatusResolved
+	if got := jobs.FindProverJobs(nodes, nodeMap, challengeMap); containsNode(got, "1") {
+		t.Errorf("resolved challenge should hand needs_refinement to the verifier, got prover job %v", got)
+	}
+	if got := jobs.FindVerifierJobs(nodes, nodeMap, challengeMap); !containsNode(got, "1") {
+		t.Errorf("resolved challenge should make needs_refinement a verifier job, got %v", got)
+	}
+}
+
 func containsNode(nodes []*node.Node, id string) bool {
 	for _, n := range nodes {
 		if n.ID.String() == id {
