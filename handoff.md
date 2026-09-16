@@ -1,3 +1,60 @@
+# Handoff - 2026-09-16 (final): v0.1.10 tagged; D6 preserved on a branch for 0.1.11
+
+Tobias asked to wind up at 0.1.10. State at this handoff:
+
+- **main** = v0.1.10 (tag pushed). All 0.1.9 and 0.1.10 items of
+  `docs/plans/scale-hardening.md` v3.1 are merged: D0, D10, D1, D3, D2
+  (v0.1.9); D4, D7, D11, D5, D9, D8, benchmark job (v0.1.10). Gates green,
+  corpus check green on the release binary. Per-item reports incl. review
+  fixes: `docs/plans/reports/D{0,1,2,3,4,5-D9,7-D11,8,10}.md`, `BENCH.md`
+  (+ `benchmark-results.json`).
+- **D6 (0.1.11, bead vibefeld-cmww) is built but NOT reviewed and NOT
+  merged.** Branch `work/d6-support-taint` is pushed to origin (9 commits on
+  top of the D8 merge, `REPORT-D6.md` at its root, all gates green when
+  built). To land it: `git merge main` into the branch, one codex review
+  (gpt-5.6-sol xhigh, read-only, prompt on stdin), one fix pass, Claude
+  review, corpus taint diff with `scripts/corpus-taint-diff.sh <old-af>
+  <new-af>` (taint_state / taint_counts are the only allowlisted export
+  changes), merge, bump VersionInfo to 0.1.11 (its changelog entry is on
+  the branch, Unreleased), tag.
+- Benchmark verdict (`docs/plans/reports/BENCH.md`): all commands linear in
+  events (status/jobs/audit ~150 ms at 1000 nodes), zero lock waits at 50
+  writers (retries are CAS conflicts by design), bulk accept ~60 ms/node
+  (per-node state reload, linear, the known target), directory fsync ~2
+  ms/event. Snapshots are not needed for 0.1.11.
+- `af audit` over the 211-workspace corpus: 102 SUPPORT_NOT_CURRENT, 21
+  AMENDED_NOT_REVERIFIED, 3 VALIDATED_WITH_OPEN_BLOCKING_CHALLENGE
+  (current), plus historical classes; zero HASH_MISMATCH after the
+  reconstruction fix.
+
+## For Tobias
+
+1. **Post the #3 reply**: text approved, in `docs/plans/issue-3-reply.md`
+   (posting via `gh` was blocked by the agent's permission classifier).
+2. GitHub releases for v0.1.9 / v0.1.10 if wanted (`af changelog` has the
+   notes).
+3. Next agent: land D6 as above, then tag v0.1.11 and close epic
+   vibefeld-67y5.
+
+## Open beads worth knowing
+
+- vibefeld-cmww (D6, see above); vibefeld-67y5 (epic, stays open until D6).
+- vibefeld-8rjx (fs.WriteNode corrupt-file flake under load), vibefeld-bsb1
+  (ledger lock timeout under load; benchmark shows no waits in normal use).
+- The AF_PREVIOUS_BINARY fixture test runs only when a 0.1.8 binary is
+  supplied.
+
+## Process notes (what worked)
+
+Per item: pi deepseek-flash build from a written brief -> one codex
+gpt-5.6-sol xhigh read-only review -> one deepseek fix pass -> Claude
+review -> merge -> corpus check. Reviews found 4-9 real issues per item;
+no second review round was needed. Agents must be launched detached
+(`setsid nohup`) with a staleness watchdog; codex needs its prompt on
+stdin. Two deepseek accounts were never exhausted; glm was not needed.
+
+---
+
 # Handoff - 2026-09-16 (later): 0.1.10 in progress — D4, D7, D11 merged; D5/D9 under review; D8 building
 
 Continues the v0.1.9 handoff below. Same cadence per item (pi deepseek-flash

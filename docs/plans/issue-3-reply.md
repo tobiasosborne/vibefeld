@@ -1,10 +1,10 @@
-# Draft reply to GitHub #3 (for Tobias to post)
+# Reply to GitHub #3 (text approved by Tobias 2026-09-16; not yet posted)
 
 Thanks for the detailed report, and for running af at this scale; 123 nodes
 and 291 challenges is well past what it was exercised at.
 
 Decision: **option A**. Edge correction is going in on the 0.1.x line, as
-`af amend-deps`, in release 0.1.9. Design, in short:
+`af amend-deps`, in release 0.1.9, tagged `v0.1.9` (0.1.10 with `af audit` and `support_current` follows). Design, in short:
 
 - `af amend-deps <node> [--add ids] [--remove ids] [--add-validated ids]
   [--remove-validated ids] --owner <agent> --reason "<text>"` works on
@@ -40,3 +40,5 @@ share a copy of the ledger directory (it is just JSON event files), I
 would use it as the acceptance test for the migration: dry-run, real run,
 kill-and-resume, re-verify, audit. And if you would like to review the
 `amend-deps` spec or contribute the tests-first patch, the door is open.
+
+Worked example: `docs/amend-deps-example.md`. Per-item reports: `docs/plans/reports/`.
