@@ -33,7 +33,7 @@ func addHealthTestNode(t *testing.T, st *state.State, id, stmt string, wf schema
 // TestHealthCmd_ReworkFlags verifies the configurable thresholds exist.
 func TestHealthCmd_ReworkFlags(t *testing.T) {
 	cmd := newHealthCmd()
-	for _, name := range []string{"hotspots", "rework-warn"} {
+	for _, name := range []string{"hotspots", "rework-warn", "claim-stall"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected health to have --%s", name)
 		}
@@ -43,6 +43,9 @@ func TestHealthCmd_ReworkFlags(t *testing.T) {
 	}
 	if cmd.Flags().Lookup("rework-warn").DefValue != "5" {
 		t.Errorf("--rework-warn default = %q, want 5", cmd.Flags().Lookup("rework-warn").DefValue)
+	}
+	if cmd.Flags().Lookup("claim-stall").DefValue != "0s" {
+		t.Errorf("--claim-stall default = %q, want 0s (the claim's own lease)", cmd.Flags().Lookup("claim-stall").DefValue)
 	}
 }
 
@@ -62,7 +65,7 @@ func TestAnalyzeHealth_ReworkIsDescriptive(t *testing.T) {
 	}
 	st.AddAmendment(n.ID, state.Amendment{Kind: state.AmendmentKindDependencies, Owner: "prover-1"})
 
-	report := analyzeHealth(st, healthOptions{ReworkWarn: 5, Hotspots: 5, LockTimeout: time.Minute})
+	report := analyzeHealth(st, healthOptions{ReworkWarn: 5, Hotspots: 5})
 
 	if len(report.Rework) != 1 {
 		t.Fatalf("want 1 rework hotspot, got %d", len(report.Rework))
@@ -105,7 +108,7 @@ func TestAnalyzeHealth_HotspotLimit(t *testing.T) {
 			})
 		}
 	}
-	report := analyzeHealth(st, healthOptions{ReworkWarn: 100, Hotspots: 2, LockTimeout: time.Minute})
+	report := analyzeHealth(st, healthOptions{ReworkWarn: 100, Hotspots: 2})
 	if len(report.Rework) != 2 {
 		t.Fatalf("want 2 hotspots, got %d", len(report.Rework))
 	}
@@ -118,7 +121,8 @@ func TestAnalyzeHealth_HotspotLimit(t *testing.T) {
 }
 
 // TestAnalyzeHealth_ClaimBlockers verifies stalled and stale claims are
-// reported with owner and expiry.
+// reported with owner and expiry. The stall detector uses the dedicated
+// claim-stall window / last claim activity, never the ledger lock timeout.
 func TestAnalyzeHealth_ClaimBlockers(t *testing.T) {
 	now := time.Now()
 	st := state.NewState()
@@ -126,13 +130,15 @@ func TestAnalyzeHealth_ClaimBlockers(t *testing.T) {
 	stale := addHealthTestNode(t, st, "1.1", "stale", schema.WorkflowClaimed, schema.EpistemicPending)
 	stale.ClaimedBy = "owner-stale"
 	stale.ClaimedAt = types.FromTime(now.Add(-time.Minute))
+	stale.ClaimLastActive = types.FromTime(now.Add(-10 * time.Minute))
 
 	stalled := addHealthTestNode(t, st, "1.2", "stalled", schema.WorkflowClaimed, schema.EpistemicPending)
 	stalled.ClaimedBy = "owner-stalled"
 	stalled.ClaimedAt = types.FromTime(now.Add(time.Hour))
-	stalled.ClaimedSince = types.FromTime(now.Add(-10 * time.Minute))
+	stalled.ClaimedSince = types.FromTime(now.Add(-2 * time.Hour))
+	stalled.ClaimLastActive = types.FromTime(now.Add(-10 * time.Minute))
 
-	report := analyzeHealth(st, healthOptions{ReworkWarn: 5, Hotspots: 5, LockTimeout: time.Minute})
+	report := analyzeHealth(st, healthOptions{ReworkWarn: 5, Hotspots: 5, ClaimStall: time.Minute})
 
 	var sawStale, sawStalled bool
 	for _, b := range report.Blockers {
@@ -157,6 +163,54 @@ func TestAnalyzeHealth_ClaimBlockers(t *testing.T) {
 	}
 }
 
+// TestAnalyzeHealth_RefreshClearsStall verifies a refreshed claim is not
+// reported as stalled even when it has been held for far longer than the
+// ledger lock timeout, and that the default stall window is the claim's own
+// lease rather than a fixed lock timeout.
+func TestAnalyzeHealth_RefreshClearsStall(t *testing.T) {
+	now := time.Now()
+	st := state.NewState()
+
+	// Acquired two hours ago, refreshed a moment ago, expires in an hour.
+	// ClaimedSince is old, so a ClaimedSince-based detector (the old bug)
+	// would flag it; ClaimLastActive is fresh, so it must not be stalled.
+	refreshed := addHealthTestNode(t, st, "1.1", "refreshed", schema.WorkflowClaimed, schema.EpistemicPending)
+	refreshed.ClaimedBy = "owner-refreshed"
+	refreshed.ClaimedSince = types.FromTime(now.Add(-2 * time.Hour))
+	refreshed.ClaimLastActive = types.FromTime(now.Add(-time.Second))
+	refreshed.ClaimedAt = types.FromTime(now.Add(time.Hour))
+
+	// Default window: the claim's own lease (ClaimedAt - ClaimLastActive,
+	// about an hour). An old last-activity without a refresh is still not a
+	// stall when the lease is longer, so a long-held claim is not flagged.
+	longLease := addHealthTestNode(t, st, "1.2", "long-lease", schema.WorkflowClaimed, schema.EpistemicPending)
+	longLease.ClaimedBy = "owner-long"
+	longLease.ClaimLastActive = types.FromTime(now.Add(-10 * time.Minute))
+	longLease.ClaimedAt = types.FromTime(now.Add(2 * time.Hour))
+
+	report := analyzeHealth(st, healthOptions{ReworkWarn: 5, Hotspots: 5})
+	for _, b := range report.Blockers {
+		if b.Type == "stalled_claim" {
+			t.Errorf("freshly refreshed / long-lease claim must not be stalled: %+v", b)
+		}
+	}
+
+	// An explicit short window still catches the long-lease claim.
+	report = analyzeHealth(st, healthOptions{ReworkWarn: 5, Hotspots: 5, ClaimStall: time.Minute})
+	var sawLongLease bool
+	for _, b := range report.Blockers {
+		if b.Type == "stalled_claim" && b.Owner == "owner-long" {
+			sawLongLease = true
+		}
+		if b.Type == "stalled_claim" && b.Owner == "owner-refreshed" {
+			t.Errorf("refreshed claim flagged under explicit short window: %+v", b)
+		}
+	}
+	if !sawLongLease {
+		t.Errorf("explicit --claim-stall did not flag the long-held claim")
+	}
+}
+
 // TestAnalyzeHealth_OpenChallengesHaveSeverityAndAge verifies open challenges
 // are reported descriptively.
 func TestAnalyzeHealth_OpenChallengesHaveSeverityAndAge(t *testing.T) {
@@ -167,7 +221,7 @@ func TestAnalyzeHealth_OpenChallengesHaveSeverityAndAge(t *testing.T) {
 		Severity: "critical", Reason: "gap", Created: types.FromTime(time.Now().Add(-2 * time.Hour)),
 	})
 
-	report := analyzeHealth(st, healthOptions{ReworkWarn: 5, Hotspots: 5, LockTimeout: time.Minute})
+	report := analyzeHealth(st, healthOptions{ReworkWarn: 5, Hotspots: 5})
 	var found bool
 	for _, b := range report.Blockers {
 		if b.Type == "open_challenge" {

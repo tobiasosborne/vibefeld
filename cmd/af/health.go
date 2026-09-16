@@ -88,9 +88,15 @@ type HealthReport struct {
 
 // healthOptions carries the configurable thresholds for a health run.
 type healthOptions struct {
-	ReworkWarn  int
-	Hotspots    int
-	LockTimeout time.Duration
+	ReworkWarn int
+	Hotspots   int
+	// ClaimStall is the window after a claim's last refresh (or acquisition)
+	// beyond which the claim is reported as stalled. Zero means "use each
+	// claim's own lease length" (the gap between its last activity and its
+	// expiry), so a claim with a long lease is not flagged merely for being
+	// held a long time. This is deliberately independent of the ledger-lock
+	// timeout used by Config.LockTimeout.
+	ClaimStall time.Duration
 }
 
 // newHealthCmd creates the health command.
@@ -105,7 +111,7 @@ The health command detects:
   - All leaf nodes have open challenges (every proof path is blocked)
   - No available prover or verifier jobs (nothing to work on)
   - Open challenges, with severity and age
-  - Stalled claims (held longer than the lock timeout) and stale claims (expired)
+  - Stalled claims (no refresh within the claim-stall threshold) and stale claims (expired)
   - Untouched critical outline stages
 
 Rework is reported, not judged. For each node it counts resolved challenges,
@@ -129,7 +135,8 @@ Examples:
   af health --dir /path/to/proof Check health for specific proof
   af health --format json        Output in JSON format
   af health --hotspots 10        Show the 10 most-reworked nodes
-  af health --rework-warn 8      Warn at 8 rework events per node`,
+  af health --rework-warn 8      Warn at 8 rework events per node
+  af health --claim-stall 30m    Warn when a claim has not been refreshed in 30m`,
 		RunE: runHealth,
 	}
 
@@ -137,6 +144,7 @@ Examples:
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
 	cmd.Flags().Int("hotspots", DefaultReworkHotspots, "Number of top rework hotspots to report")
 	cmd.Flags().Int("rework-warn", DefaultReworkWarnThreshold, "Rework events per node at which a hotspot is a warning")
+	cmd.Flags().Duration("claim-stall", 0, "Warn when a claim is not refreshed within this window (0 = each claim's own lease length)")
 
 	return cmd
 }
@@ -148,6 +156,10 @@ func runHealth(cmd *cobra.Command, args []string) error {
 	format := service.MustString(cmd, "format")
 	hotspots := service.MustInt(cmd, "hotspots")
 	reworkWarn := service.MustInt(cmd, "rework-warn")
+	claimStall, err := cmd.Flags().GetDuration("claim-stall")
+	if err != nil {
+		return fmt.Errorf("error reading claim-stall: %w", err)
+	}
 
 	// Validate format
 	format = strings.ToLower(format)
@@ -159,6 +171,9 @@ func runHealth(cmd *cobra.Command, args []string) error {
 	}
 	if reworkWarn < 0 {
 		return fmt.Errorf("invalid rework-warn %d: must be non-negative", reworkWarn)
+	}
+	if claimStall < 0 {
+		return fmt.Errorf("invalid claim-stall %s: must be non-negative", claimStall)
 	}
 
 	// Create proof service
@@ -187,16 +202,11 @@ func runHealth(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading proof state: %w", err)
 	}
 
-	lockTimeout, err := svc.LockTimeout()
-	if err != nil {
-		return fmt.Errorf("error reading lock timeout: %w", err)
-	}
-
 	// Build the health report
 	report := analyzeHealth(st, healthOptions{
-		ReworkWarn:  reworkWarn,
-		Hotspots:    hotspots,
-		LockTimeout: lockTimeout,
+		ReworkWarn: reworkWarn,
+		Hotspots:   hotspots,
+		ClaimStall: claimStall,
 	})
 
 	// Output based on format
@@ -354,7 +364,7 @@ func analyzeHealth(st *service.State, opts healthOptions) *HealthReport {
 	blockers = append(blockers, openChallengeBlockers(openChallenges, time.Now())...)
 
 	// Check 5: Stalled and stale claims.
-	stalled, stale := claimBlockers(nodes, opts.LockTimeout, time.Now())
+	stalled, stale := claimBlockers(nodes, opts.ClaimStall, time.Now())
 	blockers = append(blockers, stalled...)
 	blockers = append(blockers, stale...)
 	if len(stalled) > 0 || len(stale) > 0 {
@@ -466,9 +476,11 @@ func openChallengeBlockers(challenges []*state.Challenge, now time.Time) []Block
 }
 
 // claimBlockers returns stalled and stale claim blockers. A stale claim is one
-// whose expiry has passed; a stalled claim is still active but has been held
-// longer than the configured lock timeout.
-func claimBlockers(nodes []*node.Node, lockTimeout time.Duration, now time.Time) (stalled, stale []Blocker) {
+// whose expiry has passed. A stalled claim is still active but has not been
+// refreshed (ClaimLastActive) within the claim-stall window. When stall is
+// zero the window is the claim's own lease length (expiry minus last activity),
+// so a long lease is not itself a stall; passing a positive stall overrides it.
+func claimBlockers(nodes []*node.Node, stall time.Duration, now time.Time) (stalled, stale []Blocker) {
 	for _, n := range nodes {
 		if n.WorkflowState != service.WorkflowClaimed {
 			continue
@@ -480,8 +492,15 @@ func claimBlockers(nodes []*node.Node, lockTimeout time.Duration, now time.Time)
 		if !n.ClaimedAt.IsZero() {
 			blk.Expires = n.ClaimedAt.String()
 		}
-		if !n.ClaimedSince.IsZero() {
-			blk.Age = formatAge(now.Sub(n.ClaimedSince.Time()))
+
+		// Last claim activity: the most recent refresh, falling back to the
+		// acquisition time for claims replayed from pre-ClaimLastActive ledgers.
+		lastActive := n.ClaimLastActive
+		if lastActive.IsZero() {
+			lastActive = n.ClaimedSince
+		}
+		if !lastActive.IsZero() {
+			blk.Age = formatAge(now.Sub(lastActive.Time()))
 		}
 
 		if !n.ClaimedAt.IsZero() && n.ClaimedAt.Before(types.FromTime(now)) {
@@ -493,11 +512,17 @@ func claimBlockers(nodes []*node.Node, lockTimeout time.Duration, now time.Time)
 			continue
 		}
 
-		if lockTimeout > 0 && !n.ClaimedSince.IsZero() && now.Sub(n.ClaimedSince.Time()) > lockTimeout {
+		// Stall window: an explicit --claim-stall wins; otherwise use the
+		// claim's own lease length (expiry minus last activity).
+		threshold := stall
+		if threshold <= 0 && !lastActive.IsZero() && !n.ClaimedAt.IsZero() {
+			threshold = n.ClaimedAt.Time().Sub(lastActive.Time())
+		}
+		if threshold > 0 && !lastActive.IsZero() && now.Sub(lastActive.Time()) > threshold {
 			blk.Type = "stalled_claim"
 			blk.Level = "warning"
-			blk.Message = fmt.Sprintf("Claim on node %s by %s has been held for %s (longer than the %s lock timeout)",
-				n.ID.String(), n.ClaimedBy, blk.Age, lockTimeout)
+			blk.Message = fmt.Sprintf("Claim on node %s by %s has not been refreshed for %s (longer than the %s claim-stall window)",
+				n.ID.String(), n.ClaimedBy, blk.Age, threshold)
 			blk.Suggestion = "Check the owner is still alive; release it with 'af release <id>' or reap it"
 			stalled = append(stalled, blk)
 		}

@@ -142,6 +142,7 @@ func applyNodesClaimed(s *State, e ledger.NodesClaimed) error {
 		n.ClaimedBy = e.Owner
 		n.ClaimedAt = e.Timeout
 		n.ClaimedSince = e.Timestamp()
+		n.ClaimLastActive = e.Timestamp()
 	}
 	return nil
 }
@@ -160,8 +161,10 @@ func applyClaimRefreshed(s *State, e ledger.ClaimRefreshed) error {
 	if n.ClaimedBy != e.Owner {
 		return fmt.Errorf("node %s is claimed by %s, not %s", e.NodeID.String(), n.ClaimedBy, e.Owner)
 	}
-	// Update the timeout
+	// Update the timeout and the last-activity marker. A refresh must not count
+	// toward the lease/stall clock; only the activity time is reset here.
 	n.ClaimedAt = e.NewTimeout
+	n.ClaimLastActive = e.Timestamp()
 	return nil
 }
 
@@ -181,6 +184,7 @@ func applyNodesReleased(s *State, e ledger.NodesReleased) error {
 		n.ClaimedBy = ""
 		n.ClaimedAt = types.Timestamp{}
 		n.ClaimedSince = types.Timestamp{}
+		n.ClaimLastActive = types.Timestamp{}
 	}
 	return nil
 }
