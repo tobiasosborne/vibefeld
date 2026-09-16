@@ -847,14 +847,37 @@ func (s *ProofService) AcceptNodeWithExpectation(id types.NodeID, note, verified
 // acceptNodeWithExpectation is the shared body of AcceptNodeWithVerifier and
 // AcceptNodeWithExpectation.
 func (s *ProofService) acceptNodeWithExpectation(id types.NodeID, note, verifiedBy, batchID, expectHash string) error {
+	return s.acceptNodeWithOptions(id, AcceptOptions{
+		Note:       note,
+		VerifiedBy: verifiedBy,
+		BatchID:    batchID,
+		ExpectHash: expectHash,
+	})
+}
+
+// AcceptNodeInteractive is the interactive `af accept` path. It differs from
+// AcceptNodeWithExpectation in that every accept runs the reviewer≠contributor
+// check (against author, proof author and amendment owners) and may explicitly
+// allow a self-accept with allowSelf, recording self_accepted on the event.
+// A self-accept always sets CheckReviewerAuthor; verdict files keep the same
+// shared check and cannot opt out (they never set AllowSelf).
+func (s *ProofService) AcceptNodeInteractive(id types.NodeID, note, verifiedBy, expectHash string, allowSelf bool) error {
+	return s.acceptNodeWithOptions(id, AcceptOptions{
+		Note:                note,
+		VerifiedBy:          verifiedBy,
+		ExpectHash:          expectHash,
+		CheckReviewerAuthor: true,
+		AllowSelf:           allowSelf,
+	})
+}
+
+// acceptNodeWithOptions is the one place the interactive, bulk and verdict
+// accept paths build their events, so they share one state read and one set of
+// preconditions.
+func (s *ProofService) acceptNodeWithOptions(id types.NodeID, opts AcceptOptions) error {
 	var oldTaints map[string]node.TaintState
 	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
-		events, err := s.buildAcceptEvents(st, id, AcceptOptions{
-			Note:       note,
-			VerifiedBy: verifiedBy,
-			BatchID:    batchID,
-			ExpectHash: expectHash,
-		})
+		events, err := s.buildAcceptEvents(st, id, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -879,7 +902,12 @@ func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, opts 
 	if err := checkAcceptEligibility(st, n, opts); err != nil {
 		return nil, err
 	}
-	return []ledger.Event{ledger.NewNodeValidatedWithHash(id, opts.Note, opts.VerifiedBy, opts.BatchID, n.ContentHash, opts.ExpectHash != "")}, nil
+	ev := ledger.NewNodeValidatedWithHash(id, opts.Note, opts.VerifiedBy, opts.BatchID, n.ContentHash, opts.ExpectHash != "")
+	if opts.CheckReviewerAuthor && opts.AllowSelf && contributorRole(st, n, opts.VerifiedBy) != "" {
+		ev.SelfAccepted = true
+	}
+	setFencedClaimRelease(n, opts.VerifiedBy, &ev.ReleaseClaim, &ev.ClaimSeq)
+	return []ledger.Event{ev}, nil
 }
 
 // AcceptNodeBulk validates multiple nodes atomically, marking them as verified correct.
@@ -974,20 +1002,7 @@ func (s *ProofService) LoadPendingNodeSummaries() ([]NodeSummary, error) {
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AdmitNode(id types.NodeID) error {
-	return s.commitThenTaint(id, func(st *state.State) ([]ledger.Event, error) {
-		// Check if node exists
-		n := st.GetNode(id)
-		if n == nil {
-			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-		}
-
-		// Validate epistemic state transition (only pending -> admitted allowed)
-		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicAdmitted); err != nil {
-			return nil, err
-		}
-
-		return []ledger.Event{ledger.NewNodeAdmitted(id)}, nil
-	})
+	return s.AdmitNodeWithAgent(id, "")
 }
 
 // RefuteNode refutes a node, marking it as incorrect.
@@ -1002,20 +1017,7 @@ func (s *ProofService) AdmitNode(id types.NodeID) error {
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefuteNode(id types.NodeID) error {
-	return s.commitThenTaint(id, func(st *state.State) ([]ledger.Event, error) {
-		// Check if node exists
-		n := st.GetNode(id)
-		if n == nil {
-			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-		}
-
-		// Validate epistemic state transition (only pending -> refuted allowed)
-		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicRefuted); err != nil {
-			return nil, err
-		}
-
-		return []ledger.Event{ledger.NewNodeRefuted(id)}, nil
-	})
+	return s.RefuteNodeWithAgent(id, "")
 }
 
 // VetoNode is a human expert force-refute that bypasses normal adversarial
@@ -1063,20 +1065,7 @@ func (s *ProofService) VetoNode(id types.NodeID, reason, vetoedBy string) error 
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) ArchiveNode(id types.NodeID) error {
-	return s.commitThenTaint(id, func(st *state.State) ([]ledger.Event, error) {
-		// Check if node exists
-		n := st.GetNode(id)
-		if n == nil {
-			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-		}
-
-		// Validate epistemic state transition (only pending -> archived allowed)
-		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicArchived); err != nil {
-			return nil, err
-		}
-
-		return []ledger.Event{ledger.NewNodeArchived(id)}, nil
-	})
+	return s.ArchiveNodeWithOptions(id, ArchiveOptions{})
 }
 
 // AddDefinition adds a new definition to the proof.

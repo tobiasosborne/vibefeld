@@ -107,6 +107,23 @@ func (r *BulkAcceptReport) ExitError() error {
 // error is nil iff every item applied, otherwise a VERDICTS_PARTIALLY_APPLIED
 // (exit 5) or VERDICTS_NONE_APPLIED (exit 6) AFError.
 func (s *ProofService) AcceptNodesBulk(ids []types.NodeID, verifiedBy, batchID string) (*BulkAcceptReport, error) {
+	return s.acceptNodesBulkWithOptions(ids, AcceptOptions{VerifiedBy: verifiedBy, BatchID: batchID})
+}
+
+// AcceptNodesBulkInteractive is the interactive `af accept` bulk path. Like
+// AcceptNodeInteractive it runs the reviewer≠contributor check and may allow
+// an explicit self-accept (recorded as self_accepted on each event). Verdict
+// files keep the same check and never allow self.
+func (s *ProofService) AcceptNodesBulkInteractive(ids []types.NodeID, verifiedBy string, allowSelf bool) (*BulkAcceptReport, error) {
+	return s.acceptNodesBulkWithOptions(ids, AcceptOptions{
+		VerifiedBy:          verifiedBy,
+		CheckReviewerAuthor: true,
+		AllowSelf:           allowSelf,
+	})
+}
+
+// acceptNodesBulkWithOptions is the shared body of the bulk accept forms.
+func (s *ProofService) acceptNodesBulkWithOptions(ids []types.NodeID, opts AcceptOptions) (*BulkAcceptReport, error) {
 	report := &BulkAcceptReport{}
 	if len(ids) == 0 {
 		return report, nil
@@ -119,7 +136,7 @@ func (s *ProofService) AcceptNodesBulk(ids []types.NodeID, verifiedBy, batchID s
 		report.Applied, report.Blocked, report.Rejected = 0, 0, 0
 		report.cause = nil
 		acceptedIDs = nil
-		events, err := scheduleBulkAccept(st, ids, verifiedBy, batchID, report, &acceptedIDs)
+		events, err := scheduleBulkAccept(st, ids, opts, report, &acceptedIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -144,7 +161,7 @@ func (s *ProofService) AcceptNodesBulk(ids []types.NodeID, verifiedBy, batchID s
 	return report, report.ExitError()
 }
 
-func scheduleBulkAccept(st *state.State, ids []types.NodeID, verifiedBy, batchID string, report *BulkAcceptReport, acceptedIDs *[]types.NodeID) ([]ledger.Event, error) {
+func scheduleBulkAccept(st *state.State, ids []types.NodeID, base AcceptOptions, report *BulkAcceptReport, acceptedIDs *[]types.NodeID) ([]ledger.Event, error) {
 	type candidate struct {
 		id types.NodeID
 		n  *node.Node
@@ -175,10 +192,16 @@ func scheduleBulkAccept(st *state.State, ids []types.NodeID, verifiedBy, batchID
 		var still []candidate
 		progressed := false
 		for _, it := range undecided {
-			opts := AcceptOptions{VerifiedBy: verifiedBy, BatchID: batchID, AcceptedInBatch: accepted}
+			opts := base
+			opts.AcceptedInBatch = accepted
 			err := checkAcceptEligibility(st, it.n, opts)
 			if err == nil {
-				events = append(events, ledger.NewNodeValidatedWithHash(it.id, "", verifiedBy, batchID, it.n.ContentHash, false))
+				ev := ledger.NewNodeValidatedWithHash(it.id, "", base.VerifiedBy, base.BatchID, it.n.ContentHash, false)
+				if base.CheckReviewerAuthor && base.AllowSelf && contributorRole(st, it.n, base.VerifiedBy) != "" {
+					ev.SelfAccepted = true
+				}
+				setFencedClaimRelease(it.n, base.VerifiedBy, &ev.ReleaseClaim, &ev.ClaimSeq)
+				events = append(events, ev)
 				accepted[it.id.String()] = true
 				*acceptedIDs = append(*acceptedIDs, it.id)
 				report.add(it.id.String(), "applied", "")
