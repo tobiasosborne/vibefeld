@@ -6,7 +6,9 @@
 # auto-prove.sh generates for its agents must actually execute. It creates a
 # disposable workspace, installs a stub `claude` that pulls the generated af
 # commands out of each prompt and runs them, drives one or two iterations of
-# auto-prove.sh, and fails if af reports an unknown flag.
+# auto-prove.sh, and fails if af reports an unknown flag. It also exercises the
+# D4 completion gate: the real binary completes on a validated, current root,
+# while an af wrapper that strips or negates support_current must not.
 #
 # Usage:
 #   scripts/test-auto-prove.sh [--af-binary PATH]
@@ -103,6 +105,13 @@ done
 status=0
 while IFS= read -r line; do
     [[ "$line" == *"$af"* ]] || continue
+    # Only generated commands are executed. A generated command names the af
+    # binary exactly once; prose alternatives such as
+    #   "Consider af archive or af refute"
+    # name it twice and must be skipped rather than run as one sentence.
+    line_without_af="${line//"$af"/}"
+    af_count=$(( (${#line} - ${#line_without_af}) / ${#af} ))
+    [[ "$af_count" -eq 1 ]] || continue
     cmd="${line#*"$af"}"
     # trim leading whitespace
     cmd="${cmd#"${cmd%%[![:space:]]*}"}"
@@ -125,12 +134,13 @@ chmod +x "$STUB_BIN/claude"
 
 run_auto_prove() {
     local proof_dir="$1" output="$2" max_iter="$3" max_agents="$4"
+    local af_path="${5:-$STUB_BIN/af}"
     set +e
     (
         cd "$proof_dir" || exit 4
-        AF_CMD="$STUB_BIN/af" \
+        AF_CMD="$af_path" \
         AF_AGENT_BACKEND=claude \
-        AF_STUB_AF="$STUB_BIN/af" \
+        AF_STUB_AF="$af_path" \
         AF_STUB_LOG="$STUB_LOG" \
         PATH="$STUB_BIN:$PATH" \
             bash "$SCRIPT_DIR/auto-prove.sh" \
@@ -151,6 +161,13 @@ OUTPUT="$TMP_DIR/auto-prove.log"
 run_auto_prove "$PROOF_DIR" "$OUTPUT" 5 4
 cat "$OUTPUT"
 
+# Positive case (D4): the real binary emits support_current, the root is
+# validated and current, so auto-prove declares the proof complete.
+if ! grep -q "PROOF COMPLETE" "$OUTPUT"; then
+    echo "test-auto-prove.sh: positive case did not declare PROOF COMPLETE with support_current present" >&2
+    exit 1
+fi
+
 # Scenario 2: a prover job. A blocking challenge makes the root prover work,
 # exercising the generated refine/amend/resolve-challenge templates.
 PROVER_DIR="$TMP_DIR/prover-proof"
@@ -161,12 +178,73 @@ PROVER_OUTPUT="$TMP_DIR/auto-prove-prover.log"
 run_auto_prove "$PROVER_DIR" "$PROVER_OUTPUT" 1 1
 cat "$PROVER_OUTPUT"
 
+# Negative cases (D4): the real binary reports support_current, but an af
+# wrapper strips it or forces it false. auto-prove must fail closed and never
+# declare the proof complete.
+WRAPPER_DIR="$TMP_DIR/wrappers"
+mkdir -p "$WRAPPER_DIR"
+
+cat > "$WRAPPER_DIR/af-missing" <<WRAP
+#!/usr/bin/env bash
+# Forward to the real af, but drop support_current from `status -f json`.
+set -o pipefail
+real="$AF_BIN"
+if [[ "\${1:-}" == "status" ]]; then
+    "\$real" "\$@" | jq 'del(.nodes[].support_current)'
+    exit \$?
+fi
+exec "\$real" "\$@"
+WRAP
+chmod +x "$WRAPPER_DIR/af-missing"
+
+cat > "$WRAPPER_DIR/af-false" <<WRAP
+#!/usr/bin/env bash
+# Forward to the real af, but force support_current false in `status -f json`.
+set -o pipefail
+real="$AF_BIN"
+if [[ "\${1:-}" == "status" ]]; then
+    "\$real" "\$@" | jq '(.nodes[].support_current) = false'
+    exit \$?
+fi
+exec "\$real" "\$@"
+WRAP
+chmod +x "$WRAPPER_DIR/af-false"
+
+NEG_OUTPUTS=()
+run_completion_negative() {
+    local label="$1" wrapper="$2"
+    local neg_dir="$TMP_DIR/$label-proof"
+    local neg_out="$TMP_DIR/$label.log"
+    mkdir -p "$neg_dir"
+    "$AF_BIN" init -c "Completion $label conjecture" -a stub-author -d "$neg_dir" >/dev/null
+    "$AF_BIN" claim 1 --owner verifier-1 --role verifier -d "$neg_dir" >/dev/null
+    "$AF_BIN" accept 1 --agent verifier-1 --with-note "Validated for completion gate" --confirm -d "$neg_dir" >/dev/null
+
+    run_auto_prove "$neg_dir" "$neg_out" 2 1 "$wrapper"
+
+    if grep -q "PROOF COMPLETE" "$neg_out"; then
+        echo "test-auto-prove.sh: auto-prove declared PROOF COMPLETE for $label (D4)" >&2
+        cat "$neg_out" >&2
+        exit 1
+    fi
+    if ! grep -q "support_current" "$neg_out"; then
+        echo "test-auto-prove.sh: $label run did not reach the support_current gate" >&2
+        cat "$neg_out" >&2
+        exit 1
+    fi
+    NEG_OUTPUTS+=("$neg_out")
+    echo "negative case ($label): ok"
+}
+
+run_completion_negative missing-support_current "$WRAPPER_DIR/af-missing"
+run_completion_negative false-support_current "$WRAPPER_DIR/af-false"
+
 if [[ -s "$STUB_LOG" ]]; then
     echo "--- stub agent log ---"
     cat "$STUB_LOG"
 fi
 
-for f in "$OUTPUT" "$PROVER_OUTPUT" "$STUB_LOG"; do
+for f in "$OUTPUT" "$PROVER_OUTPUT" "$STUB_LOG" "${NEG_OUTPUTS[@]}"; do
     if grep -Eq "unknown flag|flag provided but not defined|unknown shorthand flag" "$f"; then
         echo "test-auto-prove.sh: generated command used an unknown flag (bead ujp4 regression)" >&2
         exit 1
@@ -181,14 +259,6 @@ if ! grep -q "STUB-RUN:" "$STUB_LOG"; then
 fi
 if ! grep -q "STUB-RUN:.*refine" "$STUB_LOG"; then
     echo "test-auto-prove.sh: prover path never exercised the generated refine command" >&2
-    exit 1
-fi
-
-# The root cannot be declared complete until D4's support_current is present in
-# `af status -f json`. This branch predates D4, so auto-prove must never print
-# PROOF COMPLETE even after a root is accepted.
-if grep -q "PROOF COMPLETE" "$OUTPUT"; then
-    echo "test-auto-prove.sh: auto-prove declared PROOF COMPLETE without support_current (D4)" >&2
     exit 1
 fi
 

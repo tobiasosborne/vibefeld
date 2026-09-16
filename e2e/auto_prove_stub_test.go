@@ -18,8 +18,10 @@ var bashMajorRE = regexp.MustCompile(`GNU bash, version (\d+)`)
 // TestAutoProveStub drives scripts/test-auto-prove.sh, which runs
 // scripts/auto-prove.sh against a stub agent on a disposable workspace and
 // asserts that the commands auto-prove.sh generates execute without unknown
-// flags. It is skipped unless a bash >= 4 is available (bash 3.2 on stock
-// macOS cannot run auto-prove.sh at all).
+// flags. It also covers the D4 completion gate: a validated, current root
+// completes, while an af wrapper that strips or negates support_current must
+// not. It is skipped unless a bash >= 4 is available (bash 3.2 on stock macOS
+// cannot run auto-prove.sh at all).
 func TestAutoProveStub(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("auto-prove.sh requires bash")
@@ -55,13 +57,21 @@ func TestAutoProveStub(t *testing.T) {
 		t.Fatalf("auto-prove.sh generated a command with an unknown flag:\n%s", output)
 	}
 
-	// The pre-D4 completion gate must fail closed and the script's unit-style
-	// negative suite must actually have run. Without support_current in
-	// `af status -f json`, auto-prove must never claim the proof is complete.
+	// D4 (support_current) is in the real binary now, so the positive scenario
+	// must declare the proof complete. The script also drives auto-prove with
+	// af wrappers that strip or negate support_current; those negatives must
+	// reach the gate and refuse completion. The unit-style negative suite must
+	// run too.
 	if !strings.Contains(string(output), "completion negative tests: ok") {
 		t.Fatalf("test-auto-prove.sh did not run its completion negative tests:\n%s", output)
 	}
-	if strings.Contains(string(output), "PROOF COMPLETE") {
-		t.Fatalf("auto-prove.sh declared PROOF COMPLETE without support_current (D4):\n%s", output)
+	if !strings.Contains(string(output), "negative case (missing-support_current): ok") {
+		t.Fatalf("test-auto-prove.sh did not run the missing support_current auto-prove case:\n%s", output)
+	}
+	if !strings.Contains(string(output), "negative case (false-support_current): ok") {
+		t.Fatalf("test-auto-prove.sh did not run the false support_current auto-prove case:\n%s", output)
+	}
+	if !strings.Contains(string(output), "PROOF COMPLETE") {
+		t.Fatalf("auto-prove.sh did not declare PROOF COMPLETE for a validated, current root (D4):\n%s", output)
 	}
 }
