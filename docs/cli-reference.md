@@ -456,8 +456,14 @@ af release 1 -o prover-001 -f json        # JSON output
 ```
 
 **Exit Codes:**
-- 0: Success
+- 0: Success (including a no-op release of an already-available node)
 - 1: NOT_CLAIM_HOLDER (you don't own this claim)
+
+Releasing a node that is already available is a **documented no-op**: it exits
+0 with an `already_available` status. A terminal action (`af accept`,
+`af admit`, `af refute`, `af archive`) held by the claim owner auto-releases
+the claim in the same event, so re-running `af release` afterwards is not an
+error.
 
 ---
 
@@ -808,7 +814,8 @@ af accept [node-id]... [flags]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--all` | `-a` | bool | false | Accept all pending nodes |
-| `--agent` | | string | | Agent ID for challenge verification |
+| `--agent` | | string | | Agent ID for challenge verification and recorded verifier identity; falls back to `AF_AGENT_ID` |
+| `--allow-self` | | bool | false | Accept even though `--agent` is recorded as a contributor (author, proof author or amender); recorded as `self_accepted` |
 | `--confirm` | | bool | false | Confirm acceptance without having raised challenges |
 | `--with-note` | | string | | Optional acceptance note (partial acceptance) |
 | `--dir` | `-d` | string | "." | Proof directory path |
@@ -825,7 +832,24 @@ af accept 1 --with-note "Consider clarifying step 2"
 af accept 1 -d ./proof   # Specific directory
 af accept 1 --agent verifier-1  # With agent verification
 af accept 1 --agent v1 --confirm  # Accept without having raised challenges
+af accept 1 --agent v1 --allow-self  # Accept though v1 is a recorded contributor (recorded)
 ```
+
+**Reviewer ≠ contributor (recorded provenance, not proof of independence).**
+With an `--agent`/`AF_AGENT_ID` identity, `af accept` refuses when the verifier
+is recorded as the node's author, its proof author (`af record-proof`), or an
+owner in its amendment history. `--allow-self` overrides the refusal and
+records `self_accepted: true` on the `NodeValidated` event; verdict files use
+the same check and cannot opt out. In 0.1.10, `af accept` without an identity
+prints a one-line warning (skipped for `-f json`) and still accepts; from
+**0.1.11 the identity becomes required** (see the changelog).
+
+**Claim release.** When the accepting identity holds the node's claim, the
+same `NodeValidated` event releases it under a claim-generation fence
+(`claim_seq`): replay releases only if the generation still matches, so a
+retried or delayed release cannot evict a later claim. `af get` and
+`af jobs -f json` show the current claim generation. `af release` afterwards
+is a no-op.
 
 Bulk acceptance is scheduled by actual prerequisites, not argument order:
 a node is accepted only after every pending child and validation dependency
@@ -1031,6 +1055,7 @@ af admit <node-id> [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
+| `--agent` | | string | | Acting agent ID recorded on the event; falls back to `AF_AGENT_ID` |
 | `--dir` | `-d` | string | "." | Proof directory path |
 | `--format` | `-f` | string | "text" | Output format |
 
@@ -1039,7 +1064,11 @@ af admit <node-id> [flags]
 af admit 1          # Admit root node
 af admit 1.2.3      # Admit specific node
 af admit 1 -d ./proof  # Specific directory
+af admit 1 --agent verifier-1  # Record the acting identity
 ```
+
+When the acting identity holds the node's claim, the `NodeAdmitted` event
+releases it in the same event under the `claim_seq` fence (D5).
 
 **Note:** Admitted nodes introduce taint. Non-severed ancestors and descendants
 that depend on them inherit it; descendant-derived taint does not flow into siblings.
@@ -1069,6 +1098,7 @@ af refute <node-id> [flags]
 |------|-------|------|---------|-------------|
 | `--reason` | | string | | Reason for refutation |
 | `--yes` | `-y` | bool | false | Skip confirmation prompt |
+| `--agent` | | string | | Acting agent ID recorded on the event; falls back to `AF_AGENT_ID` |
 | `--dir` | `-d` | string | "." | Proof directory path |
 | `--format` | `-f` | string | "text" | Output format |
 
@@ -1103,12 +1133,22 @@ af archive <node-id> [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--reason` | | string | | Reason for archiving |
+| `--reason` | | string | | Reason for archiving; recorded on the `NodeArchived` event |
+| `--force` | | bool | false | Archive while a challenge is open (requires `--reason`) |
 | `--yes` | `-y` | bool | false | Skip confirmation prompt |
+| `--agent` | | string | | Acting agent ID recorded on the event; falls back to `AF_AGENT_ID` |
 | `--dir` | `-d` | string | "." | Proof directory path |
 | `--format` | `-f` | string | "text" | Output format |
 
 **Warning:** This is a DESTRUCTIVE action. Confirmation required unless `--yes` is provided.
+
+**Open-challenge guardrail.** `af archive` refuses when a challenge is open on
+the node or on an active (non-severed) descendant, unless `--force --reason`
+is given. A forced archive records `reason` and `forced: true` on the event,
+and the parent's verification checklist (`af get --checklist`, and `af claim`
+for a verifier) lists children archived with a challenge open so the next
+accept acknowledges the abandoned obligation. This is recorded provenance, not
+a proof that the obligation was discharged.
 
 **Examples:**
 ```bash

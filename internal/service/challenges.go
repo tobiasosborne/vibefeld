@@ -80,7 +80,7 @@ func (s *ProofService) ReleaseNodes(pred func(*node.Node) bool) ([]types.NodeID,
 		if len(released) == 0 {
 			return nil, nil
 		}
-		return []ledger.Event{ledger.NewNodesReleased(released)}, nil
+		return []ledger.Event{newFencedNodesReleased(st, released)}, nil
 	})
 	if err != nil {
 		return nil, wrapSequenceMismatch(err, "ReleaseNodes")

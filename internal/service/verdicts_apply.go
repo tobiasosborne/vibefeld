@@ -184,7 +184,6 @@ func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Ite
 			BatchID:              f.BatchID,
 			ExpectHash:           item.ExpectHash,
 			RequireVerifierReady: true,
-			CheckReviewerAuthor:  true,
 		})
 		if err != nil {
 			return nil, err

@@ -133,6 +133,14 @@ type Node struct {
 	ValidatedContentHash string `json:"validated_content_hash,omitempty"`
 	ValidatedHashChecked bool   `json:"validated_hash_checked,omitempty"`
 
+	// ClaimSeq is the ledger sequence of the NodesClaimed event that created
+	// the node's current claim. It is derived state, stamped by replay (never
+	// an event field, hence json:"-" so embedding Node in an event does not
+	// change the event shape), and is cleared on release — whether the release
+	// is an explicit NodesReleased event or the fenced auto-release carried by
+	// a terminal state event (D5). 0 means the node has no current claim.
+	ClaimSeq int `json:"-"`
+
 	// VerdictSeq is the ledger sequence of the NodeValidated OR NodeAdmitted
 	// event that most recently moved this node to a terminal verdict state,
 	// stamped by replay (it is derived state, never an event field, hence
@@ -143,6 +151,23 @@ type Node struct {
 	// nodes that are not validated/admitted or whose verdict predates this
 	// derived field.
 	VerdictSeq int `json:"-"`
+
+	// ArchivedSeq is the ledger sequence of the NodeArchived event that moved
+	// this node to archived (D9). It is derived state, stamped by replay (never
+	// an event field, hence json:"-" so embedding Node in an event does not
+	// change the event shape). support_current uses it to detect a direct child
+	// archived after its parent's verdict: the parent's verdict predates the
+	// child's abandonment and so no longer covers the parent's current proof.
+	// 0 for nodes that are not archived or whose archival predates this field.
+	ArchivedSeq int `json:"-"`
+
+	// AbandonedObligations records the node IDs whose open challenges were
+	// abandoned when this node was archived under --force (D9). It is derived
+	// from the NodeArchived event's abandoned_obligations field and stamped by
+	// replay; json:"-" so embedding Node in an event does not change the event
+	// shape. Nil/empty for legacy archives, in which case the checklist falls
+	// back to the challenge-trace derivation.
+	AbandonedObligations []string `json:"-"`
 
 	// ProofAuthor is the identity of the prover that RECORDED THE PROOF of this
 	// node — i.e. decomposed it into children via `af record-proof` (recorded

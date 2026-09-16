@@ -38,6 +38,7 @@ Workflow:
 
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
 	cmd.Flags().StringP("format", "f", "text", "Output format (text/json)")
+	cmd.Flags().String("agent", "", "Agent ID (recorded as the acting identity; falls back to AF_AGENT_ID)")
 
 	return cmd
 }
@@ -53,6 +54,7 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	// Get flags
 	dir := cli.MustString(cmd, "dir")
 	format := cli.MustString(cmd, "format")
+	agent := resolveAgent(cmd)
 
 	// Create proof service
 	svc, err := service.NewProofService(dir)
@@ -61,7 +63,7 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Admit the node
-	if err := svc.AdmitNode(nodeID); err != nil {
+	if err := svc.AdmitNodeWithAgent(nodeID, agent); err != nil {
 		return fmt.Errorf("error admitting node: %w", err)
 	}
 

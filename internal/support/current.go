@@ -11,14 +11,15 @@ import (
 // contract `af status`, `af health`, `af get` and `af export` surface; message
 // text may change, these may not.
 const (
-	CauseNotValidated          = "NOT_VALIDATED"
-	CauseOpenBlockingChallenge = "OPEN_BLOCKING_CHALLENGE"
-	CauseTargetNotCurrent      = "TARGET_NOT_CURRENT"
-	CauseTargetPending         = "TARGET_PENDING"
-	CauseTargetRefuted         = "TARGET_REFUTED"
-	CauseTargetRevised         = "TARGET_REVISED"
-	CauseSelfRevised           = "SELF_REVISED"
-	CauseCycle                 = "CYCLE"
+	CauseNotValidated              = "NOT_VALIDATED"
+	CauseOpenBlockingChallenge     = "OPEN_BLOCKING_CHALLENGE"
+	CauseTargetNotCurrent          = "TARGET_NOT_CURRENT"
+	CauseTargetPending             = "TARGET_PENDING"
+	CauseTargetRefuted             = "TARGET_REFUTED"
+	CauseTargetRevised             = "TARGET_REVISED"
+	CauseSelfRevised               = "SELF_REVISED"
+	CauseChildArchivedAfterVerdict = "CHILD_ARCHIVED_AFTER_VERDICT"
+	CauseCycle                     = "CYCLE"
 )
 
 // SupportStatus is whether a node's recorded verdict is currently supported by
@@ -86,6 +87,15 @@ func currentFor(st *state.State, n *node.Node, targets []Folded[SupportStatus], 
 			latest = t.Value.LatestRevisionSeq
 		}
 	}
+	// A direct child archived after this node's verdict is a revision to the
+	// decomposition just like an amendment: carry its archival sequence so an
+	// ancestor's older verdict can see it through this node even if the child's
+	// severed edge would otherwise hide it.
+	for _, c := range children {
+		if c != nil && c.EpistemicState == schema.EpistemicArchived && c.ArchivedSeq > latest {
+			latest = c.ArchivedSeq
+		}
+	}
 
 	status := classifyCurrent(st, n, targets, children)
 	status.LatestRevisionSeq = latest
@@ -118,6 +128,14 @@ func classifyCurrent(st *state.State, n *node.Node, targets []Folded[SupportStat
 		}
 		if c.EpistemicState == schema.EpistemicRefuted {
 			return SupportStatus{Cause: CauseTargetRefuted, Node: c.ID}
+		}
+		// A child archived after this node's recorded verdict invalidates that
+		// verdict: the parent relied on a decomposition that has since been
+		// revised by the child's abandonment, so the parent is not current until
+		// it is re-accepted. A fresh accept after the archive clears it because
+		// the parent's verdict sequence then post-dates the child's ArchivSeq.
+		if c.EpistemicState == schema.EpistemicArchived && n.VerdictSeq > 0 && c.ArchivedSeq > n.VerdictSeq {
+			return SupportStatus{Cause: CauseChildArchivedAfterVerdict, Node: c.ID, Seq: c.ArchivedSeq}
 		}
 	}
 

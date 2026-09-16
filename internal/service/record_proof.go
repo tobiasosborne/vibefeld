@@ -126,7 +126,7 @@ func (s *ProofService) RecordProof(spec RecordProofSpec) (*RecordProofResult, er
 		// (6) rk FU3: release the claim if the prover held it.
 		released := false
 		if claimedByOwner {
-			events = append(events, ledger.NewNodesReleased([]types.NodeID{spec.ParentID}))
+			events = append(events, newFencedNodesReleased(st, []types.NodeID{spec.ParentID}))
 			released = true
 		}
 

@@ -68,6 +68,16 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 			state.SetLastAmendmentSeq(ev.NodeID, seq)
 		case ledger.NodeDepsAmended:
 			state.SetLastAmendmentSeq(ev.NodeID, seq)
+		case ledger.NodesClaimed:
+			// The claim generation is the ledger sequence of the NodesClaimed
+			// event that created the current claim (D5). Derived state, so it is
+			// stamped here, never carried on the event; a release (explicit or
+			// fenced auto-release) clears it in Apply.
+			for _, id := range ev.NodeIDs {
+				if n := state.GetNode(id); n != nil {
+					n.ClaimSeq = seq
+				}
+			}
 		case ledger.NodeValidated:
 			// Derived verdict sequence for support_current (D4); no event field,
 			// stamped here so a later amendment can be ordered against it.
@@ -79,6 +89,15 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 			// support_current's revision guards cover admitted nodes too.
 			if n := state.GetNode(ev.NodeID); n != nil {
 				n.VerdictSeq = seq
+			}
+		case ledger.NodeArchived:
+			// Derived archival sequence (D9): support_current compares a
+			// direct child's archival against its parent's verdict, and the
+			// durable abandoned-obligation snapshot is copied onto the node
+			// so the checklist can read it without re-scanning the ledger.
+			if n := state.GetNode(ev.NodeID); n != nil {
+				n.ArchivedSeq = seq
+				n.AbandonedObligations = append([]string(nil), ev.AbandonedObligations...)
 			}
 		case ledger.ChallengeRaised:
 			if c := state.GetChallenge(ev.ChallengeID); c != nil {
