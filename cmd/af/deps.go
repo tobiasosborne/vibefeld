@@ -4,6 +4,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tobiasosborne/vibefeld/internal/service"
@@ -84,7 +86,14 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 		State      string `json:"epistemic_state"`
 		IsBlocking bool   `json:"is_blocking,omitempty"`
 		DepType    string `json:"type"` // "reference" or "validation"
+		Amended    bool   `json:"amended,omitempty"`
 	}
+
+	// Compute the per-kind edges an amendment added or removed. An edge that is
+	// currently present is marked with `*` only when an amendment ADDED it; an
+	// edge that an amendment removed is reported separately, so removing one
+	// edge no longer marks every surviving edge.
+	amended := computeAmendedEdgeSummary(st.GetAmendmentHistory(nodeID))
 
 	var deps []depInfo
 
@@ -94,6 +103,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 		info := depInfo{
 			ID:      depID.String(),
 			DepType: "reference",
+			Amended: amended.refAdded[depID.String()],
 		}
 		if dep != nil {
 			info.Statement = truncateString(dep.Statement, 50)
@@ -111,6 +121,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 		info := depInfo{
 			ID:      depID.String(),
 			DepType: "validation",
+			Amended: amended.valAdded[depID.String()],
 		}
 		if dep != nil {
 			info.Statement = truncateString(dep.Statement, 50)
@@ -150,6 +161,9 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 		if len(node.Dependencies) > 0 {
 			result["reference_deps"] = service.ToStringSlice(node.Dependencies)
 		}
+		if removed := amended.removedLists(); len(removed) > 0 {
+			result["removed_by_amendment"] = removed
+		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -177,7 +191,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 			if len(refDeps) > 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "Reference Dependencies:")
 				for _, d := range refDeps {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s] - %s\n", d.ID, d.State, d.Statement)
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s%s [%s] - %s\n", amendedMark(d.Amended), d.ID, d.State, d.Statement)
 				}
 				fmt.Fprintln(cmd.OutOrStdout())
 			}
@@ -191,9 +205,16 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 					} else {
 						status += " (satisfied)"
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s] - %s\n", d.ID, status, d.Statement)
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s%s [%s] - %s\n", amendedMark(d.Amended), d.ID, status, d.Statement)
 				}
 				fmt.Fprintln(cmd.OutOrStdout())
+			}
+
+			if len(amended.refAdded) > 0 || len(amended.valAdded) > 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "(*) edge added by a dependency amendment (af amend-deps)")
+			}
+			if removed := amended.removedLists(); len(removed) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "(-) removed by amendment: %s\n", strings.Join(removed, ", "))
 			}
 
 			if blockingCount > 0 {
@@ -210,4 +231,80 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 
 func init() {
 	rootCmd.AddCommand(newDepsCmd())
+}
+
+// amendedEdgeSummary accumulates, per edge kind, the edges added and removed by
+// this node's dependency amendments, applied in ledger order so a later re-add
+// cancels an earlier removal and vice versa.
+type amendedEdgeSummary struct {
+	refAdded, refRemoved map[string]bool
+	valAdded, valRemoved map[string]bool
+}
+
+// computeAmendedEdgeSummary computes the add/remove deltas of every dependency
+// amendment on the node.
+func computeAmendedEdgeSummary(amendments []service.Amendment) amendedEdgeSummary {
+	s := amendedEdgeSummary{
+		refAdded:   map[string]bool{},
+		refRemoved: map[string]bool{},
+		valAdded:   map[string]bool{},
+		valRemoved: map[string]bool{},
+	}
+	for _, a := range amendments {
+		if a.Kind != service.AmendmentKindDependencies {
+			continue
+		}
+		applyEdgeDelta(s.refAdded, s.refRemoved, a.PreviousDependencies, a.NewDependencies)
+		applyEdgeDelta(s.valAdded, s.valRemoved, a.PreviousValidationDeps, a.NewValidationDeps)
+	}
+	return s
+}
+
+// applyEdgeDelta folds one amendment's edge replacement into the running
+// added/removed sets: new-minus-previous is added, previous-minus-new is
+// removed, and an edge moving the other way cancels its prior entry.
+func applyEdgeDelta(added, removed map[string]bool, previous, next []service.NodeID) {
+	prevSet := idSet(previous)
+	nextSet := idSet(next)
+	for id := range nextSet {
+		if !prevSet[id] {
+			added[id] = true
+			delete(removed, id)
+		}
+	}
+	for id := range prevSet {
+		if !nextSet[id] {
+			removed[id] = true
+			delete(added, id)
+		}
+	}
+}
+
+func idSet(ids []service.NodeID) map[string]bool {
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id.String()] = true
+	}
+	return set
+}
+
+// removedLists returns the edges an amendment removed, sorted, with a "v:"
+// prefix for validation-dependency removals so the two kinds are distinct.
+func (s amendedEdgeSummary) removedLists() []string {
+	var out []string
+	for id := range s.refRemoved {
+		out = append(out, id)
+	}
+	for id := range s.valRemoved {
+		out = append(out, "v:"+id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func amendedMark(amended bool) string {
+	if amended {
+		return "*"
+	}
+	return " "
 }

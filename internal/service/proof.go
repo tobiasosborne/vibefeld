@@ -137,6 +137,14 @@ type ProofService struct {
 	beforeAppend func()
 }
 
+// SetBeforeAppendTestHook installs fn as the hook invoked by commit() between
+// the state read used to build events and the CAS append. It exists so tests in
+// other packages (for example cmd/af) can simulate a crash mid-batch; it is
+// never called by production code.
+func (s *ProofService) SetBeforeAppendTestHook(fn func()) {
+	s.beforeAppend = fn
+}
+
 // NewProofService creates a new ProofService for the given proof directory.
 // Returns an error if the directory is invalid or inaccessible.
 func NewProofService(path string) (*ProofService, error) {
@@ -1820,6 +1828,17 @@ var ErrClaimTestStale = errors.New("crux claim-test is stale relative to current
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AmendNode(nodeID types.NodeID, owner, newStatement string) error {
+	return s.AmendNodeWithReopen(nodeID, owner, newStatement, false)
+}
+
+// AmendNodeWithReopen is AmendNode plus D2's `--reopen`: when reopen is true a
+// validated node is amended and reopened (validated -> pending) in the SAME
+// event, so there is no window in which the node is pending with the old
+// statement. The reopened form is the distinct format-1.1 event
+// node_amended_reopened, so a 1.0 reader cannot apply the statement change
+// while leaving the node validated. A needs_refinement node is amendable
+// without reopen; a validated node is refused unless reopen is set.
+func (s *ProofService) AmendNodeWithReopen(nodeID types.NodeID, owner, newStatement string, reopen bool) error {
 	// Validate inputs
 	if strings.TrimSpace(owner) == "" {
 		return fmt.Errorf("%w: owner", ErrEmptyInput)
@@ -1835,9 +1854,17 @@ func (s *ProofService) AmendNode(nodeID types.NodeID, owner, newStatement string
 			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
 		}
 
-		// Check epistemic state - can only amend pending nodes
-		if n.EpistemicState != schema.EpistemicPending {
-			return nil, fmt.Errorf("cannot amend node: epistemic state is %s, must be pending", n.EpistemicState)
+		// Check epistemic state: pending, draft and needs_refinement may be
+		// amended directly; validated needs --reopen.
+		switch n.EpistemicState {
+		case schema.EpistemicPending, schema.EpistemicDraft, schema.EpistemicNeedsRefinement:
+			// allowed
+		case schema.EpistemicValidated:
+			if !reopen {
+				return nil, fmt.Errorf("cannot amend node: epistemic state is %s, pass --reopen to reopen it", n.EpistemicState)
+			}
+		default:
+			return nil, fmt.Errorf("cannot amend node: epistemic state is %s, must be pending, draft or needs_refinement", n.EpistemicState)
 		}
 
 		// Check ownership - either unclaimed or owned by the caller
@@ -1848,7 +1875,13 @@ func (s *ProofService) AmendNode(nodeID types.NodeID, owner, newStatement string
 		}
 		// If unclaimed, any owner can amend (they're taking responsibility)
 
-		return []ledger.Event{ledger.NewNodeAmended(nodeID, n.Statement, newStatement, owner)}, nil
+		var event ledger.Event
+		if reopen && n.EpistemicState == schema.EpistemicValidated {
+			event = ledger.NewNodeAmendedReopened(nodeID, n.Statement, newStatement, owner)
+		} else {
+			event = ledger.NewNodeAmended(nodeID, n.Statement, newStatement, owner)
+		}
+		return []ledger.Event{event}, nil
 	})
 	return wrapSequenceMismatch(err, "AmendNode")
 }

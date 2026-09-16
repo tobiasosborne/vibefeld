@@ -320,14 +320,44 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 	if len(amendments) > 0 {
 		amendmentList := make([]map[string]interface{}, len(amendments))
 		for i, a := range amendments {
-			amendmentList[i] = map[string]interface{}{
-				"timestamp":          a.Timestamp.String(),
-				"previous_statement": a.PreviousStatement,
-				"new_statement":      a.NewStatement,
-				"owner":              a.Owner,
+			entry := map[string]interface{}{
+				"timestamp": a.Timestamp.String(),
+				"owner":     a.Owner,
+				"kind":      amendmentKind(a),
 			}
+			if a.Kind == service.AmendmentKindDependencies {
+				entry["reason"] = a.Reason
+				entry["previous_dependencies"] = service.ToStringSlice(a.PreviousDependencies)
+				entry["new_dependencies"] = service.ToStringSlice(a.NewDependencies)
+				entry["previous_validation_deps"] = service.ToStringSlice(a.PreviousValidationDeps)
+				entry["new_validation_deps"] = service.ToStringSlice(a.NewValidationDeps)
+				entry["previous_content_hash"] = a.PreviousContentHash
+				entry["reopened"] = a.Reopened
+			} else {
+				entry["previous_statement"] = a.PreviousStatement
+				entry["new_statement"] = a.NewStatement
+			}
+			amendmentList[i] = entry
 		}
 		result["amendment_history"] = amendmentList
+	}
+
+	// Dependency amendments summary (count + last), per D2's `af get` surface.
+	if count, last := dependencyAmendmentSummary(amendments); count > 0 {
+		summary := map[string]interface{}{"count": count}
+		if last != nil {
+			summary["last"] = map[string]interface{}{
+				"timestamp":                last.Timestamp.String(),
+				"owner":                    last.Owner,
+				"reason":                   last.Reason,
+				"previous_dependencies":    service.ToStringSlice(last.PreviousDependencies),
+				"new_dependencies":         service.ToStringSlice(last.NewDependencies),
+				"previous_validation_deps": service.ToStringSlice(last.PreviousValidationDeps),
+				"new_validation_deps":      service.ToStringSlice(last.NewValidationDeps),
+				"reopened":                 last.Reopened,
+			}
+		}
+		result["dependency_amendments"] = summary
 	}
 
 	// Add scope info if present
@@ -357,10 +387,21 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		if len(amendments) > 0 {
 			fmt.Fprintf(cmd.OutOrStdout(), "\nAmendment History (%d):\n", len(amendments))
 			for i, a := range amendments {
+				if a.Kind == service.AmendmentKindDependencies {
+					fmt.Fprintf(cmd.OutOrStdout(), "  [%d] %s by %s (dependencies)\n", i+1, a.Timestamp.String(), a.Owner)
+					fmt.Fprintf(cmd.OutOrStdout(), "      Reason: %s\n", truncateForDisplay(a.Reason, 50))
+					if a.Reopened {
+						fmt.Fprintf(cmd.OutOrStdout(), "      Reopened validated -> pending\n")
+					}
+					continue
+				}
 				fmt.Fprintf(cmd.OutOrStdout(), "  [%d] %s by %s\n", i+1, a.Timestamp.String(), a.Owner)
 				fmt.Fprintf(cmd.OutOrStdout(), "      Previous: %s\n", truncateForDisplay(a.PreviousStatement, 50))
 				fmt.Fprintf(cmd.OutOrStdout(), "      New:      %s\n", truncateForDisplay(a.NewStatement, 50))
 			}
+		}
+		if count, last := dependencyAmendmentSummary(amendments); count > 0 && last != nil {
+			fmt.Fprintf(cmd.OutOrStdout(), "\nDependency Amendments: %d (last by %s: %s)\n", count, last.Owner, truncateForDisplay(last.Reason, 50))
 		}
 		// Show scope information
 		scopeInfo := st.GetScopeInfo(nodes[0].ID)
@@ -399,10 +440,18 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 			if len(amendments) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "\nAmendment History (%d):\n", len(amendments))
 				for j, a := range amendments {
+					if a.Kind == service.AmendmentKindDependencies {
+						fmt.Fprintf(cmd.OutOrStdout(), "  [%d] %s by %s (dependencies)\n", j+1, a.Timestamp.String(), a.Owner)
+						fmt.Fprintf(cmd.OutOrStdout(), "      Reason: %s\n", truncateForDisplay(a.Reason, 50))
+						continue
+					}
 					fmt.Fprintf(cmd.OutOrStdout(), "  [%d] %s by %s\n", j+1, a.Timestamp.String(), a.Owner)
 					fmt.Fprintf(cmd.OutOrStdout(), "      Previous: %s\n", truncateForDisplay(a.PreviousStatement, 50))
 					fmt.Fprintf(cmd.OutOrStdout(), "      New:      %s\n", truncateForDisplay(a.NewStatement, 50))
 				}
+			}
+			if count, last := dependencyAmendmentSummary(amendments); count > 0 && last != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "\nDependency Amendments: %d (last by %s: %s)\n", count, last.Owner, truncateForDisplay(last.Reason, 50))
 			}
 			// Show scope information
 			scopeInfo := st.GetScopeInfo(n.ID)
@@ -432,6 +481,29 @@ func truncateForDisplay(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// amendmentKind returns "statement" for a statement amendment and
+// "dependencies" for a dependency amendment.
+func amendmentKind(a service.Amendment) string {
+	if a.Kind == service.AmendmentKindDependencies {
+		return service.AmendmentKindDependencies
+	}
+	return service.AmendmentKindStatement
+}
+
+// dependencyAmendmentSummary returns the count and the last dependency
+// amendment in history order.
+func dependencyAmendmentSummary(amendments []service.Amendment) (int, *service.Amendment) {
+	count := 0
+	var last *service.Amendment
+	for i := range amendments {
+		if amendments[i].Kind == service.AmendmentKindDependencies {
+			count++
+			last = &amendments[i]
+		}
+	}
+	return count, last
 }
 
 // filterChallengesForNode returns challenges that target the given node.

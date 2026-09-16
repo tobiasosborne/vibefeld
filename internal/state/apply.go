@@ -65,6 +65,10 @@ func Apply(s *State, event ledger.Event) error {
 		return applyChallengeSuperseded(s, e)
 	case ledger.NodeAmended:
 		return applyNodeAmended(s, e)
+	case ledger.NodeAmendedReopened:
+		return applyNodeAmendedReopened(s, e)
+	case ledger.NodeDepsAmended:
+		return applyNodeDepsAmended(s, e)
 	case ledger.ScopeOpened:
 		return applyScopeOpened(s, e)
 	case ledger.ScopeClosed:
@@ -399,29 +403,189 @@ func applyNodeProofAuthored(s *State, e ledger.NodeProofAuthored) error {
 }
 
 // applyNodeAmended handles the NodeAmended event.
-// This updates a node's statement and records the amendment in history.
+// This updates a node's statement and records the amendment in history. It
+// never changes the epistemic state (a reopened amendment is a distinct
+// format-1.1 event).
 func applyNodeAmended(s *State, e ledger.NodeAmended) error {
-	n := s.GetNode(e.NodeID)
+	return applyNodeStatement(s, e.NodeID, e.PreviousStatement, e.NewStatement, e.Owner, e.EventTime, false)
+}
+
+// applyNodeAmendedReopened handles the format-1.1 NodeAmendedReopened event:
+// the statement change and the validated -> pending transition are one semantic
+// unit, with no window in which the node is pending with the old statement or
+// validated with the new one.
+func applyNodeAmendedReopened(s *State, e ledger.NodeAmendedReopened) error {
+	return applyNodeStatement(s, e.NodeID, e.PreviousStatement, e.NewStatement, e.Owner, e.EventTime, true)
+}
+
+// applyNodeStatement is the shared body of both statement-amendment events.
+// For a reopened amendment the validated -> pending transition is validated
+// before any mutation, so a failed Apply leaves the node untouched.
+func applyNodeStatement(s *State, nodeID types.NodeID, previous, newStatement, owner string, ts types.Timestamp, reopened bool) error {
+	n := s.GetNode(nodeID)
 	if n == nil {
-		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+		return fmt.Errorf("node %s not found in state", nodeID.String())
+	}
+	if reopened {
+		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
+			return fmt.Errorf("invalid reopen transition for node %s: %w", nodeID.String(), err)
+		}
 	}
 
 	// Record the amendment in history
 	amendment := Amendment{
-		Timestamp:         e.EventTime,
-		PreviousStatement: e.PreviousStatement,
-		NewStatement:      e.NewStatement,
-		Owner:             e.Owner,
+		Kind:              AmendmentKindStatement,
+		Timestamp:         ts,
+		PreviousStatement: previous,
+		NewStatement:      newStatement,
+		Owner:             owner,
+		Reopened:          reopened,
 	}
-	s.AddAmendment(e.NodeID, amendment)
+	s.AddAmendment(nodeID, amendment)
 
 	// Update the node's statement
-	n.Statement = e.NewStatement
+	n.Statement = newStatement
 
 	// Recompute content hash since statement changed
 	n.ContentHash = n.ComputeContentHash()
 
+	if reopened {
+		if err := reopenValidated(n); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// applyNodeDepsAmended handles the NodeDepsAmended event (D2). Replay verifies
+// the event's previous edge lists against the state it holds — a mismatch is a
+// replay error, never an overwrite — then replaces both lists, recomputes the
+// content hash, records a dependency amendment, and (when Reopened) performs
+// validated -> pending in the same step.
+//
+// Every check (previous lists, previous hash, and the state/reopen contract)
+// runs before any mutation, so a failed Apply leaves the state untouched. In
+// particular a content-changing event on a validated node with Reopened=false
+// is a replay error: the only legal way to change a validated node's edges is
+// the reopened form, so a reader can never observe a validated node whose
+// content changed without its verdict being invalidated.
+func applyNodeDepsAmended(s *State, e ledger.NodeDepsAmended) error {
+	n := s.GetNode(e.NodeID)
+	if n == nil {
+		return fmt.Errorf("node %s not found in state", e.NodeID.String())
+	}
+	if err := validateDepsAmendmentState(n, e.Reopened); err != nil {
+		return err
+	}
+	if !sameIDSet(n.Dependencies, e.PreviousDependencies) {
+		return fmt.Errorf("node %s dependency amendment mismatch: event expects previous %v, state holds %v",
+			e.NodeID.String(), e.PreviousDependencies, n.Dependencies)
+	}
+	if !sameIDSet(n.ValidationDeps, e.PreviousValidationDeps) {
+		return fmt.Errorf("node %s validation-dependency amendment mismatch: event expects previous %v, state holds %v",
+			e.NodeID.String(), e.PreviousValidationDeps, n.ValidationDeps)
+	}
+	if e.PreviousContentHash != "" && n.ContentHash != e.PreviousContentHash {
+		return fmt.Errorf("node %s content hash amendment mismatch: event expects previous %s, state holds %s",
+			e.NodeID.String(), e.PreviousContentHash, n.ContentHash)
+	}
+
+	// All checks passed: apply the edge replacement and the reopen transition
+	// together. reopenValidated cannot fail here because the contract was
+	// validated above.
+	n.Dependencies = e.NewDependencies
+	n.ValidationDeps = e.NewValidationDeps
+	n.ContentHash = n.ComputeContentHash()
+	if e.Reopened {
+		if err := reopenValidated(n); err != nil {
+			return err
+		}
+	}
+
+	s.AddAmendment(e.NodeID, Amendment{
+		Kind:                   AmendmentKindDependencies,
+		Timestamp:              e.EventTime,
+		Owner:                  e.Owner,
+		Reason:                 e.Reason,
+		PreviousDependencies:   e.PreviousDependencies,
+		NewDependencies:        e.NewDependencies,
+		PreviousValidationDeps: e.PreviousValidationDeps,
+		NewValidationDeps:      e.NewValidationDeps,
+		PreviousContentHash:    e.PreviousContentHash,
+		Reopened:               e.Reopened,
+	})
+
+	return nil
+}
+
+// validateDepsAmendmentState enforces the replay-side state contract for a
+// dependency amendment. A reopened event must target a validated node; a
+// non-reopened event must target a node that is still freely editable
+// (pending, draft or needs_refinement). Admitted, refuted and archived nodes
+// are never amendable.
+func validateDepsAmendmentState(n *node.Node, reopened bool) error {
+	if reopened {
+		if n.EpistemicState != schema.EpistemicValidated {
+			return fmt.Errorf("node %s dependency amendment reopens a node in state %s, want validated",
+				n.ID.String(), n.EpistemicState)
+		}
+		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
+			return fmt.Errorf("invalid reopen transition for node %s: %w", n.ID.String(), err)
+		}
+		return nil
+	}
+	switch n.EpistemicState {
+	case schema.EpistemicPending, schema.EpistemicDraft, schema.EpistemicNeedsRefinement:
+		return nil
+	default:
+		return fmt.Errorf("node %s dependency amendment is not reopened but state is %s; a content change on a validated node must reopen",
+			n.ID.String(), n.EpistemicState)
+	}
+}
+
+// reopenValidated performs the validated -> pending transition and clears the
+// validation provenance, exactly as NodeUnvalidated does. Shared by the
+// NodeAmended/NodesDepsAmended reopen paths so there is one definition of what
+// "reopened" clears.
+func reopenValidated(n *node.Node) error {
+	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
+		return fmt.Errorf("invalid reopen transition for node %s: %w", n.ID.String(), err)
+	}
+	n.EpistemicState = schema.EpistemicPending
+	clearValidationFields(n)
+	return nil
+}
+
+// clearValidationFields clears the recorded validation provenance on a node.
+func clearValidationFields(n *node.Node) {
+	n.ValidatedBy = ""
+	n.ValidationBatchID = ""
+	n.ValidatedContentHash = ""
+	n.ValidatedHashChecked = false
+}
+
+// sameIDSet reports whether two ID slices contain the same IDs. Order is
+// ignored because dependency order is not meaningful; the content hash already
+// sorts. This makes replay tolerant of a harmless reordering while still
+// rejecting a genuinely different edge set.
+func sameIDSet(a, b []types.NodeID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, id := range a {
+		seen[id.String()]++
+	}
+	for _, id := range b {
+		seen[id.String()]--
+	}
+	for _, c := range seen {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // applyScopeOpened handles the ScopeOpened event.
@@ -481,10 +645,7 @@ func applyNodeUnvalidated(s *State, e ledger.NodeUnvalidated) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicPending
-	n.ValidatedBy = ""
-	n.ValidationBatchID = ""
-	n.ValidatedContentHash = ""
-	n.ValidatedHashChecked = false
+	clearValidationFields(n)
 
 	return nil
 }

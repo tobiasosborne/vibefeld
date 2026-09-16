@@ -360,6 +360,27 @@ func generateSummary(eventType string, data map[string]interface{}) string {
 		}
 		return "Recomputed taint"
 
+	case "node_deps_amended":
+		id, _ := data["node_id"].(string)
+		owner, _ := data["owner"].(string)
+		summary := fmt.Sprintf("Amended dependencies of node %s by %s", id, owner)
+		if reopened, _ := data["reopened"].(bool); reopened {
+			summary += " (reopened)"
+		}
+		return summary
+
+	case "node_amended":
+		if id, ok := data["node_id"].(string); ok {
+			return fmt.Sprintf("Amended node %s", id)
+		}
+		return "Amended node"
+
+	case "node_amended_reopened":
+		if id, ok := data["node_id"].(string); ok {
+			return fmt.Sprintf("Amended and reopened node %s", id)
+		}
+		return "Amended and reopened node"
+
 	case "lock_reaped":
 		if id, ok := data["node_id"].(string); ok {
 			return fmt.Sprintf("Reaped lock on node %s", id)

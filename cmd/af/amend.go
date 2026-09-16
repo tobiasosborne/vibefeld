@@ -16,6 +16,7 @@ func newAmendCmd() *cobra.Command {
 	var statement string
 	var dir string
 	var format string
+	var reopen bool
 
 	cmd := &cobra.Command{
 		Use:     "amend <node-id>",
@@ -30,8 +31,13 @@ discovered before the node has been validated.
 
 Requirements:
   - You must be the owner of the node (or provide --owner)
-  - The node must be in 'pending' epistemic state (not yet validated/refuted)
+  - The node must be in 'pending', 'draft' or 'needs_refinement' state; a
+    'validated' node requires --reopen, which records the statement change and
+    the validated -> pending transition in one node_amended_reopened event
   - The node must not be claimed by another agent
+
+For correcting dependency edges specifically, use 'af amend-deps', which knows
+about result-use cycles and scopes.
 
 The original statement is preserved in the amendment history, which can be
 viewed with 'af get <node-id> --full'.
@@ -39,22 +45,24 @@ viewed with 'af get <node-id> --full'.
 Examples:
   af amend 1.1 --owner agent1 --statement "Corrected claim about X"
   af amend 1.2 -o agent1 -s "Fixed typo in the proof step"
-  af amend 1.1 --owner agent1 --statement "Clarified statement" --format json`,
+  af amend 1.1 --owner agent1 --statement "Clarified statement" --format json
+  af amend 1.1 --reopen -o verifier-1 -s "Corrected after review"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAmend(cmd, args[0], owner, statement, dir, format)
+			return runAmend(cmd, args[0], owner, statement, dir, format, reopen)
 		},
 	}
 
 	cmd.Flags().StringVarP(&owner, "owner", "o", "", "Agent/owner name (required)")
 	cmd.Flags().StringVarP(&statement, "statement", "s", "", "New statement text (required)")
+	cmd.Flags().BoolVar(&reopen, "reopen", false, "Amend a validated node and reopen it (validated -> pending) in the same event")
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "Proof directory")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format (text/json)")
 
 	return cmd
 }
 
-func runAmend(cmd *cobra.Command, nodeIDStr, owner, statement, dir, format string) error {
+func runAmend(cmd *cobra.Command, nodeIDStr, owner, statement, dir, format string, reopen bool) error {
 	examples := render.GetExamples("af amend")
 
 	// Validate owner is not empty
@@ -101,14 +109,14 @@ func runAmend(cmd *cobra.Command, nodeIDStr, owner, statement, dir, format strin
 	originalStatement := n.Statement
 
 	// Perform the amendment
-	err = svc.AmendNode(nodeID, owner, statement)
+	err = svc.AmendNodeWithReopen(nodeID, owner, statement, reopen)
 	if err != nil {
 		// Provide helpful error messages
 		if strings.Contains(err.Error(), "not found") {
 			return fmt.Errorf("node %q does not exist", nodeIDStr)
 		}
 		if strings.Contains(err.Error(), "epistemic state") {
-			return fmt.Errorf("cannot amend node %s: only nodes in 'pending' state can be amended", nodeIDStr)
+			return fmt.Errorf("cannot amend node %s: only nodes in 'pending', 'draft' or 'needs_refinement' state can be amended; pass --reopen for a validated node", nodeIDStr)
 		}
 		if strings.Contains(err.Error(), "claimed by") {
 			return fmt.Errorf("cannot amend node %s: %v", nodeIDStr, err)
@@ -124,6 +132,7 @@ func runAmend(cmd *cobra.Command, nodeIDStr, owner, statement, dir, format strin
 			"previous_statement": originalStatement,
 			"new_statement":      statement,
 			"owner":              owner,
+			"reopened":           reopen,
 		}
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {

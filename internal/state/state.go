@@ -33,14 +33,40 @@ type Challenge struct {
 	Resolution string          // Resolution text (populated when status is "resolved")
 	RaisedBy   string          // Agent ID who raised the challenge
 	BatchID    string          // Batch identifier, if raised as part of a batch (af verdicts apply); "" otherwise
+	Seq        int             // Ledger sequence of the ChallengeRaised event (0 if unknown)
 }
 
-// Amendment represents a single amendment to a node's statement.
+// Amendment kinds. An empty Kind is treated as AmendmentKindStatement so
+// amendment records written before dependency amendments existed replay
+// unchanged.
+const (
+	AmendmentKindStatement    = "statement"
+	AmendmentKindDependencies = "dependencies"
+)
+
+// Amendment represents a single amendment to a node. Kind distinguishes a
+// statement amendment (the original, and the only kind before D2) from a
+// dependency amendment. Statement fields are set for a statement amendment;
+// dependency fields are set for a dependency amendment. Both are kept in one
+// history so `af amendments` can list them in ledger order while statement
+// version numbering stays unchanged (a dependency amendment does not consume a
+// statement version).
 type Amendment struct {
+	Kind              string          // "" or "statement" = statement amendment; "dependencies" = edge amendment
+	Seq               int             // Ledger sequence of the event that recorded this amendment (0 if unknown)
 	Timestamp         types.Timestamp // When the amendment occurred
-	PreviousStatement string          // The statement before this amendment
-	NewStatement      string          // The statement after this amendment
+	PreviousStatement string          // The statement before this amendment (statement kind)
+	NewStatement      string          // The statement after this amendment (statement kind)
 	Owner             string          // Who made the amendment
+	Reason            string          // Why (dependency kind; empty for statement kind)
+
+	// Dependency amendment fields (Kind == AmendmentKindDependencies).
+	PreviousDependencies   []types.NodeID
+	NewDependencies        []types.NodeID
+	PreviousValidationDeps []types.NodeID
+	NewValidationDeps      []types.NodeID
+	PreviousContentHash    string
+	Reopened               bool
 }
 
 // Evidence represents computational evidence attached to a proof node.
@@ -222,10 +248,11 @@ type State struct {
 	// A value of 0 means no events have been applied yet.
 	latestSeq int
 
-	// operationIDs maps a driver-supplied operation id to the sequence number of
-	// the first event that carried it. It lets a retried operation discover its
-	// already-committed result instead of re-appending. Built during replay.
-	operationIDs map[string]int
+	// operationIDs maps a driver-supplied operation id to the record of the
+	// first event that carried it. It lets a retried operation discover its
+	// already-committed result instead of re-appending, and (D2) detect a
+	// reuse of the same id for a different request. Built during replay.
+	operationIDs map[string]OperationRecord
 }
 
 // NewState creates a new empty State with all maps initialized.
@@ -246,7 +273,7 @@ func NewState() *State {
 		defChecks:          make(map[string][]DefCheckResult),
 		outlineLinks:       make(map[string]types.NodeID),
 		scopeTracker:       scope.NewTracker(),
-		operationIDs:       make(map[string]int),
+		operationIDs:       make(map[string]OperationRecord),
 	}
 }
 
@@ -524,29 +551,57 @@ func (s *State) SetLatestSeq(seq int) {
 	s.latestSeq = seq
 }
 
+// OperationRecord is the binding of a driver-supplied operation id to the
+// committed event that first carried it. The extra fields let a retried
+// operation prove the id belongs to the same request (same event type, node and
+// request fingerprint) and report the original result without re-reading the
+// ledger.
+type OperationRecord struct {
+	Seq                int    // Ledger sequence of the first event carrying the id
+	EventType          string // Event type that carried the id
+	NodeID             string // Node the event applied to ("" if not node-scoped)
+	RequestFingerprint string // Canonical fingerprint of the originating request ("" if not applicable)
+	PreviousHash       string // Content hash before the event (node-scoped events)
+	NewHash            string // Content hash after the event (node-scoped events)
+	Reopened           bool   // Whether the event reopened the node
+}
+
 // RecordOperationID records that the event at seq carried operation id id.
 // The first occurrence wins, so a multi-event operation maps to its first
 // committed event. This is called by replay; callers normally use HasOperationID.
 func (s *State) RecordOperationID(id string, seq int) {
+	s.RecordOperation(id, OperationRecord{Seq: seq})
+}
+
+// RecordOperation records the full binding of an operation id. The first
+// occurrence wins, so a retry never rebinds an id to a later event.
+func (s *State) RecordOperation(id string, rec OperationRecord) {
 	if id == "" {
 		return
 	}
 	if s.operationIDs == nil {
-		s.operationIDs = make(map[string]int)
+		s.operationIDs = make(map[string]OperationRecord)
 	}
 	if _, exists := s.operationIDs[id]; !exists {
-		s.operationIDs[id] = seq
+		s.operationIDs[id] = rec
 	}
 }
 
 // HasOperationID reports whether an event carrying the given operation id was
 // applied, and if so at which ledger sequence. An empty id is never found.
 func (s *State) HasOperationID(id string) (seq int, ok bool) {
+	rec, ok := s.LookupOperation(id)
+	return rec.Seq, ok
+}
+
+// LookupOperation returns the full binding for an operation id. An empty id is
+// never found.
+func (s *State) LookupOperation(id string) (OperationRecord, bool) {
 	if id == "" || s.operationIDs == nil {
-		return 0, false
+		return OperationRecord{}, false
 	}
-	seq, ok = s.operationIDs[id]
-	return seq, ok
+	rec, ok := s.operationIDs[id]
+	return rec, ok
 }
 
 // AllChildrenValidated returns true if all direct children of the node are validated.
@@ -583,6 +638,18 @@ func (s *State) AddAmendment(nodeID types.NodeID, amendment Amendment) {
 // Returns an empty slice if no amendments have been made.
 func (s *State) GetAmendmentHistory(nodeID types.NodeID) []Amendment {
 	return s.amendments[nodeID.String()]
+}
+
+// SetLastAmendmentSeq stamps the ledger sequence onto the most recent
+// amendment record for nodeID. Replay calls it after applying an amendment
+// event, which is how the event's sequence reaches the export projection
+// without changing Apply's signature.
+func (s *State) SetLastAmendmentSeq(nodeID types.NodeID, seq int) {
+	hist := s.amendments[nodeID.String()]
+	if len(hist) == 0 {
+		return
+	}
+	hist[len(hist)-1].Seq = seq
 }
 
 // AddFailedApproach adds a failed approach record for a node.

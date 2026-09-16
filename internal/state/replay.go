@@ -59,10 +59,39 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 		// Track the latest sequence number for optimistic concurrency control
 		state.SetLatestSeq(seq)
 
+		// Stamp the ledger sequence onto the amendment record just appended, so
+		// the export projection can report amendment sequences.
+		switch ev := event.(type) {
+		case ledger.NodeAmended:
+			state.SetLastAmendmentSeq(ev.NodeID, seq)
+		case ledger.NodeAmendedReopened:
+			state.SetLastAmendmentSeq(ev.NodeID, seq)
+		case ledger.NodeDepsAmended:
+			state.SetLastAmendmentSeq(ev.NodeID, seq)
+		case ledger.ChallengeRaised:
+			if c := state.GetChallenge(ev.ChallengeID); c != nil {
+				c.Seq = seq
+			}
+		}
+
 		// Index an optional operation id so a retried operation can find the
-		// sequence of its already-committed result.
+		// sequence of its already-committed result. For a dependency amendment
+		// we also bind the id to the event type, node and request fingerprint,
+		// so a reuse of the same id for a different request is detectable.
 		if opIDCarrier, ok := event.(interface{ GetOperationID() string }); ok {
-			state.RecordOperationID(opIDCarrier.GetOperationID(), seq)
+			if id := opIDCarrier.GetOperationID(); id != "" {
+				rec := OperationRecord{Seq: seq, EventType: string(event.Type())}
+				if deps, ok := event.(ledger.NodeDepsAmended); ok {
+					rec.NodeID = deps.NodeID.String()
+					rec.RequestFingerprint = deps.RequestFingerprint
+					rec.PreviousHash = deps.PreviousContentHash
+					rec.Reopened = deps.Reopened
+					if n := state.GetNode(deps.NodeID); n != nil {
+						rec.NewHash = n.ContentHash
+					}
+				}
+				state.RecordOperation(id, rec)
+			}
 		}
 
 		// If verifying hashes and this is a NodeCreated event, verify the hash
@@ -158,6 +187,7 @@ var eventFactories = map[ledger.EventType]eventFactory{
 	ledger.EventNodeRefuted:         func() ledger.Event { return &ledger.NodeRefuted{} },
 	ledger.EventNodeArchived:        func() ledger.Event { return &ledger.NodeArchived{} },
 	ledger.EventNodeAmended:         func() ledger.Event { return &ledger.NodeAmended{} },
+	ledger.EventNodeAmendedReopened: func() ledger.Event { return &ledger.NodeAmendedReopened{} },
 	ledger.EventTaintRecomputed:     func() ledger.Event { return &ledger.TaintRecomputed{} },
 	ledger.EventDefAdded:            func() ledger.Event { return &ledger.DefAdded{} },
 	ledger.EventLemmaExtracted:      func() ledger.Event { return &ledger.LemmaExtracted{} },
@@ -180,6 +210,7 @@ var eventFactories = map[ledger.EventType]eventFactory{
 	ledger.EventClaimTested:         func() ledger.Event { return &ledger.ClaimTested{} },
 	ledger.EventDefChecked:          func() ledger.Event { return &ledger.DefChecked{} },
 	ledger.EventNodeProofAuthored:   func() ledger.Event { return &ledger.NodeProofAuthored{} },
+	ledger.EventNodeDepsAmended:     func() ledger.Event { return &ledger.NodeDepsAmended{} },
 }
 
 // parseEvent parses raw JSON bytes into a typed Event.
@@ -239,6 +270,8 @@ func derefEvent(eventPtr ledger.Event) ledger.Event {
 		return *e
 	case *ledger.NodeAmended:
 		return *e
+	case *ledger.NodeAmendedReopened:
+		return *e
 	case *ledger.TaintRecomputed:
 		return *e
 	case *ledger.DefAdded:
@@ -282,6 +315,8 @@ func derefEvent(eventPtr ledger.Event) ledger.Event {
 	case *ledger.DefChecked:
 		return *e
 	case *ledger.NodeProofAuthored:
+		return *e
+	case *ledger.NodeDepsAmended:
 		return *e
 	default:
 		// Should never happen since factory already validated the type
