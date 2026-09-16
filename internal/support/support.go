@@ -119,8 +119,10 @@ func resultUseEdges(u *universe) Provider {
 
 	for _, info := range u.nodes {
 		edges := make([]types.NodeID, 0, len(info.deps)+len(info.valDeps))
-		if !info.severed {
-			// (i) children: a parent's proof is its non-local_assume children.
+		if !info.severed && info.typ != schema.NodeTypeLocalAssume {
+			// (i) children: a parent's proof is its non-local_assume children,
+			// and a local_assume parent introduces hypotheses rather than
+			// establishing its children, so it contributes no result edge.
 			for _, c := range children[info.id.String()] {
 				if c.typ == schema.NodeTypeLocalAssume || c.severed {
 					continue
@@ -180,7 +182,8 @@ func (n *nodeInfo) allDeps() []types.NodeID {
 // universe is the node set over state + overlay, keyed by ID string.
 type universe struct {
 	nodes    map[string]*nodeInfo
-	encl     map[string][]types.NodeID
+	encl     map[string][]types.NodeID // context others see when citing a node
+	ownEncl  map[string][]types.NodeID // context a node's own dependencies see
 	enclDone bool
 }
 
