@@ -149,6 +149,9 @@ func chainReason(n *node.Node, ancestors []*node.Node) (string, bool) {
 	if n.EpistemicState == schema.EpistemicNeedsRefinement {
 		return "node is reopened for refinement", true
 	}
+	if schema.IntroducesTaint(n.EpistemicState) {
+		return fmt.Sprintf("node is %s — accepted without full proof", n.EpistemicState), true
+	}
 	for i := len(ancestors) - 1; i >= 0; i-- {
 		a := ancestors[i]
 		if traceSevered(a) {
@@ -163,9 +166,6 @@ func chainReason(n *node.Node, ancestors []*node.Node) (string, bool) {
 		if schema.IntroducesTaint(a.EpistemicState) {
 			return fmt.Sprintf("ancestor %s is %s", a.ID.String(), a.EpistemicState), false
 		}
-	}
-	if schema.IntroducesTaint(n.EpistemicState) {
-		return fmt.Sprintf("node is %s — accepted without full proof", n.EpistemicState), true
 	}
 	return "", false
 }

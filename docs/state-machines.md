@@ -226,38 +226,51 @@ Source: `internal/node/node.go`, `internal/taint/compute.go`, `internal/taint/pr
 
 | State | Description |
 |-------|-------------|
-| `clean` | No uncertainty in the ancestor chain or active descendant subtree |
+| `clean` | No uncertainty in the ancestor chain or support component |
 | `self_admitted` | This node was admitted (introduced taint) |
-| `tainted` | A non-severed ancestor or active descendant is admitted |
-| `unresolved` | Node, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
+| `tainted` | A non-severed ancestor or a result this node relies on is admitted |
+| `unresolved` | Node, a non-severed ancestor, or a result is pending/draft/needs_refinement, or a dependency is severed/missing/cyclic |
 
 ### Computation Rules
 
-Unlike workflow and epistemic states, taint is **computed** (not directly transitioned) from epistemic states in both directions. Stored ancestor taint is not an input. The rules are applied in priority order:
+Unlike workflow and epistemic states, taint is **computed** (not directly transitioned) from epistemic states. Stored ancestor taint is not an input. The rules are applied in priority order:
 
 ```
 0. IF node is archived/refuted THEN taint = 'clean'
-1. IF node is pending/draft/needs_refinement THEN taint = 'unresolved'
-2. IF any non-severed ancestor is pending/draft/needs_refinement THEN taint = 'unresolved'
-3. IF node is admitted THEN taint = 'self_admitted'
-4. IF any active descendant is pending/draft/needs_refinement THEN taint = 'unresolved'
+1. IF node is admitted THEN taint = 'self_admitted'
+2. IF node is pending/draft/needs_refinement THEN taint = 'unresolved'
+3. IF any non-severed ancestor is pending/draft/needs_refinement THEN taint = 'unresolved'
+4. IF the support component is unresolved THEN taint = 'unresolved'
 5. IF any non-severed ancestor is admitted THEN taint = 'tainted'
-6. IF any active descendant is admitted THEN taint = 'tainted'
+6. IF the support component is tainted THEN taint = 'tainted'
 7. OTHERWISE taint = 'clean'
 ```
 
+The **support component** is a fold over result-use edges (non-`local_assume`
+children, reference dependencies and validation dependencies) in
+dependency-topological order: a severed child contributes nothing; an admitted
+target contributes `tainted` and is not descended; a pending/draft/needs_refinement
+target contributes `unresolved`; a severed or missing dependency target
+contributes `unresolved`; a validated target contributes its own component; a
+legacy result-use cycle is `unresolved`; and a `local_assume` target is
+hypothesis-use and carries nothing.
+
 ### Taint Propagation
 
-When a node's epistemic state changes, taint must be recomputed for:
+When a node's epistemic state, or any of its dependency edges, changes, taint
+must be recomputed for:
 1. The node itself
 2. Its ancestors
 3. Its descendants
+4. The reverse dependents that cite it through dependencies or validation dependencies, transitively
 
-The upward subtree component is computed deepest-first. Archived/refuted child
-branches are skipped, and admitted nodes ignore their subtrees. The downward
-ancestor component uses epistemic states only, which prevents an admitted child
-from contaminating its validated siblings. Replay finishes with the same full
-recompute, making derived taint authoritative over historical audit events.
+The support component is folded deepest-result-first over one prepared
+result-use graph. Archived/refuted child branches are skipped, an explicit
+dependency on a severed or missing node is unresolved, and admitted nodes
+ignore their own results. The downward ancestor component uses epistemic states
+only, which prevents an admitted child from contaminating its validated
+siblings. Replay finishes with the same full recompute, making derived taint
+authoritative over historical audit events.
 
 ### Taint Events
 
@@ -484,7 +497,7 @@ Node Created
 | or tainted*   | | admitted      | |               |
 +---------------+ +---------------+ +---------------+
 
-* taint depends on non-severed ancestors and active descendants
+* taint depends on non-severed ancestors and the result-use support component
 ```
 
 ### Invariants

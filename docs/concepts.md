@@ -205,30 +205,48 @@ The distinction matters because `af status`, `af health`, `af get` and `af expor
 
 ### Taint States
 
-Taint tracks epistemic uncertainty that propagates through the proof tree:
+Taint tracks epistemic uncertainty that propagates through proof support. A
+node's **support component** is computed over its result-use edges — every
+non-`local_assume` child (when the node is not a `local_assume`), and every
+non-`local_assume` dependency or validation dependency — in
+dependency-topological order. Reference and validation dependencies therefore
+carry taint exactly like children, and a severed or missing dependency target
+is an unresolved result-use edge.
 
-An **active descendant** is a descendant reachable without crossing an
-archived/refuted node or continuing beyond an admitted, pending, draft, or
-needs_refinement node. Those non-severed boundary nodes contribute taint or
-unresolved state themselves, but their own descendants are not inspected.
+An **active descendant** is a descendant reachable through result-use edges
+without continuing beyond an admitted, pending, draft, or needs_refinement
+node. Those non-severed boundary nodes contribute taint or unresolved state
+themselves, but their own descendants are not inspected. Archived and refuted
+nodes are severed: they are clean, and a child edge to them contributes nothing
+(an explicit dependency on one is unresolved).
 
 | State | Description |
 |-------|-------------|
-| `clean` | The ancestor chain and active descendant subtree contain no uncertainty. |
+| `clean` | Neither the ancestor chain nor the support component contains uncertainty. |
 | `self_admitted` | This node itself was admitted without proof. |
-| `tainted` | A non-severed ancestor or active descendant was admitted. |
-| `unresolved` | This node, a non-severed ancestor, or an active descendant is pending/draft/needs_refinement. |
+| `tainted` | A non-severed ancestor, or a result this node relies on, was admitted. |
+| `unresolved` | This node, a non-severed ancestor, or a result this node relies on is pending/draft/needs_refinement, or a dependency is severed/missing/cyclic. |
 
 Taint is computed, not directly set. The computation follows these rules (in order):
 
-0. If the node is archived/refuted, return `clean` (the branch is severed)
-1. If the node is pending/draft/needs_refinement, return `unresolved`
-2. If any non-severed ancestor is pending/draft/needs_refinement, return `unresolved`
-3. If the node is admitted, return `self_admitted` (its subtree is ignored)
-4. If any active descendant is pending/draft/needs_refinement, return `unresolved`
-5. If any non-severed ancestor is admitted, return `tainted`
-6. If any active descendant is admitted, return `tainted`
-7. Otherwise, return `clean`
+0. If the node is archived/refuted, return `clean` (the branch is severed).
+1. If the node is `admitted`, return `self_admitted` (its own support is ignored).
+2. If the node is pending/draft/needs_refinement, return `unresolved`.
+3. If any non-severed ancestor is pending/draft/needs_refinement, return `unresolved`.
+4. Compute the support component from the node's result-use targets:
+   - a severed child contributes nothing (severed children are not result-use edges);
+   - an admitted target contributes `tainted` and is not descended (0.1.7's admitted boundary);
+   - a pending/draft/needs_refinement target contributes `unresolved`;
+   - a severed or missing dependency or validation target contributes `unresolved`;
+   - a validated target contributes its own support component;
+   - a legacy result-use cycle (a strongly connected component) contributes `unresolved`;
+   - a `local_assume` target is hypothesis-use and carries nothing.
+   If any target contributes `unresolved`, return `unresolved`; if any contributes `tainted`, return `tainted`.
+5. If any non-severed ancestor is admitted, return `tainted`.
+6. Otherwise, return `clean`.
+
+The ancestor-context component (rules 3 and 5) is kept separate and is never
+pushed into siblings: a validated sibling of an admitted node stays `clean`.
 
 A proof is fully verified only when the root node is `validated` with taint `clean`.
 
@@ -389,34 +407,52 @@ Taint answers the question: "If we were to verify this proof with maximum rigor,
 
 ### How Taint Spreads
 
-Taint propagates in both directions along the proof tree. Ancestor-chain state
-flows downward from epistemic states only; active descendant state flows upward.
-The two components are kept separate, so taint derived from one child never
-flows back down into a validated sibling. Archived/refuted children sever their
-whole branch from the upward walk. Admitted children are taken on faith, while
-pending/draft/needs_refinement children already establish unresolved status, so
-none of those boundary nodes require inspecting their own subtrees.
+Taint propagates along two separate components. The **ancestor component** flows
+downward from the epistemic states of non-severed ancestors only. The **support
+component** is a fold over the result-use relation (children, reference
+dependencies and validation dependencies) in dependency-topological order,
+deepest result first. The two are kept separate, so taint derived from one
+result never flows back down into a validated sibling. Archived/refuted
+children sever their branch from the upward fold; a dependency on a severed or
+missing node is unresolved. Admitted results are taken on faith and are not
+descended, while pending/draft/needs_refinement results already establish
+unresolved status, so none of those boundary nodes require inspecting their own
+results.
+
+The fold over one prepared result-use graph is shared with `support_current`
+(`internal/support`): the strongly connected components of legacy cyclic data
+are unresolved rather than an error, and `local_assume` targets are
+hypothesis-use and carry nothing.
 
 The algorithm:
 
 ```
-function ComputeTaintInTree(node, tree):
+function ComputeTaint(node, graph):
     if node is archived or refuted: return clean
+    if node is admitted: return self_admitted
     if node is pending, draft, or needs_refinement: return unresolved
 
     down = epistemic contribution of non-severed ancestors
     if down is unresolved: return unresolved
-    if node is admitted: return self_admitted
 
-    up = contribution of active descendants, computed deepest-first
+    up = fold over result-use targets, dependency-first:
+        severed child            -> nothing
+        admitted target          -> tainted (do not descend)
+        pending/draft/needs_ref  -> unresolved
+        severed/missing/cyclic   -> unresolved
+        validated target         -> target's own support component
+        local_assume target      -> nothing (hypothesis-use)
     if up is unresolved: return unresolved
     if down is tainted or up is tainted: return tainted
     return clean
 ```
 
-When a node's epistemic state changes, taint is recomputed for that node, its
-ancestors, and its descendants. Replay also runs a full authoritative recompute,
-so stale historical `TaintRecomputed` audit events cannot override derived state.
+When a node's epistemic state, or any of its dependency edges, changes, taint
+is recomputed for that node and every node the change can reach: its ancestors,
+its descendants, and the reverse dependents that cite it through dependencies
+or validation dependencies, transitively. Replay also runs a full authoritative
+recompute after the complete event stream, so stale historical `TaintRecomputed`
+audit events cannot override derived state.
 
 ### Why It Matters for Proof Integrity
 

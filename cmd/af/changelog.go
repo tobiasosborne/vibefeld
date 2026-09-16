@@ -9,6 +9,17 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
+		Version:    "0.1.11",
+		Date:       "unreleased",
+		Unreleased: true,
+		Items: []string{
+			"Taint follows proof support (D6). A node's support component is computed as a fold over result-use edges in dependency-topological order, so reference dependencies and validation dependencies now carry taint exactly like children: a severed or missing dependency target is `unresolved`, a pending/draft/needs_refinement target is `unresolved`, an admitted target contributes `tainted` and is not descended, and a validated target contributes its own component. Legacy result-use cycles (strongly connected components) are `unresolved`, and local_assume hypothesis-use edges carry nothing. The ancestor-context component stays separate, so a validated sibling of an admitted node stays `clean`. The old rules 0-7 in `docs/concepts.md` are replaced by the new ordered rule list.",
+			"`PropagateTaint`'s affected set now includes reverse dependents (nodes that cite the changed node through dependencies or validation dependencies, transitively), not only ancestors and descendants, and the `TaintRecomputed` audit-emission filter matches. Replay keeps its single authoritative final derivation (moved to the service load path) so stale historical audit events cannot override derived taint.",
+			"`af taint-trace` walks the support relation (child, reference dependency, validation dependency), names the edge kind and reports the source's recorded verdict sequence or latest statement/dependency amendment, e.g. `1 tainted via child 1.1 (admitted, verdict seq 5)`; the JSON output adds `support_sources`.",
+			"Verification: an independent recursive specification (`internal/taint/spec_test.go`) written from the rule list, and a seeded differential fuzz (`internal/taint/support_fold_fuzz_test.go`, 3000 random 5-40 node graphs with mixed edges, local_assume scopes, missing targets, legacy cycles and random command outcomes) asserting production == spec, idempotence of `RecomputeAll`, incremental `PropagateTaint` == full derivation, no clean node has a support path through a non-validated result, and sibling separation. `scripts/corpus-taint-diff.sh` diffs `af export --graph json` between two binaries over the 211-workspace corpus; only `taint_state` and `validation.taint_counts` are allowlisted to change, and the AISM corpus diff is 0/211 workspaces (the corpus has no reference or validation edge into a non-clean node).",
+		},
+	},
+	{
 		Version:    "0.1.10",
 		Date:       "unreleased",
 		Unreleased: true,

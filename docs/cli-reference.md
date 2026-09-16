@@ -1708,6 +1708,40 @@ af deps 1.3 -f json      # JSON output
 
 ## Taint Management
 
+### `taint-trace`
+
+Explain why a node has its taint, following the D6 support relation: child,
+reference-dependency and validation-dependency edges all carry taint, each line
+names the edge kind and the source's revision, a severed dependency is
+unresolved, and an admitted result is taken on faith without descending.
+Hypothesis-use edges (`local_assume` targets) carry nothing.
+
+**Syntax:**
+```
+af taint-trace <node-id> [flags]
+```
+
+**Flags:**
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--dir` | `-d` | string | "." | Proof directory path |
+| `--format` | `-f` | string | "text" | Output format (text or json) |
+
+**Text output** shows `Current taint`, a `Support source(s)` list such as
+`1 tainted via child 1.1 (admitted, verdict seq 5)`, and the ancestry chain. The
+source detail carries the recorded verdict sequence, or the latest statement or
+dependency amendment sequence, when one exists. **JSON output** carries
+`node_id`, `taint_state`, `trace` (the ancestry chain) and `support_sources`.
+
+**Examples:**
+```bash
+af taint-trace 1.6.4            # Why is 1.6.4 tainted?
+af taint-trace 1.2 -f json      # Machine-readable trace
+```
+
+---
+
 ### `recompute-taint`
 
 Re-sync `TaintRecomputed` audit records for all nodes using the same
@@ -1732,13 +1766,15 @@ af recompute-taint [flags]
 **Taint States:**
 | State | Description |
 |-------|-------------|
-| `clean` | No uncertainty in the ancestor chain or active subtree |
+| `clean` | No uncertainty in the ancestor chain or support component |
 | `self_admitted` | Admitted nodes |
-| `tainted` | Depends on an admitted ancestor or active descendant |
-| `unresolved` | Self, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
+| `tainted` | Depends on an admitted ancestor or result (child, reference or validation dependency) |
+| `unresolved` | Self, a non-severed ancestor, or a result is pending/draft/needs_refinement, or a dependency is severed/missing/cyclic |
 
-Archived/refuted child branches are severed upward. Upward-derived taint is not
-fed back down, so validated siblings remain uncontaminated.
+Archived/refuted child branches are severed upward; an explicit dependency on a
+severed or missing node is unresolved. Upward-derived taint is not fed back
+down, so validated siblings remain uncontaminated, and `local_assume`
+hypothesis-use carries nothing.
 
 **Examples:**
 ```bash
@@ -2773,10 +2809,10 @@ af wizard respond-challenge
 
 | State | Description |
 |-------|-------------|
-| `clean` | No uncertainty in the ancestor chain or active subtree |
+| `clean` | No uncertainty in the ancestor chain or support component |
 | `self_admitted` | Node itself was admitted |
-| `tainted` | Depends on an admitted ancestor or active descendant |
-| `unresolved` | Self, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
+| `tainted` | Depends on an admitted ancestor or result (child, reference or validation dependency) |
+| `unresolved` | Self, a non-severed ancestor, or a result is pending/draft/needs_refinement, or a dependency is severed/missing/cyclic |
 
 ---
 

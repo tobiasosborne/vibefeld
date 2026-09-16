@@ -503,9 +503,9 @@ func TestPropagateTaint_ArchivedBranchSeversDescendantTaint(t *testing.T) {
 	}
 }
 
-func TestPropagateTaint_PendingAncestorPrecedesSelfAdmission(t *testing.T) {
+func TestPropagateTaint_SelfAdmissionPrecedesPendingAncestor(t *testing.T) {
 	root := makeNode("1", schema.EpistemicPending, node.TaintUnresolved)
-	admittedChild := makeNode("1.2", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+	admittedChild := makeNode("1.2", schema.EpistemicAdmitted, node.TaintClean)
 	allNodes := []*node.Node{root, admittedChild}
 
 	changed := PropagateTaint(admittedChild, allNodes)
@@ -513,8 +513,10 @@ func TestPropagateTaint_PendingAncestorPrecedesSelfAdmission(t *testing.T) {
 	if root.TaintState != node.TaintUnresolved {
 		t.Errorf("root.TaintState = %v, want %v", root.TaintState, node.TaintUnresolved)
 	}
-	if admittedChild.TaintState != node.TaintUnresolved {
-		t.Errorf("admittedChild.TaintState = %v, want %v", admittedChild.TaintState, node.TaintUnresolved)
+	// D6 per-node precedence: the node's own admitted verdict comes before an
+	// ancestor's unresolved state, so the admitted child stays self_admitted.
+	if admittedChild.TaintState != node.TaintSelfAdmitted {
+		t.Errorf("admittedChild.TaintState = %v, want %v", admittedChild.TaintState, node.TaintSelfAdmitted)
 	}
 	if len(changed) != 1 || changed[0] != admittedChild {
 		t.Errorf("PropagateTaint() changed = %v, want admitted child only", nodeIDs(changed))

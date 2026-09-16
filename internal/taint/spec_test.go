@@ -92,12 +92,12 @@ func (g *specGraph) specFinal(id string, memo map[string]specResult) node.TaintS
 	switch {
 	case specSevered(n.epistemic):
 		return node.TaintClean
+	case schema.IntroducesTaint(n.epistemic):
+		return node.TaintSelfAdmitted
 	case specUnresolvedState(n.epistemic):
 		return node.TaintUnresolved
 	case down == specUnresolved:
 		return node.TaintUnresolved
-	case schema.IntroducesTaint(n.epistemic):
-		return node.TaintSelfAdmitted
 	case sup.comp == specUnresolved:
 		return node.TaintUnresolved
 	case down == specTainted:

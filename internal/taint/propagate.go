@@ -212,18 +212,24 @@ func combineComponents(a, b taintComponent) taintComponent {
 	return componentClean
 }
 
+// finalTaint applies the D6 per-node precedence: own severed state, then own
+// admitted (self_admitted), then unresolved (own state first, then the support
+// component and ancestors), then tainted (ancestors then support), then clean.
+// An admitted node is a deliberate escape hatch, so its own verdict is not
+// overridden by an ancestor's unresolved state; the ancestor component is
+// applied only after the node's own state.
 func finalTaint(n *node.Node, down, up taintComponent) node.TaintState {
 	if isSevered(n) {
 		return node.TaintClean
+	}
+	if schema.IntroducesTaint(n.EpistemicState) {
+		return node.TaintSelfAdmitted
 	}
 	if isUnresolvedState(n.EpistemicState) {
 		return node.TaintUnresolved
 	}
 	if down == componentUnresolved {
 		return node.TaintUnresolved
-	}
-	if schema.IntroducesTaint(n.EpistemicState) {
-		return node.TaintSelfAdmitted
 	}
 	if up == componentUnresolved {
 		return node.TaintUnresolved
