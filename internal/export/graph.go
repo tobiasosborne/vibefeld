@@ -11,6 +11,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/jobs"
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/support"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -144,6 +145,14 @@ type GraphNode struct {
 	// (omitempty), advertised by the dependency-amendments capability token,
 	// no schema_version bump.
 	DependencyAmendments []GraphDependencyAmendment `json:"dependency_amendments,omitempty"`
+	// SupportCurrent is D4's derived support_current: true iff the node's
+	// recorded verdict (validated/admitted) is still supported by the current
+	// result-use DAG, with no revision after the verdict, no open blocking
+	// challenge, and every target itself current. Additive field (omitempty),
+	// advertised by the support-current capability token. SupportCause is the
+	// stable failure code when it is false.
+	SupportCurrent bool   `json:"support_current,omitempty"`
+	SupportCause   string `json:"support_cause,omitempty"`
 }
 
 // GraphDependencyAmendment is one dependency-edge correction in the graph
@@ -246,6 +255,10 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 	// once over the full node set from the same challengeMap, deterministic.
 	closedSet := computeClosedSet(nodes, nodeMap, challengeMap)
 
+	// D4 support_current, computed once over the whole DAG with the shared
+	// memoised walk.
+	supportSet := support.Current(s)
+
 	// child_ids per parent, built from the already-sorted node list so each
 	// parent's children slice comes out in hierarchical-ID order too.
 	childrenOf := make(map[string][]string, len(nodes))
@@ -279,6 +292,11 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 			ProverReady:          proverReadySet[n.ID.String()],
 			VerifierReady:        verifierReadySet[n.ID.String()],
 			Closed:               closedSet[n.ID.String()],
+		}
+		if st := supportSet[n.ID.String()]; st.Cause != "" {
+			gn.SupportCause = st.Cause
+		} else if st.Current {
+			gn.SupportCurrent = true
 		}
 		if len(n.Dependencies) > 0 {
 			deps := make([]string, len(n.Dependencies))

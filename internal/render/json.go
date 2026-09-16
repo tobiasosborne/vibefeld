@@ -52,6 +52,16 @@ type JSONNode struct {
 	Scope          []string `json:"scope,omitempty"`
 	ClaimedBy      string   `json:"claimed_by,omitempty"`
 	ClaimedAt      string   `json:"claimed_at,omitempty"`
+
+	// SupportCurrent is D4's derived support_current signal: a validated or
+	// admitted node whose result-use targets are all still current. False for
+	// nodes that are not currently supported (including not-yet-validated
+	// nodes). SupportCause, when non-empty, is the stable failure code and
+	// SupportNode names the node responsible.
+	SupportCurrent bool   `json:"support_current"`
+	SupportCause   string `json:"support_cause,omitempty"`
+	SupportNode    string `json:"support_node,omitempty"`
+	SupportSeq     int    `json:"support_seq,omitempty"`
 }
 
 // JSONChallenge represents a challenge in JSON format.
@@ -278,6 +288,22 @@ func RenderJobsJSON(jobList *jobs.JobResult) string {
 	return string(data)
 }
 
+// withSupport decorates the JSON nodes of a status render with D4's
+// support_current signal (and, when false, its cause and responsible node).
+func withSupport(s *state.State, nodes []*node.Node, jsonNodes []JSONNode) []JSONNode {
+	supportMap := supportStatuses(s)
+	for i := range jsonNodes {
+		st := supportMap[nodes[i].ID.String()]
+		jsonNodes[i].SupportCurrent = st.Current
+		jsonNodes[i].SupportCause = st.Cause
+		jsonNodes[i].SupportSeq = st.Seq
+		if st.Cause != "" {
+			jsonNodes[i].SupportNode = st.Node.String()
+		}
+	}
+	return jsonNodes
+}
+
 // nodeToJSON converts a node to its JSON representation.
 func nodeToJSON(n *node.Node) JSONNode {
 	jn := JSONNode{
@@ -378,7 +404,7 @@ func statusToJSON(s *state.State, nodes []*node.Node) JSONStatus {
 			ProverJobs:   proverJobs,
 			VerifierJobs: verifierJobs,
 		},
-		Nodes:      jsonNodes,
+		Nodes:      withSupport(s, nodes, jsonNodes),
 		Challenges: jsonChallenges,
 	}
 }
@@ -446,7 +472,7 @@ func statusToJSONWithPagination(s *state.State, nodes []*node.Node, totalNodes, 
 			ProverJobs:   proverJobs,
 			VerifierJobs: verifierJobs,
 		},
-		Nodes:      jsonNodes,
+		Nodes:      withSupport(s, nodes, jsonNodes),
 		Challenges: jsonChallenges,
 	}
 }

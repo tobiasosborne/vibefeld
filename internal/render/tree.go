@@ -8,6 +8,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/support"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -65,9 +66,10 @@ func RenderTree(s *state.State, customRoot *types.NodeID) string {
 	sortNodesByID(rootNodes)
 
 	// Build the tree output
+	supportMap := supportStatuses(s)
 	var sb strings.Builder
 	for i, root := range rootNodes {
-		renderSubtree(&sb, s, root, nodeMap, allNodes, "", i == len(rootNodes)-1, true, customRoot)
+		renderSubtree(&sb, s, root, nodeMap, allNodes, "", i == len(rootNodes)-1, true, customRoot, supportMap)
 	}
 
 	return sb.String()
@@ -82,12 +84,13 @@ func RenderTreeForNodes(s *state.State, nodes []*node.Node) string {
 		return ""
 	}
 
+	supportMap := supportStatuses(s)
 	var sb strings.Builder
 	for _, n := range nodes {
 		// Indent based on depth (2 spaces per level)
 		depth := n.ID.Depth()
 		indent := strings.Repeat("  ", depth-1)
-		nodeStr := formatNodeWithState(n, s)
+		nodeStr := formatNodeWithSupport(n, s, supportMap[n.ID.String()])
 		sb.WriteString(indent)
 		sb.WriteString(nodeStr)
 		sb.WriteString("\n")
@@ -108,9 +111,10 @@ func renderSubtree(
 	isLast bool,
 	isRoot bool,
 	customRoot *types.NodeID,
+	supportMap map[string]support.SupportStatus,
 ) {
 	// Render this node with state context for validation dependency info
-	nodeStr := formatNodeWithState(n, s)
+	nodeStr := formatNodeWithSupport(n, s, supportMap[n.ID.String()])
 
 	// For the root node, just write the node line (no branch characters)
 	if isRoot {
@@ -146,7 +150,7 @@ func renderSubtree(
 	// Render children
 	for i, child := range children {
 		childIsLast := i == len(children)-1
-		renderSubtree(sb, s, child, nodeMap, allNodes, childPrefix, childIsLast, false, customRoot)
+		renderSubtree(sb, s, child, nodeMap, allNodes, childPrefix, childIsLast, false, customRoot, supportMap)
 	}
 }
 
@@ -191,6 +195,12 @@ func isDescendantOrEqual(nodeID, ancestorID types.NodeID) bool {
 // This is the public API for formatting a single node line.
 func FormatNodeLine(n *node.Node, s *state.State) string {
 	return formatNodeWithState(n, s)
+}
+
+// formatNodeWithSupport formats a node line and appends the D4 support marker
+// when the node's recorded verdict is no longer currently supported.
+func formatNodeWithSupport(n *node.Node, s *state.State, st support.SupportStatus) string {
+	return formatNodeWithState(n, s) + supportMarker(st)
 }
 
 // formatNode formats a single node for tree display.
