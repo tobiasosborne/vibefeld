@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/tobiasosborne/vibefeld/internal/config"
-	"github.com/tobiasosborne/vibefeld/internal/cycle"
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
 	"github.com/tobiasosborne/vibefeld/internal/fs"
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
@@ -23,6 +22,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/support"
 	"github.com/tobiasosborne/vibefeld/internal/taint"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
@@ -63,6 +63,13 @@ var ErrNodeNotFound = aferrors.New(aferrors.NODE_NOT_FOUND, "node not found")
 // ErrParentNotFound is returned when a parent node does not exist.
 // Exit code: 3 (logic error)
 var ErrParentNotFound = aferrors.New(aferrors.PARENT_NOT_FOUND, "parent node not found")
+
+// ErrParentIDMismatch is returned when a caller-supplied ParentID does not
+// match the structural parent encoded in the child's ID. The committed node's
+// structure is derived from the child ID, so accepting a mismatched ParentID
+// would validate one graph and commit another.
+// Exit code: 3 (logic error)
+var ErrParentIDMismatch = aferrors.New(aferrors.INVALID_PARENT, "parent ID does not match child ID")
 
 // ErrEmptyInput is returned when a required input is empty or whitespace.
 // Exit code: 3 (logic error)
@@ -432,6 +439,20 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 			return nil, err
 		}
 
+		// D1: run the same support check every creation path uses. The overlay
+		// parent is derived from the child ID (there is no caller-supplied
+		// ParentID here), matching the committed NodeCreated's structure. A node
+		// created without dependencies cannot itself close a cycle, but this
+		// keeps the invariant in one place as the graph grows.
+		parent, hasParent := id.Parent()
+		pn := support.ProspectiveNode{ID: id, Type: nodeType}
+		if hasParent {
+			pn.ParentID = parent
+		}
+		if err := checkSupportBatch(st, []support.ProspectiveNode{pn}); err != nil {
+			return nil, err
+		}
+
 		return []ledger.Event{ledger.NewNodeCreated(*n)}, nil
 	})
 	return wrapSequenceMismatch(err, "CreateNode")
@@ -633,6 +654,16 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 
 	var oldTaints map[string]node.TaintState
 	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// The committed NodeCreated derives structure from the child ID, so a
+		// caller-supplied ParentID that disagrees would validate one graph and
+		// commit another. Reject the mismatch and derive the overlay parent from
+		// the child ID below.
+		derivedParent, hasDerived := spec.ChildID.Parent()
+		if !hasDerived || derivedParent.String() != spec.ParentID.String() {
+			return nil, fmt.Errorf("%w: parent %s does not match child %s's parent %s",
+				ErrParentIDMismatch, spec.ParentID.String(), spec.ChildID.String(), derivedParent.String())
+		}
+
 		// Check if parent node exists
 		parent := st.GetNode(spec.ParentID)
 		if parent == nil {
@@ -664,29 +695,31 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 			return nil, err
 		}
 
-		// Create provider for cycle check
-		provider := &stateDependencyProvider{st: st}
-
-		// Validate that all reference dependencies exist and don't create cycles
+		// Validate that all explicit dependencies exist. Existence is a
+		// creation-path invariant; the support graph itself keeps a
+		// dependency on a missing/severed node as a sink edge for audit.
 		for _, depID := range spec.Dependencies {
 			if st.GetNode(depID) == nil {
 				return nil, fmt.Errorf("invalid dependency: node %s not found", depID.String())
 			}
-
-			if res := cycle.WouldCreateCycle(provider, spec.ParentID, depID); res.HasCycle {
-				return nil, fmt.Errorf("%w: adding dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), depID.String(), res.Path)
-			}
 		}
-
-		// Validate that all validation dependencies exist and don't create cycles
 		for _, valDepID := range spec.ValidationDeps {
 			if st.GetNode(valDepID) == nil {
 				return nil, fmt.Errorf("invalid validation dependency: node %s not found", valDepID.String())
 			}
+		}
 
-			if res := cycle.WouldCreateCycle(provider, spec.ParentID, valDepID); res.HasCycle {
-				return nil, fmt.Errorf("%w: adding validation dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), valDepID.String(), res.Path)
-			}
+		// Cycle and scope checks over result-use edges, from the child's own
+		// position (vibefeld-0ko0): a child may not result-use an ancestor
+		// claim, but may hypothesis-use an enclosing local_assume.
+		if err := checkSupportBatch(st, []support.ProspectiveNode{{
+			ID:             spec.ChildID,
+			ParentID:       derivedParent,
+			Type:           spec.NodeType,
+			Dependencies:   spec.Dependencies,
+			ValidationDeps: spec.ValidationDeps,
+		}}); err != nil {
+			return nil, err
 		}
 
 		// Create the child node with both dependency types.
@@ -1653,6 +1686,7 @@ func (s *ProofService) buildChildEvents(st *State, parentID types.NodeID, owner 
 
 	childIDs := make([]types.NodeID, len(children))
 	events := make([]ledger.Event, len(children))
+	batch := make([]support.ProspectiveNode, len(children))
 
 	for i, spec := range children {
 		if strings.TrimSpace(spec.Statement) == "" {
@@ -1667,6 +1701,13 @@ func (s *ProofService) buildChildEvents(st *State, parentID types.NodeID, owner 
 			return nil, nil, fmt.Errorf("child %d: failed to generate child ID: %w", i+1, err)
 		}
 		childIDs[i] = childID
+		// The committed child's structure comes from its ID; derive the overlay
+		// parent from that ID and never from the caller-supplied parentID.
+		derivedParent, ok := childID.Parent()
+		if !ok || derivedParent.String() != parentID.String() {
+			return nil, nil, fmt.Errorf("child %d: %w: %s is not a child of %s",
+				i+1, ErrParentIDMismatch, childID.String(), parentID.String())
+		}
 
 		// Resolve per-child dependencies (rk B2): "#N" is a backward sibling
 		// ref into THIS batch (only known now, at allocation), anything else an
@@ -1681,6 +1722,20 @@ func (s *ProofService) buildChildEvents(st *State, parentID types.NodeID, owner 
 			return nil, nil, fmt.Errorf("child %d: %w", i+1, err)
 		}
 		events[i] = ledger.NewNodeCreated(*childNode)
+		batch[i] = support.ProspectiveNode{
+			ID:             childID,
+			ParentID:       derivedParent,
+			Type:           spec.NodeType,
+			Dependencies:   childNode.Dependencies,
+			ValidationDeps: childNode.ValidationDeps,
+		}
+	}
+
+	// D1: cycle and scope checks over the WHOLE prospective child batch, so a
+	// cycle formed only between two children of this batch is caught, and from
+	// each child's own position so the error names the actual path.
+	if err := checkSupportBatch(st, batch); err != nil {
+		return nil, nil, err
 	}
 	return events, childIDs, nil
 }

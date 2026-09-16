@@ -339,8 +339,18 @@ AF tracks two types of dependencies:
 
 Both types are subject to validation:
 - Dependencies must exist
-- Dependencies must be ancestors or siblings (no forward references)
-- Circular dependencies are forbidden
+- Circular dependencies over result-use edges are forbidden
+
+A **result-use** edge `n → t` means `t` is a result `n` relies on. It comes from
+either a non-`local_assume` child of `n` (a parent's proof is its children) or
+an entry in `n`'s `dependencies` / `validation_deps` that is not a
+`local_assume`. Result-use edges must be acyclic.
+
+A **hypothesis-use** edge `n → h` means `h` is a `local_assume` whose scope
+encloses `n`. Hypotheses are introduced, not established: the edge is allowed
+exactly when the assumption encloses the citing node, carries no taint, and is
+never part of the cycle graph. Citing a node inside a `local_assume` scope that
+does not also enclose the citing node is a scope leak and is rejected.
 
 ---
 
