@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -31,6 +32,7 @@ func newAcceptCmd() *cobra.Command {
 	var confirm bool
 	var agent string
 	var expectHash string
+	var allowSelf bool
 
 	cmd := &cobra.Command{
 		Use:     "accept [node-id]...",
@@ -63,6 +65,13 @@ If you provide --agent, the tool will check if you have raised any
 challenges for the node. Accepting without having raised any challenges
 requires --confirm to ensure thorough verification.
 
+Verifier identity (--agent, or AF_AGENT_ID when the flag is empty) is
+recorded on the accept and used for the reviewer-contributor check: the tool
+refuses when the verifier is the node's author, proof author, or an amender.
+Use --allow-self to accept anyway (recorded as self_accepted). Without an
+identity, af prints a warning in 0.1.10 and still accepts; the identity
+becomes REQUIRED in 0.1.11.
+
 Examples:
   af accept 1              Accept the root node
   af accept 1.2.3          Accept a specific child node
@@ -74,6 +83,7 @@ Examples:
   af accept 1 -d ./proof   Accept using specific directory
   af accept 1 --agent verifier-1  Accept with agent verification
   af accept 1 --agent v1 --confirm  Accept without having raised challenges
+  af accept 1 --agent v1 --allow-self  Accept even though v1 is a recorded contributor (recorded)
 
 Workflow:
   After accepting, use 'af status' to see the updated proof tree and
@@ -81,7 +91,7 @@ Workflow:
   node to verify.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAccept(cmd, args, acceptAll, withNote, confirm, agent, expectHash)
+			return runAccept(cmd, args, acceptAll, withNote, confirm, agent, expectHash, allowSelf)
 		},
 	}
 
@@ -92,6 +102,7 @@ Workflow:
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Confirm acceptance without having raised challenges")
 	cmd.Flags().StringVar(&agent, "agent", "", "Agent ID (verifier identity for challenge verification)")
 	cmd.Flags().StringVar(&expectHash, "expect-hash", "", "Content hash the accept was authored against; refuse if the node changed since (single node only)")
+	cmd.Flags().BoolVar(&allowSelf, "allow-self", false, "Allow accepting a node you are recorded as a contributor to (recorded as self_accepted)")
 
 	return cmd
 }
@@ -105,6 +116,7 @@ type acceptParams struct {
 	confirm    bool
 	agent      string
 	expectHash string
+	allowSelf  bool
 	args       []string
 }
 
@@ -209,8 +221,8 @@ func verifyAgentChallenges(svc *service.ProofService, nodeIDs []service.NodeID, 
 // non-empty, is recorded as the verifier identity on the resulting
 // NodeValidated event (driver-supplied provenance — see
 // service.AcceptNodeWithVerifier).
-func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format, agent, expectHash string) error {
-	acceptErr := svc.AcceptNodeWithExpectation(nodeID, withNote, agent, "", expectHash)
+func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format, agent, expectHash string, allowSelf bool) error {
+	acceptErr := svc.AcceptNodeInteractive(nodeID, withNote, agent, expectHash, allowSelf)
 	if acceptErr != nil {
 		if errors.Is(acceptErr, service.ErrClaimTestStale) {
 			return fmt.Errorf("node %s is marked as crux and its only passing claim-test is stale (it was run against an older revision of the node).\nRe-run 'af claim-test %s --script <path>' and accept again: %w", nodeID.String(), nodeID.String(), acceptErr)
@@ -282,8 +294,8 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote,
 // scheduled by actual prerequisites (a child before its parent; ID order as
 // tie-break) and the per-item outcomes are reported. A partial success returns
 // the report's exit-5 AFError so the CLI exits 5, matching `af verdicts apply`.
-func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format, agent string) error {
-	report, err := svc.AcceptNodesBulk(nodeIDs, agent, "")
+func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format, agent string, allowSelf bool) error {
+	report, err := svc.AcceptNodesBulkInteractive(nodeIDs, agent, allowSelf)
 	if report != nil {
 		if outErr := outputBulkAcceptance(cmd, report, format); outErr != nil {
 			return outErr
@@ -386,9 +398,24 @@ func warnTaintedDeps(cmd *cobra.Command, svc *service.ProofService, nodeIDs []se
 	}
 }
 
-func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent, expectHash string) error {
+func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent, expectHash string, allowSelf bool) error {
 	dir := cli.MustString(cmd, "dir")
 	format := cli.MustString(cmd, "format")
+
+	// Agent identity is --agent, falling back to AF_AGENT_ID, matching the
+	// convention `af challenge` already uses. Without one, the reviewer≠
+	// contributor check cannot run; warn once (0.1.10) and require the
+	// identity from 0.1.11 (documented in --help and the changelog).
+	if strings.TrimSpace(agent) == "" {
+		agent = strings.TrimSpace(os.Getenv("AF_AGENT_ID"))
+	}
+	if strings.TrimSpace(agent) == "" {
+		// Keep machine-readable JSON output free of prose; the missing identity
+		// is visible there as an absent verified_by.
+		if !strings.EqualFold(format, "json") {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Warning: no --agent/AF_AGENT_ID given; verifier identity is not recorded and reviewer-contributor separation cannot be checked. This will be required in 0.1.11.")
+		}
+	}
 
 	params := acceptParams{
 		dir:        dir,
@@ -398,6 +425,7 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 		confirm:    confirm,
 		agent:      agent,
 		expectHash: expectHash,
+		allowSelf:  allowSelf,
 		args:       args,
 	}
 
@@ -426,9 +454,9 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 	warnTaintedDeps(cmd, svc, nodeIDs)
 
 	if len(nodeIDs) == 1 {
-		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format, agent, expectHash)
+		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format, agent, expectHash, allowSelf)
 	}
-	return performBulkAcceptance(cmd, svc, nodeIDs, format, agent)
+	return performBulkAcceptance(cmd, svc, nodeIDs, format, agent, allowSelf)
 }
 
 // handleBlockingChallengesError displays blocking challenges that prevent acceptance.

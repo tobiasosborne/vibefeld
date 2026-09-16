@@ -95,21 +95,45 @@ func runRelease(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("node %s not found", nodeID.String())
 	}
 
-	// Release the node
+	// Release the node. A node that is already available is a documented no-op:
+	// a terminal action (accept/admit/refute/archive) may have auto-released the
+	// claim already, and re-running `af release` must not be an error.
 	err = svc.ReleaseNode(nodeID, owner)
 	if err != nil {
-		// Map service errors to user-friendly messages with context
 		errStr := err.Error()
-		if strings.Contains(errStr, "not found") {
-			return fmt.Errorf("node %s not found", nodeID.String())
-		}
-		if strings.Contains(errStr, "not claimed") {
-			return fmt.Errorf("node %s is not claimed (current state: %s)\n\nHint: Only claimed nodes can be released. Use 'af status' to see node states.",
-				nodeID.String(), node.WorkflowState)
-		}
+
+		// A wrong owner is still an error. Check it before the not-claimed
+		// no-op because both share the NOT_CLAIM_HOLDER code, so errors.Is
+		// cannot tell them apart.
 		if strings.Contains(errStr, "owner") || strings.Contains(errStr, "match") {
 			return fmt.Errorf("owner does not match: node %s is claimed by %q, not %q",
 				nodeID.String(), node.ClaimedBy, owner)
+		}
+
+		// A node that is already available is a documented no-op: a terminal
+		// action (accept/admit/refute/archive) may have auto-released the claim,
+		// and re-running `af release` must not be an error.
+		if strings.Contains(errStr, "not claimed") {
+			result := releaseResult{
+				NodeID:        nodeID.String(),
+				Status:        "already_available",
+				WorkflowState: string(node.WorkflowState),
+				Message:       fmt.Sprintf("Node %s is already available; nothing to release", nodeID.String()),
+			}
+			if format == "json" {
+				output, mErr := json.MarshalIndent(result, "", "  ")
+				if mErr != nil {
+					return fmt.Errorf("failed to marshal JSON: %w", mErr)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), string(output))
+				return nil
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Node %s is already available; nothing to release.\n", nodeID.String())
+			return nil
+		}
+
+		if strings.Contains(errStr, "not found") {
+			return fmt.Errorf("node %s not found", nodeID.String())
 		}
 		return err
 	}

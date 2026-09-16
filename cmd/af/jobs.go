@@ -438,6 +438,7 @@ type jobsJSONJobEntry struct {
 	Statement      string          `json:"statement"`
 	Type           string          `json:"type"`
 	Depth          int             `json:"depth"`
+	ClaimSeq       int             `json:"claim_seq,omitempty"`
 	SeverityCounts *severityCounts `json:"severity_counts,omitempty"`
 	Recommended    bool            `json:"recommended,omitempty"`
 	PriorityReason string          `json:"priority_reason,omitempty"`
@@ -492,6 +493,7 @@ func renderJobsJSONWithSeverity(jobResult *service.JobResult, severityMap map[st
 			Statement: job.Statement,
 			Type:      string(job.Type),
 			Depth:     job.Depth(),
+			ClaimSeq:  job.ClaimSeq,
 		}
 		if counts != nil {
 			entry.SeverityCounts = counts
@@ -510,6 +512,7 @@ func renderJobsJSONWithSeverity(jobResult *service.JobResult, severityMap map[st
 			Statement: job.Statement,
 			Type:      string(job.Type),
 			Depth:     job.Depth(),
+			ClaimSeq:  job.ClaimSeq,
 		}
 		if counts != nil {
 			entry.SeverityCounts = counts
