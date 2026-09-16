@@ -102,6 +102,10 @@ type ClaimTestResult struct {
 	Passed     bool            // Whether the test passed
 	Output     string          // Captured stdout/stderr
 	Agent      string          // Who ran the test
+	// ContentHash is the node's content hash when the test ran; empty for
+	// tests recorded before D3. Acceptance ignores a passing test whose
+	// non-empty hash no longer matches the node's current content.
+	ContentHash string
 }
 
 // DefCheckResult represents the result of a definition stress test.
@@ -642,9 +646,42 @@ func (s *State) GetClaimTests(nodeID types.NodeID) []ClaimTestResult {
 }
 
 // HasPassingClaimTest returns true if the node has at least one passing claim test.
+//
+// Deprecated: this ignores each test's recorded content hash, so a test run
+// against an older revision of the node still counts. Acceptance uses
+// HasPassingClaimTestForContent so a stale test cannot gate a crux accept.
 func (s *State) HasPassingClaimTest(nodeID types.NodeID) bool {
 	for _, t := range s.claimTests[nodeID.String()] {
 		if t.Passed {
+			return true
+		}
+	}
+	return false
+}
+
+// HasPassingClaimTestForContent returns true if the node has at least one
+// passing claim test that is valid for contentHash: a test whose recorded
+// ContentHash is empty (legacy, recorded before D3) always counts, and a test
+// whose hash equals contentHash counts. A passing test with a different,
+// non-empty hash is stale and does not count.
+func (s *State) HasPassingClaimTestForContent(nodeID types.NodeID, contentHash string) bool {
+	for _, t := range s.claimTests[nodeID.String()] {
+		if !t.Passed {
+			continue
+		}
+		if t.ContentHash == "" || t.ContentHash == contentHash {
+			return true
+		}
+	}
+	return false
+}
+
+// HasStalePassingClaimTest reports whether the node has a passing claim test
+// that is stale relative to contentHash — recorded against a different,
+// non-empty hash. Used to explain a crux accept's claim-test gate failure.
+func (s *State) HasStalePassingClaimTest(nodeID types.NodeID, contentHash string) bool {
+	for _, t := range s.claimTests[nodeID.String()] {
+		if t.Passed && t.ContentHash != "" && t.ContentHash != contentHash {
 			return true
 		}
 	}

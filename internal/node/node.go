@@ -106,6 +106,15 @@ type Node struct {
 	// before this field existed. Cleared if the node is later unvalidated.
 	ValidationBatchID string `json:"validation_batch_id,omitempty"`
 
+	// ValidatedContentHash is the content hash recorded on the NodeValidated
+	// event that validated this node, and ValidatedHashChecked says whether
+	// the accept compared a caller-supplied expected hash. Together they answer
+	// "what did the verifier accept, and was it checked against an expectation?"
+	// Empty/false for nodes validated before these fields existed (D3); cleared
+	// when the node is unvalidated.
+	ValidatedContentHash string `json:"validated_content_hash,omitempty"`
+	ValidatedHashChecked bool   `json:"validated_hash_checked,omitempty"`
+
 	// ProofAuthor is the identity of the prover that RECORDED THE PROOF of this
 	// node — i.e. decomposed it into children via `af record-proof` (recorded
 	// from the NodeProofAuthored event that fires as part of record-proof's

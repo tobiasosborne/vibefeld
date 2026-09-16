@@ -193,6 +193,8 @@ func applyNodeValidated(s *State, e ledger.NodeValidated) error {
 	n.EpistemicState = schema.EpistemicValidated
 	n.ValidatedBy = e.VerifiedBy
 	n.ValidationBatchID = e.BatchID
+	n.ValidatedContentHash = e.ContentHash
+	n.ValidatedHashChecked = e.ExpectedHashChecked
 
 	return nil
 }
@@ -481,6 +483,8 @@ func applyNodeUnvalidated(s *State, e ledger.NodeUnvalidated) error {
 	n.EpistemicState = schema.EpistemicPending
 	n.ValidatedBy = ""
 	n.ValidationBatchID = ""
+	n.ValidatedContentHash = ""
+	n.ValidatedHashChecked = false
 
 	return nil
 }
@@ -645,13 +649,14 @@ func applyClaimTested(s *State, e ledger.ClaimTested) error {
 		return fmt.Errorf("node %s not found in state", e.NodeID.String())
 	}
 	s.AddClaimTest(e.NodeID, ClaimTestResult{
-		Timestamp:  e.EventTime,
-		Engine:     e.Engine,
-		ScriptPath: e.ScriptPath,
-		Expression: e.Expression,
-		Passed:     e.Passed,
-		Output:     e.Output,
-		Agent:      e.Agent,
+		Timestamp:   e.EventTime,
+		Engine:      e.Engine,
+		ScriptPath:  e.ScriptPath,
+		Expression:  e.Expression,
+		Passed:      e.Passed,
+		Output:      e.Output,
+		Agent:       e.Agent,
+		ContentHash: e.ContentHash,
 	})
 	return nil
 }

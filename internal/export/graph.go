@@ -80,6 +80,16 @@ type GraphNode struct {
 	// validated as part of a batch (`af verdicts apply`), omitted for
 	// singly-validated nodes.
 	ValidationBatchID string `json:"validation_batch_id,omitempty"`
+	// ValidatedContentHash is the content hash recorded on the NodeValidated
+	// event that validated this node (D3), omitted when the node isn't
+	// validated or was validated before the field existed. Additive field
+	// (omitempty), no schema_version bump.
+	ValidatedContentHash string `json:"validated_content_hash,omitempty"`
+	// ValidatedHashChecked is true iff the accept that validated this node
+	// compared a caller-supplied expected hash (verdict item expect_hash or
+	// `af accept --expect-hash`). Omitted (false) for plain accepts and legacy
+	// validations. Additive field (omitempty), no schema_version bump.
+	ValidatedHashChecked bool `json:"validated_hash_checked,omitempty"`
 	// ProofAuthor is the driver-supplied identity of the prover that PROVED
 	// this node by decomposing it (`af record-proof`), distinct from Author
 	// (who authored the node's content). Omitted if the node was never
@@ -222,24 +232,26 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 	ge.Nodes = make([]GraphNode, 0, len(nodes))
 	for _, n := range nodes {
 		gn := GraphNode{
-			ID:                n.ID.String(),
-			Type:              string(n.Type),
-			Statement:         n.Statement,
-			Latex:             n.Latex,
-			Inference:         string(n.Inference),
-			ContentHash:       n.ContentHash,
-			WorkflowState:     string(n.WorkflowState),
-			EpistemicState:    string(n.EpistemicState),
-			TaintState:        string(n.TaintState),
-			Crux:              n.Crux,
-			Created:           n.Created.String(),
-			Author:            n.Author,
-			ValidatedBy:       n.ValidatedBy,
-			ValidationBatchID: n.ValidationBatchID,
-			ProofAuthor:       n.ProofAuthor,
-			ProverReady:       proverReadySet[n.ID.String()],
-			VerifierReady:     verifierReadySet[n.ID.String()],
-			Closed:            closedSet[n.ID.String()],
+			ID:                   n.ID.String(),
+			Type:                 string(n.Type),
+			Statement:            n.Statement,
+			Latex:                n.Latex,
+			Inference:            string(n.Inference),
+			ContentHash:          n.ContentHash,
+			WorkflowState:        string(n.WorkflowState),
+			EpistemicState:       string(n.EpistemicState),
+			TaintState:           string(n.TaintState),
+			Crux:                 n.Crux,
+			Created:              n.Created.String(),
+			Author:               n.Author,
+			ValidatedBy:          n.ValidatedBy,
+			ValidationBatchID:    n.ValidationBatchID,
+			ValidatedContentHash: n.ValidatedContentHash,
+			ValidatedHashChecked: n.ValidatedHashChecked,
+			ProofAuthor:          n.ProofAuthor,
+			ProverReady:          proverReadySet[n.ID.String()],
+			VerifierReady:        verifierReadySet[n.ID.String()],
+			Closed:               closedSet[n.ID.String()],
 		}
 		if len(n.Dependencies) > 0 {
 			deps := make([]string, len(n.Dependencies))

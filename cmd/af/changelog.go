@@ -17,6 +17,7 @@ var changelog = []release{
 			"`af workspace upgrade --to 1.1 [--dry-run] [-f json]` migrates a 1.0 workspace: it takes the ledger lock, copies `ledger/*.json` and `meta.json` into `backup/<UTC timestamp>/`, fsyncs them, and writes the new stamp atomically. Downgrades are refused; restore the backup to revert.",
 			"Event types now carry a minimum workspace format; a 1.0 workspace refuses a 1.1 event type with the instruction to run `af workspace upgrade --to 1.1`. Replay, which bypasses the service entry point, enforces the same gate before replaying.",
 			"`af replay -f json` now exits non-zero (exit 4, corruption) when the replay is invalid instead of printing `valid:false` and exiting 0. The JSON payload is still printed.",
+			"Acceptance now records what it accepted: `NodeValidated` carries an optional `content_hash` (the node's own fields and dependency IDs, read from the state the accept commits against) and `expected_hash_checked` (true only when a verdict item's `expect_hash` or `af accept --expect-hash` was compared). `af accept` gains `--expect-hash` for single-node use, `af get` and `af export --graph json` surface the recorded hash, and `ClaimTested` records its content hash so acceptance ignores a passing claim-test run against older content (legacy tests without a hash still count).",
 		},
 	},
 	{

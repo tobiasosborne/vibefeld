@@ -78,6 +78,11 @@ const (
 	// af unvalidate --batch: the batch id named on the command line matches
 	// no currently-validated node (exit 7 — clean no-op, not an error).
 	UNVALIDATE_BATCH_NOT_FOUND
+
+	// Claim-test gate (blocked = exit 2). Distinct from NODE_BLOCKED so
+	// errors.Is can tell a missing/stale claim-test apart from unresolved
+	// blocking challenges; both are blocked, neither is a challenge.
+	CLAIM_TEST_REQUIRED
 )
 
 // errorCodeNames maps error codes to their string representations.
@@ -114,6 +119,7 @@ var errorCodeNames = map[ErrorCode]string{
 	VERDICTS_PARTIALLY_APPLIED:  "VERDICTS_PARTIALLY_APPLIED",
 	VERDICTS_NONE_APPLIED:       "VERDICTS_NONE_APPLIED",
 	UNVALIDATE_BATCH_NOT_FOUND:  "UNVALIDATE_BATCH_NOT_FOUND",
+	CLAIM_TEST_REQUIRED:         "CLAIM_TEST_REQUIRED",
 }
 
 // String returns the string representation of an ErrorCode.
@@ -140,7 +146,7 @@ func (c ErrorCode) ExitCode() int {
 		return 1
 
 	// Exit 2: blocked
-	case NODE_BLOCKED:
+	case NODE_BLOCKED, CLAIM_TEST_REQUIRED:
 		return 2
 
 	// Exit 4: corruption

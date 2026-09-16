@@ -199,6 +199,17 @@ type NodeValidated struct {
 	Note       string       `json:"note,omitempty"`        // Optional acceptance note (partial acceptance)
 	VerifiedBy string       `json:"verified_by,omitempty"` // Agent ID of the verifier who validated this node
 	BatchID    string       `json:"batch_id,omitempty"`    // Batch identifier, if validated as part of a batch (af verdicts apply)
+	// ContentHash is the hash of the content that was accepted, read from the
+	// same state the accept validated against. It covers the node's own fields
+	// and its dependency IDs, not the contents of dependencies, children,
+	// scope, evidence or external references (see docs/concepts.md). Empty on
+	// events written before this field existed — "not recorded".
+	ContentHash string `json:"content_hash,omitempty"`
+	// ExpectedHashChecked is true only when the caller supplied an expected
+	// hash that was compared against ContentHash (a verdict item's expect_hash,
+	// or `af accept --expect-hash`). Plain `af accept` records false. Omitted
+	// on legacy events.
+	ExpectedHashChecked bool `json:"expected_hash_checked,omitempty"`
 }
 
 // NodeAdmitted is emitted when a verifier admits a node without full verification.
@@ -452,6 +463,17 @@ func NewNodeValidatedFull(nodeID types.NodeID, note, verifiedBy, batchID string)
 		VerifiedBy: verifiedBy,
 		BatchID:    batchID,
 	}
+}
+
+// NewNodeValidatedWithHash creates a NodeValidated event that also records the
+// content hash accepted and whether the caller's expected hash was compared
+// (see NodeValidated.ContentHash / ExpectedHashChecked). Pass "" and false to
+// leave both unrecorded; the plain constructors above do exactly that.
+func NewNodeValidatedWithHash(nodeID types.NodeID, note, verifiedBy, batchID, contentHash string, expectedHashChecked bool) NodeValidated {
+	event := NewNodeValidatedFull(nodeID, note, verifiedBy, batchID)
+	event.ContentHash = contentHash
+	event.ExpectedHashChecked = expectedHashChecked
+	return event
 }
 
 // NewNodeAdmitted creates a NodeAdmitted event.
@@ -907,6 +929,11 @@ type ClaimTested struct {
 	Passed     bool         `json:"passed"`
 	Output     string       `json:"output,omitempty"`
 	Agent      string       `json:"agent,omitempty"`
+	// ContentHash is the node's content hash at the moment the test was run.
+	// Acceptance counts a passing test only when this is empty (legacy) or
+	// equals the node's current hash; a stale test is ignored. Omitted on
+	// events written before this field existed.
+	ContentHash string `json:"content_hash,omitempty"`
 }
 
 // NewClaimTested creates a ClaimTested event.

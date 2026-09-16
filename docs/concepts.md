@@ -197,6 +197,8 @@ Key points about epistemic states:
 
 4. **History is preserved**: Refuted and archived nodes are kept to maintain a complete record of the proof's development, including failed approaches.
 
+**What the accepted content hash covers.** When a node is accepted, the acceptance records a content hash of exactly what was accepted. That hash covers the node's own fields — type, statement, LaTeX, inference, context, and its dependency *IDs* (including validation dependencies) — and nothing else: not the contents or current state of those dependencies, not its children's proofs, not scope membership, not attached evidence, and not external references. A dependency's own revision therefore does not change the consumer's accepted hash; result-use staleness is tracked separately by `support_current` (D4). A passing claim-test also records the hash of the node it ran against, and acceptance only counts a passing test whose hash is absent (a test recorded before hashes were tracked) or still matches the node's current content; a test run against an older revision is stale and does not gate acceptance.
+
 ### Taint States
 
 Taint tracks epistemic uncertainty that propagates through the proof tree:

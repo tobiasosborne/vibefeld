@@ -30,6 +30,7 @@ func newAcceptCmd() *cobra.Command {
 	var withNote string
 	var confirm bool
 	var agent string
+	var expectHash string
 
 	cmd := &cobra.Command{
 		Use:     "accept [node-id]...",
@@ -52,6 +53,12 @@ Use --with-note for partial acceptance (accept with a recorded note):
 Notes are recorded in the ledger for the audit trail but do not
 block acceptance. This allows verifiers to express nuanced feedback.
 
+Use --expect-hash to bind the accept to the content the verifier reviewed:
+  af accept 1.2 --expect-hash <hash>
+
+If the node's content changed since that hash was captured, the accept is
+refused. The accept records whether an expected hash was checked.
+
 If you provide --agent, the tool will check if you have raised any
 challenges for the node. Accepting without having raised any challenges
 requires --confirm to ensure thorough verification.
@@ -63,6 +70,7 @@ Examples:
   af accept --all          Accept all pending nodes
   af accept -a             Accept all pending nodes (short form)
   af accept 1 --with-note "Consider clarifying step 2"
+  af accept 1.2 --expect-hash <hash>  Accept only if content still matches hash
   af accept 1 -d ./proof   Accept using specific directory
   af accept 1 --agent verifier-1  Accept with agent verification
   af accept 1 --agent v1 --confirm  Accept without having raised challenges
@@ -73,7 +81,7 @@ Workflow:
   node to verify.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAccept(cmd, args, acceptAll, withNote, confirm, agent)
+			return runAccept(cmd, args, acceptAll, withNote, confirm, agent, expectHash)
 		},
 	}
 
@@ -83,19 +91,21 @@ Workflow:
 	cmd.Flags().StringVar(&withNote, "with-note", "", "Optional acceptance note for partial acceptance")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Confirm acceptance without having raised challenges")
 	cmd.Flags().StringVar(&agent, "agent", "", "Agent ID (verifier identity for challenge verification)")
+	cmd.Flags().StringVar(&expectHash, "expect-hash", "", "Content hash the accept was authored against; refuse if the node changed since (single node only)")
 
 	return cmd
 }
 
 // acceptParams holds the parameters for the accept command.
 type acceptParams struct {
-	dir       string
-	format    string
-	acceptAll bool
-	withNote  string
-	confirm   bool
-	agent     string
-	args      []string
+	dir        string
+	format     string
+	acceptAll  bool
+	withNote   string
+	confirm    bool
+	agent      string
+	expectHash string
+	args       []string
 }
 
 // validateAcceptInput validates the accept command input and returns any usage error.
@@ -118,6 +128,12 @@ func validateAcceptInput(params acceptParams) error {
 		return render.NewUsageError("af accept",
 			"--with-note can only be used when accepting a single node",
 			[]string{"af accept 1 --with-note \"Minor issue but acceptable\""})
+	}
+
+	if params.expectHash != "" && (params.acceptAll || len(params.args) != 1) {
+		return render.NewUsageError("af accept",
+			"--expect-hash can only be used when accepting a single node",
+			[]string{"af accept 1.1 --expect-hash <hash>"})
 	}
 
 	return nil
@@ -193,11 +209,14 @@ func verifyAgentChallenges(svc *service.ProofService, nodeIDs []service.NodeID, 
 // non-empty, is recorded as the verifier identity on the resulting
 // NodeValidated event (driver-supplied provenance — see
 // service.AcceptNodeWithVerifier).
-func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format, agent string) error {
-	acceptErr := svc.AcceptNodeWithVerifier(nodeID, withNote, agent, "")
+func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format, agent, expectHash string) error {
+	acceptErr := svc.AcceptNodeWithExpectation(nodeID, withNote, agent, "", expectHash)
 	if acceptErr != nil {
-		if strings.Contains(acceptErr.Error(), "claim-test") {
-			return fmt.Errorf("node %s is marked as crux and has no passing claim-test.\nRun 'af claim-test %s --script <path>' first", nodeID.String(), nodeID.String())
+		if errors.Is(acceptErr, service.ErrClaimTestStale) {
+			return fmt.Errorf("node %s is marked as crux and its only passing claim-test is stale (it was run against an older revision of the node).\nRe-run 'af claim-test %s --script <path>' and accept again: %w", nodeID.String(), nodeID.String(), acceptErr)
+		}
+		if errors.Is(acceptErr, service.ErrClaimTestRequired) {
+			return fmt.Errorf("node %s is marked as crux and has no passing claim-test.\nRun 'af claim-test %s --script <path>' first: %w", nodeID.String(), nodeID.String(), acceptErr)
 		}
 		if errors.Is(acceptErr, service.ErrBlockingChallenges) {
 			return handleBlockingChallengesError(cmd, svc, nodeID, format, acceptErr)
@@ -262,7 +281,10 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote,
 // NodeValidated event, same convention as performSingleAcceptance.
 func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format, agent string) error {
 	if err := svc.AcceptNodeBulkWithVerifier(nodeIDs, agent, ""); err != nil {
-		if strings.Contains(err.Error(), "claim-test") {
+		if errors.Is(err, service.ErrClaimTestStale) {
+			return fmt.Errorf("a crux node's only passing claim-test is stale (re-run 'af claim-test <node-id> --script <path>'): %w", err)
+		}
+		if errors.Is(err, service.ErrClaimTestRequired) {
 			return fmt.Errorf("a crux node has no passing claim-test: %w\nRun 'af claim-test <node-id> --script <path>' first", err)
 		}
 		if errors.Is(err, service.ErrBlockingChallenges) {
@@ -330,18 +352,19 @@ func warnTaintedDeps(cmd *cobra.Command, svc *service.ProofService, nodeIDs []se
 	}
 }
 
-func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent string) error {
+func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote string, confirm bool, agent, expectHash string) error {
 	dir := cli.MustString(cmd, "dir")
 	format := cli.MustString(cmd, "format")
 
 	params := acceptParams{
-		dir:       dir,
-		format:    format,
-		acceptAll: acceptAll,
-		withNote:  withNote,
-		confirm:   confirm,
-		agent:     agent,
-		args:      args,
+		dir:        dir,
+		format:     format,
+		acceptAll:  acceptAll,
+		withNote:   withNote,
+		confirm:    confirm,
+		agent:      agent,
+		expectHash: expectHash,
+		args:       args,
 	}
 
 	if err := validateAcceptInput(params); err != nil {
@@ -369,7 +392,7 @@ func runAccept(cmd *cobra.Command, args []string, acceptAll bool, withNote strin
 	warnTaintedDeps(cmd, svc, nodeIDs)
 
 	if len(nodeIDs) == 1 {
-		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format, agent)
+		return performSingleAcceptance(cmd, svc, nodeIDs[0], withNote, format, agent, expectHash)
 	}
 	return performBulkAcceptance(cmd, svc, nodeIDs, format, agent)
 }

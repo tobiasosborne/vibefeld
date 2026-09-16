@@ -297,6 +297,11 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 		result["claimed_by"] = n.ClaimedBy
 	}
 
+	if n.ValidatedContentHash != "" {
+		result["validated_content_hash"] = n.ValidatedContentHash
+		result["validated_hash_checked"] = n.ValidatedHashChecked
+	}
+
 	// Add challenges if present
 	if len(challenges) > 0 {
 		challengeList := make([]map[string]interface{}, len(challenges))

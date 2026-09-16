@@ -82,6 +82,17 @@ func RenderNodeVerbose(n *node.Node) string {
 		sb.WriteString(fmt.Sprintf("Claimed by: %s\n", n.ClaimedBy))
 	}
 
+	// D3: the content hash the verifier accepted, if recorded. "checked" means
+	// the accept compared a caller-supplied expected hash; "recorded" means it
+	// was captured from the node but not checked against an expectation.
+	if n.ValidatedContentHash != "" {
+		mode := "recorded"
+		if n.ValidatedHashChecked {
+			mode = "checked"
+		}
+		sb.WriteString(fmt.Sprintf("Accepted content hash: %s (%s)\n", n.ValidatedContentHash, mode))
+	}
+
 	return sb.String()
 }
 

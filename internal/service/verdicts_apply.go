@@ -201,7 +201,7 @@ func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Ite
 			return nil, fmt.Errorf("%w: verifier %q is also the recorded author of node %s", errVerdictReviewerIsAuthor, f.VerifiedBy, item.Node)
 		}
 
-		events, err := s.buildAcceptEvents(st, nodeID, item.Reason, f.VerifiedBy, f.BatchID)
+		events, err := s.buildAcceptEvents(st, nodeID, item.Reason, f.VerifiedBy, f.BatchID, item.ExpectHash)
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +227,7 @@ func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Ite
 		return "rejected:reviewer-equals-author", err.Error(), nil
 	case stderrors.Is(err, ErrNodeNotFound):
 		return "rejected:node-not-found", err.Error(), nil
-	case strings.Contains(err.Error(), "claim-test"):
+	case stderrors.Is(err, ErrClaimTestRequired):
 		return "blocked-by:claim-test-required", err.Error(), nil
 	case strings.Contains(err.Error(), "children not yet validated"):
 		return "blocked-by:children-not-validated", err.Error(), nil
