@@ -1,6 +1,6 @@
 # Scale hardening plan, v3 (0.1.9 – 0.1.11)
 
-Status: DRAFT v3, 2026-09-15. v1 and v2 were reviewed by an independent
+Status: ADOPTED v3.1, 2026-09-16 (v3 plus the amendments in the last section). v1 and v2 were reviewed by an independent
 model (`scale-hardening-review-codex.md`, `scale-hardening-rereview-codex.md`);
 every factual claim v3 relies on was re-verified against HEAD c67a7e6 by
 hand. Awaiting Tobias's decision. Companion to GitHub issue #3 and
@@ -506,3 +506,42 @@ activation and the deferral of the hash chain. v3, after the re-review:
   0.1.9; a cut line and a minimum set stated; author reply moved first.
 - The acceptance test no longer asks an old binary for a refusal it cannot
   give.
+
+## v3.1 amendments (adopted 2026-09-16)
+
+Tobias accepted the following on 2026-09-16. Where they conflict with the
+text above, these win.
+
+1. **0.1.9 is the minimum set.** 0.1.9 "Corrections" = D0, D10 (reduced,
+   see 3), D1, D3, D2 including the manifest migration and export fields.
+   D4, D7, D8 (strict subset and preflight) and D11 move to 0.1.10; D5, D9,
+   the D8 remainder and the benchmark job stay in 0.1.10; D6 stays in
+   0.1.11. The acceptance test for 0.1.9 drops the `support_current` clause
+   of the export diff.
+2. **D0 is optimistic, not pessimistic.** The commit primitive loads state
+   *outside* the ledger lock, builds and validates its events against that
+   one read, then takes the lock, checks the ledger tail still equals the
+   observed sequence, appends the whole batch, fsyncs the directory and
+   releases. Replay never runs under the lock. Same guarantees as v3
+   (one read, continuous sequence check over the batch, prefix on crash);
+   a mismatch is `ErrSequenceMismatch` and the caller retries with a fresh
+   read. The ledger already holds an exclusive lock file per append and
+   across `AppendBatch`; what is added is the batch-wide sequence check,
+   the directory fsync, and moving every mutating path onto the primitive.
+3. **D10 reduced.** Keep: the format stamp in `meta.json`, the format
+   check at every entry point (refuse a newer format with a structured
+   error), refusing 1.1 event types on a 1.0 workspace with "run `af
+   workspace upgrade`", `af workspace upgrade --to 1.1 [--dry-run]` with
+   the backup copy and fsync, `af version -f json` advertising `format`
+   and `policy`, the replay JSON exit code, the corpus manifest and
+   in-repo fixtures. Drop: "workspace upgraded during read" detection and
+   the multi-binary compatibility matrix; one test runs the previous
+   release binary against one 1.1 fixture and records the unknown-event
+   error as the documented expectation.
+4. **One DAG walk for D4 and D6.** The memoised topological walk over
+   result-use edges is written once (in `internal/jobs` or a small
+   `internal/support` package) when D4 is built, with the taint fold of D6
+   in mind, so D6 adds a fold rather than a second traversal.
+5. **Cut-line discipline.** Each further mechanism proposed in review is
+   accepted only with a named failure it prevents on the MIP\*=RE or
+   ~200-lemma workspaces; otherwise it is filed for v0.2.
