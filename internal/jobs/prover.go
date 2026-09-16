@@ -32,7 +32,7 @@ func FindProverJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challenge
 
 	var result []*node.Node
 	for _, n := range nodes {
-		if isProverJob(n, challengeMap) {
+		if isProverJob(n, nodeMap, challengeMap) {
 			result = append(result, n)
 		}
 	}
@@ -43,9 +43,11 @@ func FindProverJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challenge
 // under af's own classifier (the exported form of isProverJob). External
 // callers (e.g. the service's atomic record-proof kernel op) use it to enforce
 // that a prover write targets a node af actually classifies as prover work,
-// matching the export's prover_ready flag exactly.
-func IsProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
-	return isProverJob(n, challengeMap)
+// matching the export's prover_ready flag exactly. nodeMap maps node ID strings
+// to nodes and is needed to decide whether a needs_refinement node's children
+// are cleared (which hands it to the verifier).
+func IsProverJob(n *node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) bool {
+	return isProverJob(n, nodeMap, challengeMap)
 }
 
 // isProverJob checks if a single node qualifies as a prover job.
@@ -61,7 +63,7 @@ func IsProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 //
 // Nodes in needs_refinement state are also prover jobs - these are validated
 // nodes that have been reopened for further proof development.
-func isProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
+func isProverJob(n *node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) bool {
 	// Must not be blocked
 	if n.WorkflowState == schema.WorkflowBlocked {
 		return false
@@ -72,9 +74,12 @@ func isProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 		return true
 	}
 
-	// Nodes needing refinement are prover jobs (validated nodes reopened for more proof work)
+	// A node reopened for more proof work is a prover job until its children are
+	// cleared, at which point it becomes a verifier job again (D4). A
+	// needs_refinement node with no children at all stays prover work: accept
+	// refuses it until refinement actually happened.
 	if n.EpistemicState == schema.EpistemicNeedsRefinement {
-		return true
+		return !hasAnyChild(n, nodeMap) || !AllChildrenCleared(n, nodeMap)
 	}
 
 	// Must be pending (not yet verified)
@@ -85,4 +90,15 @@ func isProverJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
 	// Must have at least one open blocking challenge (critical/major)
 	// Minor and note challenges do not create prover jobs
 	return hasBlockingChallenges(n, challengeMap)
+}
+
+// hasAnyChild reports whether n has at least one direct child in nodeMap.
+func hasAnyChild(n *node.Node, nodeMap map[string]*node.Node) bool {
+	for _, c := range nodeMap {
+		parent, ok := c.ID.Parent()
+		if ok && parent.String() == n.ID.String() {
+			return true
+		}
+	}
+	return false
 }
