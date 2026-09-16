@@ -184,4 +184,95 @@ if ! grep -q "STUB-RUN:.*refine" "$STUB_LOG"; then
     exit 1
 fi
 
+# The root cannot be declared complete until D4's support_current is present in
+# `af status -f json`. This branch predates D4, so auto-prove must never print
+# PROOF COMPLETE even after a root is accepted.
+if grep -q "PROOF COMPLETE" "$OUTPUT"; then
+    echo "test-auto-prove.sh: auto-prove declared PROOF COMPLETE without support_current (D4)" >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Completion-gate negative/positive tests (D11 review).
+#
+# proof_complete is self-contained, so extract its definition from
+# auto-prove.sh and drive it with a fake AF_CMD serving crafted JSON. This
+# exercises the fail-closed completion gate directly, including the D4
+# support_current requirement and the machine-readable external-reference gate.
+# ---------------------------------------------------------------------------
+extract_function() {
+    local fn="$1" file="$2"
+    awk -v fn="$fn" '
+        index($0, fn "()") == 1 { found = 1 }
+        found { print }
+        found && $0 == "}" { exit }
+    ' "$file"
+}
+
+eval "$(extract_function proof_complete "$SCRIPT_DIR/auto-prove.sh")"
+log_warning() { printf 'WARN: %s\n' "$*" >&2; }
+log_error() { printf 'ERROR: %s\n' "$*" >&2; }
+
+COMPLETE_DIR="$TMP_DIR/complete-cases"
+mkdir -p "$COMPLETE_DIR"
+write_json() { printf '%s\n' "$2" > "$COMPLETE_DIR/$1"; }
+
+FAKE_AF() {
+    case "$1" in
+        status) cat "${FAKE_STATUS:?FAKE_STATUS not set}" ;;
+        export) cat "${FAKE_EXPORT:?FAKE_EXPORT not set}" ;;
+        pending-refs) cat "${FAKE_PENDING:?FAKE_PENDING not set}" ;;
+        *) return 99 ;;
+    esac
+}
+AF_CMD=FAKE_AF
+
+# expect_complete WANT(0|1) LABEL, with FAKE_STATUS/FAKE_EXPORT/FAKE_PENDING set.
+expect_complete() {
+    local want="$1" label="$2" got=1
+    if proof_complete > "$COMPLETE_DIR/out.txt" 2>&1; then
+        got=0
+    fi
+    if [[ "$got" -ne "$want" ]]; then
+        echo "test-auto-prove.sh: proof_complete $label: got exit $got, want $want" >&2
+        cat "$COMPLETE_DIR/out.txt" >&2
+        exit 1
+    fi
+}
+
+write_json status-valid.json '{"nodes":[{"id":"1","epistemic_state":"validated","taint_state":"clean","support_current":true}]}'
+write_json status-stale.json '{"nodes":[{"id":"1","epistemic_state":"validated","taint_state":"clean","support_current":false}]}'
+write_json status-missing.json '{"nodes":[{"id":"1","epistemic_state":"validated","taint_state":"clean"}]}'
+write_json status-bad.json '{not json'
+write_json export-none.json '{"nodes":[{"id":"1","epistemic_state":"validated"}]}'
+write_json export-cited.json '{"nodes":[{"id":"1","epistemic_state":"validated","externals":["ext-abc"]}]}'
+write_json export-cited-prefix.json '{"nodes":[{"id":"1","epistemic_state":"validated","externals":["external:ext-abc"]}]}'
+write_json export-bad.json '{not json'
+write_json pending-empty.json '[]'
+write_json pending-cited.json '[{"id":"ext-abc","name":"Example"}]'
+write_json pending-named.json '[{"id":"other","name":"ext-abc"}]'
+
+FAKE_STATUS="$COMPLETE_DIR/status-valid.json" FAKE_EXPORT="$COMPLETE_DIR/export-none.json" FAKE_PENDING="$COMPLETE_DIR/pending-empty.json" \
+    expect_complete 0 "positive control (validated, support_current true, no externals)"
+FAKE_STATUS="$COMPLETE_DIR/status-valid.json" FAKE_EXPORT="$COMPLETE_DIR/export-cited.json" FAKE_PENDING="$COMPLETE_DIR/pending-empty.json" \
+    expect_complete 0 "cited external with nothing pending"
+FAKE_STATUS="$COMPLETE_DIR/status-stale.json" FAKE_EXPORT="$COMPLETE_DIR/export-none.json" FAKE_PENDING="$COMPLETE_DIR/pending-empty.json" \
+    expect_complete 1 "stale support_current"
+FAKE_STATUS="$COMPLETE_DIR/status-missing.json" FAKE_EXPORT="$COMPLETE_DIR/export-none.json" FAKE_PENDING="$COMPLETE_DIR/pending-empty.json" \
+    expect_complete 1 "missing support_current"
+FAKE_STATUS="$COMPLETE_DIR/status-valid.json" FAKE_EXPORT="$COMPLETE_DIR/export-cited.json" FAKE_PENDING="$COMPLETE_DIR/pending-cited.json" \
+    expect_complete 1 "cited pending external by id"
+FAKE_STATUS="$COMPLETE_DIR/status-valid.json" FAKE_EXPORT="$COMPLETE_DIR/export-cited.json" FAKE_PENDING="$COMPLETE_DIR/pending-named.json" \
+    expect_complete 1 "cited pending external by name"
+FAKE_STATUS="$COMPLETE_DIR/status-valid.json" FAKE_EXPORT="$COMPLETE_DIR/export-cited-prefix.json" FAKE_PENDING="$COMPLETE_DIR/pending-cited.json" \
+    expect_complete 1 "prefixed external: citation matches pending id"
+FAKE_STATUS="$COMPLETE_DIR/status-bad.json" FAKE_EXPORT="$COMPLETE_DIR/export-none.json" FAKE_PENDING="$COMPLETE_DIR/pending-empty.json" \
+    expect_complete 1 "jq error on status JSON"
+FAKE_STATUS="$COMPLETE_DIR/status-valid.json" FAKE_EXPORT="$COMPLETE_DIR/export-bad.json" FAKE_PENDING="$COMPLETE_DIR/pending-empty.json" \
+    expect_complete 1 "jq error on export JSON"
+FAKE_STATUS="$COMPLETE_DIR/status-valid.json" FAKE_EXPORT="$COMPLETE_DIR/export-cited.json" FAKE_PENDING="$COMPLETE_DIR/pending-empty.json" \
+    expect_complete 0 "positive control after negative cases"
+
+echo "completion negative tests: ok"
+
 exit 0

@@ -54,4 +54,14 @@ func TestAutoProveStub(t *testing.T) {
 	if strings.Contains(string(output), "unknown flag") {
 		t.Fatalf("auto-prove.sh generated a command with an unknown flag:\n%s", output)
 	}
+
+	// The pre-D4 completion gate must fail closed and the script's unit-style
+	// negative suite must actually have run. Without support_current in
+	// `af status -f json`, auto-prove must never claim the proof is complete.
+	if !strings.Contains(string(output), "completion negative tests: ok") {
+		t.Fatalf("test-auto-prove.sh did not run its completion negative tests:\n%s", output)
+	}
+	if strings.Contains(string(output), "PROOF COMPLETE") {
+		t.Fatalf("auto-prove.sh declared PROOF COMPLETE without support_current (D4):\n%s", output)
+	}
 }

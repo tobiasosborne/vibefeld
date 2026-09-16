@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/tobiasosborne/vibefeld/internal/config"
 	"github.com/tobiasosborne/vibefeld/internal/jobs"
+	"github.com/tobiasosborne/vibefeld/internal/lemma"
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
@@ -144,6 +146,14 @@ type GraphNode struct {
 	// (omitempty), advertised by the dependency-amendments capability token,
 	// no schema_version bump.
 	DependencyAmendments []GraphDependencyAmendment `json:"dependency_amendments,omitempty"`
+	// Externals lists the external-reference IDs this node cites, in stable ID
+	// order: every external:NAME citation in the statement resolved through
+	// state, plus any context entry that names an external. A driver reads it
+	// to gate completion on pending external references (af pending-refs)
+	// without scanning free-text context. Additive field (omitempty); no
+	// capability token is advertised because an older af simply omits it and
+	// the consumer treats absence as "no known externals".
+	Externals []string `json:"externals,omitempty"`
 }
 
 // GraphDependencyAmendment is one dependency-edge correction in the graph
@@ -317,6 +327,8 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 			})
 		}
 
+		gn.Externals = nodeExternalIDs(s, n)
+
 		ge.Nodes = append(ge.Nodes, gn)
 
 		ge.Validation.EpistemicCounts[string(n.EpistemicState)]++
@@ -344,6 +356,32 @@ func idList(ids []types.NodeID) []string {
 	for i, id := range ids {
 		out[i] = id.String()
 	}
+	return out
+}
+
+// nodeExternalIDs returns the external-reference IDs cited by n in stable ID
+// order: external:NAME citations in the statement (resolved by name) and any
+// context entry that resolves to an external (by ID or name). Unknown citations
+// are skipped — node creation already validates them, and the export must not
+// invent IDs it cannot resolve.
+func nodeExternalIDs(s *state.State, n *node.Node) []string {
+	seen := make(map[string]bool)
+	var out []string
+	add := func(e *node.External) {
+		if e == nil || seen[e.ID] {
+			return
+		}
+		seen[e.ID] = true
+		out = append(out, e.ID)
+	}
+	for _, name := range lemma.ParseExtCitations(n.Statement) {
+		add(s.GetExternalByName(name))
+	}
+	for _, ref := range n.Context {
+		add(s.GetExternal(ref))
+		add(s.GetExternalByName(ref))
+	}
+	sort.Strings(out)
 	return out
 }
 

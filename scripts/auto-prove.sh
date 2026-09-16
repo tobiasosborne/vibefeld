@@ -306,45 +306,98 @@ check_proof_status() {
 # proof_complete reports whether the proof is genuinely done. It deliberately
 # does NOT read the root's epistemic state alone: a validated root can still
 # sit on admitted/tainted support or cite an unverified external reference.
-# Requires root validated AND taint clean AND no pending external reference
-# cited by a validated node. When D4's support_current field is present in
-# `af status -f json`, it must also be true; the field is feature-detected so
-# this script works against a binary that does not emit it.
+#
+# Completion requires ALL of:
+#   - root epistemic_state == "validated"
+#   - root taint_state == "clean"
+#   - root support_current == true (D4). The field is REQUIRED: if `af status
+#     -f json` does not emit it, this af build predates D4 and completion is
+#     NOT reached. auto-prove must never declare success against a binary that
+#     cannot attest support is current.
+#   - no validated node cites an external reference that is still pending.
+#     The citation set comes from the machine-readable per-node `externals`
+#     list in `af export --graph json`, never from scanning `.context`.
+#
+# Fail closed: any af or jq failure in this check means "not complete", and the
+# error is printed. Failures are never silently converted into an empty list.
 proof_complete() {
     local status_json
-    status_json=$($AF_CMD status -f json 2>/dev/null) || return 1
+    if ! status_json=$($AF_CMD status -f json 2>&1); then
+        log_error "Completion check failed: 'af status -f json' errored: $status_json"
+        return 1
+    fi
 
     local root_epistemic root_taint
-    root_epistemic=$(echo "$status_json" | jq -r '.nodes[] | select(.id == "1") | .epistemic_state // "unknown"')
-    root_taint=$(echo "$status_json" | jq -r '.nodes[] | select(.id == "1") | .taint_state // "unknown"')
+    if ! root_epistemic=$(jq -r '.nodes[] | select(.id == "1") | .epistemic_state // empty' <<< "$status_json"); then
+        log_error "Completion check failed: could not parse root epistemic_state from status JSON"
+        return 1
+    fi
+    if ! root_taint=$(jq -r '.nodes[] | select(.id == "1") | .taint_state // empty' <<< "$status_json"); then
+        log_error "Completion check failed: could not parse root taint_state from status JSON"
+        return 1
+    fi
+    if [[ -z "$root_epistemic" || -z "$root_taint" ]]; then
+        log_error "Completion check failed: status JSON has no root node '1'"
+        return 1
+    fi
 
     [[ "$root_epistemic" == "validated" ]] || return 1
     [[ "$root_taint" == "clean" ]] || return 1
 
-    # D4 support_current: only enforced when the field is present.
-    local has_support support
-    has_support=$(echo "$status_json" | jq -r '[.nodes[] | select(.id == "1") | has("support_current")] | (.[0] // false)')
-    if [[ "$has_support" == "true" ]]; then
-        support=$(echo "$status_json" | jq -r '.nodes[] | select(.id == "1") | .support_current')
-        if [[ "$support" != "true" ]]; then
-            log_warning "Root is validated but support_current is false; not complete."
+    # D4 support_current is REQUIRED. Distinguish "field absent" from "false":
+    # jq's // operator treats false as empty, so use has().
+    local support
+    if ! support=$(jq -r '(.nodes[] | select(.id == "1")) as $n | if ($n | has("support_current")) then ($n.support_current | tostring) else "missing" end' <<< "$status_json"); then
+        log_error "Completion check failed: could not read support_current from status JSON"
+        return 1
+    fi
+    case "$support" in
+        true)
+            ;;
+        missing)
+            log_error "Completion check failed: 'af status -f json' has no support_current field (af predates D4); cannot confirm support is current."
             return 1
-        fi
+            ;;
+        *)
+            log_warning "Root is validated but support_current is '$support'; not complete."
+            return 1
+            ;;
+    esac
+
+    # External-reference gate, from machine-readable data only. The per-node
+    # externals list is emitted by af export --graph json.
+    local export_json
+    if ! export_json=$($AF_CMD export --graph json 2>&1); then
+        log_error "Completion check failed: 'af export --graph json' errored: $export_json"
+        return 1
     fi
 
-    # No pending external reference may be cited by a validated node.
     local cited
-    cited=$(echo "$status_json" | jq -r '[.nodes[] | select(.epistemic_state == "validated") | .context[]?] | unique | .[]' 2>/dev/null)
+    if ! cited=$(jq -r '[.nodes[] | select(.epistemic_state == "validated") | .externals[]?] | unique | .[]' <<< "$export_json"); then
+        log_error "Completion check failed: could not parse per-node externals from export JSON"
+        return 1
+    fi
+
     if [[ -n "$cited" ]]; then
+        local pending_json
+        if ! pending_json=$($AF_CMD pending-refs -f json 2>&1); then
+            log_error "Completion check failed: 'af pending-refs -f json' errored: $pending_json"
+            return 1
+        fi
+
         local pending
-        pending=$($AF_CMD pending-refs -f json 2>/dev/null) || pending='[]'
-        local pending_names
-        pending_names=$(echo "$pending" | jq -r '.[] | (.name // empty), (.id // empty)' 2>/dev/null)
-        local ref
+        if ! pending=$(jq -r '.[] | (.id // empty), (.name // empty)' <<< "$pending_json" | sed -e 's/^external://' -e 's/^ext://'); then
+            log_error "Completion check failed: could not parse pending-refs JSON"
+            return 1
+        fi
+
+        local ref norm
         while IFS= read -r ref; do
             [[ -z "$ref" ]] && continue
-            if [[ -n "$pending_names" ]] && grep -qxF "$ref" <<< "$pending_names"; then
-                log_warning "Completion blocked: validated node cites unverified external reference '$ref'."
+            norm="${ref#external:}"
+            norm="${norm#ext:}"
+            if [[ -n "$pending" ]] && grep -qxF "$norm" <<< "$pending"; then
+                log_warning "Completion blocked: validated node cites unverified external reference '$norm'."
                 return 1
             fi
         done <<< "$cited"
