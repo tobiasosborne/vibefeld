@@ -150,7 +150,7 @@ func TestAmendDepsCmd_SurfacesDepsAndAmendments(t *testing.T) {
 	if err := depsCmd.Execute(); err != nil {
 		t.Fatalf("deps: %v\n%s", err, depsBuf.String())
 	}
-	if !bytes.Contains(depsBuf.Bytes(), []byte("(*) edge touched")) {
+	if !bytes.Contains(depsBuf.Bytes(), []byte("(*) edge added")) {
 		t.Errorf("deps output missing amendment legend:\n%s", depsBuf.String())
 	}
 
@@ -164,5 +164,155 @@ func TestAmendDepsCmd_SurfacesDepsAndAmendments(t *testing.T) {
 	}
 	if !bytes.Contains(amendBuf.Bytes(), []byte("dependency_amendments")) {
 		t.Errorf("amendments output missing dependency_amendments:\n%s", amendBuf.String())
+	}
+}
+
+// TestAmendDepsCmd_PersistsOperationIDsBeforeFirstCommit verifies that a real
+// run writes generated operation ids to the manifest atomically before its
+// first commit, so a crash mid-batch leaves a resumable on-disk manifest.
+func TestAmendDepsCmd_PersistsOperationIDsBeforeFirstCommit(t *testing.T) {
+	dir, svc := setupTaintTraceTest(t)
+	if err := svc.ClaimNode(nid("1"), "prover1", 5*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	addAmendLeaf(t, svc, "1.1")
+	addAmendLeaf(t, svc, "1.2")
+	addAmendLeaf(t, svc, "1.3")
+
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	manifest := `{"schema_version":1,"items":[` +
+		`{"node":"1.1","add":["1.2"],"owner":"prover1","reason":"r1"},` +
+		`{"node":"1.2","add":["1.3"],"owner":"prover1","reason":"r2"},` +
+		`{"node":"1.1","add":["1.3"],"owner":"prover1","reason":"r3"}]}`
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	orig := newAmendDepsService
+	defer func() { newAmendDepsService = orig }()
+
+	calls := 0
+	idsPersistedBeforeFirstCommit := false
+	newAmendDepsService = func(d string) (*service.ProofService, error) {
+		s, err := service.NewProofService(d)
+		if err != nil {
+			return nil, err
+		}
+		s.SetBeforeAppendTestHook(func() {
+			calls++
+			if calls == 1 {
+				if data, err := os.ReadFile(manifestPath); err == nil {
+					var parsed struct {
+						Items []struct {
+							OperationID string `json:"operation_id"`
+						} `json:"items"`
+					}
+					if json.Unmarshal(data, &parsed) == nil && len(parsed.Items) == 3 {
+						idsPersistedBeforeFirstCommit = parsed.Items[0].OperationID != "" &&
+							parsed.Items[1].OperationID != "" && parsed.Items[2].OperationID != ""
+					}
+				}
+			}
+			if calls == 2 {
+				panic("simulated crash after item 0")
+			}
+		})
+		return s, nil
+	}
+
+	// First run crashes after item 0 commits.
+	func() {
+		defer func() { _ = recover() }()
+		cmd := newAmendDepsCmd()
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&bytes.Buffer{})
+		cmd.SetArgs([]string{"--file", manifestPath, "--dir", dir})
+		_ = cmd.Execute()
+	}()
+
+	if !idsPersistedBeforeFirstCommit {
+		t.Fatalf("operation ids were not persisted before the first commit")
+	}
+
+	// Resume from the on-disk file.
+	newAmendDepsService = orig
+	cmd := newAmendDepsCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--file", manifestPath, "--resume", "--dir", dir, "-f", "json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("resume failed: %v\n%s", err, buf.String())
+	}
+
+	var report struct {
+		Items []struct {
+			Node   string `json:"node"`
+			Status string `json:"status"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
+		t.Fatalf("resume output is not JSON: %v\n%s", err, buf.String())
+	}
+	if len(report.Items) != 3 {
+		t.Fatalf("resume report has %d items, want 3", len(report.Items))
+	}
+	if report.Items[0].Status != "applied(already)" {
+		t.Errorf("item 0 status = %q, want applied(already)", report.Items[0].Status)
+	}
+	for i := 1; i < 3; i++ {
+		if report.Items[i].Status != "applied" {
+			t.Errorf("item %d status = %q, want applied", i, report.Items[i].Status)
+		}
+	}
+
+	st, _ := svc.LoadState()
+	if len(st.GetNode(nid("1.1")).Dependencies) != 2 || len(st.GetNode(nid("1.2")).Dependencies) != 1 {
+		t.Fatalf("edges not all applied after resume: %+v", st.AllNodes())
+	}
+}
+
+// TestAmendDepsCmd_DepsMarksOnlyAddedEdges verifies that removing one edge does
+// not mark every surviving edge as amended, and that the removed edge is listed
+// separately.
+func TestAmendDepsCmd_DepsMarksOnlyAddedEdges(t *testing.T) {
+	dir, svc := setupTaintTraceTest(t)
+	if err := svc.ClaimNode(nid("1"), "prover1", 5*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	addAmendLeaf(t, svc, "1.1")
+	addAmendLeaf(t, svc, "1.2")
+	addAmendLeaf(t, svc, "1.3")
+
+	if _, err := svc.AmendDeps(nid("1.1"), service.AmendDepsRequest{
+		Add: []service.NodeID{nid("1.2"), nid("1.3")}, Owner: "prover1", Reason: "add both",
+	}); err != nil {
+		t.Fatalf("amend add: %v", err)
+	}
+	if _, err := svc.AmendDeps(nid("1.1"), service.AmendDepsRequest{
+		Remove: []service.NodeID{nid("1.2")}, Owner: "prover1", Reason: "drop one",
+	}); err != nil {
+		t.Fatalf("amend remove: %v", err)
+	}
+
+	cmd := newDepsCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"1.1", "--dir", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deps: %v\n%s", err, buf.String())
+	}
+	out := buf.String()
+	// 1.3 is the surviving added edge: it keeps the mark.
+	if !bytes.Contains([]byte(out), []byte("*1.3")) {
+		t.Errorf("surviving added edge 1.3 not marked:\n%s", out)
+	}
+	// 1.2 was removed and is not listed as a current dependency.
+	if bytes.Contains([]byte(out), []byte("*1.2")) {
+		t.Errorf("removed edge 1.2 is marked as current:\n%s", out)
+	}
+	if !bytes.Contains([]byte(out), []byte("removed by amendment: 1.2")) {
+		t.Errorf("removed edge 1.2 not listed separately:\n%s", out)
 	}
 }

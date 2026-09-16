@@ -1,7 +1,11 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"sort"
+	"strings"
 
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
@@ -35,6 +39,9 @@ var (
 	// ErrAmendDepsAdmitted: an admitted node must be unadmitted before its
 	// edges can be corrected. Exit 3.
 	ErrAmendDepsAdmitted = aferrors.New(aferrors.INVALID_STATE, "node is admitted; run `af unadmit` first")
+	// ErrAmendDepsOperationIDConflict: an operation id was already committed for
+	// a different node or a different change set. Exit 3.
+	ErrAmendDepsOperationIDConflict = aferrors.New(aferrors.OPERATION_ID_CONFLICT, "operation id already committed for a different request")
 )
 
 // AmendDepsRequest is one edge correction. Empty lists are no-ops; Reopen
@@ -124,16 +131,25 @@ func planDepsAmendment(st *state.State, nodeID types.NodeID, req AmendDepsReques
 	}
 
 	// A retried operation discovers its own committed result before any
-	// precondition that the operation itself changed (state, hash). The first
-	// event carrying the id is the result.
+	// precondition that the operation itself changed (state, hash). The id is
+	// bound to the event type, node and canonical request fingerprint, so a
+	// reuse of the id for a different request is a conflict rather than a
+	// false applied-already.
 	if req.OperationID != "" {
-		if seq, ok := st.HasOperationID(req.OperationID); ok {
+		if rec, ok := st.LookupOperation(req.OperationID); ok {
+			fp := fingerprintAmendDepsRequest(nodeID, req)
+			if rec.EventType != string(ledger.EventNodeDepsAmended) ||
+				rec.NodeID != nodeID.String() || rec.RequestFingerprint != fp {
+				return depsPlan{}, fmt.Errorf("%w: operation id %s belongs to %s %s",
+					ErrAmendDepsOperationIDConflict, req.OperationID, operationRecordLabel(rec), rec.NodeID)
+			}
 			return depsPlan{Result: AmendDepsResult{
 				Outcome:  AmendDepsAppliedAlready,
-				Seq:      seq,
-				OldHash:  n.ContentHash,
-				NewHash:  n.ContentHash,
-				Reverify: req.Reopen && n.EpistemicState == schema.EpistemicPending,
+				Seq:      rec.Seq,
+				OldHash:  rec.PreviousHash,
+				NewHash:  rec.NewHash,
+				Reopened: rec.Reopened,
+				Reverify: rec.Reopened,
 			}}, nil
 		}
 	}
@@ -215,8 +231,49 @@ func planDepsAmendment(st *state.State, nodeID types.NodeID, req AmendDepsReques
 	event := ledger.NewNodeDepsAmended(nodeID, n.Dependencies, newDeps, n.ValidationDeps, newValDeps,
 		req.Owner, req.Reason, n.ContentHash, reopen)
 	event.OperationID = req.OperationID
+	event.RequestFingerprint = fingerprintAmendDepsRequest(nodeID, req)
 
 	return depsPlan{Event: event, Result: result}, nil
+}
+
+// fingerprintAmendDepsRequest is the canonical digest that binds an operation
+// id to the request that created it: the node, the reopen flag, and the four
+// sorted edge lists. It deliberately excludes owner, reason, expect-hash and
+// strict, which are provenance/precondition fields rather than the change set.
+func fingerprintAmendDepsRequest(nodeID types.NodeID, req AmendDepsRequest) string {
+	var b strings.Builder
+	b.WriteString("node=")
+	b.WriteString(nodeID.String())
+	if req.Reopen {
+		b.WriteString("\nreopen=1")
+	} else {
+		b.WriteString("\nreopen=0")
+	}
+	for _, list := range [][]types.NodeID{req.Add, req.Remove, req.AddValidated, req.RemoveValidated} {
+		b.WriteString("\n")
+		b.WriteString(canonicalIDList(list))
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+// canonicalIDList renders an ID slice as a sorted, comma-joined string.
+func canonicalIDList(ids []types.NodeID) string {
+	strs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		strs = append(strs, id.String())
+	}
+	sort.Strings(strs)
+	return strings.Join(strs, ",")
+}
+
+// operationRecordLabel describes a committed operation's event type for a
+// conflict error.
+func operationRecordLabel(rec state.OperationRecord) string {
+	if rec.EventType == "" {
+		return "an event"
+	}
+	return rec.EventType
 }
 
 // validateAmendDepsInput enforces the required provenance fields.
@@ -261,15 +318,17 @@ func checkAmendDepsOwnership(n *node.Node, owner string) error {
 	return nil
 }
 
-// checkAmendDepsTargets requires every referenced target to exist, so an
-// amendment cannot introduce a dangling edge silently. (A pre-existing dangling
-// edge is a legacy state fact, not something this command creates.)
+// checkAmendDepsTargets requires every referenced target in an ADD list to
+// exist, so an amendment cannot introduce a dangling edge silently. Remove
+// lists are exempt: removing a present edge must always be possible, including
+// a dangling edge whose target was never created or has since been
+// archived/refuted (D1 keeps such edges as sinks; D2 must be able to clear
+// them). A remove of an edge that is not present is a no-op (or a --strict
+// error), handled by applyEdgeChange.
 func checkAmendDepsTargets(st *state.State, req AmendDepsRequest) error {
-	all := make([]types.NodeID, 0, len(req.Add)+len(req.Remove)+len(req.AddValidated)+len(req.RemoveValidated))
+	all := make([]types.NodeID, 0, len(req.Add)+len(req.AddValidated))
 	all = append(all, req.Add...)
-	all = append(all, req.Remove...)
 	all = append(all, req.AddValidated...)
-	all = append(all, req.RemoveValidated...)
 	for _, id := range all {
 		if st.GetNode(id) == nil {
 			return fmt.Errorf("%w: dependency target %s", ErrNodeNotFound, id.String())

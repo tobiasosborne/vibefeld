@@ -88,6 +88,11 @@ const (
 	AMEND_DEPS_NONE_APPLIED      // exit 6 — manifest valid but zero items applied
 	AMEND_DEPS_ALL_UNCHANGED     // exit 7 — every item was already satisfied; nothing to do (clean no-op)
 
+	// OPERATION_ID_CONFLICT: an operation id was reused for a different request
+	// (different node or change set). Exit 3 — a logic error the caller must
+	// resolve (use a fresh id), not a transient conflict.
+	OPERATION_ID_CONFLICT
+
 	// Claim-test gate (blocked = exit 2). Distinct from NODE_BLOCKED so
 	// errors.Is can tell a missing/stale claim-test apart from unresolved
 	// blocking challenges; both are blocked, neither is a challenge.
@@ -134,6 +139,7 @@ var errorCodeNames = map[ErrorCode]string{
 	AMEND_DEPS_PARTIALLY_APPLIED: "AMEND_DEPS_PARTIALLY_APPLIED",
 	AMEND_DEPS_NONE_APPLIED:      "AMEND_DEPS_NONE_APPLIED",
 	AMEND_DEPS_ALL_UNCHANGED:     "AMEND_DEPS_ALL_UNCHANGED",
+	OPERATION_ID_CONFLICT:        "OPERATION_ID_CONFLICT",
 }
 
 // String returns the string representation of an ErrorCode.

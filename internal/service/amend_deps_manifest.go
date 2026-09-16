@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
@@ -74,15 +75,19 @@ func (m *AmendDepsManifest) MarshalIndent() ([]byte, error) {
 	return json.MarshalIndent(m, "", "  ")
 }
 
-// EnsureOperationIDs assigns a fresh operation id to every item that lacks one.
-// A dry run calls this so the ids are persisted; a real run calls it too so an
-// id-less manifest still gets one (a later --resume can then recognise it).
-func (m *AmendDepsManifest) EnsureOperationIDs() {
+// EnsureOperationIDs assigns a fresh operation id to every item that lacks one
+// and reports whether any id was generated. A dry run calls this so the ids are
+// persisted; a real run calls it too so an id-less manifest still gets one (a
+// later --resume can then recognise it).
+func (m *AmendDepsManifest) EnsureOperationIDs() bool {
+	changed := false
 	for i := range m.Items {
 		if m.Items[i].OperationID == "" {
 			m.Items[i].OperationID = generateDepsOperationID()
+			changed = true
 		}
 	}
+	return changed
 }
 
 // AmendDepsManifestStatus is the per-item report. Status is one of
@@ -142,21 +147,25 @@ func (r *AmendDepsManifestReport) record(status *AmendDepsManifestStatus) {
 	}
 }
 
-// exitError picks the AFError reporting the aggregate outcome; nil means every
-// item applied or was already satisfied.
+// exitError picks the AFError reporting the aggregate outcome; nil means the
+// generic success outcome (exit 0). The tiers mirror `af verdicts apply`: an
+// all-unchanged batch is its own clean no-op (exit 7), a batch with zero
+// applied items is none-applied (exit 6), and a batch with some applied and
+// some rejected/blocked is partial (exit 5). An empty manifest is none-applied
+// (exit 6), matching verdicts apply rather than silently succeeding.
 func (r *AmendDepsManifestReport) exitError() error {
 	total := len(r.Items)
 	if total == 0 {
-		return nil
+		return aferrors.Newf(aferrors.AMEND_DEPS_NONE_APPLIED, "manifest has no items")
+	}
+	if r.Unchanged == total {
+		return aferrors.Newf(aferrors.AMEND_DEPS_ALL_UNCHANGED, "all %d item(s) unchanged", total)
+	}
+	if r.Applied == 0 {
+		return aferrors.Newf(aferrors.AMEND_DEPS_NONE_APPLIED, "0 of %d item(s) applied", total)
 	}
 	if r.Rejected == 0 && r.Blocked == 0 {
 		return nil
-	}
-	if r.Applied == 0 {
-		if r.Unchanged == total {
-			return aferrors.Newf(aferrors.AMEND_DEPS_ALL_UNCHANGED, "all %d item(s) unchanged", total)
-		}
-		return aferrors.Newf(aferrors.AMEND_DEPS_NONE_APPLIED, "0 of %d item(s) applied", total)
 	}
 	return aferrors.Newf(aferrors.AMEND_DEPS_PARTIALLY_APPLIED, "%d of %d item(s) applied", r.Applied, total)
 }
@@ -165,6 +174,10 @@ func (r *AmendDepsManifestReport) exitError() error {
 // without writing anything, assigns operation ids to items lacking one, and
 // returns the per-item plan (edge diff, resulting hash, rejection path). The
 // caller is expected to persist the mutated manifest so the ids survive.
+//
+// Each successfully planned event is applied to the in-memory state before the
+// next item is planned, so hashes, no-op decisions and cycle/scope verdicts
+// match the real run (which reloads state after every commit) item for item.
 func (s *ProofService) DryRunAmendDepsManifest(m *AmendDepsManifest) (*AmendDepsManifestReport, error) {
 	st, err := s.LoadState()
 	if err != nil {
@@ -174,10 +187,20 @@ func (s *ProofService) DryRunAmendDepsManifest(m *AmendDepsManifest) (*AmendDeps
 	report := &AmendDepsManifestReport{SchemaVersion: AmendDepsManifestSchemaVersion}
 	report.Items = make([]AmendDepsManifestStatus, 0, len(m.Items))
 	for _, item := range m.Items {
-		status := s.planManifestItem(st, item)
+		status, plan := s.planManifestItem(st, item)
 		report.record(&status)
 		if status.Reverify {
 			report.Reverify = append(report.Reverify, AmendDepsReverify{Node: status.Node, NewHash: status.NewHash, Reason: item.Reason})
+		}
+		// Advance the in-memory state so the next item sees this item's
+		// effect, exactly as the real run's next commit would.
+		if plan.Event != nil {
+			if err := state.Apply(st, plan.Event); err != nil {
+				return nil, fmt.Errorf("dry run: applying planned event for %s: %w", item.Node, err)
+			}
+			if carrier, ok := plan.Event.(interface{ GetOperationID() string }); ok {
+				st.RecordOperation(carrier.GetOperationID(), operationRecordForEvent(st, plan.Event))
+			}
 		}
 	}
 	return report, nil
@@ -246,14 +269,33 @@ func (s *ProofService) ApplyAmendDepsManifest(m *AmendDepsManifest) (*AmendDepsM
 	return report, report.exitError()
 }
 
-// planManifestItem validates one item against st without writing.
-func (s *ProofService) planManifestItem(st *state.State, item AmendDepsManifestItem) AmendDepsManifestStatus {
+// operationRecordForEvent builds the operation-id binding for an event that
+// has just been applied to st, matching what replay records. It lets a dry run
+// recognise a repeated operation id exactly as the real run would.
+func operationRecordForEvent(st *state.State, ev ledger.Event) state.OperationRecord {
+	rec := state.OperationRecord{EventType: string(ev.Type())}
+	if deps, ok := ev.(ledger.NodeDepsAmended); ok {
+		rec.NodeID = deps.NodeID.String()
+		rec.RequestFingerprint = deps.RequestFingerprint
+		rec.PreviousHash = deps.PreviousContentHash
+		rec.Reopened = deps.Reopened
+		if n := st.GetNode(deps.NodeID); n != nil {
+			rec.NewHash = n.ContentHash
+		}
+	}
+	return rec
+}
+
+// planManifestItem validates one item against st without writing. It also
+// returns the plan (including the event to append, if any) so the dry run can
+// advance its in-memory state.
+func (s *ProofService) planManifestItem(st *state.State, item AmendDepsManifestItem) (AmendDepsManifestStatus, depsPlan) {
 	req, parseErr := amendDepsRequestFromItem(item)
 	if parseErr != nil {
 		return AmendDepsManifestStatus{
 			Node: item.Node, OperationID: item.OperationID,
 			Status: rejectedStatus(parseErr), Detail: parseErr.Error(), Reason: item.Reason,
-		}
+		}, depsPlan{}
 	}
 	plan, err := planDepsAmendment(st, req.nodeID, req.req)
 	if err != nil {
@@ -269,9 +311,9 @@ func (s *ProofService) planManifestItem(st *state.State, item AmendDepsManifestI
 		out.Removed = idStrings(plan.Result.Removed)
 		out.AddedValidated = idStrings(plan.Result.AddedValidated)
 		out.RemovedValidated = idStrings(plan.Result.RemovedValidated)
-		return out
+		return out, plan
 	}
-	return manifestStatusFromResult(item, plan.Result)
+	return manifestStatusFromResult(item, plan.Result), plan
 }
 
 // manifestStatusFromResult converts a successful/unchanged/queued result into

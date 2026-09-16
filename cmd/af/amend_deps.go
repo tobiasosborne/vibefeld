@@ -5,12 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tobiasosborne/vibefeld/internal/service"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
+
+// newAmendDepsService constructs the service for the amend-deps command. It is
+// a package variable so tests can inject a service with a crash hook.
+var newAmendDepsService = service.NewProofService
 
 // newAmendDepsCmd creates the amend-deps command.
 func newAmendDepsCmd() *cobra.Command {
@@ -170,7 +175,7 @@ func runAmendDepsManifest(cmd *cobra.Command, dir, format, path string, dryRun b
 		return err
 	}
 
-	svc, err := service.NewProofService(dir)
+	svc, err := newAmendDepsService(dir)
 	if err != nil {
 		return fmt.Errorf("failed to load proof: %w", err)
 	}
@@ -181,14 +186,20 @@ func runAmendDepsManifest(cmd *cobra.Command, dir, format, path string, dryRun b
 			return err
 		}
 		// Persist generated operation ids so the real run keeps them.
-		completed, err := manifest.MarshalIndent()
-		if err != nil {
-			return fmt.Errorf("failed to render completed manifest: %w", err)
-		}
-		if err := os.WriteFile(path, append(completed, '\n'), 0o644); err != nil {
-			return fmt.Errorf("failed to write completed manifest %s: %w", path, err)
+		if err := persistAmendDepsManifest(path, manifest); err != nil {
+			return err
 		}
 		return outputAmendDepsReport(cmd, report, format, true)
+	}
+
+	// Persist generated operation ids to the manifest BEFORE the first commit,
+	// atomically (temp file + rename). A crash mid-batch therefore leaves the
+	// on-disk manifest carrying the ids of the items already attempted, so a
+	// later --resume recognises them from the ledger.
+	if manifest.EnsureOperationIDs() {
+		if err := persistAmendDepsManifest(path, manifest); err != nil {
+			return err
+		}
 	}
 
 	report, applyErr := svc.ApplyAmendDepsManifest(manifest)
@@ -196,6 +207,40 @@ func runAmendDepsManifest(cmd *cobra.Command, dir, format, path string, dryRun b
 		return outputErr
 	}
 	return applyErr
+}
+
+// persistAmendDepsManifest renders the manifest (including any operation ids
+// assigned in memory) and writes it back atomically, so a reader never sees a
+// partially written file even if the process crashes mid-write.
+func persistAmendDepsManifest(path string, manifest *service.AmendDepsManifest) error {
+	completed, err := manifest.MarshalIndent()
+	if err != nil {
+		return fmt.Errorf("failed to render completed manifest: %w", err)
+	}
+	completed = append(completed, '\n')
+
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".amend-deps-*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temp manifest in %s: %w", dir, err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.Write(completed); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed to write temp manifest %s: %w", tmpName, err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed to chmod temp manifest %s: %w", tmpName, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close temp manifest %s: %w", tmpName, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("failed to replace manifest %s: %w", path, err)
+	}
+	return nil
 }
 
 // amendDepsRequestFromFlags builds a single-node request from the command flags.
