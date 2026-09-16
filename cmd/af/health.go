@@ -389,9 +389,11 @@ func analyzeHealth(st *service.State, opts healthOptions) *HealthReport {
 		blockers = []Blocker{}
 	}
 
-	// Hotspots: the top N reworked nodes. Warned nodes sort first so a
-	// threshold breach is not hidden behind a node with more raw rework.
+	// Hotspots: the top N reworked nodes, by rework descending.
 	hotspots := selectHotspots(rework, opts.Hotspots)
+	if hotspots == nil {
+		hotspots = []ReworkHotspot{}
+	}
 
 	return &HealthReport{
 		Status:       status,
