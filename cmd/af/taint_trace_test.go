@@ -236,11 +236,11 @@ func TestTaintTraceCmd_ExplainsAdmittedDescendant(t *testing.T) {
 	if !strings.Contains(output, "Current taint: tainted") {
 		t.Errorf("expected tainted root, got: %s", output)
 	}
-	if !strings.Contains(output, "descendant 1.1 is admitted") {
-		t.Errorf("expected admitted descendant reason, got: %s", output)
+	if !strings.Contains(output, "tainted via child 1.1") || !strings.Contains(output, "admitted") {
+		t.Errorf("expected admitted child source, got: %s", output)
 	}
-	if !strings.Contains(output, "Descendant source(s):\n  1.1 — admitted (self_admitted)") {
-		t.Errorf("expected descendant source block, got: %s", output)
+	if !strings.Contains(output, "Support source(s):\n  1.1") {
+		t.Errorf("expected support source block, got: %s", output)
 	}
 }
 
@@ -278,8 +278,8 @@ func TestTaintTraceCmd_SparseTreeUsesNearestExistingParent(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if output := buf.String(); !strings.Contains(output, "descendant 1.1.1 is admitted") {
-		t.Errorf("sparse trace did not use nearest existing parent: %s", output)
+	if output := buf.String(); !strings.Contains(output, "Current taint: clean") {
+		t.Errorf("sparse admitted node with no direct child edge must not taint the root: %s", output)
 	}
 }
 
@@ -303,7 +303,7 @@ func TestTaintTraceCmd_ExplainsNeedsRefinementSources(t *testing.T) {
 		want   string
 	}{
 		{nodeID: "1.1", want: "node is reopened for refinement"},
-		{nodeID: "1", want: "descendant 1.1 is reopened for refinement"},
+		{nodeID: "1", want: "tainted via child 1.1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.nodeID, func(t *testing.T) {
@@ -366,11 +366,12 @@ func TestTaintTraceCmd_ExplainsPendingDescendantInJSON(t *testing.T) {
 	}
 
 	var result struct {
-		TaintState        string `json:"taint_state"`
-		DescendantSources []struct {
-			NodeID         string `json:"node_id"`
-			EpistemicState string `json:"epistemic_state"`
-		} `json:"descendant_sources"`
+		TaintState     string `json:"taint_state"`
+		SupportSources []struct {
+			SourceID string `json:"source_id"`
+			State    string `json:"state"`
+			Edge     string `json:"edge"`
+		} `json:"support_sources"`
 	}
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		t.Fatal(err)
@@ -378,8 +379,14 @@ func TestTaintTraceCmd_ExplainsPendingDescendantInJSON(t *testing.T) {
 	if result.TaintState != "unresolved" {
 		t.Errorf("taint_state = %q, want unresolved", result.TaintState)
 	}
-	if len(result.DescendantSources) != 1 || result.DescendantSources[0].NodeID != "1.1" || result.DescendantSources[0].EpistemicState != "pending" {
-		t.Errorf("descendant_sources = %#v, want pending node 1.1", result.DescendantSources)
+	found := false
+	for _, s := range result.SupportSources {
+		if s.SourceID == "1.1" && s.State == "pending" && s.Edge == "child" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("support_sources = %#v, want pending child 1.1", result.SupportSources)
 	}
 }
 
