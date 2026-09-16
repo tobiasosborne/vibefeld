@@ -28,6 +28,12 @@ const (
 	// author, so a driver's cross-vendor check can compare the decomposer's
 	// family for a decomposed node (rk GAP 9).
 	FeatureProofAuthor = "proof-author"
+	// FeatureValidationDeps: per-node validation_deps[] are emitted so a
+	// driver sees the exact validation prerequisite set af enforces.
+	FeatureValidationDeps = "validation-deps"
+	// FeatureDependencyAmendments: per-node dependency_amendments[] (D2
+	// node_deps_amended history) are emitted.
+	FeatureDependencyAmendments = "dependency-amendments"
 )
 
 // GraphFeatures is the fixed capability list this af build advertises. Always
@@ -39,6 +45,8 @@ var GraphFeatures = []string{
 	FeatureClosureFlag,
 	FeatureNodeDependencies,
 	FeatureProofAuthor,
+	FeatureValidationDeps,
+	FeatureDependencyAmendments,
 }
 
 // isEpistemicallyCleared reports whether a node's own epistemic state is one

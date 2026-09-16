@@ -84,7 +84,13 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 		State      string `json:"epistemic_state"`
 		IsBlocking bool   `json:"is_blocking,omitempty"`
 		DepType    string `json:"type"` // "reference" or "validation"
+		Amended    bool   `json:"amended,omitempty"`
 	}
+
+	// An edge is "amended" if it appears in any dependency amendment's previous
+	// or new edge lists (D2). This marks both edges that survived a correction
+	// and edges introduced by one.
+	amendedEdges := amendedEdgeSet(st.GetAmendmentHistory(nodeID))
 
 	var deps []depInfo
 
@@ -94,6 +100,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 		info := depInfo{
 			ID:      depID.String(),
 			DepType: "reference",
+			Amended: amendedEdges[depID.String()],
 		}
 		if dep != nil {
 			info.Statement = truncateString(dep.Statement, 50)
@@ -111,6 +118,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 		info := depInfo{
 			ID:      depID.String(),
 			DepType: "validation",
+			Amended: amendedEdges[depID.String()],
 		}
 		if dep != nil {
 			info.Statement = truncateString(dep.Statement, 50)
@@ -177,7 +185,7 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 			if len(refDeps) > 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "Reference Dependencies:")
 				for _, d := range refDeps {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s] - %s\n", d.ID, d.State, d.Statement)
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s%s [%s] - %s\n", amendedMark(d.Amended), d.ID, d.State, d.Statement)
 				}
 				fmt.Fprintln(cmd.OutOrStdout())
 			}
@@ -191,9 +199,13 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 					} else {
 						status += " (satisfied)"
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s] - %s\n", d.ID, status, d.Statement)
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s%s [%s] - %s\n", amendedMark(d.Amended), d.ID, status, d.Statement)
 				}
 				fmt.Fprintln(cmd.OutOrStdout())
+			}
+
+			if len(amendedEdges) > 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "(*) edge touched by a dependency amendment (af amend-deps)")
 			}
 
 			if blockingCount > 0 {
@@ -210,4 +222,31 @@ func runDeps(cmd *cobra.Command, nodeIDStr string) error {
 
 func init() {
 	rootCmd.AddCommand(newDepsCmd())
+}
+
+// amendedEdgeSet returns the set of dependency IDs touched by any dependency
+// amendment on the node.
+func amendedEdgeSet(amendments []service.Amendment) map[string]bool {
+	set := map[string]bool{}
+	for _, a := range amendments {
+		if a.Kind != service.AmendmentKindDependencies {
+			continue
+		}
+		for _, list := range [][]service.NodeID{
+			a.PreviousDependencies, a.NewDependencies,
+			a.PreviousValidationDeps, a.NewValidationDeps,
+		} {
+			for _, id := range list {
+				set[id.String()] = true
+			}
+		}
+	}
+	return set
+}
+
+func amendedMark(amended bool) string {
+	if amended {
+		return "*"
+	}
+	return " "
 }

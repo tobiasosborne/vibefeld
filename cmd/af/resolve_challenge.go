@@ -38,7 +38,7 @@ to the challenge target:
                   "Corrected to use the topological definition of continuity"
 
   dependencies  → Add/fix the dependency relationship
-                  "Added missing dependency on node 1.3 via 'af refine'"
+                  "Corrected the edge with 'af amend-deps 1.2 --remove 1.3 --add 1.4'"
 
   scope         → Fix scope violation or explain why it's valid
                   "Variable x is still in scope; introduced in 1.1, used in 1.1.2"
@@ -56,6 +56,9 @@ TIPS:
   - Reference specific changes: "See amended statement in node 1.2"
   - Explain why the fix addresses the concern, not just what changed
   - If you refined the node, mention the new child nodes by ID
+  - To correct a wrong dependency edge, use 'af amend-deps' (it checks
+    result-use cycles and scopes); reopening a validated node with --reopen
+    changes its hash, so re-accept it afterwards
   - Keep responses concise but complete
 
 Examples:

@@ -11,6 +11,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/jobs"
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 // GraphSchemaVersion is the current schema version of the `af export --graph
@@ -132,6 +133,32 @@ type GraphNode struct {
 	// epistemic_state axis does not reflect. Additive field (omitempty), no
 	// schema_version bump; omitted (false) for any not-yet-closed node.
 	Closed bool `json:"closed,omitempty"`
+	// ValidationDeps lists this node's validation dependency IDs — nodes that
+	// must be validated/admitted before this node can be accepted — in
+	// hierarchical-ID order. Emitted so an external driver sees the same
+	// validation set af enforces. Additive field (omitempty), advertised by the
+	// validation-deps capability token, no schema_version bump.
+	ValidationDeps []string `json:"validation_deps,omitempty"`
+	// DependencyAmendments is this node's recorded edge-correction history
+	// (D2's node_deps_amended events), oldest first. Additive field
+	// (omitempty), advertised by the dependency-amendments capability token,
+	// no schema_version bump.
+	DependencyAmendments []GraphDependencyAmendment `json:"dependency_amendments,omitempty"`
+}
+
+// GraphDependencyAmendment is one dependency-edge correction in the graph
+// export: what the edges were, what they became, who changed them and why, and
+// whether the change also reopened a validated node.
+type GraphDependencyAmendment struct {
+	Seq                    int      `json:"seq,omitempty"`
+	Timestamp              string   `json:"timestamp,omitempty"`
+	Owner                  string   `json:"owner,omitempty"`
+	Reason                 string   `json:"reason,omitempty"`
+	Previous               []string `json:"previous,omitempty"`
+	New                    []string `json:"new,omitempty"`
+	PreviousValidationDeps []string `json:"previous_validation_deps,omitempty"`
+	NewValidationDeps      []string `json:"new_validation_deps,omitempty"`
+	Reopened               bool     `json:"reopened,omitempty"`
 }
 
 // GraphValidation summarizes validation-relevant events cheaply derivable
@@ -266,6 +293,29 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 		if kids := childrenOf[gn.ID]; len(kids) > 0 {
 			gn.ChildIDs = kids
 		}
+		if len(n.ValidationDeps) > 0 {
+			vals := make([]string, len(n.ValidationDeps))
+			for i, d := range n.ValidationDeps {
+				vals[i] = d.String()
+			}
+			gn.ValidationDeps = vals
+		}
+		for _, a := range s.GetAmendmentHistory(n.ID) {
+			if a.Kind != state.AmendmentKindDependencies {
+				continue
+			}
+			gn.DependencyAmendments = append(gn.DependencyAmendments, GraphDependencyAmendment{
+				Seq:                    a.Seq,
+				Timestamp:              a.Timestamp.String(),
+				Owner:                  a.Owner,
+				Reason:                 a.Reason,
+				Previous:               idList(a.PreviousDependencies),
+				New:                    idList(a.NewDependencies),
+				PreviousValidationDeps: idList(a.PreviousValidationDeps),
+				NewValidationDeps:      idList(a.NewValidationDeps),
+				Reopened:               a.Reopened,
+			})
+		}
 
 		ge.Nodes = append(ge.Nodes, gn)
 
@@ -283,6 +333,18 @@ func BuildGraphExport(s *state.State, workspaceID string, cfg *config.Config) Gr
 	}
 
 	return ge
+}
+
+// idList renders a NodeID slice as strings, nil for empty.
+func idList(ids []types.NodeID) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = id.String()
+	}
+	return out
 }
 
 // ExportGraph renders the graph export document as a deterministic JSON
