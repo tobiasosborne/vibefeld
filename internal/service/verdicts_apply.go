@@ -201,7 +201,7 @@ func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Ite
 			return nil, fmt.Errorf("%w: verifier %q is also the recorded author of node %s", errVerdictReviewerIsAuthor, f.VerifiedBy, item.Node)
 		}
 
-		events, err := s.buildAcceptEvents(st, nodeID, item.Reason, f.VerifiedBy, f.BatchID)
+		events, err := s.buildAcceptEvents(st, nodeID, item.Reason, f.VerifiedBy, f.BatchID, item.ExpectHash)
 		if err != nil {
 			return nil, err
 		}

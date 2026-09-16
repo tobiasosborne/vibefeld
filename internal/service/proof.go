@@ -781,9 +781,24 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AcceptNodeWithVerifier(id types.NodeID, note, verifiedBy, batchID string) error {
+	return s.acceptNodeWithExpectation(id, note, verifiedBy, batchID, "")
+}
+
+// AcceptNodeWithExpectation is AcceptNodeWithVerifier with an expected content
+// hash. When expectHash is non-empty it is compared against the node's current
+// content hash under the same state read the accept commits against, and the
+// resulting NodeValidated records ExpectedHashChecked=true. A mismatch is
+// refused; a plain accept (empty expectHash) records ExpectedHashChecked=false.
+func (s *ProofService) AcceptNodeWithExpectation(id types.NodeID, note, verifiedBy, batchID, expectHash string) error {
+	return s.acceptNodeWithExpectation(id, note, verifiedBy, batchID, expectHash)
+}
+
+// acceptNodeWithExpectation is the shared body of AcceptNodeWithVerifier and
+// AcceptNodeWithExpectation.
+func (s *ProofService) acceptNodeWithExpectation(id types.NodeID, note, verifiedBy, batchID, expectHash string) error {
 	var oldTaints map[string]node.TaintState
 	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
-		events, err := s.buildAcceptEvents(st, id, note, verifiedBy, batchID)
+		events, err := s.buildAcceptEvents(st, id, note, verifiedBy, batchID, expectHash)
 		if err != nil {
 			return nil, err
 		}
@@ -803,12 +818,20 @@ func (s *ProofService) AcceptNodeWithVerifier(id types.NodeID, note, verifiedBy,
 // same state read, so a verdict item cannot validate against one state and
 // append against another. It is shared by AcceptNodeWithVerifier's commit
 // closure and by applyAcceptVerdict's (which adds the verdict-file gates
-// before calling it).
-func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, note, verifiedBy, batchID string) ([]ledger.Event, error) {
+// before calling it). expectHash, when non-empty, is compared against the
+// node's content in this same read and sets ExpectedHashChecked on the event.
+func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, note, verifiedBy, batchID, expectHash string) ([]ledger.Event, error) {
 	// Check if node exists
 	n := st.GetNode(id)
 	if n == nil {
 		return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+	}
+
+	// D3: when the caller supplied an expected hash, compare it here — against
+	// the same state read the accept commits against — before anything else.
+	if expectHash != "" && n.ContentHash != expectHash {
+		return nil, fmt.Errorf("%w: node %s content hash changed since the expectation was recorded (expected %s, current %s)",
+			ErrInvalidState, id.String(), expectHash, n.ContentHash)
 	}
 
 	// Check for blocking challenges (critical or major severity)
@@ -817,8 +840,12 @@ func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, note,
 		return nil, formatBlockingChallengesError(id, blockingChallenges)
 	}
 
-	// Check crux nodes require a passing claim-test
-	if n.Crux && !st.HasPassingClaimTest(id) {
+	// Check crux nodes require a passing claim-test that matches the node's
+	// current content. A legacy test (no recorded hash) still counts.
+	if n.Crux && !st.HasPassingClaimTestForContent(id, n.ContentHash) {
+		if st.HasStalePassingClaimTest(id, n.ContentHash) {
+			return nil, fmt.Errorf("%w: node %s (only passing claim-test is stale: it was run against an older content hash; re-run 'af claim-test')", ErrClaimTestRequired, id.String())
+		}
 		return nil, fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
 	}
 
@@ -878,7 +905,7 @@ func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, note,
 		return nil, err
 	}
 
-	return []ledger.Event{ledger.NewNodeValidatedFull(id, note, verifiedBy, batchID)}, nil
+	return []ledger.Event{ledger.NewNodeValidatedWithHash(id, note, verifiedBy, batchID, n.ContentHash, expectHash != "")}, nil
 }
 
 // AcceptNodeBulk validates multiple nodes atomically, marking them as verified correct.
@@ -915,11 +942,13 @@ func (s *ProofService) AcceptNodeBulkWithVerifier(ids []types.NodeID, verifiedBy
 	var oldTaints map[string]node.TaintState
 	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
 		// Validate all nodes exist, have no blocking challenges, and are in pending state before any mutation
-		for _, id := range ids {
+		contentHashes := make([]string, len(ids))
+		for i, id := range ids {
 			n := st.GetNode(id)
 			if n == nil {
 				return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 			}
+			contentHashes[i] = n.ContentHash
 
 			// Check for blocking challenges (critical or major severity)
 			blockingChallenges := st.GetBlockingChallengesForNode(id)
@@ -927,8 +956,11 @@ func (s *ProofService) AcceptNodeBulkWithVerifier(ids []types.NodeID, verifiedBy
 				return nil, formatBlockingChallengesError(id, blockingChallenges)
 			}
 
-			// Check crux nodes require a passing claim-test
-			if n.Crux && !st.HasPassingClaimTest(id) {
+			// Check crux nodes require a passing claim-test matching current content
+			if n.Crux && !st.HasPassingClaimTestForContent(id, n.ContentHash) {
+				if st.HasStalePassingClaimTest(id, n.ContentHash) {
+					return nil, fmt.Errorf("%w: node %s (only passing claim-test is stale: it was run against an older content hash; re-run 'af claim-test')", ErrClaimTestRequired, id.String())
+				}
 				return nil, fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
 			}
 
@@ -938,10 +970,11 @@ func (s *ProofService) AcceptNodeBulkWithVerifier(ids []types.NodeID, verifiedBy
 			}
 		}
 
-		// Create events for all nodes
+		// Create events for all nodes. Bulk accept has no per-node expectation,
+		// so ExpectedHashChecked is always false (D3).
 		events := make([]ledger.Event, len(ids))
 		for i, id := range ids {
-			events[i] = ledger.NewNodeValidatedFull(id, "", verifiedBy, batchID)
+			events[i] = ledger.NewNodeValidatedWithHash(id, "", verifiedBy, batchID, contentHashes[i], false)
 		}
 		oldTaints = snapshotTaintStates(st)
 		return events, nil
@@ -2284,7 +2317,8 @@ func (s *ProofService) RunClaimTest(nodeID types.NodeID, engine, scriptPath, exp
 	var output string
 	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
 		// Validate node exists
-		if st.GetNode(nodeID) == nil {
+		n := st.GetNode(nodeID)
+		if n == nil {
 			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
 		}
 
@@ -2311,7 +2345,11 @@ func (s *ProofService) RunClaimTest(nodeID types.NodeID, engine, scriptPath, exp
 			return nil, fmt.Errorf("test execution failed: %w", execErr)
 		}
 
-		return []ledger.Event{ledger.NewClaimTested(nodeID, engine, scriptPath, expression, passed, output, agent)}, nil
+		// D3: record the node's content hash at test time so acceptance can
+		// tell whether this passing test still applies to the current content.
+		event := ledger.NewClaimTested(nodeID, engine, scriptPath, expression, passed, output, agent)
+		event.ContentHash = n.ContentHash
+		return []ledger.Event{event}, nil
 	})
 	if err != nil {
 		return passed, output, wrapSequenceMismatch(err, "RunClaimTest")
