@@ -335,19 +335,8 @@ func statusToJSON(s *state.State, nodes []*node.Node) JSONStatus {
 		taintCounts[string(n.TaintState)]++
 	}
 
-	// Count jobs
-	proverJobs := 0
-	verifierJobs := 0
-	for _, n := range nodes {
-		if n.WorkflowState == "available" && n.EpistemicState == "pending" {
-			proverJobs++
-		}
-		if n.WorkflowState == "claimed" && n.EpistemicState == "pending" {
-			if s.AllChildrenValidated(n.ID) {
-				verifierJobs++
-			}
-		}
-	}
+	// Count jobs with the shared internal/jobs classifier (whole state).
+	proverJobs, verifierJobs := jobCountsForState(s)
 
 	// Convert nodes to JSON
 	jsonNodes := make([]JSONNode, 0, len(nodes))
@@ -394,19 +383,8 @@ func statusToJSONWithPagination(s *state.State, nodes []*node.Node, totalNodes, 
 		taintCounts[string(n.TaintState)]++
 	}
 
-	// Count jobs from displayed nodes
-	proverJobs := 0
-	verifierJobs := 0
-	for _, n := range nodes {
-		if n.WorkflowState == "available" && n.EpistemicState == "pending" {
-			proverJobs++
-		}
-		if n.WorkflowState == "claimed" && n.EpistemicState == "pending" {
-			if s.AllChildrenValidated(n.ID) {
-				verifierJobs++
-			}
-		}
-	}
+	// Count jobs with the shared internal/jobs classifier (whole state).
+	proverJobs, verifierJobs := jobCountsForState(s)
 
 	// Convert nodes to JSON
 	jsonNodes := make([]JSONNode, 0, len(nodes))

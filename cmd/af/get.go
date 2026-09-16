@@ -190,7 +190,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)
 		amendments := st.GetAmendmentHistory(nodes[0].ID)
 		scopeInfo := getScopeInfoJSON(st, nodes[0].ID)
-		output := nodeToJSONFull(nodes[0], nodeChallenges, amendments, scopeInfo)
+		output := nodeToJSONFull(nodes[0], nodeChallenges, amendments, scopeInfo, st)
 		data, err := json.Marshal(output)
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -206,7 +206,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 			nodeChallenges := filterChallengesForNode(challenges, n.ID)
 			amendments := st.GetAmendmentHistory(n.ID)
 			scopeInfo := getScopeInfoJSON(st, n.ID)
-			jsonNodes = append(jsonNodes, nodeToJSONFull(n, nodeChallenges, amendments, scopeInfo))
+			jsonNodes = append(jsonNodes, nodeToJSONFull(n, nodeChallenges, amendments, scopeInfo, st))
 		}
 		data, err := json.Marshal(jsonNodes)
 		if err != nil {
@@ -264,7 +264,7 @@ func nodeToJSONBasic(n *node.Node) map[string]interface{} {
 }
 
 // nodeToJSONFull creates a full JSON representation of a node.
-func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []service.Amendment, scopeInfo map[string]interface{}) map[string]interface{} {
+func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []service.Amendment, scopeInfo map[string]interface{}, st *service.State) map[string]interface{} {
 	result := map[string]interface{}{
 		"id":              n.ID.String(),
 		"type":            string(n.Type),
@@ -275,6 +275,43 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 		"taint_state":     string(n.TaintState),
 		"created":         n.Created.String(),
 		"content_hash":    n.ContentHash,
+	}
+
+	if n.Author != "" {
+		result["author"] = n.Author
+	}
+
+	if n.ProofAuthor != "" {
+		result["proof_author"] = n.ProofAuthor
+	}
+
+	// Verifier identity and batch recorded at acceptance (D3/0.1.x), so `af get`
+	// surfaces the same fields `af export --graph json` already does.
+	if n.ValidatedBy != "" {
+		result["validated_by"] = n.ValidatedBy
+	}
+	if n.ValidationBatchID != "" {
+		result["validation_batch_id"] = n.ValidationBatchID
+	}
+
+	// Claim details: owner, acquisition time, and expiry. ClaimedAt holds the
+	// expiry; ClaimedSince holds the acquisition time.
+	if n.ClaimedBy != "" {
+		result["claimed_by"] = n.ClaimedBy
+	}
+	if !n.ClaimedSince.IsZero() {
+		result["claimed_at"] = n.ClaimedSince.String()
+	}
+	if !n.ClaimedAt.IsZero() {
+		result["claim_expires_at"] = n.ClaimedAt.String()
+	}
+
+	// Job readiness from the one authoritative classifier (D11). st may be nil
+	// in tests that build a node without a workspace.
+	if st != nil {
+		challengeMap := st.ChallengeMapForJobs()
+		result["prover_ready"] = service.IsProverJob(n, challengeMap)
+		result["verifier_ready"] = service.IsVerifierJob(n, challengeMap)
 	}
 
 	if len(n.Context) > 0 {
@@ -291,10 +328,6 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 
 	if len(n.Scope) > 0 {
 		result["scope"] = n.Scope
-	}
-
-	if n.ClaimedBy != "" {
-		result["claimed_by"] = n.ClaimedBy
 	}
 
 	if n.ValidatedContentHash != "" {
@@ -374,6 +407,10 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		// Single node: always show full/verbose output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
 		fmt.Fprint(cmd.OutOrStdout(), render.RenderNodeVerbose(nodes[0]))
+		if st != nil {
+			challengeMap := st.ChallengeMapForJobs()
+			fmt.Fprintf(cmd.OutOrStdout(), "Prover job: %t\nVerifier job: %t\n", service.IsProverJob(nodes[0], challengeMap), service.IsVerifierJob(nodes[0], challengeMap))
+		}
 		// Show challenges for this node
 		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)
 		if len(nodeChallenges) > 0 {

@@ -190,19 +190,9 @@ func StateToStatusView(s *state.State) StatusView {
 	nodes := s.AllNodes()
 	challenges := s.AllChallenges()
 
-	// Count jobs
-	proverJobs := 0
-	verifierJobs := 0
-	for _, n := range nodes {
-		if n.WorkflowState == schema.WorkflowAvailable && n.EpistemicState == schema.EpistemicPending {
-			proverJobs++
-		}
-		if n.WorkflowState == schema.WorkflowClaimed && n.EpistemicState == schema.EpistemicPending {
-			if s.AllChildrenValidated(n.ID) {
-				verifierJobs++
-			}
-		}
-	}
+	// Count jobs with the shared internal/jobs classifier, over all nodes, so
+	// the status view cannot disagree with af jobs.
+	proverJobs, verifierJobs := jobCountsForState(s)
 
 	return StatusView{
 		Nodes:            NodesToViews(nodes),

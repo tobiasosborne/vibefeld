@@ -13,8 +13,8 @@ var CommandExamples = map[string][]string{
 		"af release 1.2 -o agent1",
 	},
 	"af refine": {
-		"af refine 1 --owner agent1 --statement \"First step\"",
-		"af refine 1 -o agent1 -s \"Step\" --type claim --justification modus_ponens",
+		"af refine 1 \"First step\" --owner agent1",
+		"af refine 1 -o agent1 \"Step\" --type claim --justification modus_ponens",
 		"af refine 1 --owner agent1 --children '[{\"statement\":\"Step 1\"},{\"statement\":\"Step 2\"}]'",
 	},
 	"af accept": {
@@ -26,7 +26,7 @@ var CommandExamples = map[string][]string{
 		"af challenge 1.2 --reason \"Missing case\" --target completeness",
 	},
 	"af resolve-challenge": {
-		"af resolve-challenge ch-abc123 --resolution \"Addressed by adding case analysis\"",
+		"af resolve-challenge ch-abc123 --response \"Addressed by adding case analysis\"",
 	},
 	"af withdraw-challenge": {
 		"af withdraw-challenge ch-abc123",

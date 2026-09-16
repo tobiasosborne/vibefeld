@@ -141,6 +141,7 @@ func applyNodesClaimed(s *State, e ledger.NodesClaimed) error {
 		n.WorkflowState = schema.WorkflowClaimed
 		n.ClaimedBy = e.Owner
 		n.ClaimedAt = e.Timeout
+		n.ClaimedSince = e.Timestamp()
 	}
 	return nil
 }
@@ -179,6 +180,7 @@ func applyNodesReleased(s *State, e ledger.NodesReleased) error {
 		n.WorkflowState = schema.WorkflowAvailable
 		n.ClaimedBy = ""
 		n.ClaimedAt = types.Timestamp{}
+		n.ClaimedSince = types.Timestamp{}
 	}
 	return nil
 }

@@ -37,6 +37,14 @@ func FindVerifierJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challen
 	return result
 }
 
+// IsVerifierJob reports whether the node currently qualifies as a verifier job
+// under af's own classifier (the exported form of isVerifierJob). It is the
+// single source of truth for the "ready for review" question, shared by
+// status, get, export and health.
+func IsVerifierJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
+	return isVerifierJob(n, challengeMap)
+}
+
 // isVerifierJob checks if a single node qualifies as a verifier job.
 // A verifier job is a node that is ready for verifier review:
 //   - Has a statement (non-empty)

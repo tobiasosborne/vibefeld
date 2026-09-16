@@ -103,17 +103,17 @@ Typical Workflow:
 
   3. Prover claims and refines a node:
        af claim 1 --owner prover-1 --role prover
-       af refine 1 --owner prover-1 -s "First step of proof"
+       af refine 1 "First step of proof" --owner prover-1
        af release 1 --owner prover-1
 
   4. Verifier reviews and challenges or accepts:
        af claim 1.1 --owner verifier-1 --role verifier
-       af challenge 1.1 --owner verifier-1 --reason "Needs justification"
+       af challenge 1.1 --reason "Needs justification"
        af release 1.1 --owner verifier-1
 
   5. Prover addresses challenges:
        af claim 1.1 --owner prover-1 --role prover
-       af refine 1.1 --owner prover-1 -s "Detailed justification"
+       af refine 1.1 "Detailed justification" --owner prover-1
        af resolve-challenge 1.1:c1 --owner prover-1
        af release 1.1 --owner prover-1
 

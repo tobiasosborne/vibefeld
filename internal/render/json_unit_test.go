@@ -1236,10 +1236,11 @@ func TestRenderVerifierContextJSON_ValidChallenge(t *testing.T) {
 
 func TestRenderStatusJSON_WithJobCounts(t *testing.T) {
 	s := state.NewState()
-	// Prover job: available + pending
+	// Available + pending with a statement and no blocking challenge is a
+	// verifier job under the authoritative internal/jobs classifier.
 	s.AddNode(makeTestNodeWithState(t, "1", "Root", schema.WorkflowAvailable, schema.EpistemicPending))
-	s.AddNode(makeTestNodeWithState(t, "1.1", "Child prover", schema.WorkflowAvailable, schema.EpistemicPending))
-	// Not a prover job: claimed
+	s.AddNode(makeTestNodeWithState(t, "1.1", "Child verifier", schema.WorkflowAvailable, schema.EpistemicPending))
+	// Not a job: claimed nodes are not available for verifier review.
 	s.AddNode(makeTestNodeWithState(t, "1.2", "Claimed", schema.WorkflowClaimed, schema.EpistemicPending))
 
 	result := RenderStatusJSON(s, 0, 0)
@@ -1249,12 +1250,25 @@ func TestRenderStatusJSON_WithJobCounts(t *testing.T) {
 		t.Fatalf("Failed to parse JSON: %v", err)
 	}
 
-	jobs := parsed["jobs"].(map[string]interface{})
-	proverJobs := int(jobs["prover_jobs"].(float64))
+	jobsMap := parsed["jobs"].(map[string]interface{})
+	proverJobs := int(jobsMap["prover_jobs"].(float64))
+	verifierJobs := int(jobsMap["verifier_jobs"].(float64))
 
-	// 2 nodes are available + pending = prover jobs
-	if proverJobs != 2 {
-		t.Errorf("prover_jobs = %d, want 2", proverJobs)
+	// The status counts must equal the shared classifier's counts.
+	nodes := s.AllNodes()
+	nodeMap := make(map[string]*node.Node, len(nodes))
+	for _, n := range nodes {
+		nodeMap[n.ID.String()] = n
+	}
+	expected := jobs.FindJobs(nodes, nodeMap, s.ChallengeMapForJobs())
+	if proverJobs != len(expected.ProverJobs) {
+		t.Errorf("prover_jobs = %d, want %d", proverJobs, len(expected.ProverJobs))
+	}
+	if verifierJobs != len(expected.VerifierJobs) {
+		t.Errorf("verifier_jobs = %d, want %d", verifierJobs, len(expected.VerifierJobs))
+	}
+	if verifierJobs != 2 {
+		t.Errorf("verifier_jobs = %d, want 2 (available+pending with no blocking challenges)", verifierJobs)
 	}
 }
 

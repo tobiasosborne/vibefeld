@@ -72,8 +72,18 @@ type Node struct {
 	// ClaimedBy is the agent ID that currently holds the claim (if any).
 	ClaimedBy string `json:"claimed_by,omitempty"`
 
-	// ClaimedAt is the timestamp when the node was claimed.
+	// ClaimedAt is the timestamp when the claim expires (the timeout recorded
+	// on the NodesClaimed/ClaimRefreshed event). It is retained for backwards
+	// compatibility with every caller and JSON surface that already treats it
+	// as the expiry.
 	ClaimedAt types.Timestamp `json:"claimed_at,omitempty"`
+
+	// ClaimedSince is the timestamp when the current claim was acquired (the
+	// NodesClaimed event time). It is distinct from ClaimedAt, which holds the
+	// claim's expiry, so health can tell a stalled claim (held longer than the
+	// lock timeout) from an expired one. Zero for legacy claims replayed from a
+	// ledger whose event carried no acquisition time.
+	ClaimedSince types.Timestamp `json:"claimed_since,omitempty"`
 
 	// Crux marks this node as critical path — it cannot be validated
 	// without a passing claim-test.
