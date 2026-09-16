@@ -105,6 +105,14 @@ func (s *ProofService) UnvalidateBatch(batchID, reason, revokedBy string) (*Unva
 		return events, nil
 	})
 	if commitErr != nil {
+		// Nothing was appended: the CAS refused the batch. Report the
+		// conflict per node rather than a misleading partial success count.
+		report.Count = 0
+		for i := range report.Items {
+			if report.Items[i].Err == "" {
+				report.Items[i].Err = commitErr.Error()
+			}
+		}
 		return report, wrapSequenceMismatch(commitErr, "UnvalidateBatch")
 	}
 
