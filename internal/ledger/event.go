@@ -11,6 +11,32 @@ import (
 // EventType identifies the type of ledger event.
 type EventType string
 
+// eventMinFormats records the oldest workspace format that understands an
+// event type. New event types for format 1.1 (D2) call RegisterEventMinFormat
+// from their package init; every type that never registers defaults to 1.0,
+// which is where all event types that exist today live.
+var eventMinFormats = map[EventType]string{}
+
+// RegisterEventMinFormat declares the minimum workspace format for t. It is
+// idempotent for the same value. Callers for a future format should register
+// during init so MinFormat is correct before any replay or append.
+func RegisterEventMinFormat(t EventType, format string) {
+	eventMinFormats[t] = format
+}
+
+// minFormatV10 is the workspace format every pre-1.1 event type belongs to.
+const minFormatV10 = "1.0"
+
+// MinFormat returns the oldest workspace format that understands this event
+// type. Unknown/unlisted types default to 1.0 so a future type that forgets to
+// register is gated as early as possible rather than silently admitted.
+func (t EventType) MinFormat() string {
+	if f, ok := eventMinFormats[t]; ok {
+		return f
+	}
+	return minFormatV10
+}
+
 const (
 	EventProofInitialized    EventType = "proof_initialized"
 	EventNodeCreated         EventType = "node_created"

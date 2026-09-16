@@ -32,8 +32,8 @@ func TestDefault_HasCorrectValues(t *testing.T) {
 		t.Errorf("Default() AutoCorrectThreshold = %f, want 0.8", cfg.AutoCorrectThreshold)
 	}
 
-	if cfg.Version != "1.0" {
-		t.Errorf("Default() Version = %q, want %q", cfg.Version, "1.0")
+	if cfg.Version != FormatCurrent {
+		t.Errorf("Default() Version = %q, want %q", cfg.Version, FormatCurrent)
 	}
 
 	// Title and Conjecture should be empty in default
@@ -477,7 +477,6 @@ func TestValidate_InvalidVersion(t *testing.T) {
 		{"empty version", ""},
 		{"wrong version 2.0", "2.0"},
 		{"wrong version 0.9", "0.9"},
-		{"wrong version 1.1", "1.1"},
 		{"wrong format", "1"},
 		{"wrong format v1.0", "v1.0"},
 	}
