@@ -558,11 +558,15 @@ func reopenValidated(n *node.Node) error {
 }
 
 // clearValidationFields clears the recorded validation provenance on a node.
+// It clears the derived VerdictSeq along with the recorded verdict identity, so
+// a reopened/unadmitted node cannot be mistaken for one whose verdict still
+// covers its current content.
 func clearValidationFields(n *node.Node) {
 	n.ValidatedBy = ""
 	n.ValidationBatchID = ""
 	n.ValidatedContentHash = ""
 	n.ValidatedHashChecked = false
+	n.VerdictSeq = 0
 }
 
 // sameIDSet reports whether two ID slices contain the same IDs. Order is
@@ -613,6 +617,7 @@ func applyRefinementRequested(s *State, e ledger.RefinementRequested) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicNeedsRefinement
+	clearValidationFields(n)
 	return nil
 }
 
@@ -663,6 +668,7 @@ func applyNodeUnadmitted(s *State, e ledger.NodeUnadmitted) error {
 		return fmt.Errorf("invalid transition for node %s: %w", e.NodeID.String(), err)
 	}
 	n.EpistemicState = schema.EpistemicPending
+	clearValidationFields(n)
 
 	return nil
 }

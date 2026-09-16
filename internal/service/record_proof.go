@@ -6,6 +6,7 @@ import (
 
 	"github.com/tobiasosborne/vibefeld/internal/jobs"
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
@@ -69,10 +70,22 @@ func (s *ProofService) RecordProof(spec RecordProofSpec) (*RecordProofResult, er
 			return nil, fmt.Errorf("%w: %s", ErrParentNotFound, spec.ParentID.String())
 		}
 
+		// D4 creation gate: a validated parent needs request-refinement before a
+		// prover write against it, and the remedy must name that command rather
+		// than the generic stale-role refusal below.
+		if err := checkParentCreationGate(parent); err != nil {
+			return nil, err
+		}
+
 		// rk B1: current prover-job classification (same classifier the export's
-		// prover_ready flag uses).
+		// prover_ready flag uses). needs_refinement depends on the children map,
+		// so build it from this state read.
 		challengeMap := st.ChallengeMapForJobs()
-		if !jobs.IsProverJob(parent, challengeMap) {
+		nodeMap := make(map[string]*node.Node, 0)
+		for _, n := range st.AllNodes() {
+			nodeMap[n.ID.String()] = n
+		}
+		if !jobs.IsProverJob(parent, nodeMap, challengeMap) {
 			return nil, fmt.Errorf("%w: node %s is not a prover job (needs an open blocking challenge, or a draft/needs_refinement state) — refusing a stale-role prover write", ErrInvalidState, spec.ParentID.String())
 		}
 

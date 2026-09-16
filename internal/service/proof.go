@@ -434,9 +434,13 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 			return nil, fmt.Errorf("%w: node %s", ErrAlreadyExists, id.String())
 		}
 
-		// Validate child count for parent (if not root)
+		// Validate child count for parent (if not root), and enforce the D4
+		// creation gate on the parent's epistemic state.
 		if parentID, hasParent := id.Parent(); hasParent {
 			if err := s.validateChildCount(st, parentID); err != nil {
+				return nil, err
+			}
+			if err := checkParentCreationGate(st.GetNode(parentID)); err != nil {
 				return nil, err
 			}
 		}
@@ -678,6 +682,12 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 			return nil, fmt.Errorf("%w: %s", ErrParentNotFound, spec.ParentID.String())
 		}
 
+		// D4 creation gate: a validated/admitted/refuted/archived parent may not
+		// gain children; the error names the remedy where one exists.
+		if err := checkParentCreationGate(parent); err != nil {
+			return nil, err
+		}
+
 		// Check if parent is claimed
 		if parent.WorkflowState != schema.WorkflowClaimed {
 			return nil, fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
@@ -839,7 +849,12 @@ func (s *ProofService) AcceptNodeWithExpectation(id types.NodeID, note, verified
 func (s *ProofService) acceptNodeWithExpectation(id types.NodeID, note, verifiedBy, batchID, expectHash string) error {
 	var oldTaints map[string]node.TaintState
 	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
-		events, err := s.buildAcceptEvents(st, id, note, verifiedBy, batchID, expectHash)
+		events, err := s.buildAcceptEvents(st, id, AcceptOptions{
+			Note:       note,
+			VerifiedBy: verifiedBy,
+			BatchID:    batchID,
+			ExpectHash: expectHash,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -857,96 +872,14 @@ func (s *ProofService) acceptNodeWithExpectation(id types.NodeID, note, verified
 // buildAcceptEvents validates an accept of id against st and returns the
 // NodeValidated event. The preconditions and the event construction share the
 // same state read, so a verdict item cannot validate against one state and
-// append against another. It is shared by AcceptNodeWithVerifier's commit
-// closure and by applyAcceptVerdict's (which adds the verdict-file gates
-// before calling it). expectHash, when non-empty, is compared against the
-// node's content in this same read and sets ExpectedHashChecked on the event.
-func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, note, verifiedBy, batchID, expectHash string) ([]ledger.Event, error) {
-	// Check if node exists
+// append against another. It is the interactive/bulk/verdict-file shared event
+// builder; every precondition lives in checkAcceptEligibility.
+func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, opts AcceptOptions) ([]ledger.Event, error) {
 	n := st.GetNode(id)
-	if n == nil {
-		return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-	}
-
-	// D3: when the caller supplied an expected hash, compare it here — against
-	// the same state read the accept commits against — before anything else.
-	if expectHash != "" && n.ContentHash != expectHash {
-		return nil, fmt.Errorf("%w: node %s content hash changed since the expectation was recorded (expected %s, current %s)",
-			ErrInvalidState, id.String(), expectHash, n.ContentHash)
-	}
-
-	// Check for blocking challenges (critical or major severity)
-	blockingChallenges := st.GetBlockingChallengesForNode(id)
-	if len(blockingChallenges) > 0 {
-		return nil, formatBlockingChallengesError(id, blockingChallenges)
-	}
-
-	// Check crux nodes require a passing claim-test that matches the node's
-	// current content. A legacy test (no recorded hash) still counts.
-	if n.Crux && !st.HasPassingClaimTestForContent(id, n.ContentHash) {
-		if st.HasStalePassingClaimTest(id, n.ContentHash) {
-			return nil, fmt.Errorf("%w: %w: node %s (only passing claim-test is stale: it was run against an older content hash; re-run 'af claim-test')", ErrClaimTestRequired, ErrClaimTestStale, id.String())
-		}
-		return nil, fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
-	}
-
-	// Check validation dependencies - all must be validated before this node can be accepted
-	if len(n.ValidationDeps) > 0 {
-		var unvalidatedDeps []string
-		for _, depID := range n.ValidationDeps {
-			depNode := st.GetNode(depID)
-			if depNode == nil {
-				// Dependency node doesn't exist (should be caught earlier, but be defensive)
-				unvalidatedDeps = append(unvalidatedDeps, depID.String()+" (not found)")
-				continue
-			}
-			// Check if the dependency is validated (or admitted, which counts as validated)
-			if depNode.EpistemicState != schema.EpistemicValidated && depNode.EpistemicState != schema.EpistemicAdmitted {
-				unvalidatedDeps = append(unvalidatedDeps, depID.String())
-			}
-		}
-		if len(unvalidatedDeps) > 0 {
-			return nil, fmt.Errorf("cannot accept node %s: validation dependencies not yet validated: %s",
-				id.String(), strings.Join(unvalidatedDeps, ", "))
-		}
-	}
-
-	// Check all children are validated or admitted (PRD requirement)
-	// A child is a node whose parent ID equals this node's ID
-	var children []*node.Node
-	var unvalidatedChildren []string
-	for _, child := range st.AllNodes() {
-		parentID, hasParent := child.ID.Parent()
-		if !hasParent || parentID.String() != id.String() {
-			continue // not a child of this node
-		}
-		children = append(children, child)
-		// Child must reach a terminal-cleared verdict: validated, admitted, or archived.
-		// Archived = branch abandoned, parent no longer relies on it. Refuted is intentionally
-		// excluded — refuted means the step is false, which is a real obstacle to the parent.
-		if child.EpistemicState != schema.EpistemicValidated &&
-			child.EpistemicState != schema.EpistemicAdmitted &&
-			child.EpistemicState != schema.EpistemicArchived {
-			unvalidatedChildren = append(unvalidatedChildren, child.ID.String())
-		}
-	}
-	if len(unvalidatedChildren) > 0 {
-		return nil, fmt.Errorf("cannot accept node %s: children not yet validated: %s",
-			id.String(), strings.Join(unvalidatedChildren, ", "))
-	}
-
-	// For needs_refinement nodes, require that refinement actually happened (has children)
-	if n.EpistemicState == schema.EpistemicNeedsRefinement && len(children) == 0 {
-		return nil, fmt.Errorf("cannot accept node %s: node is in needs_refinement state but has no children; use 'af refine' to add child nodes first",
-			id.String())
-	}
-
-	// Validate epistemic state transition (pending -> validated or needs_refinement -> validated)
-	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
+	if err := checkAcceptEligibility(st, n, opts); err != nil {
 		return nil, err
 	}
-
-	return []ledger.Event{ledger.NewNodeValidatedWithHash(id, note, verifiedBy, batchID, n.ContentHash, expectHash != "")}, nil
+	return []ledger.Event{ledger.NewNodeValidatedWithHash(id, opts.Note, opts.VerifiedBy, opts.BatchID, n.ContentHash, opts.ExpectHash != "")}, nil
 }
 
 // AcceptNodeBulk validates multiple nodes atomically, marking them as verified correct.
@@ -972,69 +905,12 @@ func (s *ProofService) AcceptNodeBulk(ids []types.NodeID) error {
 // AcceptNodeBulkWithVerifier is AcceptNodeBulk with verifier identity and an
 // optional batch id recorded on every resulting NodeValidated event. See
 // AcceptNodeWithVerifier for the provenance caveats (driver-supplied,
-// recorded-and-checkable, not adversary-proof) — the same apply here. This
-// is the kernel surface rk's C3 batch verification mode is expected to use
-// when a batch's verdict list accepts more than one item at once.
+// recorded-and-checkable, not adversary-proof) — the same apply here. It
+// returns only the aggregate error; AcceptNodesBulk exposes the per-item
+// report.
 func (s *ProofService) AcceptNodeBulkWithVerifier(ids []types.NodeID, verifiedBy, batchID string) error {
-	if len(ids) == 0 {
-		return nil // Nothing to do
-	}
-
-	var oldTaints map[string]node.TaintState
-	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
-		// Validate all nodes exist, have no blocking challenges, and are in pending state before any mutation
-		contentHashes := make([]string, len(ids))
-		for i, id := range ids {
-			n := st.GetNode(id)
-			if n == nil {
-				return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-			}
-			contentHashes[i] = n.ContentHash
-
-			// Check for blocking challenges (critical or major severity)
-			blockingChallenges := st.GetBlockingChallengesForNode(id)
-			if len(blockingChallenges) > 0 {
-				return nil, formatBlockingChallengesError(id, blockingChallenges)
-			}
-
-			// Check crux nodes require a passing claim-test matching current content
-			if n.Crux && !st.HasPassingClaimTestForContent(id, n.ContentHash) {
-				if st.HasStalePassingClaimTest(id, n.ContentHash) {
-					return nil, fmt.Errorf("%w: %w: node %s (only passing claim-test is stale: it was run against an older content hash; re-run 'af claim-test')", ErrClaimTestRequired, ErrClaimTestStale, id.String())
-				}
-				return nil, fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
-			}
-
-			// Validate epistemic state transition (only pending -> validated allowed)
-			if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
-				return nil, fmt.Errorf("node %s: %w", id.String(), err)
-			}
-		}
-
-		// Create events for all nodes. Bulk accept has no per-node expectation,
-		// so ExpectedHashChecked is always false (D3).
-		events := make([]ledger.Event, len(ids))
-		for i, id := range ids {
-			events[i] = ledger.NewNodeValidatedWithHash(id, "", verifiedBy, batchID, contentHashes[i], false)
-		}
-		oldTaints = snapshotTaintStates(st)
-		return events, nil
-	})
-	if err != nil {
-		return wrapSequenceMismatch(err, "AcceptNodeBulk")
-	}
-
-	// Emit taint events for all accepted nodes. Reuse one pre-transition
-	// snapshot so overlapping ancestor changes are emitted only once.
-	for _, id := range ids {
-		if err := s.emitTaintRecomputedEvents(id, oldTaints); err != nil {
-			// Log but don't fail - the validation events are already committed
-			// Taint will be recalculated on next state load
-			continue
-		}
-	}
-
-	return nil
+	_, err := s.AcceptNodesBulk(ids, verifiedBy, batchID)
+	return err
 }
 
 // LoadPendingNodes returns all nodes in the pending epistemic state.
@@ -1766,6 +1642,11 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		parent := st.GetNode(parentID)
 		if parent == nil {
 			return nil, fmt.Errorf("%w: %s", ErrParentNotFound, parentID.String())
+		}
+
+		// D4 creation gate (see checkParentCreationGate).
+		if err := checkParentCreationGate(parent); err != nil {
+			return nil, err
 		}
 
 		// Check if parent is claimed

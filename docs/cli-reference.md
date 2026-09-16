@@ -182,6 +182,13 @@ af status --limit 10             # Show first 10 nodes
 af status --limit 10 --offset 5  # Pagination: 10 nodes starting from 6th
 ```
 
+Validated nodes whose derived `support_current` is false are marked with a
+`!` after the node line (the Legend section explains it). In `--format json`
+every node carries `support_current`, and a false one also carries
+`support_cause`, `support_node` (the node responsible) and, when applicable,
+`support_seq` (the ledger sequence that broke it). A missing `!` on a
+validated node means its verdict is still supported by the current proof.
+
 **Next Steps:** Use `af jobs` to see available work, or `af get <node-id>` for node details.
 
 ---
@@ -222,6 +229,11 @@ af get 1.1 -a -F            # Ancestors with full details
 af get 1 -s -f json         # Subtree in JSON
 af get 1.1 --checklist      # Verification checklist for verifiers
 ```
+
+`af get` reports `support_current` (JSON) and, for a validated or admitted
+node whose support is not current, the stable `support_cause` plus the
+responsible `support_node` and `support_seq`. In text output a not-current
+verdict adds a `Support: NOT CURRENT (<CAUSE>)` line.
 
 **Next Steps:** Use `af claim` to work on the node, or `af challenge` to raise an objection.
 
@@ -802,6 +814,23 @@ af accept 1 -d ./proof   # Specific directory
 af accept 1 --agent verifier-1  # With agent verification
 af accept 1 --agent v1 --confirm  # Accept without having raised challenges
 ```
+
+Bulk acceptance is scheduled by actual prerequisites, not argument order:
+a node is accepted only after every pending child and validation dependency
+it relies on is already validated/admitted (or archived, for a child) or is
+accepted earlier in the same batch; ties are broken by hierarchical ID. All
+of a batch's `NodeValidated` events commit together. The report carries one
+`items[]` entry per requested node with status `applied`,
+`blocked:<code>` (e.g. `blocked:prerequisite-pending`) or
+`rejected:<code>`. A partial success exits 5 and a batch that applies
+nothing exits 6 (the `af verdicts apply` tiers). A `--all` batch obeys the
+same scheduling.
+
+A node may only be created under a parent that is `pending`, `draft` or
+`needs_refinement`. Creating under a `validated` parent is refused with the
+remedy `run af request-refinement <id>`; under an `admitted` parent with
+`run af unadmit <id>`; under a `refuted` or `archived` parent it is refused
+with no remedy. Each refusal is a typed error and exits 3.
 
 **Next Steps:** Check `af progress` to see overall completion status.
 
@@ -1782,6 +1811,8 @@ af health [flags]
 - All leaf nodes have open challenges
 - No available prover or verifier jobs
 - Circular dependencies
+- Validated nodes whose derived `support_current` is false, grouped by the
+  stable cause (`support_not_current_<CAUSE>`) and naming the responsible node
 
 ---
 
@@ -2162,6 +2193,14 @@ epistemic/taint — parent/child structure, content hash), and `validation`
 ID); running it twice against an unchanged proof produces byte-identical
 output. Never mutates the ledger. Full field-by-field schema:
 [`docs/export-graph-v1.md`](export-graph-v1.md).
+
+The `features[]` capability list includes `support-current`: each node then
+carries `support_current` (D4's recursive, revision-aware support signal)
+and, when false, the stable `support_cause` (`NOT_VALIDATED`,
+`OPEN_BLOCKING_CHALLENGE`, `TARGET_NOT_CURRENT`, `TARGET_PENDING`,
+`TARGET_REFUTED`, `TARGET_REVISED`, `SELF_REVISED`, or `CYCLE`). A consumer
+that needs the signal should require the token rather than assume the field
+is present.
 
 ---
 

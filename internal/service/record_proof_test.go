@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/tobiasosborne/vibefeld/internal/jobs"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 )
 
@@ -26,7 +27,12 @@ func rootHash(t *testing.T, svc *ProofService) string {
 func isProverJobNow(t *testing.T, svc *ProofService, id string) bool {
 	t.Helper()
 	st, _ := svc.LoadState()
-	return jobs.IsProverJob(st.GetNode(parseNodeID(t, id)), st.ChallengeMapForJobs())
+	nodes := st.AllNodes()
+	nodeMap := make(map[string]*node.Node, len(nodes))
+	for _, n := range nodes {
+		nodeMap[n.ID.String()] = n
+	}
+	return jobs.IsProverJob(st.GetNode(parseNodeID(t, id)), nodeMap, st.ChallengeMapForJobs())
 }
 
 // FU3 + B1: RecordProof on a prover-classified node atomically refines it,
