@@ -8,6 +8,8 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/config"
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
 const futureEvent ledger.EventType = "future_format_1_1_event"
@@ -91,5 +93,42 @@ func writeMetaVersion(t *testing.T, dir, version string) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("meta.json missing: %v", err)
+	}
+}
+
+// TestCommit_RefusesEventNewerThanWorkspaceFormat proves the format gate runs
+// inside the commit primitive: a 1.1 event type on a 1.0 workspace is refused
+// before anything touches the ledger.
+func TestCommit_RefusesEventNewerThanWorkspaceFormat(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proof")
+	if err := Init(dir, "Test conjecture", "test-author"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	// The service caches meta.json at construction, so stamp 1.0 first.
+	writeMetaVersion(t, dir, "1.0")
+	svc, err := NewProofService(dir)
+	if err != nil {
+		t.Fatalf("NewProofService: %v", err)
+	}
+
+	ledger.RegisterEventMinFormat(ledger.EventNodesReleased, "1.1")
+	defer ledger.RegisterEventMinFormat(ledger.EventNodesReleased, "1.0")
+
+	before, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	_, err = svc.commit(func(st *state.State) ([]ledger.Event, error) {
+		return []ledger.Event{ledger.NewNodesReleased([]types.NodeID{parseNodeID(t, "1")})}, nil
+	})
+	if aferrors.Code(err) != aferrors.FORMAT_TOO_NEW {
+		t.Fatalf("commit err = %v, want FORMAT_TOO_NEW", err)
+	}
+	after, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if after.LatestSeq() != before.LatestSeq() {
+		t.Fatalf("ledger advanced from %d to %d despite refusal", before.LatestSeq(), after.LatestSeq())
 	}
 }

@@ -217,6 +217,11 @@ type State struct {
 	// Used for optimistic concurrency control (CAS) when appending new events.
 	// A value of 0 means no events have been applied yet.
 	latestSeq int
+
+	// operationIDs maps a driver-supplied operation id to the sequence number of
+	// the first event that carried it. It lets a retried operation discover its
+	// already-committed result instead of re-appending. Built during replay.
+	operationIDs map[string]int
 }
 
 // NewState creates a new empty State with all maps initialized.
@@ -237,6 +242,7 @@ func NewState() *State {
 		defChecks:          make(map[string][]DefCheckResult),
 		outlineLinks:       make(map[string]types.NodeID),
 		scopeTracker:       scope.NewTracker(),
+		operationIDs:       make(map[string]int),
 	}
 }
 
@@ -512,6 +518,31 @@ func (s *State) LatestSeq() int {
 // This should only be called by the replay mechanism.
 func (s *State) SetLatestSeq(seq int) {
 	s.latestSeq = seq
+}
+
+// RecordOperationID records that the event at seq carried operation id id.
+// The first occurrence wins, so a multi-event operation maps to its first
+// committed event. This is called by replay; callers normally use HasOperationID.
+func (s *State) RecordOperationID(id string, seq int) {
+	if id == "" {
+		return
+	}
+	if s.operationIDs == nil {
+		s.operationIDs = make(map[string]int)
+	}
+	if _, exists := s.operationIDs[id]; !exists {
+		s.operationIDs[id] = seq
+	}
+}
+
+// HasOperationID reports whether an event carrying the given operation id was
+// applied, and if so at which ledger sequence. An empty id is never found.
+func (s *State) HasOperationID(id string) (seq int, ok bool) {
+	if id == "" || s.operationIDs == nil {
+		return 0, false
+	}
+	seq, ok = s.operationIDs[id]
+	return seq, ok
 }
 
 // AllChildrenValidated returns true if all direct children of the node are validated.

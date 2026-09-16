@@ -88,6 +88,20 @@ type Event interface {
 type BaseEvent struct {
 	EventType EventType       `json:"type"`
 	EventTime types.Timestamp `json:"timestamp"`
+
+	// OperationID is an optional, driver-supplied identifier for the logical
+	// operation that produced this event. When present, a retried operation can
+	// discover its already-committed result by scanning the ledger for this id
+	// (see State.HasOperationID) instead of re-appending. Empty for events that
+	// do not participate in resumable operations, so existing event shapes are
+	// unchanged (omitempty).
+	OperationID string `json:"operation_id,omitempty"`
+}
+
+// GetOperationID returns the event's optional operation id. It exists so replay
+// can index operation ids generically without a per-event-type switch.
+func (e BaseEvent) GetOperationID() string {
+	return e.OperationID
 }
 
 // Type returns the event type identifier.

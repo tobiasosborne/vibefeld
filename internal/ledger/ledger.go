@@ -63,3 +63,9 @@ func (l *Ledger) Count() (int, error) {
 func (l *Ledger) AppendIfSequence(event Event, expectedSeq int) (int, error) {
 	return AppendIfSequence(l.dir, event, expectedSeq)
 }
+
+// AppendBatchIfSequence appends a batch of events only if the ledger is still
+// at expectedSeq. See the package-level AppendBatchIfSequence for details.
+func (l *Ledger) AppendBatchIfSequence(events []Event, expectedSeq int) ([]int, error) {
+	return AppendBatchIfSequence(l.dir, events, expectedSeq)
+}

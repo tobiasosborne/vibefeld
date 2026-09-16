@@ -122,6 +122,12 @@ type RecomputeTaintResult struct {
 type ProofService struct {
 	path string
 	cfg  *config.Config // cached config, loaded lazily
+
+	// beforeAppend is a test-only hook invoked by commit() between build()
+	// and AppendBatchIfSequence(). It lets tests append a concurrent event in
+	// the exact window the optimistic commit protocol is designed to close.
+	// It is nil in production.
+	beforeAppend func()
 }
 
 // NewProofService creates a new ProofService for the given proof directory.
@@ -253,30 +259,15 @@ func Init(proofDir, conjecture, author string) error {
 		return err
 	}
 
-	// Create ledger and append initialization event
-	ledgerDir := filepath.Join(proofDir, "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
+	svc, err := NewProofService(proofDir)
 	if err != nil {
 		return err
 	}
 
-	// Check if already initialized
-	count, err := ldg.Count()
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return fmt.Errorf("%w: proof already initialized", ErrAlreadyExists)
-	}
-
-	// Append the initialization event
-	event := ledger.NewProofInitialized(conjecture, author)
-	_, err = ldg.Append(event)
-	if err != nil {
-		return err
-	}
-
-	// Create the root node (node "1") with the conjecture as the statement
+	// Create the root node (node "1") with the conjecture as the statement.
+	// Building it before the commit is fine: the emptiness check and both
+	// events share one commit closure, so two concurrent inits cannot both
+	// pass an emptiness check and land.
 	rootID, err := types.Parse("1")
 	if err != nil {
 		return err
@@ -289,8 +280,19 @@ func Init(proofDir, conjecture, author string) error {
 		return err
 	}
 
-	nodeEvent := ledger.NewNodeCreated(*rootNode)
-	_, err = ldg.Append(nodeEvent)
+	// Append the initialization and root-node events through the same
+	// optimistic commit primitive as every other mutating path. The ledger
+	// emptiness check happens inside the closure against the same state read
+	// that supplies the CAS sequence, so a concurrent init is refused.
+	_, err = svc.commit(func(st *state.State) ([]ledger.Event, error) {
+		if st.LatestSeq() != 0 {
+			return nil, fmt.Errorf("%w: proof already initialized", ErrAlreadyExists)
+		}
+		return []ledger.Event{
+			ledger.NewProofInitialized(conjecture, author),
+			ledger.NewNodeCreated(*rootNode),
+		}, nil
+	})
 	return err
 }
 
@@ -411,39 +413,27 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 		return err
 	}
 
-	// Load state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
-
-	// Check if node already exists
-	if st.GetNode(id) != nil {
-		return fmt.Errorf("%w: node %s", ErrAlreadyExists, id.String())
-	}
-
-	// Validate child count for parent (if not root)
-	if parentID, hasParent := id.Parent(); hasParent {
-		if err := s.validateChildCount(st, parentID); err != nil {
-			return err
+	_, err = s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Check if node already exists
+		if st.GetNode(id) != nil {
+			return nil, fmt.Errorf("%w: node %s", ErrAlreadyExists, id.String())
 		}
-	}
 
-	// Create the node
-	n, err := node.NewNode(id, nodeType, statement, inference)
-	if err != nil {
-		return err
-	}
+		// Validate child count for parent (if not root)
+		if parentID, hasParent := id.Parent(); hasParent {
+			if err := s.validateChildCount(st, parentID); err != nil {
+				return nil, err
+			}
+		}
 
-	// Get ledger and append event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
+		// Create the node
+		n, err := node.NewNode(id, nodeType, statement, inference)
+		if err != nil {
+			return nil, err
+		}
 
-	event := ledger.NewNodeCreated(*n)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewNodeCreated(*n)}, nil
+	})
 	return wrapSequenceMismatch(err, "CreateNode")
 }
 
@@ -464,35 +454,22 @@ func (s *ProofService) ClaimNode(id types.NodeID, owner string, timeout time.Dur
 		return ErrInvalidTimeout
 	}
 
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(id)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+		}
 
-	// Check if node exists
-	n := st.GetNode(id)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-	}
+		// Check if node is available
+		if n.WorkflowState != schema.WorkflowAvailable {
+			return nil, fmt.Errorf("%w: node %s is not available", ErrInvalidState, id.String())
+		}
 
-	// Check if node is available
-	if n.WorkflowState != schema.WorkflowAvailable {
-		return fmt.Errorf("%w: node %s is not available", ErrInvalidState, id.String())
-	}
-
-	// Get ledger and append claim event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	// Calculate timeout timestamp
-	timeoutTS := types.FromTime(time.Now().Add(timeout))
-
-	event := ledger.NewNodesClaimed([]types.NodeID{id}, owner, timeoutTS)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		// Calculate timeout timestamp
+		timeoutTS := types.FromTime(time.Now().Add(timeout))
+		return []ledger.Event{ledger.NewNodesClaimed([]types.NodeID{id}, owner, timeoutTS)}, nil
+	})
 	return wrapSequenceMismatch(err, "ClaimNode")
 }
 
@@ -516,40 +493,27 @@ func (s *ProofService) RefreshClaim(id types.NodeID, owner string, timeout time.
 		return ErrInvalidTimeout
 	}
 
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(id)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+		}
 
-	// Check if node exists
-	n := st.GetNode(id)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-	}
+		// Check if node is claimed
+		if n.WorkflowState != schema.WorkflowClaimed {
+			return nil, ErrNotClaimed
+		}
 
-	// Check if node is claimed
-	if n.WorkflowState != schema.WorkflowClaimed {
-		return ErrNotClaimed
-	}
+		// Check if owner matches
+		if n.ClaimedBy != owner {
+			return nil, fmt.Errorf("%w: node is claimed by %s, not %s", ErrOwnerMismatch, n.ClaimedBy, owner)
+		}
 
-	// Check if owner matches
-	if n.ClaimedBy != owner {
-		return fmt.Errorf("%w: node is claimed by %s, not %s", ErrOwnerMismatch, n.ClaimedBy, owner)
-	}
-
-	// Get ledger and append refresh event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	// Calculate new timeout timestamp
-	newTimeoutTS := types.FromTime(time.Now().Add(timeout))
-
-	event := ledger.NewClaimRefreshed(id, owner, newTimeoutTS)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		// Calculate new timeout timestamp
+		newTimeoutTS := types.FromTime(time.Now().Add(timeout))
+		return []ledger.Event{ledger.NewClaimRefreshed(id, owner, newTimeoutTS)}, nil
+	})
 	return wrapSequenceMismatch(err, "RefreshClaim")
 }
 
@@ -559,37 +523,25 @@ func (s *ProofService) RefreshClaim(id types.NodeID, owner string, timeout time.
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) ReleaseNode(id types.NodeID, owner string) error {
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(id)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+		}
 
-	// Check if node exists
-	n := st.GetNode(id)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-	}
+		// Check if node is claimed
+		if n.WorkflowState != schema.WorkflowClaimed {
+			return nil, ErrNotClaimed
+		}
 
-	// Check if node is claimed
-	if n.WorkflowState != schema.WorkflowClaimed {
-		return ErrNotClaimed
-	}
+		// Check if owner matches
+		if n.ClaimedBy != owner {
+			return nil, ErrOwnerMismatch
+		}
 
-	// Check if owner matches
-	if n.ClaimedBy != owner {
-		return ErrOwnerMismatch
-	}
-
-	// Get ledger and append release event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodesReleased([]types.NodeID{id})
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewNodesReleased([]types.NodeID{id})}, nil
+	})
 	return wrapSequenceMismatch(err, "ReleaseNode")
 }
 
@@ -679,99 +631,87 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 		return err
 	}
 
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
-
-	// Check if parent node exists
-	parent := st.GetNode(spec.ParentID)
-	if parent == nil {
-		return fmt.Errorf("%w: %s", ErrParentNotFound, spec.ParentID.String())
-	}
-
-	// Check if parent is claimed
-	if parent.WorkflowState != schema.WorkflowClaimed {
-		return fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
-	}
-
-	// Check if owner matches
-	if parent.ClaimedBy != spec.Owner {
-		return ErrOwnerMismatch
-	}
-
-	// Check if child already exists
-	if st.GetNode(spec.ChildID) != nil {
-		return fmt.Errorf("%w: node %s", ErrAlreadyExists, spec.ChildID.String())
-	}
-
-	// Validate child count for parent
-	if err := s.validateChildCount(st, spec.ParentID); err != nil {
-		return err
-	}
-
-	// Validate external citations in the statement
-	if err := lemma.ValidateExtCitations(spec.Statement, st); err != nil {
-		return err
-	}
-
-	// Create provider for cycle check
-	provider := &stateDependencyProvider{st: st}
-
-	// Validate that all reference dependencies exist and don't create cycles
-	for _, depID := range spec.Dependencies {
-		if st.GetNode(depID) == nil {
-			return fmt.Errorf("invalid dependency: node %s not found", depID.String())
+	var oldTaints map[string]node.TaintState
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Check if parent node exists
+		parent := st.GetNode(spec.ParentID)
+		if parent == nil {
+			return nil, fmt.Errorf("%w: %s", ErrParentNotFound, spec.ParentID.String())
 		}
 
-		if res := cycle.WouldCreateCycle(provider, spec.ParentID, depID); res.HasCycle {
-			return fmt.Errorf("%w: adding dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), depID.String(), res.Path)
-		}
-	}
-
-	// Validate that all validation dependencies exist and don't create cycles
-	for _, valDepID := range spec.ValidationDeps {
-		if st.GetNode(valDepID) == nil {
-			return fmt.Errorf("invalid validation dependency: node %s not found", valDepID.String())
+		// Check if parent is claimed
+		if parent.WorkflowState != schema.WorkflowClaimed {
+			return nil, fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
 		}
 
-		if res := cycle.WouldCreateCycle(provider, spec.ParentID, valDepID); res.HasCycle {
-			return fmt.Errorf("%w: adding validation dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), valDepID.String(), res.Path)
+		// Check if owner matches
+		if parent.ClaimedBy != spec.Owner {
+			return nil, ErrOwnerMismatch
 		}
-	}
 
-	// Create the child node with both dependency types. Author is recorded
-	// as the claiming owner who is authoring this refinement — the same
-	// driver-supplied-provenance convention as Node.Author generally.
-	opts := node.NodeOptions{
-		Dependencies:   spec.Dependencies,
-		ValidationDeps: spec.ValidationDeps,
-		Draft:          spec.Draft,
-		Crux:           spec.Crux,
-		Author:         spec.Owner,
-	}
-	child, err := node.NewNodeWithOptions(spec.ChildID, spec.NodeType, spec.Statement, spec.Inference, opts)
-	if err != nil {
-		return err
-	}
+		// Check if child already exists
+		if st.GetNode(spec.ChildID) != nil {
+			return nil, fmt.Errorf("%w: node %s", ErrAlreadyExists, spec.ChildID.String())
+		}
 
-	// Get ledger and append event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
+		// Validate child count for parent
+		if err := s.validateChildCount(st, spec.ParentID); err != nil {
+			return nil, err
+		}
 
-	event := ledger.NewNodeCreated(*child)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		// Validate external citations in the statement
+		if err := lemma.ValidateExtCitations(spec.Statement, st); err != nil {
+			return nil, err
+		}
+
+		// Create provider for cycle check
+		provider := &stateDependencyProvider{st: st}
+
+		// Validate that all reference dependencies exist and don't create cycles
+		for _, depID := range spec.Dependencies {
+			if st.GetNode(depID) == nil {
+				return nil, fmt.Errorf("invalid dependency: node %s not found", depID.String())
+			}
+
+			if res := cycle.WouldCreateCycle(provider, spec.ParentID, depID); res.HasCycle {
+				return nil, fmt.Errorf("%w: adding dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), depID.String(), res.Path)
+			}
+		}
+
+		// Validate that all validation dependencies exist and don't create cycles
+		for _, valDepID := range spec.ValidationDeps {
+			if st.GetNode(valDepID) == nil {
+				return nil, fmt.Errorf("invalid validation dependency: node %s not found", valDepID.String())
+			}
+
+			if res := cycle.WouldCreateCycle(provider, spec.ParentID, valDepID); res.HasCycle {
+				return nil, fmt.Errorf("%w: adding validation dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), valDepID.String(), res.Path)
+			}
+		}
+
+		// Create the child node with both dependency types.
+		opts := node.NodeOptions{
+			Dependencies:   spec.Dependencies,
+			ValidationDeps: spec.ValidationDeps,
+			Draft:          spec.Draft,
+			Crux:           spec.Crux,
+			Author:         spec.Owner,
+		}
+		child, err := node.NewNodeWithOptions(spec.ChildID, spec.NodeType, spec.Statement, spec.Inference, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		oldTaints = snapshotTaintStates(st)
+		return []ledger.Event{ledger.NewNodeCreated(*child)}, nil
+	})
 	if err != nil {
 		return wrapSequenceMismatch(err, "Refine")
 	}
 
 	// Node creation and taint-audit emission are intentionally non-atomic, like
 	// epistemic transitions. Replay still derives correct state if emission fails.
-	return s.emitTaintRecomputedEvents(ldg, spec.ChildID, snapshotTaintStates(st))
+	return s.emitTaintRecomputedEvents(spec.ChildID, oldTaints)
 }
 
 // AcceptNode validates a node, marking it as verified correct.
@@ -841,28 +781,45 @@ func (s *ProofService) AcceptNodeWithNote(id types.NodeID, note string) error {
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AcceptNodeWithVerifier(id types.NodeID, note, verifiedBy, batchID string) error {
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
+	var oldTaints map[string]node.TaintState
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		events, err := s.buildAcceptEvents(st, id, note, verifiedBy, batchID)
+		if err != nil {
+			return nil, err
+		}
+		oldTaints = snapshotTaintStates(st)
+		return events, nil
+	})
 	if err != nil {
-		return err
+		return wrapSequenceMismatch(err, "AcceptNodeWithNote")
 	}
-	expectedSeq := st.LatestSeq()
 
+	// Auto-compute and emit taint events after successful validation.
+	return s.emitTaintRecomputedEvents(id, oldTaints)
+}
+
+// buildAcceptEvents validates an accept of id against st and returns the
+// NodeValidated event. The preconditions and the event construction share the
+// same state read, so a verdict item cannot validate against one state and
+// append against another. It is shared by AcceptNodeWithVerifier's commit
+// closure and by applyAcceptVerdict's (which adds the verdict-file gates
+// before calling it).
+func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, note, verifiedBy, batchID string) ([]ledger.Event, error) {
 	// Check if node exists
 	n := st.GetNode(id)
 	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+		return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
 	}
 
 	// Check for blocking challenges (critical or major severity)
 	blockingChallenges := st.GetBlockingChallengesForNode(id)
 	if len(blockingChallenges) > 0 {
-		return formatBlockingChallengesError(id, blockingChallenges)
+		return nil, formatBlockingChallengesError(id, blockingChallenges)
 	}
 
 	// Check crux nodes require a passing claim-test
 	if n.Crux && !st.HasPassingClaimTest(id) {
-		return fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
+		return nil, fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
 	}
 
 	// Check validation dependencies - all must be validated before this node can be accepted
@@ -881,7 +838,7 @@ func (s *ProofService) AcceptNodeWithVerifier(id types.NodeID, note, verifiedBy,
 			}
 		}
 		if len(unvalidatedDeps) > 0 {
-			return fmt.Errorf("cannot accept node %s: validation dependencies not yet validated: %s",
+			return nil, fmt.Errorf("cannot accept node %s: validation dependencies not yet validated: %s",
 				id.String(), strings.Join(unvalidatedDeps, ", "))
 		}
 	}
@@ -906,35 +863,22 @@ func (s *ProofService) AcceptNodeWithVerifier(id types.NodeID, note, verifiedBy,
 		}
 	}
 	if len(unvalidatedChildren) > 0 {
-		return fmt.Errorf("cannot accept node %s: children not yet validated: %s",
+		return nil, fmt.Errorf("cannot accept node %s: children not yet validated: %s",
 			id.String(), strings.Join(unvalidatedChildren, ", "))
 	}
 
 	// For needs_refinement nodes, require that refinement actually happened (has children)
 	if n.EpistemicState == schema.EpistemicNeedsRefinement && len(children) == 0 {
-		return fmt.Errorf("cannot accept node %s: node is in needs_refinement state but has no children; use 'af refine' to add child nodes first",
+		return nil, fmt.Errorf("cannot accept node %s: node is in needs_refinement state but has no children; use 'af refine' to add child nodes first",
 			id.String())
 	}
 
 	// Validate epistemic state transition (pending -> validated or needs_refinement -> validated)
 	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
-		return err
+		return nil, err
 	}
 
-	// Get ledger and append validation event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeValidatedFull(id, note, verifiedBy, batchID)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	if err != nil {
-		return wrapSequenceMismatch(err, "AcceptNodeWithNote")
-	}
-
-	// Auto-compute and emit taint events after successful validation
-	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
+	return []ledger.Event{ledger.NewNodeValidatedFull(id, note, verifiedBy, batchID)}, nil
 }
 
 // AcceptNodeBulk validates multiple nodes atomically, marking them as verified correct.
@@ -968,60 +912,48 @@ func (s *ProofService) AcceptNodeBulkWithVerifier(ids []types.NodeID, verifiedBy
 		return nil // Nothing to do
 	}
 
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	var oldTaints map[string]node.TaintState
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Validate all nodes exist, have no blocking challenges, and are in pending state before any mutation
+		for _, id := range ids {
+			n := st.GetNode(id)
+			if n == nil {
+				return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+			}
 
-	// Validate all nodes exist, have no blocking challenges, and are in pending state before any mutation
-	for _, id := range ids {
-		n := st.GetNode(id)
-		if n == nil {
-			return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+			// Check for blocking challenges (critical or major severity)
+			blockingChallenges := st.GetBlockingChallengesForNode(id)
+			if len(blockingChallenges) > 0 {
+				return nil, formatBlockingChallengesError(id, blockingChallenges)
+			}
+
+			// Check crux nodes require a passing claim-test
+			if n.Crux && !st.HasPassingClaimTest(id) {
+				return nil, fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
+			}
+
+			// Validate epistemic state transition (only pending -> validated allowed)
+			if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
+				return nil, fmt.Errorf("node %s: %w", id.String(), err)
+			}
 		}
 
-		// Check for blocking challenges (critical or major severity)
-		blockingChallenges := st.GetBlockingChallengesForNode(id)
-		if len(blockingChallenges) > 0 {
-			return formatBlockingChallengesError(id, blockingChallenges)
+		// Create events for all nodes
+		events := make([]ledger.Event, len(ids))
+		for i, id := range ids {
+			events[i] = ledger.NewNodeValidatedFull(id, "", verifiedBy, batchID)
 		}
-
-		// Check crux nodes require a passing claim-test
-		if n.Crux && !st.HasPassingClaimTest(id) {
-			return fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
-		}
-
-		// Validate epistemic state transition (only pending -> validated allowed)
-		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicValidated); err != nil {
-			return fmt.Errorf("node %s: %w", id.String(), err)
-		}
-	}
-
-	// Get ledger
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	// Create events for all nodes
-	events := make([]ledger.Event, len(ids))
-	for i, id := range ids {
-		events[i] = ledger.NewNodeValidatedFull(id, "", verifiedBy, batchID)
-	}
-
-	// Append all events with CAS on first event (see appendBulkIfSequence ATOMICITY NOTE)
-	_, err = s.appendBulkIfSequence(ldg, events, expectedSeq)
+		oldTaints = snapshotTaintStates(st)
+		return events, nil
+	})
 	if err != nil {
 		return wrapSequenceMismatch(err, "AcceptNodeBulk")
 	}
 
 	// Emit taint events for all accepted nodes. Reuse one pre-transition
 	// snapshot so overlapping ancestor changes are emitted only once.
-	oldTaints := snapshotTaintStates(st)
 	for _, id := range ids {
-		if err := s.emitTaintRecomputedEvents(ldg, id, oldTaints); err != nil {
+		if err := s.emitTaintRecomputedEvents(id, oldTaints); err != nil {
 			// Log but don't fail - the validation events are already committed
 			// Taint will be recalculated on next state load
 			continue
@@ -1092,38 +1024,20 @@ func (s *ProofService) LoadPendingNodeSummaries() ([]NodeSummary, error) {
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) AdmitNode(id types.NodeID) error {
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	return s.commitThenTaint(id, func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(id)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+		}
 
-	// Check if node exists
-	n := st.GetNode(id)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-	}
+		// Validate epistemic state transition (only pending -> admitted allowed)
+		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicAdmitted); err != nil {
+			return nil, err
+		}
 
-	// Validate epistemic state transition (only pending -> admitted allowed)
-	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicAdmitted); err != nil {
-		return err
-	}
-
-	// Get ledger and append admit event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeAdmitted(id)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	if err != nil {
-		return wrapSequenceMismatch(err, "AdmitNode")
-	}
-
-	// Auto-compute and emit taint events after successful admission
-	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
+		return []ledger.Event{ledger.NewNodeAdmitted(id)}, nil
+	})
 }
 
 // RefuteNode refutes a node, marking it as incorrect.
@@ -1138,38 +1052,20 @@ func (s *ProofService) AdmitNode(id types.NodeID) error {
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RefuteNode(id types.NodeID) error {
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	return s.commitThenTaint(id, func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(id)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+		}
 
-	// Check if node exists
-	n := st.GetNode(id)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-	}
+		// Validate epistemic state transition (only pending -> refuted allowed)
+		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicRefuted); err != nil {
+			return nil, err
+		}
 
-	// Validate epistemic state transition (only pending -> refuted allowed)
-	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicRefuted); err != nil {
-		return err
-	}
-
-	// Get ledger and append refute event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeRefuted(id)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	if err != nil {
-		return wrapSequenceMismatch(err, "RefuteNode")
-	}
-
-	// Auto-compute and emit taint events after successful refutation
-	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
+		return []ledger.Event{ledger.NewNodeRefuted(id)}, nil
+	})
 }
 
 // VetoNode is a human expert force-refute that bypasses normal adversarial
@@ -1187,37 +1083,22 @@ func (s *ProofService) VetoNode(id types.NodeID, reason, vetoedBy string) error 
 		return fmt.Errorf("%w: reason is required for veto", ErrEmptyInput)
 	}
 
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	return s.commitThenTaint(id, func(st *state.State) ([]ledger.Event, error) {
+		n := st.GetNode(id)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+		}
 
-	n := st.GetNode(id)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-	}
+		// Veto can override any state except already-refuted and archived
+		if n.EpistemicState == schema.EpistemicRefuted {
+			return nil, fmt.Errorf("%w: node %s is already refuted", ErrInvalidState, id.String())
+		}
+		if n.EpistemicState == schema.EpistemicArchived {
+			return nil, fmt.Errorf("%w: node %s is archived and cannot be vetoed", ErrInvalidState, id.String())
+		}
 
-	// Veto can override any state except already-refuted and archived
-	if n.EpistemicState == schema.EpistemicRefuted {
-		return fmt.Errorf("%w: node %s is already refuted", ErrInvalidState, id.String())
-	}
-	if n.EpistemicState == schema.EpistemicArchived {
-		return fmt.Errorf("%w: node %s is archived and cannot be vetoed", ErrInvalidState, id.String())
-	}
-
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeVetoed(id, reason, vetoedBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	if err != nil {
-		return wrapSequenceMismatch(err, "VetoNode")
-	}
-
-	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
+		return []ledger.Event{ledger.NewNodeVetoed(id, reason, vetoedBy)}, nil
+	})
 }
 
 // ArchiveNode archives a node, abandoning the branch.
@@ -1232,38 +1113,20 @@ func (s *ProofService) VetoNode(id types.NodeID, reason, vetoedBy string) error 
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) ArchiveNode(id types.NodeID) error {
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	return s.commitThenTaint(id, func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(id)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
+		}
 
-	// Check if node exists
-	n := st.GetNode(id)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, id.String())
-	}
+		// Validate epistemic state transition (only pending -> archived allowed)
+		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicArchived); err != nil {
+			return nil, err
+		}
 
-	// Validate epistemic state transition (only pending -> archived allowed)
-	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicArchived); err != nil {
-		return err
-	}
-
-	// Get ledger and append archive event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeArchived(id)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	if err != nil {
-		return wrapSequenceMismatch(err, "ArchiveNode")
-	}
-
-	// Auto-compute and emit taint events after successful archiving
-	return s.emitTaintRecomputedEvents(ldg, id, snapshotTaintStates(st))
+		return []ledger.Event{ledger.NewNodeArchived(id)}, nil
+	})
 }
 
 // AddDefinition adds a new definition to the proof.
@@ -1278,19 +1141,6 @@ func (s *ProofService) AddDefinition(name, content string) (string, error) {
 		return "", err
 	}
 
-	// Load state to get current sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return "", err
-	}
-	expectedSeq := st.LatestSeq()
-
-	// Get ledger and append event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return "", err
-	}
-
 	// Create ledger definition
 	ledgerDef := ledger.Definition{
 		ID:         def.ID,
@@ -1299,8 +1149,9 @@ func (s *ProofService) AddDefinition(name, content string) (string, error) {
 		Created:    def.Created,
 	}
 
-	event := ledger.NewDefAdded(ledgerDef)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	_, err = s.commit(func(st *state.State) ([]ledger.Event, error) {
+		return []ledger.Event{ledger.NewDefAdded(ledgerDef)}, nil
+	})
 	if err != nil {
 		return "", wrapSequenceMismatch(err, "AddDefinition")
 	}
@@ -1366,45 +1217,51 @@ func (s *ProofService) ExtractLemma(sourceNodeID types.NodeID, statement string)
 		return "", fmt.Errorf("%w: lemma statement", ErrEmptyInput)
 	}
 
-	// Load state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return "", err
-	}
-	expectedSeq := st.LatestSeq()
+	// Load state and capture sequence for CAS. The source must be validated
+	// and free of an open local scope; both checks run inside the commit
+	// closure against the same state read the CAS uses, so a concurrent
+	// unvalidation/scope change is caught rather than overwritten.
+	var lemmaID string
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Check if source node exists
+		n := st.GetNode(sourceNodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, sourceNodeID.String())
+		}
 
-	// Check if source node exists
-	n := st.GetNode(sourceNodeID)
-	if n == nil {
-		return "", fmt.Errorf("%w: %s", ErrNodeNotFound, sourceNodeID.String())
-	}
+		// Check if node is validated
+		if n.EpistemicState != schema.EpistemicValidated {
+			return nil, fmt.Errorf("%w: node %s is not validated (current state: %s); only validated nodes can be extracted as lemmas",
+				ErrInvalidState, sourceNodeID.String(), n.EpistemicState)
+		}
 
-	// Create the lemma
-	lemma, err := node.NewLemma(statement, sourceNodeID)
-	if err != nil {
-		return "", err
-	}
+		// Check for independence: the node must not depend on local
+		// assumptions from a parent scope.
+		if len(n.Scope) > 0 {
+			return nil, fmt.Errorf("%w: node %s is not independent: it depends on local assumptions (%s); lemmas cannot rely on local scope",
+				ErrInvalidState, sourceNodeID.String(), strings.Join(n.Scope, ", "))
+		}
 
-	// Append to ledger with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return "", err
-	}
+		// Create the lemma
+		lemma, err := node.NewLemma(statement, sourceNodeID)
+		if err != nil {
+			return nil, err
+		}
 
-	ledgerLemma := ledger.Lemma{
-		ID:        lemma.ID,
-		Statement: lemma.Statement,
-		NodeID:    lemma.SourceNodeID,
-		Created:   lemma.Created,
-	}
-
-	event := ledger.NewLemmaExtracted(ledgerLemma)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		ledgerLemma := ledger.Lemma{
+			ID:        lemma.ID,
+			Statement: lemma.Statement,
+			NodeID:    lemma.SourceNodeID,
+			Created:   lemma.Created,
+		}
+		lemmaID = lemma.ID
+		return []ledger.Event{ledger.NewLemmaExtracted(ledgerLemma)}, nil
+	})
 	if err != nil {
 		return "", wrapSequenceMismatch(err, "ExtractLemma")
 	}
 
-	return lemma.ID, nil
+	return lemmaID, nil
 }
 
 // ProofStatus contains status information about a proof.
@@ -1502,52 +1359,50 @@ func (s *ProofService) Path() string {
 //     is guaranteed on the next state replay even if these events are never written
 //   - The ledger may lack explicit taint records, but the taint package will compute
 //     correct taint on replay
-func (s *ProofService) emitTaintRecomputedEvents(ldg *ledger.Ledger, nodeID types.NodeID, oldTaints map[string]node.TaintState) error {
-	// Reload state to get the updated epistemic state (validation event was just applied)
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-
-	// Get the node that was just validated
-	n := st.GetNode(nodeID)
-	if n == nil {
-		// Node should exist - this would be a logic error
-		return nil
-	}
-
-	allNodes := st.AllNodes()
-
-	// Recompute in memory first. LoadState already performs an authoritative
-	// full recompute, but keeping this targeted call here makes the affected-set
-	// contract explicit and protects non-replay callers.
-	taint.PropagateTaint(n, allNodes)
-
-	// Compare against the caller's pre-transition snapshot. This is necessary
-	// because replay derives correct taint before this audit-emission step runs.
-	for _, changed := range allNodes {
-		if changed == nil || (!changed.ID.Equal(nodeID) && !nodeID.IsAncestorOf(changed.ID) && !changed.ID.IsAncestorOf(nodeID)) {
-			continue
+func (s *ProofService) emitTaintRecomputedEvents(nodeID types.NodeID, oldTaints map[string]node.TaintState) error {
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Get the node that was just transitioned
+		n := st.GetNode(nodeID)
+		if n == nil {
+			// Node should exist - this would be a logic error
+			return nil, nil
 		}
-		key := changed.ID.String()
-		oldTaint, ok := oldTaints[key]
-		if !ok {
-			// Node absent from the pre-transition snapshot was created by this
-			// operation; its NodeCreated event already records its taint.
+
+		allNodes := st.AllNodes()
+
+		// Recompute in memory first. LoadState already performs an authoritative
+		// full recompute, but keeping this targeted call here makes the affected-set
+		// contract explicit and protects non-replay callers.
+		taint.PropagateTaint(n, allNodes)
+
+		if oldTaints == nil {
+			oldTaints = make(map[string]node.TaintState)
+		}
+
+		// Compare against the caller's pre-transition snapshot. This is necessary
+		// because replay derives correct taint before this audit-emission step runs.
+		var events []ledger.Event
+		for _, changed := range allNodes {
+			if changed == nil || (!changed.ID.Equal(nodeID) && !nodeID.IsAncestorOf(changed.ID) && !changed.ID.IsAncestorOf(nodeID)) {
+				continue
+			}
+			key := changed.ID.String()
+			oldTaint, ok := oldTaints[key]
+			if !ok {
+				// Node absent from the pre-transition snapshot was created by this
+				// operation; its NodeCreated event already records its taint.
+				oldTaints[key] = changed.TaintState
+				continue
+			}
+			if oldTaint == changed.TaintState {
+				continue
+			}
+			events = append(events, ledger.NewTaintRecomputed(changed.ID, changed.TaintState))
 			oldTaints[key] = changed.TaintState
-			continue
 		}
-		if oldTaint == changed.TaintState {
-			continue
-		}
-		taintEvent := ledger.NewTaintRecomputed(changed.ID, changed.TaintState)
-		if _, err := ldg.Append(taintEvent); err != nil {
-			return err
-		}
-		oldTaints[key] = changed.TaintState
-	}
-
-	return nil
+		return events, nil
+	})
+	return err
 }
 
 // SubmitNode transitions a draft node to pending state, making it ready for
@@ -1556,29 +1411,19 @@ func (s *ProofService) emitTaintRecomputedEvents(ldg *ledger.Ledger, nodeID type
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) SubmitNode(nodeID types.NodeID, owner string) error {
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("node %s not found", nodeID.String())
+		}
 
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("node %s not found", nodeID.String())
-	}
+		if n.EpistemicState != schema.EpistemicDraft {
+			return nil, fmt.Errorf("node %s is in state %q, not %q: only draft nodes can be submitted",
+				nodeID.String(), n.EpistemicState, schema.EpistemicDraft)
+		}
 
-	if n.EpistemicState != schema.EpistemicDraft {
-		return fmt.Errorf("node %s is in state %q, not %q: only draft nodes can be submitted",
-			nodeID.String(), n.EpistemicState, schema.EpistemicDraft)
-	}
-
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeSubmitted(nodeID, owner)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewNodeSubmitted(nodeID, owner)}, nil
+	})
 	return wrapSequenceMismatch(err, "SubmitNode")
 }
 
@@ -1818,42 +1663,33 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		return nil, err
 	}
 
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return nil, err
-	}
-	expectedSeq := st.LatestSeq()
+	var childIDs []types.NodeID
+	var oldTaints map[string]node.TaintState
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Check if parent node exists
+		parent := st.GetNode(parentID)
+		if parent == nil {
+			return nil, fmt.Errorf("%w: %s", ErrParentNotFound, parentID.String())
+		}
 
-	// Check if parent node exists
-	parent := st.GetNode(parentID)
-	if parent == nil {
-		return nil, fmt.Errorf("%w: %s", ErrParentNotFound, parentID.String())
-	}
+		// Check if parent is claimed
+		if parent.WorkflowState != schema.WorkflowClaimed {
+			return nil, fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
+		}
 
-	// Check if parent is claimed
-	if parent.WorkflowState != schema.WorkflowClaimed {
-		return nil, fmt.Errorf("%w: parent node must be claimed", ErrNotClaimed)
-	}
+		// Check if owner matches
+		if parent.ClaimedBy != owner {
+			return nil, ErrOwnerMismatch
+		}
 
-	// Check if owner matches
-	if parent.ClaimedBy != owner {
-		return nil, ErrOwnerMismatch
-	}
-
-	events, childIDs, err := s.buildChildEvents(st, parentID, owner, children)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get ledger
-	ldg, err := s.getLedger()
-	if err != nil {
-		return nil, err
-	}
-
-	// Append all events with CAS on first event (see appendBulkIfSequence ATOMICITY NOTE)
-	_, err = s.appendBulkIfSequence(ldg, events, expectedSeq)
+		events, ids, err := s.buildChildEvents(st, parentID, owner, children)
+		if err != nil {
+			return nil, err
+		}
+		childIDs = ids
+		oldTaints = snapshotTaintStates(st)
+		return events, nil
+	})
 	if err != nil {
 		return nil, wrapSequenceMismatch(err, "RefineNodeBulk")
 	}
@@ -1863,91 +1699,11 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 	// single reload suffices. The NodeCreated events are committed at this
 	// point and taint is derived, so an audit-emission failure must not hide
 	// the created IDs from the caller (mirrors AcceptNodeBulk).
-	oldTaints := snapshotTaintStates(st)
-	if err := s.emitTaintRecomputedEvents(ldg, parentID, oldTaints); err != nil {
+	if err := s.emitTaintRecomputedEvents(parentID, oldTaints); err != nil {
 		return childIDs, err
 	}
 
 	return childIDs, nil
-}
-
-// appendBulkIfSequence appends multiple events with sequence verification on the first event.
-// This is an internal helper that combines CAS semantics with batch append.
-//
-// ATOMICITY NOTE: This function is NOT truly atomic for multiple events. The implementation:
-// 1. Uses CAS (AppendIfSequence) for the first event to detect concurrent modifications
-// 2. Uses simple Append for remaining events without further CAS checks
-//
-// This means:
-//   - If the first CAS succeeds but a subsequent append fails (disk error, etc.), the ledger
-//     will contain a partial set of events. The function returns the successfully appended
-//     sequence numbers along with an error.
-//   - Concurrent readers may observe partially-applied changes during the append window.
-//   - However, each individual event is still a valid, consistent ledger entry.
-//
-// Why this is acceptable:
-// - Disk/IO failures during append are rare in practice
-// - Callers (RefineNodeBulk, AcceptNodeBulk) create logically related but independent events
-// - State replay handles partial updates correctly (each event is self-contained)
-// - True atomic batch append would require a more complex protocol (e.g., WAL or 2PC)
-//
-// Callers should be aware that partial failure is possible and handle the returned
-// sequence numbers accordingly.
-func (s *ProofService) appendBulkIfSequence(ldg *ledger.Ledger, events []ledger.Event, expectedSeq int) ([]int, error) {
-	if len(events) == 0 {
-		return nil, nil
-	}
-
-	// Refuse event types that require a newer workspace format before touching
-	// the ledger, so a 1.0 workspace cannot accumulate 1.1 events.
-	cfg, err := s.Config()
-	if err != nil {
-		return nil, err
-	}
-	if err := checkEventFormats(cfg, events); err != nil {
-		return nil, err
-	}
-
-	// For single event, use the existing method
-	if len(events) == 1 {
-		seq, err := ldg.AppendIfSequence(events[0], expectedSeq)
-		if err != nil {
-			return nil, err
-		}
-		return []int{seq}, nil
-	}
-
-	// For multiple events, we need to append them all atomically.
-	// The ledger's AppendBatch doesn't support CAS, so we'll append one by one
-	// but verify the sequence only on the first append.
-	// This maintains atomicity from a concurrency perspective because:
-	// 1. The first append with CAS ensures we're working from a consistent state
-	// 2. Subsequent appends are guaranteed to succeed because we hold implied
-	//    serialization through the sequence numbers
-
-	seqs := make([]int, len(events))
-
-	// First event uses CAS
-	seq, err := ldg.AppendIfSequence(events[0], expectedSeq)
-	if err != nil {
-		return nil, err
-	}
-	seqs[0] = seq
-
-	// Remaining events use simple append - they will get sequential numbers
-	// because we just established our position in the sequence
-	for i := 1; i < len(events); i++ {
-		seq, err := ldg.Append(events[i])
-		if err != nil {
-			// Partial failure - some events were appended
-			// This is a best-effort situation; the ledger will be in a partially
-			// updated state but still consistent
-			return seqs[:i], fmt.Errorf("failed to append event %d: %w", i+1, err)
-		}
-		seqs[i] = seq
-	}
-
-	return seqs, nil
 }
 
 // ErrCircularDependency is returned when a cycle is detected in node dependencies.
@@ -1977,40 +1733,28 @@ func (s *ProofService) AmendNode(nodeID types.NodeID, owner, newStatement string
 		return fmt.Errorf("%w: statement", ErrEmptyInput)
 	}
 
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
-
-	// Check if node exists
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
-
-	// Check epistemic state - can only amend pending nodes
-	if n.EpistemicState != schema.EpistemicPending {
-		return fmt.Errorf("cannot amend node: epistemic state is %s, must be pending", n.EpistemicState)
-	}
-
-	// Check ownership - either unclaimed or owned by the caller
-	if n.WorkflowState == schema.WorkflowClaimed {
-		if n.ClaimedBy != owner {
-			return fmt.Errorf("node is claimed by %s, not %s", n.ClaimedBy, owner)
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
 		}
-	}
-	// If unclaimed, any owner can amend (they're taking responsibility)
 
-	// Get ledger and append amendment event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
+		// Check epistemic state - can only amend pending nodes
+		if n.EpistemicState != schema.EpistemicPending {
+			return nil, fmt.Errorf("cannot amend node: epistemic state is %s, must be pending", n.EpistemicState)
+		}
 
-	event := ledger.NewNodeAmended(nodeID, n.Statement, newStatement, owner)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		// Check ownership - either unclaimed or owned by the caller
+		if n.WorkflowState == schema.WorkflowClaimed {
+			if n.ClaimedBy != owner {
+				return nil, fmt.Errorf("node is claimed by %s, not %s", n.ClaimedBy, owner)
+			}
+		}
+		// If unclaimed, any owner can amend (they're taking responsibility)
+
+		return []ledger.Event{ledger.NewNodeAmended(nodeID, n.Statement, newStatement, owner)}, nil
+	})
 	return wrapSequenceMismatch(err, "AmendNode")
 }
 
@@ -2143,18 +1887,6 @@ func (s *ProofService) UpdateExternal(id string, name, source, notes string) (*n
 // - Pending ancestors or descendants make validated nodes unresolved
 // - Archived and refuted branches are severed from upward propagation
 func (s *ProofService) RecomputeAllTaint(dryRun bool) (*RecomputeTaintResult, error) {
-	// Load current state
-	st, err := s.LoadState()
-	if err != nil {
-		return nil, fmt.Errorf("error loading proof state: %w", err)
-	}
-
-	// Get all nodes
-	allNodes := st.AllNodes()
-	if len(allNodes) == 0 {
-		return nil, fmt.Errorf("proof not initialized or empty")
-	}
-
 	ldg, err := s.getLedger()
 	if err != nil {
 		return nil, err
@@ -2164,52 +1896,49 @@ func (s *ProofService) RecomputeAllTaint(dryRun bool) (*RecomputeTaintResult, er
 		return nil, err
 	}
 
-	// LoadState has already derived correct taint, but use the shared primitive
-	// here too so repair and replay cannot acquire different semantics.
-	taint.RecomputeAll(allNodes)
-	var changes []TaintChange
-	for _, n := range allNodes {
-		oldTaint, ok := auditTaints[n.ID.String()]
-		if !ok {
-			// A valid ledger has a NodeCreated event for every node. Treat a
-			// missing baseline defensively as already synchronized.
-			oldTaint = n.TaintState
+	var result *RecomputeTaintResult
+	_, err = s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Get all nodes
+		allNodes := st.AllNodes()
+		if len(allNodes) == 0 {
+			return nil, fmt.Errorf("proof not initialized or empty")
 		}
-		if oldTaint == n.TaintState {
-			continue
-		}
-		changes = append(changes, TaintChange{
-			NodeID:   n.ID.String(),
-			OldTaint: TaintState(oldTaint),
-			NewTaint: TaintState(n.TaintState),
-		})
-	}
 
-	// Build result
-	result := &RecomputeTaintResult{
-		TotalNodes:   len(allNodes),
-		NodesChanged: len(changes),
-		Changes:      changes,
-		DryRun:       dryRun,
-	}
-
-	// If not dry-run, persist changes to ledger
-	if !dryRun && len(changes) > 0 {
-		// Append events for each change
-		seq := st.LatestSeq()
-		for _, change := range changes {
-			nodeID, err := types.Parse(change.NodeID)
-			if err != nil {
-				return nil, fmt.Errorf("invalid node ID %q: %w", change.NodeID, err)
+		// LoadState has already derived correct taint, but use the shared primitive
+		// here too so repair and replay cannot acquire different semantics.
+		taint.RecomputeAll(allNodes)
+		var changes []TaintChange
+		var events []ledger.Event
+		for _, n := range allNodes {
+			oldTaint, ok := auditTaints[n.ID.String()]
+			if !ok {
+				// A valid ledger has a NodeCreated event for every node. Treat a
+				// missing baseline defensively as already synchronized.
+				oldTaint = n.TaintState
 			}
-
-			event := ledger.NewTaintRecomputed(nodeID, node.TaintState(change.NewTaint))
-			newSeq, err := ldg.AppendIfSequence(event, seq)
-			if err != nil {
-				return nil, err
+			if oldTaint == n.TaintState {
+				continue
 			}
-			seq = newSeq
+			changes = append(changes, TaintChange{
+				NodeID:   n.ID.String(),
+				OldTaint: TaintState(oldTaint),
+				NewTaint: TaintState(n.TaintState),
+			})
+			if !dryRun {
+				events = append(events, ledger.NewTaintRecomputed(n.ID, n.TaintState))
+			}
 		}
+
+		result = &RecomputeTaintResult{
+			TotalNodes:   len(allNodes),
+			NodesChanged: len(changes),
+			Changes:      changes,
+			DryRun:       dryRun,
+		}
+		return events, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return result, nil
@@ -2268,40 +1997,21 @@ func lastAuditedTaintStates(ldg *ledger.Ledger) (map[string]node.TaintState, err
 // Returns ErrConcurrentModification if the proof was modified by another process
 // since state was loaded. Callers should retry after reloading state.
 func (s *ProofService) RequestRefinement(nodeID types.NodeID, reason, requestedBy string) error {
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	return s.commitThenTaint(nodeID, func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+		}
 
-	// Check if node exists
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
+		// Validate epistemic state transition (only validated -> needs_refinement allowed)
+		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicNeedsRefinement); err != nil {
+			return nil, fmt.Errorf("%w: node %s is in %s state, must be %s to request refinement",
+				ErrInvalidState, nodeID.String(), n.EpistemicState, schema.EpistemicValidated)
+		}
 
-	// Validate epistemic state transition (only validated -> needs_refinement allowed)
-	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicNeedsRefinement); err != nil {
-		return fmt.Errorf("%w: node %s is in %s state, must be %s to request refinement",
-			ErrInvalidState, nodeID.String(), n.EpistemicState, schema.EpistemicValidated)
-	}
-
-	// Get ledger and append refinement requested event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewRefinementRequested(nodeID, reason, requestedBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	if err != nil {
-		return wrapSequenceMismatch(err, "RequestRefinement")
-	}
-
-	// Requesting refinement makes this node unresolved. Audit emission is
-	// intentionally non-atomic; replay remains authoritative if it fails.
-	return s.emitTaintRecomputedEvents(ldg, nodeID, snapshotTaintStates(st))
+		return []ledger.Event{ledger.NewRefinementRequested(nodeID, reason, requestedBy)}, nil
+	})
 }
 
 // UnvalidateNode revokes validation on a node, reverting it from validated
@@ -2312,40 +2022,21 @@ func (s *ProofService) RequestRefinement(nodeID types.NodeID, reason, requestedB
 // Returns ErrInvalidState if the node is not in validated state.
 // Returns ErrConcurrentModification if the proof was modified by another process.
 func (s *ProofService) UnvalidateNode(nodeID types.NodeID, reason, revokedBy string) error {
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	return s.commitThenTaint(nodeID, func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+		}
 
-	// Check if node exists
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
+		// Validate epistemic state transition (only validated -> pending allowed)
+		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
+			return nil, fmt.Errorf("%w: node %s is in %s state, must be %s to unvalidate",
+				ErrInvalidState, nodeID.String(), n.EpistemicState, schema.EpistemicValidated)
+		}
 
-	// Validate epistemic state transition (only validated -> pending allowed)
-	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
-		return fmt.Errorf("%w: node %s is in %s state, must be %s to unvalidate",
-			ErrInvalidState, nodeID.String(), n.EpistemicState, schema.EpistemicValidated)
-	}
-
-	// Get ledger and append event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeUnvalidated(nodeID, reason, revokedBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	if err != nil {
-		return wrapSequenceMismatch(err, "UnvalidateNode")
-	}
-
-	// Emit taint recomputation — node becomes pending (TaintUnresolved),
-	// which propagates to ancestors and descendants.
-	return s.emitTaintRecomputedEvents(ldg, nodeID, snapshotTaintStates(st))
+		return []ledger.Event{ledger.NewNodeUnvalidated(nodeID, reason, revokedBy)}, nil
+	})
 }
 
 // UnadmitNode revokes an admission on a node, reverting it from admitted back
@@ -2357,40 +2048,21 @@ func (s *ProofService) UnvalidateNode(nodeID types.NodeID, reason, revokedBy str
 // Returns ErrInvalidState if the node is not in admitted state.
 // Returns ErrConcurrentModification if the proof was modified by another process.
 func (s *ProofService) UnadmitNode(nodeID types.NodeID, reason, revokedBy string) error {
-	// Load current state and capture sequence for CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	return s.commitThenTaint(nodeID, func(st *state.State) ([]ledger.Event, error) {
+		// Check if node exists
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+		}
 
-	// Check if node exists
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
+		// Validate epistemic state transition (only admitted -> pending allowed)
+		if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
+			return nil, fmt.Errorf("%w: node %s is in %s state, must be %s to unadmit",
+				ErrInvalidState, nodeID.String(), n.EpistemicState, schema.EpistemicAdmitted)
+		}
 
-	// Validate epistemic state transition (only admitted -> pending allowed)
-	if err := schema.ValidateEpistemicTransition(n.EpistemicState, schema.EpistemicPending); err != nil {
-		return fmt.Errorf("%w: node %s is in %s state, must be %s to unadmit",
-			ErrInvalidState, nodeID.String(), n.EpistemicState, schema.EpistemicAdmitted)
-	}
-
-	// Get ledger and append event with CAS
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewNodeUnadmitted(nodeID, reason, revokedBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
-	if err != nil {
-		return wrapSequenceMismatch(err, "UnadmitNode")
-	}
-
-	// Emit taint recomputation — node becomes pending (TaintUnresolved), the
-	// self_admitted source is gone, and ancestors/descendants recompute.
-	return s.emitTaintRecomputedEvents(ldg, nodeID, snapshotTaintStates(st))
+		return []ledger.Event{ledger.NewNodeUnadmitted(nodeID, reason, revokedBy)}, nil
+	})
 }
 
 func snapshotTaintStates(st *state.State) map[string]node.TaintState {
@@ -2417,24 +2089,14 @@ func (s *ProofService) RecordApproachTried(nodeID types.NodeID, approach, outcom
 		return fmt.Errorf("%w: approach description", ErrEmptyInput)
 	}
 
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+		}
 
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
-
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewApproachTried(nodeID, approach, outcome, triedBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewApproachTried(nodeID, approach, outcome, triedBy)}, nil
+	})
 	return wrapSequenceMismatch(err, "RecordApproachTried")
 }
 
@@ -2449,24 +2111,14 @@ func (s *ProofService) ProposeStrategy(nodeID types.NodeID, strategy, novelty, r
 		return fmt.Errorf("%w: strategy description", ErrEmptyInput)
 	}
 
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+		}
 
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
-
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewStrategyProposed(nodeID, strategy, novelty, rationale, proposedBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewStrategyProposed(nodeID, strategy, novelty, rationale, proposedBy)}, nil
+	})
 	return wrapSequenceMismatch(err, "ProposeStrategy")
 }
 
@@ -2484,19 +2136,9 @@ func (s *ProofService) AddPattern(name, description, indicators, remediation, ad
 		return fmt.Errorf("%w: pattern description", ErrEmptyInput)
 	}
 
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
-
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewPatternAdded(name, description, indicators, remediation, addedBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		return []ledger.Event{ledger.NewPatternAdded(name, description, indicators, remediation, addedBy)}, nil
+	})
 	return wrapSequenceMismatch(err, "AddPattern")
 }
 
@@ -2511,24 +2153,14 @@ func (s *ProofService) AddHint(nodeID types.NodeID, text, hintBy string) error {
 		return fmt.Errorf("%w: hint text", ErrEmptyInput)
 	}
 
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+		}
 
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
-
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewHintAdded(nodeID, text, hintBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewHintAdded(nodeID, text, hintBy)}, nil
+	})
 	return wrapSequenceMismatch(err, "AddHint")
 }
 
@@ -2557,24 +2189,14 @@ func (s *ProofService) AttachEvidence(nodeID types.NodeID, filePath, evidenceTyp
 	sum := sha256.Sum256(data)
 	contentHash := hex.EncodeToString(sum[:])
 
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
+	_, err = s.commit(func(st *state.State) ([]ledger.Event, error) {
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+		}
 
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
-
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewEvidenceAttached(nodeID, filePath, contentHash, evidenceType, description, attachedBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewEvidenceAttached(nodeID, filePath, contentHash, evidenceType, description, attachedBy)}, nil
+	})
 	return wrapSequenceMismatch(err, "AttachEvidence")
 }
 
@@ -2604,19 +2226,9 @@ func (s *ProofService) SetOutline(stages []ledger.OutlineStage, setBy string) er
 		seen[stage.Label] = true
 	}
 
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
-
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewOutlineSet(stages, setBy)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		return []ledger.Event{ledger.NewOutlineSet(stages, setBy)}, nil
+	})
 	return wrapSequenceMismatch(err, "SetOutline")
 }
 
@@ -2626,38 +2238,28 @@ func (s *ProofService) LinkOutlineStage(label string, nodeID types.NodeID) error
 		return fmt.Errorf("%w: label", ErrEmptyInput)
 	}
 
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
-
-	if !st.HasOutline() {
-		return fmt.Errorf("no outline set; use 'af outline set' first")
-	}
-
-	found := false
-	for _, stage := range st.GetOutlineStages() {
-		if stage.Label == label {
-			found = true
-			break
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		if !st.HasOutline() {
+			return nil, fmt.Errorf("no outline set; use 'af outline set' first")
 		}
-	}
-	if !found {
-		return fmt.Errorf("outline stage %q not found in current outline", label)
-	}
 
-	if st.GetNode(nodeID) == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
+		found := false
+		for _, stage := range st.GetOutlineStages() {
+			if stage.Label == label {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("outline stage %q not found in current outline", label)
+		}
 
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
+		if st.GetNode(nodeID) == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+		}
 
-	event := ledger.NewOutlineStageLinked(label, nodeID)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewOutlineStageLinked(label, nodeID)}, nil
+	})
 	return wrapSequenceMismatch(err, "LinkOutlineStage")
 }
 
@@ -2678,50 +2280,39 @@ func (s *ProofService) GetOutlineCoverage() (*state.OutlineCoverageReport, error
 // records a ClaimTested event in the ledger.
 // Returns whether the test passed, the captured output, and any error.
 func (s *ProofService) RunClaimTest(nodeID types.NodeID, engine, scriptPath, expression, agent string) (bool, string, error) {
-	// Load state for validation and CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return false, "", err
-	}
-	expectedSeq := st.LatestSeq()
-
-	// Validate node exists
-	if st.GetNode(nodeID) == nil {
-		return false, "", fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
-
-	// Execute the test
 	var passed bool
 	var output string
-	switch engine {
-	case "sympy":
-		if strings.TrimSpace(expression) == "" {
-			return false, "", fmt.Errorf("%w: expression", ErrEmptyInput)
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Validate node exists
+		if st.GetNode(nodeID) == nil {
+			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
 		}
-		passed, output, err = executeSympyExpression(expression, s.path, 0)
-	case "script", "":
-		if strings.TrimSpace(scriptPath) == "" {
-			return false, "", fmt.Errorf("%w: script path", ErrEmptyInput)
-		}
-		passed, output, err = executeScript(scriptPath, s.path, 0)
-		if engine == "" {
-			engine = "script"
-		}
-	default:
-		return false, "", fmt.Errorf("unsupported engine %q: use 'script' or 'sympy'", engine)
-	}
-	if err != nil {
-		return false, output, fmt.Errorf("test execution failed: %w", err)
-	}
 
-	// Record result in ledger
-	ldg, err := s.getLedger()
-	if err != nil {
-		return passed, output, err
-	}
+		// Execute the test
+		var execErr error
+		switch engine {
+		case "sympy":
+			if strings.TrimSpace(expression) == "" {
+				return nil, fmt.Errorf("%w: expression", ErrEmptyInput)
+			}
+			passed, output, execErr = executeSympyExpression(expression, s.path, 0)
+		case "script", "":
+			if strings.TrimSpace(scriptPath) == "" {
+				return nil, fmt.Errorf("%w: script path", ErrEmptyInput)
+			}
+			passed, output, execErr = executeScript(scriptPath, s.path, 0)
+			if engine == "" {
+				engine = "script"
+			}
+		default:
+			return nil, fmt.Errorf("unsupported engine %q: use 'script' or 'sympy'", engine)
+		}
+		if execErr != nil {
+			return nil, fmt.Errorf("test execution failed: %w", execErr)
+		}
 
-	event := ledger.NewClaimTested(nodeID, engine, scriptPath, expression, passed, output, agent)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewClaimTested(nodeID, engine, scriptPath, expression, passed, output, agent)}, nil
+	})
 	if err != nil {
 		return passed, output, wrapSequenceMismatch(err, "RunClaimTest")
 	}
@@ -2734,45 +2325,36 @@ func (s *ProofService) RunClaimTest(nodeID types.NodeID, engine, scriptPath, exp
 // a DefChecked event in the ledger.
 // Returns whether the check passed, the captured output, and any error.
 func (s *ProofService) RunDefCheck(defNameOrID, checkType, scriptPath, agent string) (bool, string, error) {
-	// Load state for validation and CAS
-	st, err := s.LoadState()
-	if err != nil {
-		return false, "", err
-	}
-	expectedSeq := st.LatestSeq()
+	var passed bool
+	var output string
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		// Resolve definition by name or ID
+		defName := defNameOrID
+		def := st.GetDefinitionByName(defNameOrID)
+		if def == nil {
+			def = st.GetDefinition(defNameOrID)
+		}
+		if def == nil {
+			return nil, fmt.Errorf("definition %q not found", defNameOrID)
+		}
+		defName = def.Name
 
-	// Resolve definition by name or ID
-	defName := defNameOrID
-	def := st.GetDefinitionByName(defNameOrID)
-	if def == nil {
-		def = st.GetDefinition(defNameOrID)
-	}
-	if def == nil {
-		return false, "", fmt.Errorf("definition %q not found", defNameOrID)
-	}
-	defName = def.Name
+		if strings.TrimSpace(scriptPath) == "" {
+			return nil, fmt.Errorf("%w: script path", ErrEmptyInput)
+		}
+		if strings.TrimSpace(checkType) == "" {
+			checkType = "script"
+		}
 
-	if strings.TrimSpace(scriptPath) == "" {
-		return false, "", fmt.Errorf("%w: script path", ErrEmptyInput)
-	}
-	if strings.TrimSpace(checkType) == "" {
-		checkType = "script"
-	}
+		// Execute the check
+		var execErr error
+		passed, output, execErr = executeScript(scriptPath, s.path, 0)
+		if execErr != nil {
+			return nil, fmt.Errorf("check execution failed: %w", execErr)
+		}
 
-	// Execute the check
-	passed, output, err := executeScript(scriptPath, s.path, 0)
-	if err != nil {
-		return false, output, fmt.Errorf("check execution failed: %w", err)
-	}
-
-	// Record result in ledger
-	ldg, err := s.getLedger()
-	if err != nil {
-		return passed, output, err
-	}
-
-	event := ledger.NewDefChecked(defName, checkType, scriptPath, passed, output, agent)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+		return []ledger.Event{ledger.NewDefChecked(defName, checkType, scriptPath, passed, output, agent)}, nil
+	})
 	if err != nil {
 		return passed, output, wrapSequenceMismatch(err, "RunDefCheck")
 	}

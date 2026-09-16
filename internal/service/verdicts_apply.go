@@ -9,7 +9,9 @@ import (
 
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
+	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 	"github.com/tobiasosborne/vibefeld/internal/verdicts"
 )
@@ -159,63 +161,70 @@ func (s *ProofService) ApplyVerdicts(f *verdicts.File) (*VerdictReport, error) {
 	return report, report.exitError()
 }
 
+// Sentinel errors used to classify verdict-file gate failures separately from
+// kernel preconditions, so applyAcceptVerdict/applyChallengeVerdict can report
+// the precise rejected:<reason> status without string matching.
+var (
+	errVerdictHashMismatch     = stderrors.New("verdict content hash mismatch")
+	errVerdictNotReady         = stderrors.New("node is not verifier-ready")
+	errVerdictReviewerIsAuthor = stderrors.New("verifier is also the recorded author")
+)
+
 // applyAcceptVerdict handles a single accept item. abortErr is non-nil only
 // for a concurrent-modification race; all other failure modes are reported
 // via status/detail and do not stop the batch.
 func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Item, f *verdicts.File) (status, detail string, abortErr error) {
-	st, err := s.LoadState()
-	if err != nil {
-		return "rejected:state-load-failed", err.Error(), nil
-	}
-
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return "rejected:node-not-found", fmt.Sprintf("node %s does not exist", item.Node), nil
-	}
-
-	// rk B1: atomic readiness/hash re-check under this state read. When the
-	// item carries the hash it was authored against, reject a stale accept —
-	// the node was edited (hash changed) or is no longer verifier-ready
-	// (claimed/blocked) since the verifier dispatched. This closes the race a
-	// driver-side second export cannot: the check and the append share one
-	// CAS-protected state read.
-	if item.ExpectHash != "" {
-		if n.ContentHash != item.ExpectHash {
-			return "rejected:content-hash-mismatch",
-				fmt.Sprintf("node %s content hash changed since the verdict was authored (expected %s, current %s)", item.Node, item.ExpectHash, n.ContentHash), nil
+	var oldTaints map[string]node.TaintState
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: node %s does not exist", ErrNodeNotFound, item.Node)
 		}
-		if n.WorkflowState != schema.WorkflowAvailable {
-			return "rejected:not-verifier-ready",
-				fmt.Sprintf("node %s is no longer verifier-ready: workflow_state is %q, not %q", item.Node, n.WorkflowState, schema.WorkflowAvailable), nil
+
+		// rk B1: atomic readiness/hash re-check under this state read. When the
+		// item carries the hash it was authored against, reject a stale accept —
+		// the node was edited (hash changed) or is no longer verifier-ready
+		// (claimed/blocked) since the verifier dispatched. This closes the race a
+		// driver-side second export cannot: the check and the append share one
+		// CAS-protected state read.
+		if item.ExpectHash != "" {
+			if n.ContentHash != item.ExpectHash {
+				return nil, fmt.Errorf("%w: node %s content hash changed since the verdict was authored (expected %s, current %s)", errVerdictHashMismatch, item.Node, item.ExpectHash, n.ContentHash)
+			}
+			if n.WorkflowState != schema.WorkflowAvailable {
+				return nil, fmt.Errorf("%w: node %s is no longer verifier-ready: workflow_state is %q, not %q", errVerdictNotReady, item.Node, n.WorkflowState, schema.WorkflowAvailable)
+			}
 		}
-	}
 
-	// Reviewer != author, honestly stated: recorded-and-checkable provenance
-	// (PRD C3), not adversary-proof enforcement. Both identities are
-	// driver-supplied; if Author was never recorded (legacy node, or none
-	// supplied), this check simply cannot fire — see node.Node.Author.
-	if n.Author != "" && n.Author == f.VerifiedBy {
-		return "rejected:reviewer-equals-author",
-			fmt.Sprintf("verifier %q is also the recorded author of node %s", f.VerifiedBy, item.Node), nil
-	}
+		// Reviewer != author, honestly stated.
+		if n.Author != "" && n.Author == f.VerifiedBy {
+			return nil, fmt.Errorf("%w: verifier %q is also the recorded author of node %s", errVerdictReviewerIsAuthor, f.VerifiedBy, item.Node)
+		}
 
-	err = s.AcceptNodeWithVerifier(nodeID, item.Reason, f.VerifiedBy, f.BatchID)
+		events, err := s.buildAcceptEvents(st, nodeID, item.Reason, f.VerifiedBy, f.BatchID)
+		if err != nil {
+			return nil, err
+		}
+		oldTaints = snapshotTaintStates(st)
+		return events, nil
+	})
 	if err == nil {
+		// Best-effort taint audit emission, mirrors AcceptNodeWithVerifier.
+		_ = s.emitTaintRecomputedEvents(nodeID, oldTaints)
 		return "applied", "", nil
 	}
 
 	if stderrors.Is(err, ErrConcurrentModification) {
 		return "rejected:concurrent-modification", err.Error(), err
 	}
-	// NOTE: ErrClaimTestRequired and ErrBlockingChallenges both carry the
-	// same underlying aferrors.NODE_BLOCKED code (see internal/errors), and
-	// AFError.Is compares codes only — errors.Is cannot distinguish them.
-	// The claim-test and "children/deps not yet validated" cases are
-	// therefore classified by their (unique, stable) message substrings
-	// FIRST; errors.Is(ErrBlockingChallenges) is the fallback once those
-	// more specific cases are ruled out. Same technique cmd/af/accept.go
-	// already uses for claim-test vs. blocking-challenges.
+
 	switch {
+	case stderrors.Is(err, errVerdictHashMismatch):
+		return "rejected:content-hash-mismatch", err.Error(), nil
+	case stderrors.Is(err, errVerdictNotReady):
+		return "rejected:not-verifier-ready", err.Error(), nil
+	case stderrors.Is(err, errVerdictReviewerIsAuthor):
+		return "rejected:reviewer-equals-author", err.Error(), nil
 	case stderrors.Is(err, ErrNodeNotFound):
 		return "rejected:node-not-found", err.Error(), nil
 	case strings.Contains(err.Error(), "claim-test"):
@@ -236,31 +245,31 @@ func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Ite
 // applyChallengeVerdict handles a single challenge item. There is no
 // reviewer≠author check here — PRD C3 scopes that rule to accepts only.
 func (s *ProofService) applyChallengeVerdict(nodeID types.NodeID, item verdicts.Item, f *verdicts.File) (status, detail string, abortErr error) {
-	st, err := s.LoadState()
-	if err != nil {
-		return "rejected:state-load-failed", err.Error(), nil
-	}
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return "rejected:node-not-found", fmt.Sprintf("node %s does not exist", item.Node), nil
-	}
-
-	// rk B1: a challenge authored against a specific content hash is discarded
-	// if the node's bytes changed since dispatch — the verifier challenged a
-	// version that no longer exists. (No availability gate on a challenge: a
-	// challenge may legitimately target a claimed node.)
-	if item.ExpectHash != "" && n.ContentHash != item.ExpectHash {
-		return "rejected:content-hash-mismatch",
-			fmt.Sprintf("node %s content hash changed since the challenge was authored (expected %s, current %s)", item.Node, item.ExpectHash, n.ContentHash), nil
-	}
-
 	challengeID := generateVerdictChallengeID()
-	err = s.RaiseChallengeWithBatch(nodeID, challengeID, item.Target, item.Reason, item.Severity, f.VerifiedBy, item.Category, f.BatchID)
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		n := st.GetNode(nodeID)
+		if n == nil {
+			return nil, fmt.Errorf("%w: node %s does not exist", ErrNodeNotFound, item.Node)
+		}
+
+		// rk B1: a challenge authored against a specific content hash is discarded
+		// if the node's bytes changed since dispatch — the verifier challenged a
+		// version that no longer exists. (No availability gate on a challenge: a
+		// challenge may legitimately target a claimed node.)
+		if item.ExpectHash != "" && n.ContentHash != item.ExpectHash {
+			return nil, fmt.Errorf("%w: node %s content hash changed since the challenge was authored (expected %s, current %s)", errVerdictHashMismatch, item.Node, item.ExpectHash, n.ContentHash)
+		}
+
+		return s.buildChallengeEvents(st, nodeID, challengeID, item.Target, item.Reason, item.Severity, f.VerifiedBy, item.Category, f.BatchID)
+	})
 	if err == nil {
 		return "applied", "challenge " + challengeID, nil
 	}
 	if stderrors.Is(err, ErrConcurrentModification) {
 		return "rejected:concurrent-modification", err.Error(), err
+	}
+	if stderrors.Is(err, errVerdictHashMismatch) {
+		return "rejected:content-hash-mismatch", err.Error(), nil
 	}
 	if stderrors.Is(err, ErrNodeNotFound) {
 		return "rejected:node-not-found", err.Error(), nil
@@ -280,24 +289,22 @@ func (s *ProofService) applyChallengeVerdict(nodeID types.NodeID, item verdicts.
 // ErrConcurrentModification if the proof was modified by another process
 // since state was loaded.
 func (s *ProofService) RaiseChallengeWithBatch(nodeID types.NodeID, challengeID, target, reason, severity, raisedBy, category, batchID string) error {
-	st, err := s.LoadState()
-	if err != nil {
-		return err
-	}
-	expectedSeq := st.LatestSeq()
-
-	if st.GetNode(nodeID) == nil {
-		return fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
-	}
-
-	ldg, err := s.getLedger()
-	if err != nil {
-		return err
-	}
-
-	event := ledger.NewChallengeRaisedWithBatch(challengeID, nodeID, target, reason, severity, raisedBy, category, batchID)
-	_, err = ldg.AppendIfSequence(event, expectedSeq)
+	_, err := s.commit(func(st *state.State) ([]ledger.Event, error) {
+		return s.buildChallengeEvents(st, nodeID, challengeID, target, reason, severity, raisedBy, category, batchID)
+	})
 	return wrapSequenceMismatch(err, "RaiseChallengeWithBatch")
+}
+
+// buildChallengeEvents validates a challenge against st and returns the
+// ChallengeRaised event. Shared by RaiseChallengeWithBatch and
+// applyChallengeVerdict so the existence check and event construction use one
+// state read.
+func (s *ProofService) buildChallengeEvents(st *state.State, nodeID types.NodeID, challengeID, target, reason, severity, raisedBy, category, batchID string) ([]ledger.Event, error) {
+	if st.GetNode(nodeID) == nil {
+		return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeID.String())
+	}
+
+	return []ledger.Event{ledger.NewChallengeRaisedWithBatch(challengeID, nodeID, target, reason, severity, raisedBy, category, batchID)}, nil
 }
 
 // generateVerdictChallengeID generates a unique challenge id for challenges

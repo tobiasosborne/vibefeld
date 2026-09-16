@@ -418,7 +418,7 @@ func runRefine(cmd *cobra.Command, nodeIDStr, owner, nodeTypeStr, inferenceStr, 
 }
 
 // runRefineMulti handles the --children flag for creating multiple child nodes at once.
-// This uses the atomic RefineNodeBulk method to create all children in a single operation,
+// This uses the serialized RefineNodeBulk method to create all children in a single operation,
 // preventing race conditions where other agents could grab the node between individual refines.
 func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, childrenJSON, dir, format string, svc *service.ProofService, st *service.State, draft, crux bool) error {
 	examples := render.GetExamples("af refine")
@@ -478,7 +478,8 @@ func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, ow
 		}
 	}
 
-	// Use RefineNodeBulk for atomic multi-child creation
+	// Use RefineNodeBulk for serialized multi-child creation (one commit; a crash
+	// mid-batch leaves a valid prefix)
 	childIDs, err := svc.RefineNodeBulk(parentID, owner, specs)
 	if err != nil {
 		return handleRefineError(err, parentIDStr, owner)
@@ -489,7 +490,7 @@ func runRefineMulti(cmd *cobra.Command, parentID service.NodeID, parentIDStr, ow
 
 // runRefinePositional handles positional arguments for creating child nodes.
 // Single statement: af refine 1 "Step A" -o agent1 (supports --depends, --requires-validated)
-// Multiple statements: af refine 1 "Step A" "Step B" -o agent1 (atomic bulk creation)
+// Multiple statements: af refine 1 "Step A" "Step B" -o agent1 (serialized bulk creation)
 func runRefinePositional(cmd *cobra.Command, parentID service.NodeID, parentIDStr, owner, nodeTypeStr, inferenceStr, format string, svc *service.ProofService, st *service.State, statements []string, depends, requiresValidated string, draft, crux bool) error {
 	examples := render.GetExamples("af refine")
 

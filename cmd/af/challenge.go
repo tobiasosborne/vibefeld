@@ -7,12 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tobiasosborne/vibefeld/internal/cli"
-	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/render"
 	"github.com/tobiasosborne/vibefeld/internal/service"
 )
@@ -145,41 +143,21 @@ func runChallenge(cmd *cobra.Command, args []string) error {
 		return render.InvalidValueError("af challenge", "category", category, service.ValidChallengeCategoryStrings(), examples)
 	}
 
-	// Create proof service to check state
+	// Create proof service
 	svc, err := service.NewProofService(dir)
 	if err != nil {
 		return fmt.Errorf("error accessing proof directory: %w", err)
 	}
 
-	// Load state to check if node exists
-	st, err := svc.LoadState()
-	if err != nil {
-		return fmt.Errorf("error loading proof state: %w", err)
-	}
-
-	// Check if node exists
-	n := st.GetNode(nodeID)
-	if n == nil {
-		return fmt.Errorf("node %s does not exist", nodeID.String())
-	}
-
 	// Generate a unique challenge ID
 	challengeID := generateChallengeID()
-
-	// Create ledger from proof path
-	ledgerDir := filepath.Join(svc.Path(), "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
-	if err != nil {
-		return fmt.Errorf("error accessing ledger: %w", err)
-	}
 
 	// Get agent ID from environment variable (if set)
 	agentID := os.Getenv("AF_AGENT_ID")
 
-	// Append challenge raised event with severity, agent ID, and optional category
-	event := ledger.NewChallengeRaisedFull(challengeID, nodeID, target, reason, severity, agentID, category)
-	_, err = ldg.Append(event)
-	if err != nil {
+	// Commit through the service's one-read primitive (existence check and
+	// append share one CAS-protected state read).
+	if err := svc.RaiseChallengeWithBatch(nodeID, challengeID, target, reason, severity, agentID, category, ""); err != nil {
 		return fmt.Errorf("error raising challenge: %w", err)
 	}
 

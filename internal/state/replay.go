@@ -59,6 +59,12 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 		// Track the latest sequence number for optimistic concurrency control
 		state.SetLatestSeq(seq)
 
+		// Index an optional operation id so a retried operation can find the
+		// sequence of its already-committed result.
+		if opIDCarrier, ok := event.(interface{ GetOperationID() string }); ok {
+			state.RecordOperationID(opIDCarrier.GetOperationID(), seq)
+		}
+
 		// If verifying hashes and this is a NodeCreated event, verify the hash
 		if verifyHashes {
 			if nodeCreated, ok := event.(ledger.NodeCreated); ok {
