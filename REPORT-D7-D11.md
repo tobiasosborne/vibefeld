@@ -187,3 +187,105 @@ lines added under the `0.1.10` (unreleased) entry.
   `healthOptions` (or thread `support_current` through `analyzeHealth`) before
   adding its blockers.
 - No push was performed, per the brief.
+
+---
+
+## Review fixes
+
+Addressed an independent review of the D7/D11 work. Five commits:
+
+| Commit | Topic |
+|---|---|
+| `44f4c3e` | D7: dedicated claim-stall threshold + last-claim-activity |
+| `c184a3f` | D11: one `verifier_ready` meaning everywhere |
+| `a7c9de5` | D11: real help-example flags/ids; parse every example |
+| `14e46b4` | D11: assert `validation_batch_id` from a batched verdict |
+| `ec67801` | D11: auto-prove completion fails closed; export per-node `externals` |
+| `0ba0cf1` | docs: `verifier_ready` and claim-stall window |
+
+### 1. auto-prove completion now fails closed (HIGH)
+
+`scripts/auto-prove.sh` `proof_complete`:
+
+- **`support_current` is required.** `af status -f json` must carry
+  `support_current: true` on the root. An absent field (this branch, before D4)
+  is reported as *not complete* with an explicit message; a `false` value is a
+  warning. The old feature-detect-and-skip behaviour is gone, so auto-prove
+  cannot declare success against a binary that cannot attest support.
+- **External gate uses machine data.** It no longer scans `.context`. The graph
+  export gained a per-node `externals` list (cited external IDs, `omitempty`,
+  no new capability token — an older af simply omits it). Completion pulls the
+  `externals` of every validated node from `af export --graph json` and
+  cross-checks their IDs against `af pending-refs -f json` ids/names, with
+  `external:`/`ext:` prefixes normalised on both sides.
+- **Fail closed.** Every `af`/`jq` failure short-circuits to "not complete" and
+  prints the error; nothing is coerced to `[]` or `/dev/null`.
+- **Tests.** `scripts/test-auto-prove.sh` extracts `proof_complete` and drives
+  it with a fake `AF_CMD` over crafted JSON: positive control, cited external
+  with nothing pending, stale support, missing support, cited pending external
+  by id and by name, prefixed citation, and jq errors on the status and export
+  JSON. It also asserts the real pre-D4 run never prints `PROOF COMPLETE`.
+  `e2e/auto_prove_stub_test.go` (`TestAutoProveStub`) now requires the
+  `completion negative tests: ok` marker and rejects `PROOF COMPLETE`.
+
+### 2. Dedicated claim-stall threshold (HIGH)
+
+Health no longer uses `Config.LockTimeout` for stalled claims. `node.Node`
+gained `ClaimLastActive` (derived, `json:"-"`, excluded from the content hash),
+set to the `NodesClaimed` event time and updated by `ClaimRefreshed`; it is
+cleared on release. `af health --claim-stall <duration>` (default `0` = each
+claim's own lease length, i.e. `ClaimedAt - ClaimLastActive`) reports a claim
+as stalled only when its last activity is older than the window. Stale
+(expiry-passed) detection is unchanged and separate. Tests cover a refreshed
+claim that is not stalled, a long-lease claim that is only flagged under an
+explicit short window, and state replay setting/refreshing the field.
+
+### 3. One `verifier_ready` meaning (MEDIUM)
+
+`verifier_ready` now means `jobs.FilterReadyVerifierJobs` semantics — a verifier
+job (pending, available, no blocking challenge) whose children are all cleared.
+`jobs.IsVerifierReady` is the per-node predicate. It is used by `af get`
+(JSON and text), `af status` (verifier count and `--urgent`), `af jobs`
+(now bottom-up ready by default; `--ready` remains as a compatibility alias)
+and `af export --graph json`. A cross-surface test builds a pending parent with
+a pending child and asserts all four surfaces agree (parent not ready, leaf
+child ready). Documented in `docs/cli-reference.md`.
+
+### 4. Help examples and a parse test (MEDIUM)
+
+The root `af --help` workflow now uses `AF_AGENT_ID=verifier-1 af challenge ...`
+and `AF_AGENT_ID=prover-1 af resolve-challenge ch-abc123 --response "..."`, so
+the challenge reviewer is recognised and no example names the removed
+`--owner`/`1.1:c1` form. `af inferences` now shows the real `-j` flag.
+`cmd/af/help_examples_test.go` extracts every `af ...` example from the root
+`--help` and every subcommand's `Long` help, resolves the command and runs it
+through cobra's `ParseFlags`, failing on any unknown flag or malformed example.
+
+### 5. `validation_batch_id` asserted (LOW)
+
+`cmd/af/get_acceptance_fields_test.go` now applies the acceptance as a batched
+verdict (`af verdicts apply` with a `batch_id`) and asserts the exact
+`validation_batch_id` value in `af get -f json`.
+
+### Deviation from the earlier report
+
+The pre-review note "Health's `analyzeHealth` signature gained … `LockTimeout`"
+is superseded: `healthOptions` now carries `ClaimStall` instead of
+`LockTimeout`. The D4 branch should pass `ClaimStall` (or leave it zero for the
+lease default) when it lands.
+
+### Quality gates (HEAD after the review fixes)
+
+```
+gofmt -l cmd internal e2e      # clean
+go build ./cmd/af              # ok
+go vet ./...                   # ok
+go test ./...                  # all packages ok
+go test -tags integration ./e2e -run TestAutoProveStub   # ok
+bash -n scripts/auto-prove.sh scripts/test-auto-prove.sh # ok
+```
+
+`internal/ledger`'s `TestConcurrentSequenceNumberIntegrity` was observed to be
+flaky under load (lock-acquire timeout) before and after these changes, and
+passes on retry; it is unrelated to the review items. Work is committed
+locally, **not pushed**, per the brief.
