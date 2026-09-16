@@ -2,6 +2,9 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -203,5 +206,171 @@ func TestAcceptNode_CruxStaleClaimTestIgnored(t *testing.T) {
 	appendClaimTest(t, svc, childID.String(), true, "")
 	if err := svc.AcceptNodeWithVerifier(childID, "", "verifier-1", ""); err != nil {
 		t.Fatalf("legacy claim-test must count, got: %v", err)
+	}
+}
+
+// writePassingScript writes an executable script that exits 0, so RunClaimTest
+// records a real passing test rather than a fabricated event.
+func writePassingScript(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "pass.sh")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	return path
+}
+
+// refineCruxChild claims the root and refines it into a single crux child,
+// returning the child's ID.
+func refineCruxChild(t *testing.T, svc *ProofService) string {
+	t.Helper()
+	rootID := parseNodeID(t, "1")
+	if err := svc.ClaimNode(rootID, "prover-1", time.Hour); err != nil {
+		t.Fatalf("ClaimNode: %v", err)
+	}
+	ids, err := svc.RefineNodeBulk(rootID, "prover-1", []ChildSpec{{
+		NodeType:  schema.NodeTypeClaim,
+		Statement: "Crux step",
+		Inference: schema.InferenceModusPonens,
+		Crux:      true,
+	}})
+	if err != nil {
+		t.Fatalf("RefineNodeBulk: %v", err)
+	}
+	return ids[0].String()
+}
+
+// TestRunClaimTest_RecordsHashAndAcceptRejectsAfterAmend exercises the real
+// recording path: RunClaimTest must store the node's current ContentHash, and
+// once the node is amended the test becomes stale and cannot gate acceptance.
+func TestRunClaimTest_RecordsHashAndAcceptRejectsAfterAmend(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	childIDStr := refineCruxChild(t, svc)
+	childID := parseNodeID(t, childIDStr)
+
+	stBefore, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	wantHash := stBefore.GetNode(childID).ContentHash
+
+	passed, _, err := svc.RunClaimTest(childID, "script", writePassingScript(t), "", "agent-1")
+	if err != nil {
+		t.Fatalf("RunClaimTest: %v", err)
+	}
+	if !passed {
+		t.Fatal("passing script recorded as failed")
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	tests := st.GetClaimTests(childID)
+	if len(tests) != 1 {
+		t.Fatalf("got %d claim tests, want 1", len(tests))
+	}
+	if tests[0].ContentHash != wantHash {
+		t.Errorf("recorded test hash = %q, want node content hash %q", tests[0].ContentHash, wantHash)
+	}
+
+	// Amending the node changes its content hash, making the test stale.
+	if err := svc.AmendNode(childID, "prover-1", "Amended crux step"); err != nil {
+		t.Fatalf("AmendNode: %v", err)
+	}
+	stAmended, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState after amend: %v", err)
+	}
+	if stAmended.GetNode(childID).ContentHash == wantHash {
+		t.Fatal("amend did not change the content hash; test cannot be stale")
+	}
+
+	err = svc.AcceptNodeWithVerifier(childID, "", "verifier-1", "")
+	if err == nil {
+		t.Fatal("expected acceptance to be refused for a stale claim-test, got nil")
+	}
+	if !errors.Is(err, ErrClaimTestStale) {
+		t.Errorf("error %v does not wrap ErrClaimTestStale", err)
+	}
+	if !strings.Contains(err.Error(), "stale") {
+		t.Errorf("error should name the stale test, got: %v", err)
+	}
+}
+
+// TestAcceptNodeBulk_RecordsHashCheckedFalse verifies the bulk path records
+// each accepted node's hash with ExpectedHashChecked=false.
+func TestAcceptNodeBulk_RecordsHashCheckedFalse(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	rootID := parseNodeID(t, "1")
+	if err := svc.ClaimNode(rootID, "prover-1", time.Hour); err != nil {
+		t.Fatalf("ClaimNode: %v", err)
+	}
+	ids, err := svc.RefineNodeBulk(rootID, "prover-1", []ChildSpec{
+		{NodeType: schema.NodeTypeClaim, Statement: "Step A", Inference: schema.InferenceModusPonens},
+		{NodeType: schema.NodeTypeClaim, Statement: "Step B", Inference: schema.InferenceModusPonens},
+	})
+	if err != nil {
+		t.Fatalf("RefineNodeBulk: %v", err)
+	}
+
+	st0, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	wantHashes := make(map[string]string, len(ids))
+	for _, id := range ids {
+		wantHashes[id.String()] = st0.GetNode(id).ContentHash
+	}
+
+	if err := svc.AcceptNodeBulk(ids); err != nil {
+		t.Fatalf("AcceptNodeBulk: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	events := nodeValidatedEvents(t, svc)
+	if len(events) != len(ids) {
+		t.Fatalf("got %d NodeValidated events, want %d", len(events), len(ids))
+	}
+	for _, ev := range events {
+		want, ok := wantHashes[ev.NodeID.String()]
+		if !ok {
+			t.Fatalf("unexpected NodeValidated event for node %s", ev.NodeID.String())
+		}
+		if ev.ContentHash != want {
+			t.Errorf("event %s ContentHash = %q, want %q", ev.NodeID.String(), ev.ContentHash, want)
+		}
+		if ev.ExpectedHashChecked {
+			t.Errorf("event %s ExpectedHashChecked = true, want false for bulk accept", ev.NodeID.String())
+		}
+		n := st.GetNode(ev.NodeID)
+		if n.ValidatedContentHash != want || n.ValidatedHashChecked {
+			t.Errorf("node %s = %q/%v, want %q/false", ev.NodeID.String(), n.ValidatedContentHash, n.ValidatedHashChecked, want)
+		}
+	}
+}
+
+// TestAcceptNodeBulk_CruxStaleClaimTestRejected verifies the bulk crux gate
+// refuses a node whose only passing claim-test is stale.
+func TestAcceptNodeBulk_CruxStaleClaimTestRejected(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	childIDStr := refineCruxChild(t, svc)
+
+	appendClaimTest(t, svc, childIDStr, true, "stale-hash")
+	err := svc.AcceptNodeBulk([]NodeID{parseNodeID(t, childIDStr)})
+	if err == nil {
+		t.Fatal("expected bulk acceptance to be refused for a stale claim-test, got nil")
+	}
+	if !errors.Is(err, ErrClaimTestStale) {
+		t.Errorf("error %v does not wrap ErrClaimTestStale", err)
+	}
+	if !strings.Contains(err.Error(), "stale") {
+		t.Errorf("error should name the stale test, got: %v", err)
+	}
+	if len(nodeValidatedEvents(t, svc)) != 0 {
+		t.Error("no NodeValidated event should have been written")
 	}
 }
