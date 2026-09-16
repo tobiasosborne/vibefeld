@@ -67,3 +67,42 @@ func TestNodeDepsAmended_OmitsEmptyFields(t *testing.T) {
 		}
 	}
 }
+
+// TestNodeAmendedReopened_IsDistinctV11Event verifies the reopened statement
+// amendment is a separate format-1.1 event type, and that a legacy NodeAmended
+// carries no reopened field at all.
+func TestNodeAmendedReopened_IsDistinctV11Event(t *testing.T) {
+	if got := EventNodeAmendedReopened.MinFormat(); got != "1.1" {
+		t.Fatalf("EventNodeAmendedReopened MinFormat = %q, want 1.1", got)
+	}
+
+	id, _ := types.Parse("1.1")
+	ev := NewNodeAmendedReopened(id, "before", "after", "owner")
+	data, err := json.Marshal(ev)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if raw["type"] != string(EventNodeAmendedReopened) {
+		t.Errorf("type = %v, want %s", raw["type"], EventNodeAmendedReopened)
+	}
+	if _, ok := raw["reopened"]; ok {
+		t.Errorf("node_amended_reopened should not carry a reopened field: %s", data)
+	}
+
+	legacy := NewNodeAmended(id, "before", "after", "owner")
+	legacyData, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("Marshal legacy: %v", err)
+	}
+	var legacyRaw map[string]interface{}
+	if err := json.Unmarshal(legacyData, &legacyRaw); err != nil {
+		t.Fatalf("Unmarshal legacy: %v", err)
+	}
+	if _, ok := legacyRaw["reopened"]; ok {
+		t.Errorf("legacy node_amended should not carry a reopened field: %s", legacyData)
+	}
+}

@@ -371,13 +371,15 @@ func generateSummary(eventType string, data map[string]interface{}) string {
 
 	case "node_amended":
 		if id, ok := data["node_id"].(string); ok {
-			summary := fmt.Sprintf("Amended node %s", id)
-			if reopened, _ := data["reopened"].(bool); reopened {
-				summary += " (reopened)"
-			}
-			return summary
+			return fmt.Sprintf("Amended node %s", id)
 		}
 		return "Amended node"
+
+	case "node_amended_reopened":
+		if id, ok := data["node_id"].(string); ok {
+			return fmt.Sprintf("Amended and reopened node %s", id)
+		}
+		return "Amended and reopened node"
 
 	case "lock_reaped":
 		if id, ok := data["node_id"].(string); ok {

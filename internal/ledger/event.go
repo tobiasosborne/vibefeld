@@ -51,6 +51,7 @@ const (
 	EventNodeRefuted         EventType = "node_refuted"
 	EventNodeArchived        EventType = "node_archived"
 	EventNodeAmended         EventType = "node_amended"
+	EventNodeAmendedReopened EventType = "node_amended_reopened"
 	EventTaintRecomputed     EventType = "taint_recomputed"
 	EventDefAdded            EventType = "def_added"
 	EventLemmaExtracted      EventType = "lemma_extracted"
@@ -77,11 +78,12 @@ const (
 )
 
 // init registers the minimum workspace format for 1.1 event types (D2).
-// node_deps_amended is the only event that requires a 1.1 workspace: a 1.0
-// reader cannot understand it, so the write path refuses it until the operator
-// runs `af workspace upgrade --to 1.1`.
+// node_deps_amended and node_amended_reopened require a 1.1 workspace: a 1.0
+// reader cannot understand them, so the write path refuses them until the
+// operator runs `af workspace upgrade --to 1.1`.
 func init() {
 	RegisterEventMinFormat(EventNodeDepsAmended, "1.1")
+	RegisterEventMinFormat(EventNodeAmendedReopened, "1.1")
 }
 
 // Event is the base interface for all ledger events.
@@ -283,17 +285,27 @@ type LockReaped struct {
 
 // NodeAmended is emitted when a prover corrects the statement of a node they own.
 // The original statement is preserved in the PreviousStatement field for history.
-//
-// Reopened (optional, format 1.1 semantics) records that the same event also
-// performed validated -> pending, mirroring NodeDepsAmended. It is omitted for
-// ordinary statement amendments, so existing ledgers replay identically.
+// It is format 1.0 and never changes a node's epistemic state. A statement
+// amendment that must also reopen a validated node uses the distinct
+// NodeAmendedReopened event, so an old 1.0 reader can never apply the statement
+// change while leaving the node validated.
 type NodeAmended struct {
 	BaseEvent
 	NodeID            types.NodeID `json:"node_id"`
 	PreviousStatement string       `json:"previous_statement"`
 	NewStatement      string       `json:"new_statement"`
 	Owner             string       `json:"owner"`
-	Reopened          bool         `json:"reopened,omitempty"`
+}
+
+// NodeAmendedReopened is NodeAmended plus the validated -> pending transition in
+// the same event. It is format 1.1: a 1.0 reader cannot apply it, so it cannot
+// silently change the statement and leave the node validated.
+type NodeAmendedReopened struct {
+	BaseEvent
+	NodeID            types.NodeID `json:"node_id"`
+	PreviousStatement string       `json:"previous_statement"`
+	NewStatement      string       `json:"new_statement"`
+	Owner             string       `json:"owner"`
 }
 
 // NodeDepsAmended is emitted when a prover corrects a node's dependency edges
@@ -315,6 +327,13 @@ type NodeDepsAmended struct {
 	Reason                 string         `json:"reason,omitempty"`
 	PreviousContentHash    string         `json:"previous_content_hash,omitempty"`
 	Reopened               bool           `json:"reopened,omitempty"`
+
+	// RequestFingerprint is a canonical digest of the originating request
+	// (node, sorted add/remove/add_validated/remove_validated, reopen). It binds
+	// an OperationID to the request it was issued for: a retry that reuses the
+	// id with a different change set is refused instead of being reported as
+	// applied-already.
+	RequestFingerprint string `json:"request_fingerprint,omitempty"`
 }
 
 // NewNodeDepsAmended creates a NodeDepsAmended event.
@@ -621,6 +640,20 @@ func NewNodeAmended(nodeID types.NodeID, previousStatement, newStatement, owner 
 	return NodeAmended{
 		BaseEvent: BaseEvent{
 			EventType: EventNodeAmended,
+			EventTime: types.Now(),
+		},
+		NodeID:            nodeID,
+		PreviousStatement: previousStatement,
+		NewStatement:      newStatement,
+		Owner:             owner,
+	}
+}
+
+// NewNodeAmendedReopened creates a NodeAmendedReopened event (format 1.1).
+func NewNodeAmendedReopened(nodeID types.NodeID, previousStatement, newStatement, owner string) NodeAmendedReopened {
+	return NodeAmendedReopened{
+		BaseEvent: BaseEvent{
+			EventType: EventNodeAmendedReopened,
 			EventTime: types.Now(),
 		},
 		NodeID:            nodeID,

@@ -33,6 +33,7 @@ type Challenge struct {
 	Resolution string          // Resolution text (populated when status is "resolved")
 	RaisedBy   string          // Agent ID who raised the challenge
 	BatchID    string          // Batch identifier, if raised as part of a batch (af verdicts apply); "" otherwise
+	Seq        int             // Ledger sequence of the ChallengeRaised event (0 if unknown)
 }
 
 // Amendment kinds. An empty Kind is treated as AmendmentKindStatement so
@@ -247,10 +248,11 @@ type State struct {
 	// A value of 0 means no events have been applied yet.
 	latestSeq int
 
-	// operationIDs maps a driver-supplied operation id to the sequence number of
-	// the first event that carried it. It lets a retried operation discover its
-	// already-committed result instead of re-appending. Built during replay.
-	operationIDs map[string]int
+	// operationIDs maps a driver-supplied operation id to the record of the
+	// first event that carried it. It lets a retried operation discover its
+	// already-committed result instead of re-appending, and (D2) detect a
+	// reuse of the same id for a different request. Built during replay.
+	operationIDs map[string]OperationRecord
 }
 
 // NewState creates a new empty State with all maps initialized.
@@ -271,7 +273,7 @@ func NewState() *State {
 		defChecks:          make(map[string][]DefCheckResult),
 		outlineLinks:       make(map[string]types.NodeID),
 		scopeTracker:       scope.NewTracker(),
-		operationIDs:       make(map[string]int),
+		operationIDs:       make(map[string]OperationRecord),
 	}
 }
 
@@ -549,29 +551,57 @@ func (s *State) SetLatestSeq(seq int) {
 	s.latestSeq = seq
 }
 
+// OperationRecord is the binding of a driver-supplied operation id to the
+// committed event that first carried it. The extra fields let a retried
+// operation prove the id belongs to the same request (same event type, node and
+// request fingerprint) and report the original result without re-reading the
+// ledger.
+type OperationRecord struct {
+	Seq                int    // Ledger sequence of the first event carrying the id
+	EventType          string // Event type that carried the id
+	NodeID             string // Node the event applied to ("" if not node-scoped)
+	RequestFingerprint string // Canonical fingerprint of the originating request ("" if not applicable)
+	PreviousHash       string // Content hash before the event (node-scoped events)
+	NewHash            string // Content hash after the event (node-scoped events)
+	Reopened           bool   // Whether the event reopened the node
+}
+
 // RecordOperationID records that the event at seq carried operation id id.
 // The first occurrence wins, so a multi-event operation maps to its first
 // committed event. This is called by replay; callers normally use HasOperationID.
 func (s *State) RecordOperationID(id string, seq int) {
+	s.RecordOperation(id, OperationRecord{Seq: seq})
+}
+
+// RecordOperation records the full binding of an operation id. The first
+// occurrence wins, so a retry never rebinds an id to a later event.
+func (s *State) RecordOperation(id string, rec OperationRecord) {
 	if id == "" {
 		return
 	}
 	if s.operationIDs == nil {
-		s.operationIDs = make(map[string]int)
+		s.operationIDs = make(map[string]OperationRecord)
 	}
 	if _, exists := s.operationIDs[id]; !exists {
-		s.operationIDs[id] = seq
+		s.operationIDs[id] = rec
 	}
 }
 
 // HasOperationID reports whether an event carrying the given operation id was
 // applied, and if so at which ledger sequence. An empty id is never found.
 func (s *State) HasOperationID(id string) (seq int, ok bool) {
+	rec, ok := s.LookupOperation(id)
+	return rec.Seq, ok
+}
+
+// LookupOperation returns the full binding for an operation id. An empty id is
+// never found.
+func (s *State) LookupOperation(id string) (OperationRecord, bool) {
 	if id == "" || s.operationIDs == nil {
-		return 0, false
+		return OperationRecord{}, false
 	}
-	seq, ok = s.operationIDs[id]
-	return seq, ok
+	rec, ok := s.operationIDs[id]
+	return rec, ok
 }
 
 // AllChildrenValidated returns true if all direct children of the node are validated.

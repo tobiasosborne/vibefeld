@@ -33,7 +33,7 @@ Requirements:
   - You must be the owner of the node (or provide --owner)
   - The node must be in 'pending', 'draft' or 'needs_refinement' state; a
     'validated' node requires --reopen, which records the statement change and
-    the validated -> pending transition in one node_amended event
+    the validated -> pending transition in one node_amended_reopened event
   - The node must not be claimed by another agent
 
 For correcting dependency edges specifically, use 'af amend-deps', which knows
