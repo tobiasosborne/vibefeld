@@ -102,6 +102,13 @@ refute/archive/amend/reopen), and asserts:
 5. a validated sibling of an admitted node with a clean ancestor chain and no
    other results is not tainted.
 
+A separate ledger-backed test
+(`internal/state/replay_taint_test.go::TestReplayTaint_IncrementalEqualsAuthoritative`)
+applies a real event sequence one event at a time, propagating taint
+incrementally after each, and asserts it converges to a full `Replay` plus the
+authoritative pass on a graph whose admitted node is cited through a reference
+dependency.
+
 Mismatches report the minimal graph (seed, nodes, types, states, edges). The
 suite also includes explicit cases for dependency-vs-child equality, severed
 and missing dependencies, hypothesis-use, legacy cycles and sibling separation.
