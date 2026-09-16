@@ -39,18 +39,18 @@ type RecordProofResult struct {
 	Released           bool
 }
 
-// RecordProof atomically records a prover's proof step. Under ONE CAS-protected
-// state read it: (1) verifies ParentID is a current prover job (matching the
-// export's prover_ready classification) — rk B1's stale-role guard, so a proof
+// RecordProof records a prover's proof step. Under ONE state read it: (1)
+// verifies ParentID is a current prover job (matching the export's
+// prover_ready classification) — rk B1's stale-role guard, so a proof
 // generated for a node no longer classified for prover work is refused;
 // (2) verifies ExpectHash (if supplied) still matches ParentID's content hash —
 // rk B1's stale-bytes guard; (3) refuses a node claimed by a different owner;
 // (4) creates the children (with per-child dependencies, rk B2); (5) resolves
 // every open challenge on ParentID (rk FU3's challenge disposition); and
-// (6) releases ParentID if the caller held its claim (rk FU3's release). All
-// events append together (appendBulkIfSequence, CAS on the first) so a
-// "recorded proof" is a single all-or-first-fails transition — the driver
-// counts it as progress only on success.
+// (6) releases ParentID if the caller held its claim (rk FU3's release). The
+// batch is serialized by the ledger lock with a batch-wide sequence check, so a
+// "recorded proof" is a single all-or-first-fails transition; a crash leaves a
+// valid prefix rather than a corrupt ledger.
 func (s *ProofService) RecordProof(spec RecordProofSpec) (*RecordProofResult, error) {
 	if len(spec.Children) == 0 {
 		return nil, fmt.Errorf("%w: at least one child specification is required", ErrEmptyInput)

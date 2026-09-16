@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 )
 
@@ -56,9 +57,10 @@ func fsyncDir(dir string) error {
 	}
 	defer d.Close()
 	if err := d.Sync(); err != nil {
-		// Some platforms/filesystems do not support fsync on a directory.
-		// Treat that as best-effort rather than failing the append.
-		if errors.Is(err, os.ErrInvalid) {
+		// Some platforms/filesystems do not support fsync on a directory
+		// (EINVAL) or do not implement it (ENOTSUP). Treat those as best-effort
+		// rather than failing the append; the rename itself is still atomic.
+		if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTSUP) {
 			return nil
 		}
 		return fmt.Errorf("failed to fsync ledger directory: %w", err)
