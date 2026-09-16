@@ -212,8 +212,11 @@ func verifyAgentChallenges(svc *service.ProofService, nodeIDs []service.NodeID, 
 func performSingleAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeID service.NodeID, withNote, format, agent, expectHash string) error {
 	acceptErr := svc.AcceptNodeWithExpectation(nodeID, withNote, agent, "", expectHash)
 	if acceptErr != nil {
-		if strings.Contains(acceptErr.Error(), "claim-test") {
-			return fmt.Errorf("node %s is marked as crux and has no passing claim-test.\nRun 'af claim-test %s --script <path>' first", nodeID.String(), nodeID.String())
+		if errors.Is(acceptErr, service.ErrClaimTestStale) {
+			return fmt.Errorf("node %s is marked as crux and its only passing claim-test is stale (it was run against an older revision of the node).\nRe-run 'af claim-test %s --script <path>' and accept again: %w", nodeID.String(), nodeID.String(), acceptErr)
+		}
+		if errors.Is(acceptErr, service.ErrClaimTestRequired) {
+			return fmt.Errorf("node %s is marked as crux and has no passing claim-test.\nRun 'af claim-test %s --script <path>' first: %w", nodeID.String(), nodeID.String(), acceptErr)
 		}
 		if errors.Is(acceptErr, service.ErrBlockingChallenges) {
 			return handleBlockingChallengesError(cmd, svc, nodeID, format, acceptErr)
@@ -278,7 +281,10 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote,
 // NodeValidated event, same convention as performSingleAcceptance.
 func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format, agent string) error {
 	if err := svc.AcceptNodeBulkWithVerifier(nodeIDs, agent, ""); err != nil {
-		if strings.Contains(err.Error(), "claim-test") {
+		if errors.Is(err, service.ErrClaimTestStale) {
+			return fmt.Errorf("a crux node's only passing claim-test is stale (re-run 'af claim-test <node-id> --script <path>'): %w", err)
+		}
+		if errors.Is(err, service.ErrClaimTestRequired) {
 			return fmt.Errorf("a crux node has no passing claim-test: %w\nRun 'af claim-test <node-id> --script <path>' first", err)
 		}
 		if errors.Is(err, service.ErrBlockingChallenges) {

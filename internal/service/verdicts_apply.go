@@ -227,7 +227,7 @@ func (s *ProofService) applyAcceptVerdict(nodeID types.NodeID, item verdicts.Ite
 		return "rejected:reviewer-equals-author", err.Error(), nil
 	case stderrors.Is(err, ErrNodeNotFound):
 		return "rejected:node-not-found", err.Error(), nil
-	case strings.Contains(err.Error(), "claim-test"):
+	case stderrors.Is(err, ErrClaimTestRequired):
 		return "blocked-by:claim-test-required", err.Error(), nil
 	case strings.Contains(err.Error(), "children not yet validated"):
 		return "blocked-by:children-not-validated", err.Error(), nil

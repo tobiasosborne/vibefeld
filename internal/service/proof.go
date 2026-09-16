@@ -844,7 +844,7 @@ func (s *ProofService) buildAcceptEvents(st *state.State, id types.NodeID, note,
 	// current content. A legacy test (no recorded hash) still counts.
 	if n.Crux && !st.HasPassingClaimTestForContent(id, n.ContentHash) {
 		if st.HasStalePassingClaimTest(id, n.ContentHash) {
-			return nil, fmt.Errorf("%w: node %s (only passing claim-test is stale: it was run against an older content hash; re-run 'af claim-test')", ErrClaimTestRequired, id.String())
+			return nil, fmt.Errorf("%w: %w: node %s (only passing claim-test is stale: it was run against an older content hash; re-run 'af claim-test')", ErrClaimTestRequired, ErrClaimTestStale, id.String())
 		}
 		return nil, fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
 	}
@@ -959,7 +959,7 @@ func (s *ProofService) AcceptNodeBulkWithVerifier(ids []types.NodeID, verifiedBy
 			// Check crux nodes require a passing claim-test matching current content
 			if n.Crux && !st.HasPassingClaimTestForContent(id, n.ContentHash) {
 				if st.HasStalePassingClaimTest(id, n.ContentHash) {
-					return nil, fmt.Errorf("%w: node %s (only passing claim-test is stale: it was run against an older content hash; re-run 'af claim-test')", ErrClaimTestRequired, id.String())
+					return nil, fmt.Errorf("%w: %w: node %s (only passing claim-test is stale: it was run against an older content hash; re-run 'af claim-test')", ErrClaimTestRequired, ErrClaimTestStale, id.String())
 				}
 				return nil, fmt.Errorf("%w: node %s", ErrClaimTestRequired, id.String())
 			}
@@ -1744,7 +1744,14 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 var ErrCircularDependency = aferrors.New(aferrors.DEPENDENCY_CYCLE, "circular dependency detected")
 
 // ErrClaimTestRequired is returned when a crux node is accepted without a passing claim-test.
-var ErrClaimTestRequired = aferrors.New(aferrors.NODE_BLOCKED, "crux node requires passing claim-test before acceptance")
+var ErrClaimTestRequired = aferrors.New(aferrors.CLAIM_TEST_REQUIRED, "crux node requires passing claim-test before acceptance")
+
+// ErrClaimTestStale is returned when a crux node's only passing claim-test was
+// run against a different content hash than the node's current content, so it
+// cannot gate acceptance. It is a plain sentinel wrapped alongside
+// ErrClaimTestRequired so errors.Is can name the staleness specifically while
+// callers that only care that a claim-test is missing still match.
+var ErrClaimTestStale = errors.New("crux claim-test is stale relative to current content")
 
 // AmendNode allows a prover to correct the statement of a node they own.
 // The original statement is preserved in the amendment history.
