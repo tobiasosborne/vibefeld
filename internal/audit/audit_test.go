@@ -113,7 +113,8 @@ func TestHashMismatch_Positive(t *testing.T) {
 	st := state.NewState()
 	n := addNode(t, st, "1", schema.NodeTypeClaim, nil, node.NodeOptions{})
 	validate(t, st, "1", 1)
-	n.ContentHash = "moved"
+	// Mutate CONTENT, not the cached hash: the check recomputes it.
+	n.Statement = "moved " + n.Statement
 
 	f := findingFor(t, Run(st, Options{}), CodeHashMismatch)
 	if f.Status != StatusCurrent || !IsStrictCurrent(f) {
@@ -436,8 +437,8 @@ func TestStrict_PassedOnlyWhenNoStrictCurrent(t *testing.T) {
 		t.Fatalf("clean strict report = %+v", passed.Summary)
 	}
 
-	// Break the hash to create a strict-current finding.
-	st.GetNode(mustID(t, "1")).ContentHash = "moved"
+	// Break the content (not the cached hash) to create a strict-current finding.
+	st.GetNode(mustID(t, "1")).Statement = "moved again"
 	failed := Run(st, Options{Strict: true})
 	if failed.Passed || failed.Summary.StrictCurrent == 0 {
 		t.Fatalf("broken strict report = %+v", failed.Summary)
