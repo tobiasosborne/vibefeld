@@ -39,13 +39,15 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Find af binary - check project root first, then PATH
-if [[ -x "$PROJECT_ROOT/af" ]]; then
-    AF_CMD="$PROJECT_ROOT/af"
-elif command -v af &> /dev/null; then
-    AF_CMD="af"
-else
-    AF_CMD=""  # Will be checked later
+# Find af binary - an explicit AF_CMD override wins, then project root, then PATH
+if [[ -z "${AF_CMD:-}" ]]; then
+    if [[ -x "$PROJECT_ROOT/af" ]]; then
+        AF_CMD="$PROJECT_ROOT/af"
+    elif command -v af &> /dev/null; then
+        AF_CMD="af"
+    else
+        AF_CMD=""  # Will be checked later
+    fi
 fi
 
 # Default configuration
@@ -301,6 +303,109 @@ check_proof_status() {
     fi
 }
 
+# proof_complete reports whether the proof is genuinely done. It deliberately
+# does NOT read the root's epistemic state alone: a validated root can still
+# sit on admitted/tainted support or cite an unverified external reference.
+#
+# Completion requires ALL of:
+#   - root epistemic_state == "validated"
+#   - root taint_state == "clean"
+#   - root support_current == true (D4). The field is REQUIRED: if `af status
+#     -f json` does not emit it, this af build predates D4 and completion is
+#     NOT reached. auto-prove must never declare success against a binary that
+#     cannot attest support is current.
+#   - no validated node cites an external reference that is still pending.
+#     The citation set comes from the machine-readable per-node `externals`
+#     list in `af export --graph json`, never from scanning `.context`.
+#
+# Fail closed: any af or jq failure in this check means "not complete", and the
+# error is printed. Failures are never silently converted into an empty list.
+proof_complete() {
+    local status_json
+    if ! status_json=$($AF_CMD status -f json 2>&1); then
+        log_error "Completion check failed: 'af status -f json' errored: $status_json"
+        return 1
+    fi
+
+    local root_epistemic root_taint
+    if ! root_epistemic=$(jq -r '.nodes[] | select(.id == "1") | .epistemic_state // empty' <<< "$status_json"); then
+        log_error "Completion check failed: could not parse root epistemic_state from status JSON"
+        return 1
+    fi
+    if ! root_taint=$(jq -r '.nodes[] | select(.id == "1") | .taint_state // empty' <<< "$status_json"); then
+        log_error "Completion check failed: could not parse root taint_state from status JSON"
+        return 1
+    fi
+    if [[ -z "$root_epistemic" || -z "$root_taint" ]]; then
+        log_error "Completion check failed: status JSON has no root node '1'"
+        return 1
+    fi
+
+    [[ "$root_epistemic" == "validated" ]] || return 1
+    [[ "$root_taint" == "clean" ]] || return 1
+
+    # D4 support_current is REQUIRED. Distinguish "field absent" from "false":
+    # jq's // operator treats false as empty, so use has().
+    local support
+    if ! support=$(jq -r '(.nodes[] | select(.id == "1")) as $n | if ($n | has("support_current")) then ($n.support_current | tostring) else "missing" end' <<< "$status_json"); then
+        log_error "Completion check failed: could not read support_current from status JSON"
+        return 1
+    fi
+    case "$support" in
+        true)
+            ;;
+        missing)
+            log_error "Completion check failed: 'af status -f json' has no support_current field (af predates D4); cannot confirm support is current."
+            return 1
+            ;;
+        *)
+            log_warning "Root is validated but support_current is '$support'; not complete."
+            return 1
+            ;;
+    esac
+
+    # External-reference gate, from machine-readable data only. The per-node
+    # externals list is emitted by af export --graph json.
+    local export_json
+    if ! export_json=$($AF_CMD export --graph json 2>&1); then
+        log_error "Completion check failed: 'af export --graph json' errored: $export_json"
+        return 1
+    fi
+
+    local cited
+    if ! cited=$(jq -r '[.nodes[] | select(.epistemic_state == "validated") | .externals[]?] | unique | .[]' <<< "$export_json"); then
+        log_error "Completion check failed: could not parse per-node externals from export JSON"
+        return 1
+    fi
+
+    if [[ -n "$cited" ]]; then
+        local pending_json
+        if ! pending_json=$($AF_CMD pending-refs -f json 2>&1); then
+            log_error "Completion check failed: 'af pending-refs -f json' errored: $pending_json"
+            return 1
+        fi
+
+        local pending
+        if ! pending=$(jq -r '.[] | (.id // empty), (.name // empty)' <<< "$pending_json" | sed -e 's/^external://' -e 's/^ext://'); then
+            log_error "Completion check failed: could not parse pending-refs JSON"
+            return 1
+        fi
+
+        local ref norm
+        while IFS= read -r ref; do
+            [[ -z "$ref" ]] && continue
+            norm="${ref#external:}"
+            norm="${norm#ext:}"
+            if [[ -n "$pending" ]] && grep -qxF "$norm" <<< "$pending"; then
+                log_warning "Completion blocked: validated node cites unverified external reference '$norm'."
+                return 1
+            fi
+        done <<< "$cited"
+    fi
+
+    return 0
+}
+
 # Get available jobs as JSON
 get_jobs() {
     $AF_CMD jobs -f json 2>/dev/null || echo '{"prover_jobs":[],"verifier_jobs":[]}'
@@ -502,10 +607,14 @@ record_attempt() {
     fi
 }
 
-# Build agent prompt for a job
+# Build agent prompt for a job. Every generated command carries the per-worker
+# identity (worker_id) as --owner for commands that own a claim and as --agent
+# for accept; challenge/resolve-challenge carry it in AF_AGENT_ID because those
+# commands have no identity flag.
 build_agent_prompt() {
     local job_type="$1"
     local job_id="$2"
+    local worker_id="$3"
 
     local context
     context=$($AF_CMD get "$job_id" --checklist 2>/dev/null || $AF_CMD get "$job_id" 2>/dev/null)
@@ -514,20 +623,22 @@ build_agent_prompt() {
         cat <<EOF
 You are a VERIFIER agent for a mathematical proof. Your job is to rigorously verify or challenge proof node $job_id.
 
+WORKER ID: $worker_id (pass this as --owner when claiming and --agent when accepting)
+
 ROLE: You must ATTACK the proof - look for ANY weakness, gap, or error.
 
 CONTEXT:
 $context
 
 INSTRUCTIONS:
-1. First, claim the node: $AF_CMD claim $job_id --role verifier
+1. First, claim the node: $AF_CMD claim $job_id --owner $worker_id --role verifier
 2. Read the verification checklist carefully
 3. If the proof step is CORRECT and COMPLETE:
-   - Run: $AF_CMD accept $job_id --note "Verified: [brief explanation]"
+   - Run: $AF_CMD accept $job_id --agent $worker_id --with-note "Verified: [brief explanation]" --confirm
 4. If there is ANY issue (gap, error, unclear reasoning):
-   - Run: $AF_CMD challenge $job_id --target <target> --severity <severity> --reason "<detailed reason>"
+   - Run: AF_AGENT_ID=$worker_id $AF_CMD challenge $job_id --target <target> --severity <severity> --reason "<detailed reason>"
    - Use critical/major for blocking issues, minor/note for suggestions
-5. Release the claim if you cannot complete: $AF_CMD release $job_id
+5. Release the claim if you cannot complete: $AF_CMD release $job_id --owner $worker_id
 
 Be STRICT. Mathematical proofs must be airtight. If in doubt, challenge.
 EOF
@@ -535,19 +646,22 @@ EOF
         cat <<EOF
 You are a PROVER agent for a mathematical proof. Your job is to address challenges on proof node $job_id.
 
+WORKER ID: $worker_id (pass this as --owner when claiming, refining and releasing)
+
 ROLE: You must DEFEND and REFINE the proof - fix issues or provide more detail.
 
 CONTEXT:
 $context
 
 INSTRUCTIONS:
-1. First, claim the node: $AF_CMD claim $job_id --role prover
+1. First, claim the node: $AF_CMD claim $job_id --owner $worker_id --role prover
 2. Review the open challenges on this node
 3. For each challenge:
-   - If you can fix it: Use $AF_CMD refine, $AF_CMD amend, or other commands
-   - If the challenge is resolved: $AF_CMD resolve-challenge <challenge-id> --note "Fixed by..."
+   - To fix it by adding a step: $AF_CMD refine $job_id "Sub-step statement" --owner $worker_id
+   - To correct the statement: $AF_CMD amend $job_id --owner $worker_id --statement "Corrected statement"
+   - If the challenge is resolved: AF_AGENT_ID=$worker_id $AF_CMD resolve-challenge <challenge-id> --response "Fixed by..."
    - If the proof step is actually wrong: Consider $AF_CMD archive or $AF_CMD refute
-4. After addressing challenges, release: $AF_CMD release $job_id
+4. After addressing challenges, release: $AF_CMD release $job_id --owner $worker_id
 
 Be THOROUGH. Address every concern raised by verifiers.
 EOF
@@ -655,16 +769,20 @@ main() {
         ITERATION=$((ITERATION + 1))
         log "=== Iteration $ITERATION / $MAX_ITERATIONS (agents: $AGENT_CALLS / $MAX_AGENTS) ==="
 
-        # Check proof status
+        # Check proof status. Completion is not the root's epistemic state
+        # alone; proof_complete additionally requires clean taint, no pending
+        # external reference cited by a validated node, and (when present)
+        # support_current.
         local root_state
         root_state=$(check_proof_status)
 
+        if proof_complete; then
+            log_success "PROOF COMPLETE! Root is validated, taint is clean, and no cited external reference is pending."
+            $AF_CMD progress
+            exit 0
+        fi
+
         case "$root_state" in
-            validated)
-                log_success "PROOF COMPLETE! Root node is validated."
-                $AF_CMD progress
-                exit 0
-                ;;
             refuted)
                 log_error "PROOF REFUTED. Root node has been refuted."
                 $AF_CMD status
@@ -751,7 +869,8 @@ main() {
             exclude_list="${exclude_list:+$exclude_list }$job_id"
 
             local prompt
-            prompt=$(build_agent_prompt "$job_type" "$job_id")
+            local worker_id="worker-$(echo "$job_id" | tr '.' '-')-${AGENT_CALLS}-$$"
+            prompt=$(build_agent_prompt "$job_type" "$job_id" "$worker_id")
 
             AGENT_CALLS=$((AGENT_CALLS + 1))
 

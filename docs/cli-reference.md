@@ -191,6 +191,10 @@ validated node means its verdict is still supported by the current proof.
 
 **Next Steps:** Use `af jobs` to see available work, or `af get <node-id>` for node details.
 
+**Jobs summary:** the `Prover:` / `Verifier:` counts in `af status` are computed
+by the authoritative `internal/jobs` classifier over the whole workspace, so
+they always match `af jobs` (including for a workspace with a mix of states).
+
 ---
 
 ### `get`
@@ -237,6 +241,16 @@ verdict adds a `Support: NOT CURRENT (<CAUSE>)` line.
 
 **Next Steps:** Use `af claim` to work on the node, or `af challenge` to raise an objection.
 
+**Detail fields:** `af get` surfaces the recorded acceptance provenance
+(`validated_by`, `validation_batch_id`, `validated_content_hash`), the claim
+owner and times (`claimed_by`, `claimed_at`, `claim_expires_at`), and the
+authoritative job readiness (`prover_ready`, `verifier_ready`) in both text and
+JSON. Job readiness comes from the same `internal/jobs` classifier that
+`af jobs` uses. `verifier_ready` means bottom-up ready: the node is a verifier
+job (pending, available, no open blocking challenge) **and every child is
+cleared** (validated, admitted or archived), matching `af jobs` and
+`af export --graph json`.
+
 ---
 
 ### `jobs`
@@ -258,7 +272,7 @@ af jobs [flags]
 
 **Job Types:**
 
-- **Verifier jobs**: Nodes ready for review (pending, available, no open challenges)
+- **Verifier jobs**: Nodes ready for review (pending, available, no open blocking challenges, and every child cleared — the bottom-up-ready `verifier_ready` condition)
 - **Prover jobs**: Nodes with open challenges that need addressing
 
 **Examples:**
@@ -497,17 +511,15 @@ af refine <parent-id> [statement]... [flags]
 | Flag | Short | Type | Required | Default | Description |
 |------|-------|------|----------|---------|-------------|
 | `--owner` | `-o` | string | Yes | | Agent/owner name (must match claim) |
-| `--statement` | `-s` | string | No | | (Deprecated) Use positional args instead |
 | `--type` | `-t` | string | No | "claim" | Node type: claim, local_assume, local_discharge, case, qed |
 | `--justification` | `-j` | string | No | "assumption" | Inference type |
 | `--depends` | | string | No | | Comma-separated node IDs this node depends on |
 | `--requires-validated` | | string | No | | Node IDs that must be validated before acceptance |
-| `--sibling` | `-b` | bool | No | false | (Deprecated) Use `refine-sibling` command instead |
 | `--children` | | string | No | | JSON array of child specifications |
 | `--dir` | `-d` | string | No | "." | Proof directory |
 | `--format` | `-f` | string | No | "text" | Output format: text or json |
 
-**Note:** Prefer positional arguments over `--statement`. The `--statement` flag is deprecated.
+**Note:** Child statements are positional arguments; the old `--statement`/`-s` flag was removed. Use `af refine-sibling` for breadth.
 
 **Inference / justification:** a `--justification` (and per-child `"inference"`) is a free-text derivation label — any non-blank string is accepted and stored verbatim; an omitted justification defaults to `assumption`. The following are the *recognized* logical rules that carry extra name/form metadata (use them where they genuinely apply); domain steps such as `multiplication_by_positive` or `monotonicity` are equally valid:
 
@@ -516,22 +528,22 @@ af refine <parent-id> [statement]... [flags]
 **Examples:**
 ```bash
 # Single child
-af refine 1 --owner agent1 --statement "First subgoal"
+af refine 1 "First subgoal" --owner agent1
 
 # Multiple children via positional args
 af refine 1 "Step A" "Step B" "Step C" --owner agent1
 
 # With type and justification
-af refine 1 -o agent1 -s "Case 1" --type case --justification local_assume
+af refine 1 "Case 1" -o agent1 --type case --justification local_assume
 
 # With dependencies
-af refine 1 -o agent1 -s "By step 1.1, we have..." --depends 1.1
+af refine 1 "By step 1.1, we have..." -o agent1 --depends 1.1
 
 # Multiple dependencies
-af refine 1 -o agent1 -s "Combining steps 1.1 and 1.2..." --depends 1.1,1.2
+af refine 1 "Combining steps 1.1 and 1.2..." -o agent1 --depends 1.1,1.2
 
 # Validation dependencies
-af refine 1.5 -o agent1 -s "Step 1.5" --requires-validated 1.1,1.2,1.3,1.4
+af refine 1.5 "Step 1.5" -o agent1 --requires-validated 1.1,1.2,1.3,1.4
 
 # JSON children specification
 af refine 1 --owner agent1 --children '[{"statement":"Child 1"},{"statement":"Child 2","type":"case"}]'
@@ -1799,11 +1811,14 @@ af health [flags]
 |------|-------|------|---------|-------------|
 | `--dir` | `-d` | string | "." | Proof directory path |
 | `--format` | `-f` | string | "text" | Output format |
+| `--hotspots` | | int | 5 | Number of top rework hotspots to report |
+| `--rework-warn` | | int | 5 | Rework events per node at which a hotspot is a warning |
+| `--claim-stall` | | duration | 0 | Warn when a claim has not been refreshed within this window (0 = each claim's own lease length) |
 
 **Health Statuses:**
 | Status | Description |
 |--------|-------------|
-| `healthy` | Proof has available work and is making progress |
+| `healthy` | Proof has available work and no warnings |
 | `warning` | Proof has potential issues but is not stuck |
 | `stuck` | Proof cannot make progress without intervention |
 
@@ -1811,8 +1826,17 @@ af health [flags]
 - All leaf nodes have open challenges
 - No available prover or verifier jobs
 - Circular dependencies
+- Open challenges, with severity and age (informational)
+- Stalled claims (no refresh within the claim-stall window; default is each claim's own lease length, independent of the ledger-lock timeout) and stale claims (expired), with owner and expiry
+- Untouched critical outline stages
 - Validated nodes whose derived `support_current` is false, grouped by the
   stable cause (`support_not_current_<CAUSE>`) and naming the responsible node
+
+**Rework is descriptive, not an alarm.** For each node health counts resolved
+challenges, statement and dependency amendments, and refuted children. The top
+`--hotspots` nodes are listed; a node at or above `--rework-warn` is marked as
+a warning. Repeated scrutiny of a hard node is normal and is *not* evidence
+that the node or the conjecture is false.
 
 ---
 

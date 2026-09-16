@@ -19,25 +19,29 @@ func newJobsCmd() *cobra.Command {
 		Short:   "List available jobs",
 		Long: `List available prover and verifier jobs in the proof.
 
-Verifier jobs are nodes ready for review (breadth-first model):
+Verifier jobs are nodes ready for review (bottom-up-ready):
   - Has a statement
   - EpistemicState = "pending" (not yet verified)
   - WorkflowState = "available" (not claimed or blocked)
-  - Has NO open/unresolved challenges
+  - Has NO open/unresolved blocking challenges
+  - Every direct child is cleared (validated, admitted or archived)
 
 Prover jobs are nodes with challenges that need addressing:
   - EpistemicState = "pending"
   - Has one or more open challenges
 
-Every new node is immediately a verifier job. When a verifier raises a
-challenge, the node becomes a prover job. When challenges are resolved,
-the node returns to verifier territory for final acceptance.
+Every new node becomes a verifier job once its children are cleared. When a
+verifier raises a challenge, the node becomes a prover job. When challenges are
+resolved, the node returns to verifier territory for final acceptance.
+
+Verifier readiness (the verifier_ready field in af get and af export
+--graph json) is exactly this bottom-up-ready condition.
 
 Examples:
   af jobs                     List all available jobs
   af jobs --role prover       List only prover jobs
   af jobs --role verifier     List only verifier jobs
-  af jobs --ready             Only verifier jobs whose children are all cleared
+  af jobs --ready             Alias for the default verifier-ready filter
   af jobs --format json       Output in JSON format
 
 The --ready filter returns only verifier jobs that can be accepted now: every
@@ -57,7 +61,7 @@ Workflow:
 	cmd.Flags().StringP("dir", "d", ".", "Proof directory path")
 	cmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
 	cmd.Flags().StringP("role", "r", "", "Filter by role (prover or verifier)")
-	cmd.Flags().Bool("ready", false, "Only verifier jobs whose children are all cleared (acceptable now)")
+	cmd.Flags().Bool("ready", false, "Only verifier jobs whose children are all cleared (the default; kept for compatibility)")
 
 	return cmd
 }
@@ -119,6 +123,12 @@ func runJobs(cmd *cobra.Command, args []string) error {
 	// Find jobs
 	jobResult := service.FindJobs(nodes, nodeMap, challengeMap)
 
+	// verifier_ready means bottom-up ready everywhere: an available pending
+	// node with no blocking challenge AND every child cleared. Apply that
+	// filter by default so `af jobs`, `af status`, `af get` and
+	// `af export --graph json` all agree on which verifier jobs exist.
+	jobResult.VerifierJobs = service.FilterReadyVerifierJobs(jobResult.VerifierJobs, nodeMap)
+
 	// Apply role filter if specified
 	if roleSet && role == "prover" {
 		jobResult = &service.JobResult{
@@ -132,19 +142,17 @@ func runJobs(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Apply --ready filter: verifier jobs whose children are all cleared.
-	// This is a verifier-only concept, so it drops prover jobs; combining it
-	// with --role prover is contradictory.
+	// Apply --ready filter: kept for backwards compatibility. Verifier jobs are
+	// already bottom-up ready by default, so this is now a no-op guard against
+	// requesting a combination that cannot produce a prover job.
 	if cmd.Flags().Changed("ready") {
 		ready, _ := cmd.Flags().GetBool("ready")
 		if ready {
 			if roleSet && role == "prover" {
 				return fmt.Errorf("--ready applies to verifier jobs and cannot be combined with --role prover")
 			}
-			jobResult = &service.JobResult{
-				ProverJobs:   nil,
-				VerifierJobs: service.FilterReadyVerifierJobs(jobResult.VerifierJobs, nodeMap),
-			}
+			jobResult.ProverJobs = nil
+			jobResult.VerifierJobs = service.FilterReadyVerifierJobs(jobResult.VerifierJobs, nodeMap)
 		}
 	}
 

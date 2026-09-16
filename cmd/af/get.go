@@ -192,7 +192,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)
 		amendments := st.GetAmendmentHistory(nodes[0].ID)
 		scopeInfo := getScopeInfoJSON(st, nodes[0].ID)
-		output := nodeToJSONFull(nodes[0], nodeChallenges, amendments, scopeInfo, supportMap[nodes[0].ID.String()])
+		output := nodeToJSONFull(nodes[0], nodeChallenges, amendments, scopeInfo, st, supportMap[nodes[0].ID.String()])
 		data, err := json.Marshal(output)
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -208,7 +208,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 			nodeChallenges := filterChallengesForNode(challenges, n.ID)
 			amendments := st.GetAmendmentHistory(n.ID)
 			scopeInfo := getScopeInfoJSON(st, n.ID)
-			jsonNodes = append(jsonNodes, nodeToJSONFull(n, nodeChallenges, amendments, scopeInfo, supportMap[n.ID.String()]))
+			jsonNodes = append(jsonNodes, nodeToJSONFull(n, nodeChallenges, amendments, scopeInfo, st, supportMap[n.ID.String()]))
 		}
 		data, err := json.Marshal(jsonNodes)
 		if err != nil {
@@ -265,8 +265,10 @@ func nodeToJSONBasic(n *node.Node) map[string]interface{} {
 	}
 }
 
-// nodeToJSONFull creates a full JSON representation of a node.
-func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []service.Amendment, scopeInfo map[string]interface{}, sup support.SupportStatus) map[string]interface{} {
+// nodeToJSONFull creates a full JSON representation of a node. It takes both
+// the service state (for the D7/D11 claim and job fields) and the precomputed
+// support status (for support_current).
+func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []service.Amendment, scopeInfo map[string]interface{}, st *service.State, sup support.SupportStatus) map[string]interface{} {
 	result := map[string]interface{}{
 		"id":              n.ID.String(),
 		"type":            string(n.Type),
@@ -289,6 +291,50 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 		}
 	}
 
+	if n.Author != "" {
+		result["author"] = n.Author
+	}
+
+	if n.ProofAuthor != "" {
+		result["proof_author"] = n.ProofAuthor
+	}
+
+	// Verifier identity and batch recorded at acceptance (D3/0.1.x), so `af get`
+	// surfaces the same fields `af export --graph json` already does.
+	if n.ValidatedBy != "" {
+		result["validated_by"] = n.ValidatedBy
+	}
+	if n.ValidationBatchID != "" {
+		result["validation_batch_id"] = n.ValidationBatchID
+	}
+
+	// Claim details: owner, acquisition time, and expiry. ClaimedAt holds the
+	// expiry; ClaimedSince holds the acquisition time.
+	if n.ClaimedBy != "" {
+		result["claimed_by"] = n.ClaimedBy
+	}
+	if !n.ClaimedSince.IsZero() {
+		result["claimed_at"] = n.ClaimedSince.String()
+	}
+	if !n.ClaimedAt.IsZero() {
+		result["claim_expires_at"] = n.ClaimedAt.String()
+		result["expires_at"] = n.ClaimedAt.String()
+	}
+
+	// Job readiness from the one authoritative classifier (D11). st may be nil
+	// in tests that build a node without a workspace. verifier_ready uses the
+	// bottom-up ready semantics (every child cleared), matching
+	// `af export --graph json`, status and jobs.
+	if st != nil {
+		challengeMap := st.ChallengeMapForJobs()
+		nodeMap := make(map[string]*node.Node)
+		for _, other := range st.AllNodes() {
+			nodeMap[other.ID.String()] = other
+		}
+		result["prover_ready"] = service.IsProverJob(n, nodeMap, challengeMap)
+		result["verifier_ready"] = service.IsVerifierReady(n, nodeMap, challengeMap)
+	}
+
 	if len(n.Context) > 0 {
 		result["context"] = n.Context
 	}
@@ -303,10 +349,6 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 
 	if len(n.Scope) > 0 {
 		result["scope"] = n.Scope
-	}
-
-	if n.ClaimedBy != "" {
-		result["claimed_by"] = n.ClaimedBy
 	}
 
 	if n.ValidatedContentHash != "" {
@@ -395,6 +437,14 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 				fmt.Fprintf(cmd.OutOrStdout(), " (seq %d)", sup.Seq)
 			}
 			fmt.Fprintln(cmd.OutOrStdout())
+		}
+		if st != nil {
+			challengeMap := st.ChallengeMapForJobs()
+			nodeMap := make(map[string]*node.Node)
+			for _, other := range st.AllNodes() {
+				nodeMap[other.ID.String()] = other
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Prover job: %t\nVerifier job: %t\n", service.IsProverJob(nodes[0], nodeMap, challengeMap), service.IsVerifierReady(nodes[0], nodeMap, challengeMap))
 		}
 		// Show challenges for this node
 		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)

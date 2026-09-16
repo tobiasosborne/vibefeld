@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tobiasosborne/vibefeld/internal/jobs"
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/state"
@@ -52,9 +53,9 @@ func RenderStatus(s *state.State, limit, offset int) string {
 	renderStatisticsWithPagination(&sb, paginatedNodes, len(nodes), limit, offset)
 	sb.WriteString("\n")
 
-	// 4. Jobs section (calculated from paginated nodes)
+	// 4. Jobs section (calculated from the shared internal/jobs classifier)
 	sb.WriteString("--- Jobs ---\n")
-	renderJobs(&sb, s, paginatedNodes)
+	renderJobs(&sb, s)
 	sb.WriteString("\n")
 
 	// 5. Legend section
@@ -163,26 +164,33 @@ func renderStatistics(sb *strings.Builder, nodes []*node.Node) {
 	writeStateCounts(sb, counts)
 }
 
-// renderJobs writes the jobs section to the builder.
-func renderJobs(sb *strings.Builder, s *state.State, nodes []*node.Node) {
-	proverJobs := 0
-	verifierJobs := 0
-
-	for _, n := range nodes {
-		// Prover jobs: available + (draft OR pending OR needs_refinement)
-		// Nodes in draft/needs_refinement state need further development by provers
-		if n.WorkflowState == schema.WorkflowAvailable &&
-			(n.EpistemicState == schema.EpistemicDraft || n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicNeedsRefinement) {
-			proverJobs++
-		}
-
-		// Verifier jobs: claimed + pending + all children validated (or no children)
-		if n.WorkflowState == schema.WorkflowClaimed && n.EpistemicState == schema.EpistemicPending {
-			if s.AllChildrenValidated(n.ID) {
-				verifierJobs++
-			}
-		}
+// jobCountsForState returns the authoritative prover and verifier job counts
+// from internal/jobs over every node in the state (not just the displayed or
+// paginated subset), so the af status summary can never disagree with af jobs.
+// The verifier count is the bottom-up-ready set (children cleared), i.e.
+// jobs.FilterReadyVerifierJobs — the same `verifier_ready` meaning af get and
+// `af export --graph json` use.
+func jobCountsForState(s *state.State) (int, int) {
+	if s == nil {
+		return 0, 0
 	}
+	nodes := s.AllNodes()
+	nodeMap := make(map[string]*node.Node, len(nodes))
+	for _, n := range nodes {
+		nodeMap[n.ID.String()] = n
+	}
+	jr := jobs.FindJobs(nodes, nodeMap, s.ChallengeMapForJobs())
+	if jr == nil {
+		return 0, 0
+	}
+	return len(jr.ProverJobs), len(jobs.FilterReadyVerifierJobs(jr.VerifierJobs, nodeMap))
+}
+
+// renderJobs writes the jobs section to the builder. Counts come from the
+// shared internal/jobs classifier over the whole state, so the summary matches
+// af jobs even when the tree display is paginated or filtered.
+func renderJobs(sb *strings.Builder, s *state.State) {
+	proverJobs, verifierJobs := jobCountsForState(s)
 
 	sb.WriteString(fmt.Sprintf("  Prover: %d nodes awaiting refinement\n", proverJobs))
 	sb.WriteString(fmt.Sprintf("  Verifier: %d nodes ready for review\n", verifierJobs))
@@ -258,45 +266,46 @@ func FilterUrgentNodes(s *state.State) []UrgentItem {
 		})
 	}
 
-	// 2. Prover jobs: available + (draft OR pending OR needs_refinement)
+	// 2. Prover jobs: the shared internal/jobs classifier decides, so --urgent
+	// cannot disagree with af jobs.
+	nodeMap := make(map[string]*node.Node, len(s.AllNodes()))
 	for _, n := range s.AllNodes() {
+		nodeMap[n.ID.String()] = n
+	}
+	challengeMap := s.ChallengeMapForJobs()
+	for _, n := range jobs.FindProverJobs(s.AllNodes(), nodeMap, challengeMap) {
 		nodeIDStr := n.ID.String()
 		if seenNodes[nodeIDStr] {
 			continue
 		}
-		if n.WorkflowState == schema.WorkflowAvailable &&
-			(n.EpistemicState == schema.EpistemicDraft || n.EpistemicState == schema.EpistemicPending || n.EpistemicState == schema.EpistemicNeedsRefinement) {
-			seenNodes[nodeIDStr] = true
-			details := "Needs refinement"
-			if n.EpistemicState == schema.EpistemicNeedsRefinement {
-				details = "Refinement requested (reopened)"
-			}
-			items = append(items, UrgentItem{
-				NodeID:    nodeIDStr,
-				Statement: n.Statement,
-				Category:  "prover_job",
-				Details:   details,
-			})
+		seenNodes[nodeIDStr] = true
+		details := "Needs refinement"
+		if n.EpistemicState == schema.EpistemicNeedsRefinement {
+			details = "Refinement requested (reopened)"
 		}
+		items = append(items, UrgentItem{
+			NodeID:    nodeIDStr,
+			Statement: n.Statement,
+			Category:  "prover_job",
+			Details:   details,
+		})
 	}
 
-	// 3. Verifier jobs: claimed + pending + all children validated
-	for _, n := range s.AllNodes() {
+	// 3. Verifier jobs: the shared internal/jobs classifier decides, then the
+	// bottom-up-ready filter (children cleared), matching the `verifier_ready`
+	// meaning used by af get and export.
+	for _, n := range jobs.FilterReadyVerifierJobs(jobs.FindVerifierJobs(s.AllNodes(), nodeMap, challengeMap), nodeMap) {
 		nodeIDStr := n.ID.String()
 		if seenNodes[nodeIDStr] {
 			continue
 		}
-		if n.WorkflowState == schema.WorkflowClaimed && n.EpistemicState == schema.EpistemicPending {
-			if s.AllChildrenValidated(n.ID) {
-				seenNodes[nodeIDStr] = true
-				items = append(items, UrgentItem{
-					NodeID:    nodeIDStr,
-					Statement: n.Statement,
-					Category:  "verifier_job",
-					Details:   "Ready for verification",
-				})
-			}
-		}
+		seenNodes[nodeIDStr] = true
+		items = append(items, UrgentItem{
+			NodeID:    nodeIDStr,
+			Statement: n.Statement,
+			Category:  "verifier_job",
+			Details:   "Ready for verification",
+		})
 	}
 
 	return items
@@ -464,7 +473,7 @@ func RenderStatusFiltered(s *state.State, opts StatusOptions) string {
 
 	// Jobs
 	sb.WriteString("--- Jobs ---\n")
-	renderJobs(&sb, s, paginatedNodes)
+	renderJobs(&sb, s)
 	sb.WriteString("\n")
 
 	// Legend (skip in compact mode to save space)

@@ -37,6 +37,14 @@ func FindVerifierJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challen
 	return result
 }
 
+// IsVerifierJob reports whether the node currently qualifies as a verifier job
+// under af's own classifier (the exported form of isVerifierJob). It is the
+// single source of truth for the "ready for review" question, shared by
+// status, get, export and health.
+func IsVerifierJob(n *node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) bool {
+	return isVerifierJob(n, nodeMap, challengeMap)
+}
+
 // isVerifierJob checks if a single node qualifies as a verifier job.
 // A verifier job is a node that is ready for verifier review:
 //   - Has a statement (non-empty)
@@ -114,6 +122,13 @@ func FilterReadyVerifierJobs(verifierJobs []*node.Node, nodeMap map[string]*node
 		}
 	}
 	return result
+}
+
+// IsVerifierReady reports whether n is a verifier job AND all its children are
+// cleared. It is the per-node form of FilterReadyVerifierJobs and the single
+// `verifier_ready` predicate shared by af get, status, jobs and export.
+func IsVerifierReady(n *node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) bool {
+	return isVerifierJob(n, nodeMap, challengeMap) && AllChildrenCleared(n, nodeMap)
 }
 
 // hasOpenChallenges returns true if the node has any open (unresolved) challenges.

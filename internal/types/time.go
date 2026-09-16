@@ -64,6 +64,12 @@ func (ts Timestamp) IsZero() bool {
 	return ts.t.IsZero()
 }
 
+// Time returns the underlying time.Time. It exists so callers that need
+// durations (age, staleness) can use it without string round-trips.
+func (ts Timestamp) Time() time.Time {
+	return ts.t
+}
+
 // MarshalJSON implements json.Marshaler.
 // Timestamps are serialized as ISO8601 strings with nanosecond precision.
 // When nanoseconds are zero, the output is identical to RFC3339.

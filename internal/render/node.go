@@ -80,6 +80,20 @@ func RenderNodeVerbose(n *node.Node) string {
 
 	if n.ClaimedBy != "" {
 		sb.WriteString(fmt.Sprintf("Claimed by: %s\n", n.ClaimedBy))
+		if !n.ClaimedSince.IsZero() {
+			sb.WriteString(fmt.Sprintf("Claimed at: %s\n", n.ClaimedSince.String()))
+		}
+		if !n.ClaimedAt.IsZero() {
+			sb.WriteString(fmt.Sprintf("Claim expires: %s\n", n.ClaimedAt.String()))
+		}
+	}
+
+	// Verifier identity and batch recorded at acceptance (D3/0.1.x).
+	if n.ValidatedBy != "" {
+		sb.WriteString(fmt.Sprintf("Validated by: %s\n", n.ValidatedBy))
+	}
+	if n.ValidationBatchID != "" {
+		sb.WriteString(fmt.Sprintf("Validation batch: %s\n", n.ValidationBatchID))
 	}
 
 	// D3: the content hash the verifier accepted, if recorded. "checked" means

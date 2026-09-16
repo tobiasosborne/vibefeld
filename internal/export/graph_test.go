@@ -462,3 +462,52 @@ func TestExportGraph_NoGenerationTimestamp(t *testing.T) {
 		}
 	}
 }
+
+// TestExportGraph_NodeExternals verifies the per-node machine-readable
+// external-reference list: statement citations (external:NAME) and context
+// entries that name an external are emitted as external IDs, so a driver can
+// gate on `af pending-refs` without scanning free text.
+func TestExportGraph_NodeExternals(t *testing.T) {
+	s := state.NewState()
+
+	ext, err := node.NewExternal("Euclid", "Elements, Book I")
+	if err != nil {
+		t.Fatalf("NewExternal: %v", err)
+	}
+	s.AddExternal(ext)
+
+	withCitations := addTestNode(t, s, "1", "By external:Euclid we are done", schema.NodeTypeClaim,
+		schema.InferenceModusPonens, schema.EpistemicValidated, node.TaintClean)
+	// A context entry may carry the external ID or its name; both resolve.
+	withCitations.Context = []string{ext.ID, "def:not-an-external"}
+	withCitations.ContentHash = withCitations.ComputeContentHash()
+
+	// A node with no citations must omit the field.
+	addTestNode(t, s, "1.1", "No citations here", schema.NodeTypeClaim,
+		schema.InferenceModusPonens, schema.EpistemicPending, node.TaintUnresolved)
+
+	out, err := ExportGraph(s, "ws", nil)
+	if err != nil {
+		t.Fatalf("ExportGraph unexpected error: %v", err)
+	}
+
+	var doc GraphExport
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	byID := map[string]GraphNode{}
+	for _, n := range doc.Nodes {
+		byID[n.ID] = n
+	}
+	got := byID["1"].Externals
+	if len(got) != 1 || got[0] != ext.ID {
+		t.Errorf("node 1 externals = %v, want [%s]", got, ext.ID)
+	}
+	if len(byID["1.1"].Externals) != 0 {
+		t.Errorf("node 1.1 externals = %v, want none", byID["1.1"].Externals)
+	}
+	if strings.Contains(out, "def:not-an-external") {
+		t.Errorf("export must not treat non-external context as an external:\n%s", out)
+	}
+}

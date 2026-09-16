@@ -580,6 +580,22 @@ var FindVerifierJobs = jobs.FindVerifierJobs
 // Re-export of jobs.FilterReadyVerifierJobs.
 var FilterReadyVerifierJobs = jobs.FilterReadyVerifierJobs
 
+// IsProverJob reports whether a node currently qualifies as a prover job under
+// af's authoritative classifier.
+// Re-export of jobs.IsProverJob.
+var IsProverJob = jobs.IsProverJob
+
+// IsVerifierJob reports whether a node currently qualifies as a verifier job
+// under af's authoritative classifier.
+// Re-export of jobs.IsVerifierJob.
+var IsVerifierJob = jobs.IsVerifierJob
+
+// IsVerifierReady reports whether a node is a verifier job AND all its children
+// are cleared (the per-node form of FilterReadyVerifierJobs). This is the single
+// `verifier_ready` answer shared by af get, status, jobs and export.
+// Re-export of jobs.IsVerifierReady.
+var IsVerifierReady = jobs.IsVerifierReady
+
 // Re-exported functions from internal/cli to reduce cmd/af import count.
 // Consumers should use service.MustString, service.MustBool, etc. instead of
 // importing the cli package directly.

@@ -27,7 +27,7 @@ are the ones that carry extra metadata; use them where they genuinely apply.
 Examples:
   af inferences                    List all inference types
   af inferences --format json      Machine-readable output
-  af refine -i modus_ponens ...    Use an inference type`,
+  af refine -j modus_ponens ...    Use an inference type`,
 		RunE: runInferences,
 	}
 

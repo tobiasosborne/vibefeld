@@ -4,6 +4,7 @@ package state
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/node"
@@ -123,9 +124,22 @@ func TestApplyNodesClaimed(t *testing.T) {
 		t.Errorf("Workflow state after claim: got %q, want %q", got.WorkflowState, schema.WorkflowClaimed)
 	}
 
-	// Verify claim info is set
+	// Verify claim info is set. ClaimedSince and ClaimLastActive both record
+	// the acquisition event time; ClaimedAt records the expiry.
 	if got.ClaimedBy != "agent-123" {
 		t.Errorf("ClaimedBy mismatch: got %q, want %q", got.ClaimedBy, "agent-123")
+	}
+	if got.ClaimedAt != timeout {
+		t.Errorf("ClaimedAt mismatch: got %v, want %v", got.ClaimedAt, timeout)
+	}
+	if got.ClaimedSince.IsZero() {
+		t.Errorf("ClaimedSince should record the acquisition time")
+	}
+	if got.ClaimLastActive.IsZero() {
+		t.Errorf("ClaimLastActive should record the acquisition time")
+	}
+	if got.ClaimLastActive != got.ClaimedSince {
+		t.Errorf("ClaimLastActive = %v, want the acquisition time %v", got.ClaimLastActive, got.ClaimedSince)
 	}
 }
 
@@ -1733,7 +1747,7 @@ func TestApplyClaimRefreshed(t *testing.T) {
 	s.AddNode(n)
 
 	// Apply ClaimRefreshed event with new timeout
-	newTimeout := types.Now()
+	newTimeout := types.FromTime(time.Now().Add(time.Hour))
 	event := ledger.NewClaimRefreshed(nodeID, "agent-123", newTimeout)
 
 	err = Apply(s, event)
@@ -1745,6 +1759,15 @@ func TestApplyClaimRefreshed(t *testing.T) {
 	got := s.GetNode(nodeID)
 	if got.ClaimedAt != newTimeout {
 		t.Errorf("ClaimedAt not updated: got %v, want %v", got.ClaimedAt, newTimeout)
+	}
+
+	// The refresh advances the last-activity marker to the refresh time, not
+	// to the new expiry, so a stalled-claim detector can tell them apart.
+	if got.ClaimLastActive != event.Timestamp() {
+		t.Errorf("ClaimLastActive = %v, want refresh time %v", got.ClaimLastActive, event.Timestamp())
+	}
+	if got.ClaimLastActive == got.ClaimedAt {
+		t.Errorf("ClaimLastActive must not equal the expiry after a refresh")
 	}
 
 	// Verify workflow state remains claimed

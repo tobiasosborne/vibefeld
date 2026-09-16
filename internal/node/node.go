@@ -72,8 +72,26 @@ type Node struct {
 	// ClaimedBy is the agent ID that currently holds the claim (if any).
 	ClaimedBy string `json:"claimed_by,omitempty"`
 
-	// ClaimedAt is the timestamp when the node was claimed.
+	// ClaimedAt is the timestamp when the claim expires (the timeout recorded
+	// on the NodesClaimed/ClaimRefreshed event). It is retained for backwards
+	// compatibility with every caller and JSON surface that already treats it
+	// as the expiry.
 	ClaimedAt types.Timestamp `json:"claimed_at,omitempty"`
+
+	// ClaimedSince is the timestamp when the current claim was acquired (the
+	// NodesClaimed event time). It is distinct from ClaimedAt, which holds the
+	// claim's expiry, so health can tell a stalled claim from an expired one.
+	// It is NOT updated by a refresh; see ClaimLastActive. Zero for legacy
+	// claims replayed from a ledger whose event carried no acquisition time.
+	ClaimedSince types.Timestamp `json:"claimed_since,omitempty"`
+
+	// ClaimLastActive is the timestamp of the most recent claim activity: the
+	// NodesClaimed event time, updated on every ClaimRefreshed event. It is a
+	// DERIVED field (json:"-", never part of the content hash) used only by
+	// health's stall detector, so a claim that is being refreshed is not
+	// mistaken for a stalled one. Zero for legacy claims replayed from a
+	// ledger with no claim events.
+	ClaimLastActive types.Timestamp `json:"-"`
 
 	// Crux marks this node as critical path — it cannot be validated
 	// without a passing claim-test.
@@ -243,8 +261,9 @@ func NewNodeWithOptions(
 // Returns an empty string if the node is nil.
 //
 // Deliberately excluded: WorkflowState, EpistemicState, TaintState,
-// ClaimedBy/ClaimedAt, Crux, Scope, and (as of the author/verifier-identity
-// schema addition) Author, ValidatedBy, ValidationBatchID, ProofAuthor. These are
+// ClaimedBy/ClaimedAt/ClaimedSince/ClaimLastActive, Crux, Scope, and (as of
+// the author/verifier-identity schema addition) Author, ValidatedBy,
+// ValidationBatchID, ProofAuthor. These are
 // workflow/provenance metadata, not mathematical content — the same
 // exclusion rationale that already applied to ClaimedBy. Excluding them
 // keeps ComputeContentHash, and therefore VerifyContentHash and `af replay
