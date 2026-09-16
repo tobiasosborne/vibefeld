@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/tobiasosborne/vibefeld/internal/config"
-	"github.com/tobiasosborne/vibefeld/internal/cycle"
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
 	"github.com/tobiasosborne/vibefeld/internal/fs"
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
@@ -23,6 +22,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/state"
+	"github.com/tobiasosborne/vibefeld/internal/support"
 	"github.com/tobiasosborne/vibefeld/internal/taint"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
@@ -432,6 +432,18 @@ func (s *ProofService) CreateNode(id types.NodeID, nodeType schema.NodeType, sta
 			return nil, err
 		}
 
+		// D1: run the same support check every creation path uses. A node
+		// created without dependencies cannot itself close a cycle, but this
+		// keeps the invariant in one place as the graph grows.
+		parent, hasParent := id.Parent()
+		pn := support.ProspectiveNode{ID: id, Type: nodeType}
+		if hasParent {
+			pn.ParentID = parent
+		}
+		if err := checkSupportBatch(st, []support.ProspectiveNode{pn}); err != nil {
+			return nil, err
+		}
+
 		return []ledger.Event{ledger.NewNodeCreated(*n)}, nil
 	})
 	return wrapSequenceMismatch(err, "CreateNode")
@@ -664,29 +676,31 @@ func (s *ProofService) Refine(spec RefineSpec) error {
 			return nil, err
 		}
 
-		// Create provider for cycle check
-		provider := &stateDependencyProvider{st: st}
-
-		// Validate that all reference dependencies exist and don't create cycles
+		// Validate that all explicit dependencies exist. Existence is a
+		// creation-path invariant; the support graph itself keeps a
+		// dependency on a missing/severed node as a sink edge for audit.
 		for _, depID := range spec.Dependencies {
 			if st.GetNode(depID) == nil {
 				return nil, fmt.Errorf("invalid dependency: node %s not found", depID.String())
 			}
-
-			if res := cycle.WouldCreateCycle(provider, spec.ParentID, depID); res.HasCycle {
-				return nil, fmt.Errorf("%w: adding dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), depID.String(), res.Path)
-			}
 		}
-
-		// Validate that all validation dependencies exist and don't create cycles
 		for _, valDepID := range spec.ValidationDeps {
 			if st.GetNode(valDepID) == nil {
 				return nil, fmt.Errorf("invalid validation dependency: node %s not found", valDepID.String())
 			}
+		}
 
-			if res := cycle.WouldCreateCycle(provider, spec.ParentID, valDepID); res.HasCycle {
-				return nil, fmt.Errorf("%w: adding validation dependency %s -> %s would create cycle %v", ErrCircularDependency, spec.ParentID.String(), valDepID.String(), res.Path)
-			}
+		// Cycle and scope checks over result-use edges, from the child's own
+		// position (vibefeld-0ko0): a child may not result-use an ancestor
+		// claim, but may hypothesis-use an enclosing local_assume.
+		if err := checkSupportBatch(st, []support.ProspectiveNode{{
+			ID:             spec.ChildID,
+			ParentID:       spec.ParentID,
+			Type:           spec.NodeType,
+			Dependencies:   spec.Dependencies,
+			ValidationDeps: spec.ValidationDeps,
+		}}); err != nil {
+			return nil, err
 		}
 
 		// Create the child node with both dependency types.
@@ -1620,6 +1634,7 @@ func (s *ProofService) buildChildEvents(st *State, parentID types.NodeID, owner 
 
 	childIDs := make([]types.NodeID, len(children))
 	events := make([]ledger.Event, len(children))
+	batch := make([]support.ProspectiveNode, len(children))
 
 	for i, spec := range children {
 		if strings.TrimSpace(spec.Statement) == "" {
@@ -1648,6 +1663,20 @@ func (s *ProofService) buildChildEvents(st *State, parentID types.NodeID, owner 
 			return nil, nil, fmt.Errorf("child %d: %w", i+1, err)
 		}
 		events[i] = ledger.NewNodeCreated(*childNode)
+		batch[i] = support.ProspectiveNode{
+			ID:             childID,
+			ParentID:       parentID,
+			Type:           spec.NodeType,
+			Dependencies:   childNode.Dependencies,
+			ValidationDeps: childNode.ValidationDeps,
+		}
+	}
+
+	// D1: cycle and scope checks over the WHOLE prospective child batch, so a
+	// cycle formed only between two children of this batch is caught, and from
+	// each child's own position so the error names the actual path.
+	if err := checkSupportBatch(st, batch); err != nil {
+		return nil, nil, err
 	}
 	return events, childIDs, nil
 }
