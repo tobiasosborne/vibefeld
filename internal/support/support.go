@@ -18,6 +18,7 @@ package support
 import (
 	"sort"
 
+	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
 	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
@@ -73,6 +74,11 @@ type Provider struct {
 	deps     map[string][]types.NodeID
 	order    []types.NodeID
 	dangling []DanglingDep
+
+	// nodes maps a node ID string to the state-backed node, when one exists.
+	// Overlay-only (prospective) nodes have no entry. The memoised Walk uses
+	// it to hand the fold the *node.Node it is folding.
+	nodes map[string]*node.Node
 }
 
 // GetNodeDependencies implements cycle.DependencyProvider.
@@ -104,7 +110,12 @@ func ResultUseEdges(st *state.State, overlay []ProspectiveNode) Provider {
 
 // resultUseEdges builds the adjacency for an already-constructed universe.
 func resultUseEdges(u *universe) Provider {
-	p := Provider{deps: make(map[string][]types.NodeID)}
+	p := Provider{deps: make(map[string][]types.NodeID), nodes: make(map[string]*node.Node)}
+	for id, info := range u.nodes {
+		if info.node != nil {
+			p.nodes[id] = info.node
+		}
+	}
 
 	children := make(map[string][]*nodeInfo)
 	for _, info := range u.nodes {
@@ -170,6 +181,9 @@ type nodeInfo struct {
 	exists    bool
 	deps      []types.NodeID
 	valDeps   []types.NodeID
+	// node is the state-backed node pointer when this entry came from state;
+	// nil for an overlay-only prospective node.
+	node *node.Node
 }
 
 func (n *nodeInfo) allDeps() []types.NodeID {
@@ -204,6 +218,7 @@ func newUniverse(st *state.State, overlay []ProspectiveNode) *universe {
 				exists:    true,
 				deps:      n.Dependencies,
 				valDeps:   n.ValidationDeps,
+				node:      n,
 			}
 		}
 	}

@@ -563,6 +563,7 @@ func clearValidationFields(n *node.Node) {
 	n.ValidationBatchID = ""
 	n.ValidatedContentHash = ""
 	n.ValidatedHashChecked = false
+	n.ValidatedSeq = 0
 }
 
 // sameIDSet reports whether two ID slices contain the same IDs. Order is

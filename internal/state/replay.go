@@ -68,6 +68,12 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 			state.SetLastAmendmentSeq(ev.NodeID, seq)
 		case ledger.NodeDepsAmended:
 			state.SetLastAmendmentSeq(ev.NodeID, seq)
+		case ledger.NodeValidated:
+			// Derived validation sequence for support_current (D4); no event
+			// field, stamped here so a later amendment can be ordered against it.
+			if n := state.GetNode(ev.NodeID); n != nil {
+				n.ValidatedSeq = seq
+			}
 		case ledger.ChallengeRaised:
 			if c := state.GetChallenge(ev.ChallengeID); c != nil {
 				c.Seq = seq
