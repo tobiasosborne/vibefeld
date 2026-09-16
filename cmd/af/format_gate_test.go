@@ -20,6 +20,9 @@ func newFormatGateRoot() *cobra.Command {
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newClaimCmd())
 	root.AddCommand(newReplayCmd())
+	root.AddCommand(newLogCmd())
+	root.AddCommand(newHistoryCmd())
+	root.AddCommand(newWatchCmd())
 	return root
 }
 
@@ -44,6 +47,9 @@ func TestFormatGate_UnreadableWorkspaceRefused(t *testing.T) {
 		{"status", []string{"status", "--dir", dir}},
 		{"claim", []string{"claim", "1", "--owner", "o", "--dir", dir}},
 		{"replay", []string{"replay", "--dir", dir}},
+		{"log", []string{"log", "--dir", dir}},
+		{"history", []string{"history", "1", "--dir", dir}},
+		{"watch", []string{"watch", "--dir", dir, "--once"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -53,6 +59,9 @@ func TestFormatGate_UnreadableWorkspaceRefused(t *testing.T) {
 			}
 			if aferrors.Code(err) != aferrors.FORMAT_TOO_NEW {
 				t.Errorf("%s error code = %v, want FORMAT_TOO_NEW", tt.name, aferrors.Code(err))
+			}
+			if aferrors.ExitCode(err) != 3 {
+				t.Errorf("%s exit code = %d, want 3", tt.name, aferrors.ExitCode(err))
 			}
 		})
 	}

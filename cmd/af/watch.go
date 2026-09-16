@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -77,11 +76,10 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create ledger instance
-	ledgerDir := filepath.Join(dir, "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
+	// Open the workspace ledger, applying the workspace format gate first.
+	ldg, _, err := openWorkspaceLedger(dir)
 	if err != nil {
-		return fmt.Errorf("error accessing ledger: %w", err)
+		return err
 	}
 
 	// Track the last seen sequence number

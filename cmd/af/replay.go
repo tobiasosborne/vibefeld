@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -79,18 +77,17 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid format %q: must be 'text' or 'json'", format)
 	}
 
-	// Open ledger
-	ledgerDir := filepath.Join(dir, "ledger")
-	ldg, err := ledger.NewLedger(ledgerDir)
+	// Open the ledger through the shared entry point so the workspace format
+	// gate runs before any ledger access (replay bypasses ProofService).
+	ldg, cfg, err := openWorkspaceLedger(dir)
 	if err != nil {
-		return fmt.Errorf("error accessing ledger: %w", err)
+		return err
 	}
 
-	// Replay bypasses ProofService, so repeat the workspace format gate here:
-	// refuse an unreadable workspace stamp, and refuse any event whose minimum
-	// format is newer than the stamped format. An unknown event type stays the
-	// existing replay error.
-	if err := checkReplayFormat(ldg, dir); err != nil {
+	// Replay bypasses ProofService, so repeat the per-event format gate here:
+	// refuse any event whose minimum format is newer than the stamped format.
+	// An unknown event type stays the existing replay error.
+	if err := checkReplayFormat(ldg, cfg); err != nil {
 		return err
 	}
 
@@ -234,19 +231,11 @@ func formatReplayText(stats ReplayStats, verify bool, verbose bool) string {
 	return sb.String()
 }
 
-// checkReplayFormat loads meta.json and enforces the workspace format gate for
-// the replay CLI (which does not go through service.NewProofService). A missing
-// meta.json is treated as an uninitialised workspace and skipped. Returns nil
-// when no ledger format issue is found; unknown event types are left to replay.
-func checkReplayFormat(ldg *ledger.Ledger, dir string) error {
-	metaPath := filepath.Join(dir, "meta.json")
-	cfg, err := config.Load(metaPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("error reading workspace format: %w", err)
-	}
+// checkReplayFormat enforces the per-event workspace format gate for the
+// replay CLI (which does not go through service.NewProofService). A missing
+// meta.json yields a default config and is skipped. Returns nil when no ledger
+// format issue is found; unknown event types are left to replay.
+func checkReplayFormat(ldg *ledger.Ledger, cfg *config.Config) error {
 	if err := config.CheckFormat(cfg); err != nil {
 		return err
 	}
