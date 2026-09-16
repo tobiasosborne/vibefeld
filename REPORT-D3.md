@@ -82,3 +82,36 @@ touched.
   fields. Add one if a driver needs to detect the capability.
 - The `af get` "stale claim test" wording in the brief was mapped to
   `af claim-tests`; see above.
+
+## Review fixes
+
+An independent review of the D3 branch found four gaps; all were fixed on
+`work/d3-accept-hash` (tests added first, `gofmt`/`go vet`/`go test ./...`
+green).
+
+1. **`state.HasPassingClaimTest` rejected hash-bearing passes.** The deprecated
+   legacy wrapper delegated to `HasPassingClaimTestForContent(id, "")`, and an
+   empty current hash never equals a non-empty recorded hash, so every new
+   hash-bearing passing test counted as stale. Restored the original
+   any-passing-test loop. Regression test
+   `TestHasPassingClaimTest_CountsHashBearingPass` covers a non-empty test hash.
+2. **Single-node accept discarded the stale diagnosis.** `af accept` matched
+   `"claim-test"` in the error string and printed the generic "no passing
+   claim-test" text, and `ErrClaimTestRequired` shared the `NODE_BLOCKED` code
+   with `ErrBlockingChallenges`, so `errors.Is` could not tell them apart. Added
+   a distinct `CLAIM_TEST_REQUIRED` error code, kept `ErrClaimTestRequired` on it,
+   and added a plain `ErrClaimTestStale` sentinel wrapped alongside it. The CLI
+   and `verdicts_apply` now classify with `errors.Is`; single and bulk accept
+   preserve the service error and name the staleness.
+   `TestAcceptCmd_StaleCruxClaimTestNamesStaleness` asserts the CLI output names
+   the stale test and does not fall back to the generic message.
+3. **Hash recording in `RunClaimTest` was untested.** Added
+   `TestRunClaimTest_RecordsHashAndAcceptRejectsAfterAmend`: it runs a real
+   passing script, asserts the recorded `ClaimTested.ContentHash` equals the
+   node's `ContentHash`, amends the node (changing its hash), and asserts accept
+   now rejects the test as stale.
+4. **Bulk accept had no hash/staleness coverage.** Added
+   `TestAcceptNodeBulk_RecordsHashCheckedFalse` (every bulk `NodeValidated`
+   records its node's hash with `checked=false`, on the event and applied node)
+   and `TestAcceptNodeBulk_CruxStaleClaimTestRejected` (the bulk crux gate
+   refuses a stale-only passing test and writes no event).
