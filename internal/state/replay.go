@@ -59,51 +59,8 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 		// Track the latest sequence number for optimistic concurrency control
 		state.SetLatestSeq(seq)
 
-		// Stamp the ledger sequence onto the amendment record just appended, so
-		// the export projection can report amendment sequences.
-		switch ev := event.(type) {
-		case ledger.NodeAmended:
-			state.SetLastAmendmentSeq(ev.NodeID, seq)
-		case ledger.NodeAmendedReopened:
-			state.SetLastAmendmentSeq(ev.NodeID, seq)
-		case ledger.NodeDepsAmended:
-			state.SetLastAmendmentSeq(ev.NodeID, seq)
-		case ledger.NodesClaimed:
-			// The claim generation is the ledger sequence of the NodesClaimed
-			// event that created the current claim (D5). Derived state, so it is
-			// stamped here, never carried on the event; a release (explicit or
-			// fenced auto-release) clears it in Apply.
-			for _, id := range ev.NodeIDs {
-				if n := state.GetNode(id); n != nil {
-					n.ClaimSeq = seq
-				}
-			}
-		case ledger.NodeValidated:
-			// Derived verdict sequence for support_current (D4); no event field,
-			// stamped here so a later amendment can be ordered against it.
-			if n := state.GetNode(ev.NodeID); n != nil {
-				n.VerdictSeq = seq
-			}
-		case ledger.NodeAdmitted:
-			// Admitted is also a terminal verdict: stamp the sequence so
-			// support_current's revision guards cover admitted nodes too.
-			if n := state.GetNode(ev.NodeID); n != nil {
-				n.VerdictSeq = seq
-			}
-		case ledger.NodeArchived:
-			// Derived archival sequence (D9): support_current compares a
-			// direct child's archival against its parent's verdict, and the
-			// durable abandoned-obligation snapshot is copied onto the node
-			// so the checklist can read it without re-scanning the ledger.
-			if n := state.GetNode(ev.NodeID); n != nil {
-				n.ArchivedSeq = seq
-				n.AbandonedObligations = append([]string(nil), ev.AbandonedObligations...)
-			}
-		case ledger.ChallengeRaised:
-			if c := state.GetChallenge(ev.ChallengeID); c != nil {
-				c.Seq = seq
-			}
-		}
+		// Stamp the derived sequence fields for this event.
+		StampDerived(state, event, seq)
 
 		// Index an optional operation id so a retried operation can find the
 		// sequence of its already-committed result. For a dependency amendment
@@ -149,6 +106,64 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 	taint.RecomputeAll(state.AllNodes())
 
 	return state, nil
+}
+
+// StampDerived records the ledger-sequence fields that are derived from an
+// event's position in the stream rather than carried on the event: amendment
+// sequences, claim generations, verdict sequences, archival sequences and
+// challenge sequences. Replay calls it after Apply for every event; the audit
+// ordered pass calls it too so its replayed state matches state.Replay.
+func StampDerived(state *State, event ledger.Event, seq int) {
+	switch ev := event.(type) {
+	case ledger.NodeAmended:
+		state.SetLastAmendmentSeq(ev.NodeID, seq)
+	case ledger.NodeAmendedReopened:
+		state.SetLastAmendmentSeq(ev.NodeID, seq)
+	case ledger.NodeDepsAmended:
+		state.SetLastAmendmentSeq(ev.NodeID, seq)
+	case ledger.NodesClaimed:
+		// The claim generation is the ledger sequence of the NodesClaimed
+		// event that created the current claim (D5). Derived state, so it is
+		// stamped here, never carried on the event; a release (explicit or
+		// fenced auto-release) clears it in Apply.
+		for _, id := range ev.NodeIDs {
+			if n := state.GetNode(id); n != nil {
+				n.ClaimSeq = seq
+			}
+		}
+	case ledger.NodeValidated:
+		// Derived verdict sequence for support_current (D4); no event field,
+		// stamped here so a later amendment can be ordered against it.
+		if n := state.GetNode(ev.NodeID); n != nil {
+			n.VerdictSeq = seq
+		}
+	case ledger.NodeAdmitted:
+		// Admitted is also a terminal verdict: stamp the sequence so
+		// support_current's revision guards cover admitted nodes too.
+		if n := state.GetNode(ev.NodeID); n != nil {
+			n.VerdictSeq = seq
+		}
+	case ledger.NodeArchived:
+		// Derived archival sequence (D9): support_current compares a
+		// direct child's archival against its parent's verdict, and the
+		// durable abandoned-obligation snapshot is copied onto the node
+		// so the checklist can read it without re-scanning the ledger.
+		if n := state.GetNode(ev.NodeID); n != nil {
+			n.ArchivedSeq = seq
+			n.AbandonedObligations = append([]string(nil), ev.AbandonedObligations...)
+		}
+	case ledger.ChallengeRaised:
+		if c := state.GetChallenge(ev.ChallengeID); c != nil {
+			c.Seq = seq
+		}
+	}
+}
+
+// ParseEvent parses raw ledger JSON into a typed Event. It is the exported
+// entry point the audit ordered pass uses to replay a ledger event by event
+// with state.Apply; Replay itself uses the same parser.
+func ParseEvent(data []byte) (ledger.Event, error) {
+	return parseEvent(data)
 }
 
 // extractEventType extracts the event type from JSON data using fast byte scanning.
