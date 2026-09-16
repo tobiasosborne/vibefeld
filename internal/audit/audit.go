@@ -1,6 +1,9 @@
-// Package audit computes the read-only trust audit for a proof workspace from
-// one pass over derived state. It is the single findings engine shared by
-// `af audit`, `af health` and the `af amend-deps` migration preflight/postcheck.
+// Package audit computes the read-only trust audit for a proof workspace. The
+// sequence-sensitive checks (accepted content hash, acceptance-time
+// contributors, open challenges at an archival) run over an ordered ledger pass
+// built by BuildPass; the rest run over one immutable snapshot of derived
+// state. It is the single findings engine shared by `af audit`, `af health` and
+// the `af amend-deps` migration preflight/postcheck.
 //
 // Findings carry a stable code, a severity, a current/historical status, the
 // node IDs and ledger sequences involved, a message and a remediation. Only
@@ -11,6 +14,7 @@ package audit
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/tobiasosborne/vibefeld/internal/node"
@@ -75,10 +79,24 @@ type Options struct {
 	Limit int
 }
 
-// Run computes the audit for st. It performs no I/O and never fails; a nil
-// state produces an empty, passing report.
+// Run computes the audit for st from derived state alone. Sequence-sensitive
+// checks fall back to the best reconstruction available in final state. It
+// performs no I/O and never fails; a nil state produces an empty, passing
+// report.
 func Run(st *state.State, opts Options) Report {
-	findings := computeFindings(st)
+	return run(st, nil, opts)
+}
+
+// RunWithPass computes the audit using the ordered ledger pass for the
+// sequence-sensitive checks: the acceptance-time content hash and
+// contributors, and the open challenges at each archival sequence. It is the
+// path `af audit` and the amend-deps summary take.
+func RunWithPass(st *state.State, pass *Pass, opts Options) Report {
+	return run(st, pass, opts)
+}
+
+func run(st *state.State, pass *Pass, opts Options) Report {
+	findings := computeFindings(st, pass, codeSelector(opts.Codes))
 	findings = applyFilters(findings, opts)
 
 	summary := summarize(findings)
@@ -96,6 +114,22 @@ func Run(st *state.State, opts Options) Report {
 		Strict:        opts.Strict,
 		Passed:        passed,
 	}
+}
+
+// codeSelector returns the producer gate for an options code filter. An empty
+// (or all-blank) filter runs every producer.
+func codeSelector(codes []string) func(code string) bool {
+	set := map[string]bool{}
+	for _, c := range codes {
+		c = strings.ToUpper(strings.TrimSpace(c))
+		if c != "" {
+			set[c] = true
+		}
+	}
+	if len(set) == 0 {
+		return func(string) bool { return true }
+	}
+	return func(code string) bool { return set[code] }
 }
 
 // IsStrictCurrent reports whether a finding would fail --strict.
@@ -190,25 +224,45 @@ func sortedNodes(st *state.State) []*node.Node {
 }
 
 // seedFindings sorts findings deterministically: by code, then first node ID,
-// then message. computeFindings already emits deterministically, but the sort
-// keeps the contract independent of producer order.
+// then the full node list, then sequences, then message. It also normalizes
+// every finding's sequence list into ascending order so output is
+// order-independent of the producer's internal iteration.
 func seedFindings(findings []Finding) []Finding {
+	for i := range findings {
+		if len(findings[i].Seqs) > 1 {
+			sort.Ints(findings[i].Seqs)
+		}
+	}
 	sort.SliceStable(findings, func(i, j int) bool {
 		if findings[i].Code != findings[j].Code {
 			return findings[i].Code < findings[j].Code
 		}
-		a, b := firstNode(findings[i]), firstNode(findings[j])
+		a, b := nodeKey(findings[i]), nodeKey(findings[j])
 		if a != b {
 			return a < b
+		}
+		if c, d := seqKey(findings[i]), seqKey(findings[j]); c != d {
+			return c < d
 		}
 		return findings[i].Message < findings[j].Message
 	})
 	return findings
 }
 
-func firstNode(f Finding) string {
-	if len(f.Nodes) == 0 {
-		return ""
+// nodeKey renders a finding's nodes as a stable comparison key.
+func nodeKey(f Finding) string {
+	parts := make([]string, 0, len(f.Nodes))
+	for _, n := range f.Nodes {
+		parts = append(parts, n.String())
 	}
-	return f.Nodes[0].String()
+	return strings.Join(parts, "|")
+}
+
+// seqKey renders a finding's sequences as a stable comparison key.
+func seqKey(f Finding) string {
+	parts := make([]string, 0, len(f.Seqs))
+	for _, s := range f.Seqs {
+		parts = append(parts, strconv.Itoa(s))
+	}
+	return strings.Join(parts, ",")
 }

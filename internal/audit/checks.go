@@ -16,25 +16,62 @@ import (
 // amendmentHotspotLimit is how many AMENDMENTS_PER_NODE hotspots are reported.
 const amendmentHotspotLimit = 10
 
-// computeFindings runs the ordered audit pass over derived state.
-func computeFindings(st *state.State) []Finding {
+// checksInput bundles the one immutable state read and the ordered ledger pass
+// (which may be nil for a state-only audit).
+type checksInput struct {
+	st   *state.State
+	pass *Pass
+	snap *snapshot
+}
+
+// computeFindings runs the ordered audit pass. want reports whether a code's
+// producer should run; callers that only consume a subset (health) use it to
+// skip the rest of the work.
+func computeFindings(st *state.State, pass *Pass, want func(code string) bool) []Finding {
 	if st == nil {
 		return nil
 	}
+	in := checksInput{st: st, pass: pass, snap: newSnapshot(st)}
 	var fs []Finding
-	fs = append(fs, supportNotCurrent(st)...)
-	fs = append(fs, hashMismatch(st)...)
-	fs = append(fs, cycles(st)...)
-	fs = append(fs, scopeLeaks(st)...)
-	fs = append(fs, citesSevered(st)...)
-	fs = append(fs, amendedNotReverified(st)...)
-	fs = append(fs, selfAccepts(st)...)
-	fs = append(fs, validatedWithBlockingChallenge(st)...)
-	fs = append(fs, admittedNodes(st)...)
-	fs = append(fs, archivedWithOpenChallenge(st)...)
-	fs = append(fs, amendmentHotspots(st)...)
-	fs = append(fs, pendingExternalCitedByValidated(st)...)
-	fs = append(fs, unknownProvenance(st)...)
+	if want(CodeSupportNotCurrent) {
+		fs = append(fs, supportNotCurrent(st)...)
+	}
+	if want(CodeHashMismatch) {
+		fs = append(fs, hashMismatch(in)...)
+	}
+	if want(CodeCycle) {
+		fs = append(fs, cycles(st)...)
+	}
+	if want(CodeScopeLeak) {
+		fs = append(fs, scopeLeaks(st)...)
+	}
+	if want(CodeCitesSevered) {
+		fs = append(fs, citesSevered(st)...)
+	}
+	if want(CodeAmendedNotReverified) {
+		fs = append(fs, amendedNotReverified(in)...)
+	}
+	if want(CodeSelfAccept) {
+		fs = append(fs, selfAccepts(in)...)
+	}
+	if want(CodeValidatedWithOpenBlockingChallenge) {
+		fs = append(fs, validatedWithBlockingChallenge(in)...)
+	}
+	if want(CodeAdmitted) {
+		fs = append(fs, admittedNodes(in)...)
+	}
+	if want(CodeArchivedWithOpenChallenge) {
+		fs = append(fs, archivedWithOpenChallenge(in)...)
+	}
+	if want(CodeAmendmentsPerNode) {
+		fs = append(fs, amendmentHotspots(in)...)
+	}
+	if want(CodePendingExternalCitedByValidated) {
+		fs = append(fs, pendingExternalCitedByValidated(in)...)
+	}
+	if want(CodeUnknownProvenance) {
+		fs = append(fs, unknownProvenance(in)...)
+	}
 	return seedFindings(fs)
 }
 
@@ -80,17 +117,33 @@ func supportNotCurrent(st *state.State) []Finding {
 	return fs
 }
 
-// hashMismatch compares each validated node's current content hash with the
-// hash recorded at acceptance. A recorded mismatch is a current, strict
-// finding; an unrecorded hash yields a historical "reconstructed" note that
-// never gates (D3).
-func hashMismatch(st *state.State) []Finding {
+// hashMismatch compares the accepted content hash with a fresh recompute of the
+// node's content on FINAL state. The accepted hash is the recorded
+// ValidatedContentHash when present, else the hash reconstructed at the
+// acceptance sequence from the ordered pass. A recorded mismatch is a current,
+// strict finding; a reconstructed one is historical and never gates. No finding
+// is emitted when the accepted hash equals the final content hash -- which is
+// what removes the historical false positives on the pre-D3 corpus.
+func hashMismatch(in checksInput) []Finding {
 	var fs []Finding
-	for _, n := range sortedNodes(st) {
+	for _, n := range in.snap.nodes {
 		if n.EpistemicState != schema.EpistemicValidated {
 			continue
 		}
-		if n.ValidatedContentHash == "" {
+		finalHash := n.ComputeContentHash()
+		accepted := n.ValidatedContentHash
+		reconstructed := false
+		if accepted == "" {
+			reconstructed = true
+			if in.pass != nil {
+				if a, ok := in.pass.Acceptance(n.ID); ok {
+					accepted = a.ContentHash
+				}
+			}
+		}
+		if accepted == "" {
+			// No recorded hash and no acceptance on the ledger to reconstruct
+			// from. Report the unverifiable acceptance, never gating.
 			fs = append(fs, Finding{
 				Code:     CodeHashMismatch,
 				Severity: SeverityWarning,
@@ -102,17 +155,26 @@ func hashMismatch(st *state.State) []Finding {
 			})
 			continue
 		}
-		if n.ContentHash != n.ValidatedContentHash {
-			fs = append(fs, Finding{
-				Code:     CodeHashMismatch,
-				Severity: SeverityError,
-				Status:   StatusCurrent,
-				Nodes:    []types.NodeID{n.ID},
-				Message: fmt.Sprintf("validated hash %s does not match current content hash %s for node %s",
-					shortHash(n.ValidatedContentHash), shortHash(n.ContentHash), n.ID.String()),
-				Remediation: RemediationFor(CodeHashMismatch),
-			})
+		if accepted == finalHash {
+			continue
 		}
+		status := StatusCurrent
+		severity := SeverityError
+		source := "recorded"
+		if reconstructed {
+			status = StatusHistorical
+			severity = SeverityWarning
+			source = "reconstructed"
+		}
+		fs = append(fs, Finding{
+			Code:     CodeHashMismatch,
+			Severity: severity,
+			Status:   status,
+			Nodes:    []types.NodeID{n.ID},
+			Message: fmt.Sprintf("%s hash %s does not match current content hash %s for node %s",
+				source, shortHash(accepted), shortHash(finalHash), n.ID.String()),
+			Remediation: RemediationFor(CodeHashMismatch),
+		})
 	}
 	return fs
 }
@@ -182,15 +244,20 @@ func citesSevered(st *state.State) []Finding {
 
 // amendedNotReverified emits a current finding for a validated node whose own
 // content moved after its verdict, and for a validated node that relies on a
-// target whose content moved after the target's own verdict.
-func amendedNotReverified(st *state.State) []Finding {
-	provider := support.ResultUseEdges(st, nil)
+// target whose latest revision moved after the CONSUMER's verdict. Target
+// currentness is left to SUPPORT_NOT_CURRENT; here the question is only whether
+// the consumer's recorded verdict predates a revision it depends on.
+func amendedNotReverified(in checksInput) []Finding {
+	provider := support.ResultUseEdges(in.st, nil)
 	var fs []Finding
-	for _, n := range sortedNodes(st) {
+	for _, n := range in.snap.nodes {
 		if n.EpistemicState != schema.EpistemicValidated {
 			continue
 		}
-		if seq, ok := latestAmendmentSeq(st, n.ID); ok && seq > n.VerdictSeq {
+		if n.VerdictSeq <= 0 {
+			continue
+		}
+		if seq, ok := in.snap.latestRevisionSeq(n.ID); ok && seq > n.VerdictSeq {
 			fs = append(fs, Finding{
 				Code:     CodeAmendedNotReverified,
 				Severity: SeverityError,
@@ -207,12 +274,11 @@ func amendedNotReverified(st *state.State) []Finding {
 			continue
 		}
 		for _, t := range sortedIDs(targets) {
-			tn := st.GetNode(t)
-			if tn == nil {
+			if in.st.GetNode(t) == nil {
 				continue
 			}
-			seq, ok := latestAmendmentSeq(st, t)
-			if !ok || seq <= tn.VerdictSeq {
+			seq, ok := in.snap.latestRevisionSeq(t)
+			if !ok || seq <= n.VerdictSeq {
 				continue
 			}
 			fs = append(fs, Finding{
@@ -221,8 +287,8 @@ func amendedNotReverified(st *state.State) []Finding {
 				Status:   StatusCurrent,
 				Nodes:    nonZeroIDs(n.ID, t),
 				Seqs:     []int{seq},
-				Message: fmt.Sprintf("node %s relies on %s, which was amended at seq %d after its own verdict at seq %d",
-					n.ID.String(), t.String(), seq, tn.VerdictSeq),
+				Message: fmt.Sprintf("node %s relies on %s, which was amended at seq %d after the consumer's verdict at seq %d",
+					n.ID.String(), t.String(), seq, n.VerdictSeq),
 				Remediation: RemediationFor(CodeAmendedNotReverified),
 			})
 		}
@@ -231,17 +297,20 @@ func amendedNotReverified(st *state.State) []Finding {
 }
 
 // selfAccepts emits a current finding when a validated node's recorded verifier
-// matches the node's author, proof author or any amendment owner. It only fires
-// when both identities are recorded.
-func selfAccepts(st *state.State) []Finding {
+// is one of the identities that had contributed to the accepted revision by the
+// verdict sequence, from the ordered pass. Without a pass it falls back to the
+// final-state identities. It only fires when both identities are recorded.
+func selfAccepts(in checksInput) []Finding {
 	var fs []Finding
-	for _, n := range sortedNodes(st) {
+	for _, n := range in.snap.nodes {
 		if n.EpistemicState != schema.EpistemicValidated || n.ValidatedBy == "" {
 			continue
 		}
-		contributors := []string{n.Author, n.ProofAuthor}
-		for _, a := range st.GetAmendmentHistory(n.ID) {
-			contributors = append(contributors, a.Owner)
+		contributors := contributorsFromState(n, in.snap)
+		if in.pass != nil {
+			if a, ok := in.pass.Acceptance(n.ID); ok {
+				contributors = a.Contributors
+			}
 		}
 		for _, c := range contributors {
 			if c == "" || c != n.ValidatedBy {
@@ -252,7 +321,7 @@ func selfAccepts(st *state.State) []Finding {
 				Severity: SeverityError,
 				Status:   StatusCurrent,
 				Nodes:    []types.NodeID{n.ID},
-				Message: fmt.Sprintf("verifier %s is also a recorded contributor (author/proof author/amender) of node %s",
+				Message: fmt.Sprintf("verifier %s is also a recorded contributor (author/proof author/amender) of node %s at its verdict",
 					n.ValidatedBy, n.ID.String()),
 				Remediation: RemediationFor(CodeSelfAccept),
 			})
@@ -262,15 +331,35 @@ func selfAccepts(st *state.State) []Finding {
 	return fs
 }
 
+// contributorsFromState is the state-only fallback for SELF_ACCEPT: the current
+// author, proof author and amendment owners.
+func contributorsFromState(n *node.Node, snap *snapshot) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	add(n.Author)
+	add(n.ProofAuthor)
+	for _, a := range snap.amendments[n.ID.String()] {
+		add(a.Owner)
+	}
+	return out
+}
+
 // validatedWithBlockingChallenge emits a current finding for each validated
 // node carrying an open critical/major challenge.
-func validatedWithBlockingChallenge(st *state.State) []Finding {
+func validatedWithBlockingChallenge(in checksInput) []Finding {
 	var fs []Finding
-	for _, n := range sortedNodes(st) {
+	for _, n := range in.snap.nodes {
 		if n.EpistemicState != schema.EpistemicValidated {
 			continue
 		}
-		blocking := st.GetBlockingChallengesForNode(n.ID)
+		blocking := in.snap.blockingByNode[n.ID.String()]
 		if len(blocking) == 0 {
 			continue
 		}
@@ -283,6 +372,7 @@ func validatedWithBlockingChallenge(st *state.State) []Finding {
 			}
 		}
 		sort.Strings(ids)
+		sort.Ints(seqs)
 		fs = append(fs, Finding{
 			Code:     CodeValidatedWithOpenBlockingChallenge,
 			Severity: SeverityError,
@@ -298,9 +388,9 @@ func validatedWithBlockingChallenge(st *state.State) []Finding {
 }
 
 // admittedNodes emits one historical, non-gating finding per admitted node.
-func admittedNodes(st *state.State) []Finding {
+func admittedNodes(in checksInput) []Finding {
 	var fs []Finding
-	for _, n := range sortedNodes(st) {
+	for _, n := range in.snap.nodes {
 		if n.EpistemicState != schema.EpistemicAdmitted {
 			continue
 		}
@@ -317,46 +407,51 @@ func admittedNodes(st *state.State) []Finding {
 }
 
 // archivedWithOpenChallenge emits a historical finding per archived node that
-// has an open challenge on itself or on an active (non-severed) descendant. The
-// D9 obligations helper is not on this branch, so the check is derived from
-// current state; it is reported, never gating.
-func archivedWithOpenChallenge(st *state.State) []Finding {
+// abandoned an open challenge obligation. It prefers the durable
+// abandoned_obligations snapshot recorded on the NodeArchived event (D9), then
+// the ordered-pass open set at the archival sequence. The final challenge state
+// is never consulted when a pass is available; the state-only compatibility
+// path (no pass) falls back to the current open set.
+func archivedWithOpenChallenge(in checksInput) []Finding {
 	var fs []Finding
-	nodes := sortedNodes(st)
-	for _, n := range nodes {
+	for _, n := range in.snap.nodes {
 		if n.EpistemicState != schema.EpistemicArchived {
 			continue
 		}
-		var challengeNodes []types.NodeID
-		var challengeIDs []string
-		add := func(target types.NodeID) {
-			for _, c := range openChallengesFor(st, target) {
-				challengeIDs = append(challengeIDs, c.ID)
-				challengeNodes = append(challengeNodes, target)
+		var obligations []types.NodeID
+		archivalSeq := n.ArchivedSeq
+		switch {
+		case len(n.AbandonedObligations) > 0:
+			obligations = parseNodeIDs(n.AbandonedObligations)
+		case in.pass != nil:
+			if a, ok := in.pass.Archival(n.ID); ok {
+				obligations = a.OpenAtArchive
+				if a.Seq > 0 {
+					archivalSeq = a.Seq
+				}
+			}
+		default:
+			for _, d := range in.snap.openChallengesAt(n) {
+				obligations = append(obligations, d.ID)
 			}
 		}
-		add(n.ID)
-		for _, d := range nodes {
-			if d.ID.Equal(n.ID) || !isDescendant(d.ID, n.ID) {
-				continue
-			}
-			if d.EpistemicState == schema.EpistemicArchived || d.EpistemicState == schema.EpistemicRefuted {
-				continue
-			}
-			add(d.ID)
-		}
-		if len(challengeIDs) == 0 {
+		obligations = dedupeSortedIDs(obligations)
+		if len(obligations) == 0 {
 			continue
 		}
-		sort.Strings(challengeIDs)
-		findingNodes := append([]types.NodeID{n.ID}, challengeNodes...)
+		findingNodes := append([]types.NodeID{n.ID}, obligations...)
+		var seqs []int
+		if archivalSeq > 0 {
+			seqs = append(seqs, archivalSeq)
+		}
 		fs = append(fs, Finding{
 			Code:     CodeArchivedWithOpenChallenge,
 			Severity: SeverityWarning,
 			Status:   StatusHistorical,
 			Nodes:    findingNodes,
-			Message: fmt.Sprintf("archived node %s has %d open challenge(s) on itself or an active descendant: %s",
-				n.ID.String(), len(challengeIDs), strings.Join(challengeIDs, ", ")),
+			Seqs:     seqs,
+			Message: fmt.Sprintf("archived node %s has %d abandoned open challenge obligation(s) on itself or an active descendant: %s",
+				n.ID.String(), len(obligations), joinNodeIDs(obligations)),
 			Remediation: RemediationFor(CodeArchivedWithOpenChallenge),
 		})
 	}
@@ -365,14 +460,14 @@ func archivedWithOpenChallenge(st *state.State) []Finding {
 
 // amendmentHotspots emits historical, non-gating info findings for the nodes
 // with the most recorded amendments.
-func amendmentHotspots(st *state.State) []Finding {
+func amendmentHotspots(in checksInput) []Finding {
 	type hotspot struct {
 		id  types.NodeID
 		seq []int
 	}
 	var spots []hotspot
-	for _, n := range sortedNodes(st) {
-		history := st.GetAmendmentHistory(n.ID)
+	for _, n := range in.snap.nodes {
+		history := in.snap.amendments[n.ID.String()]
 		if len(history) == 0 {
 			continue
 		}
@@ -412,13 +507,13 @@ func amendmentHotspots(st *state.State) []Finding {
 // pendingExternalCitedByValidated emits a historical warning per validated node
 // that cites an external reference. External verification is not implemented,
 // so every cited external is pending.
-func pendingExternalCitedByValidated(st *state.State) []Finding {
+func pendingExternalCitedByValidated(in checksInput) []Finding {
 	var fs []Finding
-	for _, n := range sortedNodes(st) {
+	for _, n := range in.snap.nodes {
 		if n.EpistemicState != schema.EpistemicValidated {
 			continue
 		}
-		refs := citedExternalNames(st, n)
+		refs := citedExternalNames(in.st, n)
 		if len(refs) == 0 {
 			continue
 		}
@@ -437,9 +532,9 @@ func pendingExternalCitedByValidated(st *state.State) []Finding {
 
 // unknownProvenance emits a historical info finding per validated node with no
 // recorded verifier identity.
-func unknownProvenance(st *state.State) []Finding {
+func unknownProvenance(in checksInput) []Finding {
 	var fs []Finding
-	for _, n := range sortedNodes(st) {
+	for _, n := range in.snap.nodes {
 		if n.EpistemicState != schema.EpistemicValidated || n.ValidatedBy != "" {
 			continue
 		}
@@ -453,35 +548,6 @@ func unknownProvenance(st *state.State) []Finding {
 		})
 	}
 	return fs
-}
-
-// openChallengesFor returns the open challenges on one node.
-func openChallengesFor(st *state.State, id types.NodeID) []*state.Challenge {
-	var out []*state.Challenge
-	for _, c := range st.GetChallengesForNode(id) {
-		if c.Status == state.ChallengeStatusOpen {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-// isDescendant reports whether child is strictly below ancestor.
-func isDescendant(child, ancestor types.NodeID) bool {
-	return strings.HasPrefix(child.String(), ancestor.String()+".")
-}
-
-// latestAmendmentSeq returns the latest amendment sequence recorded for a node.
-func latestAmendmentSeq(st *state.State, id types.NodeID) (int, bool) {
-	best := 0
-	found := false
-	for _, a := range st.GetAmendmentHistory(id) {
-		if a.Seq > best {
-			best = a.Seq
-			found = true
-		}
-	}
-	return best, found
 }
 
 // citedExternalNames returns the external references a node cites, by name or
@@ -531,6 +597,22 @@ func nonZeroIDs(ids ...types.NodeID) []types.NodeID {
 	return out
 }
 
+// dedupeSortedIDs returns the distinct IDs in stable hierarchical order.
+func dedupeSortedIDs(ids []types.NodeID) []types.NodeID {
+	out := make([]types.NodeID, 0, len(ids))
+	seen := map[string]bool{}
+	for _, id := range ids {
+		s := id.String()
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Less(out[j]) })
+	return out
+}
+
 // sortedIDs returns IDs in stable hierarchical order.
 func sortedIDs(ids []types.NodeID) []types.NodeID {
 	out := append([]types.NodeID(nil), ids...)
@@ -544,4 +626,13 @@ func shortHash(h string) string {
 		return h
 	}
 	return h[:12]
+}
+
+// joinNodeIDs renders node IDs for messages.
+func joinNodeIDs(ids []types.NodeID) string {
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		parts = append(parts, id.String())
+	}
+	return strings.Join(parts, ", ")
 }
