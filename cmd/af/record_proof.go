@@ -11,7 +11,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/service"
 )
 
-// newRecordProofCmd creates the `af record-proof` command: the atomic
+// newRecordProofCmd creates the `af record-proof` command: the serialized
 // prover-write kernel op an external driver (rk) uses to record a proof step on
 // a CHALLENGED node. Unlike claim-then-refine, it does the whole hand-off in
 // one transition — verify prover-job classification + expected hash, create the
@@ -28,8 +28,11 @@ func newRecordProofCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "record-proof <parent-id>",
 		GroupID: GroupProver,
-		Short:   "Atomically record a proof step: refine + dispose challenge + release",
-		Long: `Record a prover's decomposition of a CHALLENGED node in one atomic step.
+		Short:   "Record a proof step: refine + dispose challenge + release",
+		Long: `Record a prover's decomposition of a CHALLENGED node in one serialized step.
+
+A multi-event record-proof is serialized against other ledger writers and leaves
+a valid prefix if the process crashes mid-batch; it is not crash-atomic.
 
 record-proof is the driver-facing prover write. The target node must currently
 be a PROVER JOB (it has an open blocking challenge, or is draft/needs_refinement)
