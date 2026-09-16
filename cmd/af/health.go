@@ -394,6 +394,9 @@ func analyzeHealth(st *service.State, opts healthOptions) *HealthReport {
 		}
 	}
 
+	// D4: every validated node whose support is not current is a blocker.
+	status, blockers = analyzeSupportHealth(st, status, blockers)
+
 	// Ensure blockers is never nil for consistent JSON output
 	if blockers == nil {
 		blockers = []Blocker{}

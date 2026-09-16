@@ -216,6 +216,10 @@ func renderLegend(sb *strings.Builder) {
 	sb.WriteString(fmt.Sprintf("  %s - This node is admitted\n", ColorTaintState(node.TaintSelfAdmitted)))
 	sb.WriteString(fmt.Sprintf("  %s       - Depends on an admitted node (ancestor or descendant)\n", ColorTaintState(node.TaintTainted)))
 	sb.WriteString(fmt.Sprintf("  %s    - Some node in its chain needs verification or refinement\n", ColorTaintState(node.TaintUnresolved)))
+
+	// D4 support marker legend
+	sb.WriteString("\nSupport:\n")
+	sb.WriteString("  !  - validated, but support_current is false (a result it relies on was revised, refuted, or is pending)\n")
 }
 
 // UrgentItem represents a single urgent work item for display.
@@ -484,6 +488,7 @@ func RenderStatusFiltered(s *state.State, opts StatusOptions) string {
 // renderCompactTree renders nodes in compact format: one line per node with challenge badges.
 // Format: ID [epistemic/taint] statement_preview {Nc}
 func renderCompactTree(s *state.State, nodes []*node.Node) string {
+	supportMap := supportStatuses(s)
 	var sb strings.Builder
 	for _, n := range nodes {
 		depth := n.ID.Depth()
@@ -494,6 +499,7 @@ func renderCompactTree(s *state.State, nodes []*node.Node) string {
 		sb.WriteString(ColorEpistemicState(n.EpistemicState))
 		sb.WriteString("] ")
 		sb.WriteString(truncateStatement(n.Statement, 60))
+		sb.WriteString(supportMarker(supportMap[n.ID.String()]))
 
 		// Challenge badge
 		challenges := s.GetChallengesForNode(n.ID)

@@ -123,6 +123,10 @@ func TestTaintTraceCmd_TaintedDescendant(t *testing.T) {
 
 	refineAndClaim(t, svc, "1", "prover1")
 
+	// Refine 1.1 BEFORE admitting it: D4 refuses child creation under an
+	// admitted parent (the remedy is `af unadmit`).
+	refineAndClaim(t, svc, "1.1", "prover1")
+
 	// Admit 1.1, then admit root
 	if err := svc.AdmitNode(nid("1.1")); err != nil {
 		t.Fatal(err)
@@ -130,9 +134,6 @@ func TestTaintTraceCmd_TaintedDescendant(t *testing.T) {
 	if err := svc.AdmitNode(nid("1")); err != nil {
 		t.Fatal(err)
 	}
-
-	// Refine 1.1 further
-	refineAndClaim(t, svc, "1.1", "prover1")
 
 	// Accept 1.1.1 — should be tainted via parent 1.1
 	if err := svc.AcceptNode(nid("1.1.1")); err != nil {

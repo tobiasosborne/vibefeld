@@ -10,6 +10,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/render"
 	"github.com/tobiasosborne/vibefeld/internal/service"
+	"github.com/tobiasosborne/vibefeld/internal/support"
 )
 
 // newGetCmd creates the get command for retrieving node information.
@@ -184,13 +185,14 @@ func collectSubtree(st interface {
 
 // outputJSON outputs nodes in JSON format.
 func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []*service.Challenge, st *service.State) error {
+	supportMap := support.Current(st)
 	if len(nodes) == 1 {
 		// Single node: always show full output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
 		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)
 		amendments := st.GetAmendmentHistory(nodes[0].ID)
 		scopeInfo := getScopeInfoJSON(st, nodes[0].ID)
-		output := nodeToJSONFull(nodes[0], nodeChallenges, amendments, scopeInfo, st)
+		output := nodeToJSONFull(nodes[0], nodeChallenges, amendments, scopeInfo, st, supportMap[nodes[0].ID.String()])
 		data, err := json.Marshal(output)
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -206,7 +208,7 @@ func outputJSON(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 			nodeChallenges := filterChallengesForNode(challenges, n.ID)
 			amendments := st.GetAmendmentHistory(n.ID)
 			scopeInfo := getScopeInfoJSON(st, n.ID)
-			jsonNodes = append(jsonNodes, nodeToJSONFull(n, nodeChallenges, amendments, scopeInfo, st))
+			jsonNodes = append(jsonNodes, nodeToJSONFull(n, nodeChallenges, amendments, scopeInfo, st, supportMap[n.ID.String()]))
 		}
 		data, err := json.Marshal(jsonNodes)
 		if err != nil {
@@ -263,8 +265,10 @@ func nodeToJSONBasic(n *node.Node) map[string]interface{} {
 	}
 }
 
-// nodeToJSONFull creates a full JSON representation of a node.
-func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []service.Amendment, scopeInfo map[string]interface{}, st *service.State) map[string]interface{} {
+// nodeToJSONFull creates a full JSON representation of a node. It takes both
+// the service state (for the D7/D11 claim and job fields) and the precomputed
+// support status (for support_current).
+func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []service.Amendment, scopeInfo map[string]interface{}, st *service.State, sup support.SupportStatus) map[string]interface{} {
 	result := map[string]interface{}{
 		"id":              n.ID.String(),
 		"type":            string(n.Type),
@@ -275,6 +279,16 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 		"taint_state":     string(n.TaintState),
 		"created":         n.Created.String(),
 		"content_hash":    n.ContentHash,
+		"support_current": sup.Current,
+	}
+	if sup.Cause != "" {
+		result["support_cause"] = sup.Cause
+		if sup.Node.String() != "" {
+			result["support_node"] = sup.Node.String()
+		}
+		if sup.Seq > 0 {
+			result["support_seq"] = sup.Seq
+		}
 	}
 
 	if n.Author != "" {
@@ -317,7 +331,7 @@ func nodeToJSONFull(n *node.Node, challenges []*service.Challenge, amendments []
 		for _, other := range st.AllNodes() {
 			nodeMap[other.ID.String()] = other
 		}
-		result["prover_ready"] = service.IsProverJob(n, challengeMap)
+		result["prover_ready"] = service.IsProverJob(n, nodeMap, challengeMap)
 		result["verifier_ready"] = service.IsVerifierReady(n, nodeMap, challengeMap)
 	}
 
@@ -414,13 +428,23 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 		// Single node: always show full/verbose output by default.
 		// The --full flag is a no-op for single nodes (kept for backwards compatibility).
 		fmt.Fprint(cmd.OutOrStdout(), render.RenderNodeVerbose(nodes[0]))
+		if sup := support.Current(st)[nodes[0].ID.String()]; !sup.Current && sup.Cause != "" && sup.Cause != support.CauseNotValidated {
+			fmt.Fprintf(cmd.OutOrStdout(), "\nSupport: NOT CURRENT (%s)", sup.Cause)
+			if sup.Node.String() != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), " - responsible node %s", sup.Node.String())
+			}
+			if sup.Seq > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), " (seq %d)", sup.Seq)
+			}
+			fmt.Fprintln(cmd.OutOrStdout())
+		}
 		if st != nil {
 			challengeMap := st.ChallengeMapForJobs()
 			nodeMap := make(map[string]*node.Node)
 			for _, other := range st.AllNodes() {
 				nodeMap[other.ID.String()] = other
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Prover job: %t\nVerifier job: %t\n", service.IsProverJob(nodes[0], challengeMap), service.IsVerifierReady(nodes[0], nodeMap, challengeMap))
+			fmt.Fprintf(cmd.OutOrStdout(), "Prover job: %t\nVerifier job: %t\n", service.IsProverJob(nodes[0], nodeMap, challengeMap), service.IsVerifierReady(nodes[0], nodeMap, challengeMap))
 		}
 		// Show challenges for this node
 		nodeChallenges := filterChallengesForNode(challenges, nodes[0].ID)
@@ -475,6 +499,16 @@ func outputText(cmd *cobra.Command, nodes []*node.Node, full bool, challenges []
 				fmt.Fprintln(cmd.OutOrStdout(), "---")
 			}
 			fmt.Fprint(cmd.OutOrStdout(), render.RenderNodeVerbose(n))
+			if sup := support.Current(st)[n.ID.String()]; !sup.Current && sup.Cause != "" && sup.Cause != support.CauseNotValidated {
+				fmt.Fprintf(cmd.OutOrStdout(), "\nSupport: NOT CURRENT (%s)", sup.Cause)
+				if sup.Node.String() != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), " - responsible node %s", sup.Node.String())
+				}
+				if sup.Seq > 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), " (seq %d)", sup.Seq)
+				}
+				fmt.Fprintln(cmd.OutOrStdout())
+			}
 			// Show challenges for this node
 			nodeChallenges := filterChallengesForNode(challenges, n.ID)
 			if len(nodeChallenges) > 0 {

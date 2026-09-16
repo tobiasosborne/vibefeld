@@ -34,6 +34,9 @@ const (
 	// FeatureDependencyAmendments: per-node dependency_amendments[] (D2
 	// node_deps_amended history) are emitted.
 	FeatureDependencyAmendments = "dependency-amendments"
+	// FeatureSupportCurrent: per-node support_current/support_cause (D4's
+	// recursive, revision-aware support signal) are emitted.
+	FeatureSupportCurrent = "support-current"
 )
 
 // GraphFeatures is the fixed capability list this af build advertises. Always
@@ -47,6 +50,7 @@ var GraphFeatures = []string{
 	FeatureProofAuthor,
 	FeatureValidationDeps,
 	FeatureDependencyAmendments,
+	FeatureSupportCurrent,
 }
 
 // isEpistemicallyCleared reports whether a node's own epistemic state is one

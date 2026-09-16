@@ -30,7 +30,7 @@ func FindVerifierJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challen
 
 	var result []*node.Node
 	for _, n := range nodes {
-		if isVerifierJob(n, challengeMap) {
+		if isVerifierJob(n, nodeMap, challengeMap) {
 			result = append(result, n)
 		}
 	}
@@ -41,21 +41,23 @@ func FindVerifierJobs(nodes []*node.Node, nodeMap map[string]*node.Node, challen
 // under af's own classifier (the exported form of isVerifierJob). It is the
 // single source of truth for the "ready for review" question, shared by
 // status, get, export and health.
-func IsVerifierJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
-	return isVerifierJob(n, challengeMap)
+func IsVerifierJob(n *node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) bool {
+	return isVerifierJob(n, nodeMap, challengeMap)
 }
 
 // isVerifierJob checks if a single node qualifies as a verifier job.
 // A verifier job is a node that is ready for verifier review:
 //   - Has a statement (non-empty)
-//   - EpistemicState = "pending" (not yet verified)
+//   - EpistemicState = "pending", OR "needs_refinement" whose children are all
+//     cleared and which has at least one child (D4: a reopened node becomes
+//     verifier work again once its new proof is in)
 //   - WorkflowState = "available" (not claimed or blocked)
 //   - Has no open blocking challenges (critical/major severity)
 //
 // This is the breadth-first model: new nodes are immediately verifiable.
 // Blocking challenges move nodes to prover territory until resolved.
 // Non-blocking challenges (minor/note) do not prevent verifier review.
-func isVerifierJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool {
+func isVerifierJob(n *node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) bool {
 	// Must have a statement (nodes are created with statements, but check anyway)
 	if n.Statement == "" {
 		return false
@@ -66,8 +68,16 @@ func isVerifierJob(n *node.Node, challengeMap map[string][]*node.Challenge) bool
 		return false
 	}
 
-	// Must be pending (not yet verified)
-	if n.EpistemicState != schema.EpistemicPending {
+	switch n.EpistemicState {
+	case schema.EpistemicPending:
+		// ready for first verification
+	case schema.EpistemicNeedsRefinement:
+		// Reopened for more proof work: verifier territory only once the new
+		// proof exists and all its children are cleared.
+		if !hasAnyChild(n, nodeMap) || !AllChildrenCleared(n, nodeMap) {
+			return false
+		}
+	default:
 		return false
 	}
 
@@ -118,7 +128,7 @@ func FilterReadyVerifierJobs(verifierJobs []*node.Node, nodeMap map[string]*node
 // cleared. It is the per-node form of FilterReadyVerifierJobs and the single
 // `verifier_ready` predicate shared by af get, status, jobs and export.
 func IsVerifierReady(n *node.Node, nodeMap map[string]*node.Node, challengeMap map[string][]*node.Challenge) bool {
-	return isVerifierJob(n, challengeMap) && AllChildrenCleared(n, nodeMap)
+	return isVerifierJob(n, nodeMap, challengeMap) && AllChildrenCleared(n, nodeMap)
 }
 
 // hasOpenChallenges returns true if the node has any open (unresolved) challenges.

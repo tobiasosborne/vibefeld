@@ -278,40 +278,74 @@ func outputSingleAcceptance(cmd *cobra.Command, nodeID service.NodeID, withNote,
 
 // performBulkAcceptance handles acceptance of multiple nodes. agent, if
 // non-empty, is recorded as the verifier identity on every resulting
-// NodeValidated event, same convention as performSingleAcceptance.
+// NodeValidated event, same convention as performSingleAcceptance. Nodes are
+// scheduled by actual prerequisites (a child before its parent; ID order as
+// tie-break) and the per-item outcomes are reported. A partial success returns
+// the report's exit-5 AFError so the CLI exits 5, matching `af verdicts apply`.
 func performBulkAcceptance(cmd *cobra.Command, svc *service.ProofService, nodeIDs []service.NodeID, format, agent string) error {
-	if err := svc.AcceptNodeBulkWithVerifier(nodeIDs, agent, ""); err != nil {
-		if errors.Is(err, service.ErrClaimTestStale) {
-			return fmt.Errorf("a crux node's only passing claim-test is stale (re-run 'af claim-test <node-id> --script <path>'): %w", err)
+	report, err := svc.AcceptNodesBulk(nodeIDs, agent, "")
+	if report != nil {
+		if outErr := outputBulkAcceptance(cmd, report, format); outErr != nil {
+			return outErr
 		}
-		if errors.Is(err, service.ErrClaimTestRequired) {
-			return fmt.Errorf("a crux node has no passing claim-test: %w\nRun 'af claim-test <node-id> --script <path>' first", err)
-		}
-		if errors.Is(err, service.ErrBlockingChallenges) {
-			nodeID := extractNodeIDFromBlockingError(err)
-			if nodeID != nil {
-				return handleBlockingChallengesError(cmd, svc, *nodeID, format, err)
-			}
-		}
-		return fmt.Errorf("error accepting nodes: %w", err)
 	}
-
-	return outputBulkAcceptance(cmd, service.ToStringSlice(nodeIDs), format)
+	if err == nil {
+		return nil
+	}
+	// Preserve the crux/blocking-challenge affordances for the not-yet-eligible
+	// cases; the report's own exit code stands for the aggregate outcome.
+	if errors.Is(err, service.ErrClaimTestStale) {
+		return fmt.Errorf("a crux node's only passing claim-test is stale (re-run 'af claim-test <node-id> --script <path>'): %w", err)
+	}
+	if errors.Is(err, service.ErrClaimTestRequired) {
+		return fmt.Errorf("a crux node has no passing claim-test: %w\nRun 'af claim-test <node-id> --script <path>' first", err)
+	}
+	if errors.Is(err, service.ErrBlockingChallenges) {
+		nodeID := extractNodeIDFromBlockingError(err)
+		if nodeID != nil {
+			return handleBlockingChallengesError(cmd, svc, *nodeID, format, err)
+		}
+	}
+	return err
 }
 
-// outputBulkAcceptance outputs the result of a bulk node acceptance.
-func outputBulkAcceptance(cmd *cobra.Command, acceptedStrs []string, format string) error {
+// outputBulkAcceptance outputs the per-item result of a bulk node acceptance.
+// It keeps the pre-D4 fields (accepted/count/status in JSON) and adds items
+// with each node's outcome.
+func outputBulkAcceptance(cmd *cobra.Command, report *service.BulkAcceptReport, format string) error {
+	appliedStrs := make([]string, 0, report.Applied)
+	for _, it := range report.Items {
+		if it.Status == "applied" {
+			appliedStrs = append(appliedStrs, it.Node)
+		}
+	}
+
 	switch strings.ToLower(format) {
 	case "json":
 		return writeJSONOutput(cmd, map[string]interface{}{
-			"accepted": acceptedStrs,
-			"count":    len(acceptedStrs),
+			"accepted": appliedStrs,
+			"count":    len(appliedStrs),
 			"status":   "validated",
+			"items":    report.Items,
+			"applied":  report.Applied,
+			"blocked":  report.Blocked,
+			"rejected": report.Rejected,
 		})
 	default:
-		fmt.Fprintf(cmd.OutOrStdout(), "Accepted %d nodes:\n", len(acceptedStrs))
-		for _, idStr := range acceptedStrs {
-			fmt.Fprintf(cmd.OutOrStdout(), "  %s - validated\n", idStr)
+		if report.Applied == len(report.Items) {
+			fmt.Fprintf(cmd.OutOrStdout(), "Accepted %d nodes:\n", report.Applied)
+			for _, idStr := range appliedStrs {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s - validated\n", idStr)
+			}
+			return nil
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Accept bulk: %d applied, %d blocked, %d rejected\n", report.Applied, report.Blocked, report.Rejected)
+		for _, it := range report.Items {
+			line := fmt.Sprintf("  %s - %s", it.Node, it.Status)
+			if it.Detail != "" {
+				line += ": " + it.Detail
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), line)
 		}
 	}
 	return nil
