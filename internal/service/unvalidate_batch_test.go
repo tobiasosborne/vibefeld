@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	aferrors "github.com/tobiasosborne/vibefeld/internal/errors"
+	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/verdicts"
 )
 
@@ -109,6 +110,87 @@ func TestUnvalidateBatch_RoundTrip(t *testing.T) {
 	_, err = svc.UnvalidateBatch("batch-rt", "second attempt", "verifier-1")
 	if !errors.Is(err, ErrUnvalidateBatchNotFound) {
 		t.Errorf("expected ErrUnvalidateBatchNotFound on second call, got: %v", err)
+	}
+}
+
+// TestUnvalidateBatch_BatchChangedBeforeCommitLeavesNodes is the item-3 race
+// test. Batch b1 covers two nodes. In the window between the commit closure's
+// discovery read and its CAS append, one node is unvalidated and revalidated
+// under b2. The single CAS batch must refuse to run: neither node may be
+// revoked from a stale selection, and both remain validated.
+//
+// The hook is one-shot: with the old per-node implementation the root's later
+// UnvalidateNode would then succeed on a fresh read, so a non-one-shot hook
+// would not distinguish the fix from the bug. Asserting the root is still
+// validated catches the partial stale revoke.
+func TestUnvalidateBatch_BatchChangedBeforeCommitLeavesNodes(t *testing.T) {
+	svc, _ := setupVerdictTestProof(t)
+	rootID := parseNodeID(t, "1")
+	childID := parseNodeID(t, "1.1")
+
+	data := `{
+		"schema_version": "1", "batch_id": "b1", "verified_by": "verifier-1",
+		"items": [
+			{"node": "1.1", "verdict": "accept", "reason": "child first"},
+			{"node": "1", "verdict": "accept", "reason": "parent second"}
+		]
+	}`
+	if _, err := svc.ApplyVerdicts(mustParseFile(t, data)); err != nil {
+		t.Fatalf("ApplyVerdicts: %v", err)
+	}
+
+	// Concurrent writer: the child leaves b1 and is revalidated under b2 in the
+	// window between the bulk closure's discovery read and its append. Fire
+	// once, then disarm, so a regression to per-node commits can be detected.
+	svc.beforeAppend = func() {
+		svc.beforeAppend = nil
+		if _, err := ledger.Append(svc.ledgerDir(), ledger.NewNodeUnvalidated(childID, "moved", "verifier-2")); err != nil {
+			t.Errorf("concurrent unvalidate Append: %v", err)
+		}
+		if _, err := ledger.Append(svc.ledgerDir(), ledger.NewNodeValidatedFull(childID, "", "verifier-2", "b2")); err != nil {
+			t.Errorf("concurrent revalidate Append: %v", err)
+		}
+	}
+	defer func() { svc.beforeAppend = nil }()
+
+	_, err := svc.UnvalidateBatch("b1", "revoke b1", "verifier-1")
+	if !errors.Is(err, ErrConcurrentModification) {
+		t.Fatalf("UnvalidateBatch err = %v, want ErrConcurrentModification", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if got := st.GetNode(rootID).EpistemicState; got != "validated" {
+		t.Fatalf("root state = %q, want still validated (b1 must not partially apply)", got)
+	}
+	if got := st.GetNode(childID).ValidationBatchID; got != "b2" {
+		t.Fatalf("child batch = %q, want b2 (the concurrent revalidation stands)", got)
+	}
+}
+
+// TestUnvalidateBatch_RechecksBatchIDPerNode verifies the commit closure
+// re-checks each target's batch id and transition rather than trusting an
+// earlier read.
+func TestUnvalidateBatch_RechecksBatchIDPerNode(t *testing.T) {
+	svc, _ := setupVerdictTestProof(t)
+	child := parseNodeID(t, "1.1")
+
+	if err := svc.AcceptNodeWithVerifier(child, "", "verifier-1", "batch-z"); err != nil {
+		t.Fatalf("AcceptNodeWithVerifier: %v", err)
+	}
+
+	report, err := svc.UnvalidateBatch("batch-z", "clean sweep", "verifier-1")
+	if err != nil {
+		t.Fatalf("UnvalidateBatch: %v", err)
+	}
+	if report.Count != 1 || len(report.Items) != 1 || report.Items[0].Err != "" {
+		t.Fatalf("report = %+v, want one clean item", report)
+	}
+
+	if _, err := svc.UnvalidateBatch("batch-z", "second sweep", "verifier-1"); !errors.Is(err, ErrUnvalidateBatchNotFound) {
+		t.Fatalf("second UnvalidateBatch err = %v, want ErrUnvalidateBatchNotFound", err)
 	}
 }
 
