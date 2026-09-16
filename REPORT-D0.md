@@ -145,7 +145,9 @@ The fixes are grouped in the commits after `docs: D0 report`.
    Rebuilt as one commit closure that finds matching nodes in that state,
    re-checks each `ValidationBatchID` and the `validated -> pending`
    transition, and appends the ordered `NodeUnvalidated` events as one batch.
-   Public signature and report shape are unchanged.
+   Public signature and report shape are unchanged (on a CAS conflict
+   nothing was appended, so `Count` is 0 and every attempted item is marked
+   with the conflict rather than reporting a phantom partial success).
    `TestUnvalidateBatch_BatchChangedBeforeCommitLeavesNodes` uses a one-shot
    hook and fails against the old per-node implementation (verified).
 
