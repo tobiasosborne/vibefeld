@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/tobiasosborne/vibefeld/internal/service"
@@ -21,7 +23,7 @@ func TestGetShowsAcceptanceAndClaimFields(t *testing.T) {
 	run := func(args ...string) string {
 		t.Helper()
 		cmd := newTestRootCmd()
-		cmd.AddCommand(newClaimCmd(), newAcceptCmd(), newGetCmd())
+		cmd.AddCommand(newClaimCmd(), newAcceptCmd(), newGetCmd(), newVerdictsCmd())
 		buf := new(bytes.Buffer)
 		cmd.SetOut(buf)
 		cmd.SetErr(buf)
@@ -48,7 +50,22 @@ func TestGetShowsAcceptanceAndClaimFields(t *testing.T) {
 		t.Errorf("expected expires_at in get JSON, got %v", claimed["expires_at"])
 	}
 
-	run("accept", "1", "--agent", "verifier-1", "--with-note", "checked", "--confirm", "-d", dir)
+	// Apply the acceptance as a BATCHED verdict (af verdicts apply), so the
+	// recorded validation_batch_id is non-empty and must be surfaced exactly.
+	const batchID = "batch-d11-0l3d"
+	verdictsPath := filepath.Join(dir, "verdicts.json")
+	verdictsJSON := `{
+		"schema_version": "1",
+		"batch_id": "` + batchID + `",
+		"verified_by": "verifier-1",
+		"items": [
+			{"node": "1", "verdict": "accept", "reason": "checked in batch"}
+		]
+	}`
+	if err := os.WriteFile(verdictsPath, []byte(verdictsJSON), 0o644); err != nil {
+		t.Fatalf("write verdicts: %v", err)
+	}
+	run("verdicts", "apply", verdictsPath, "-d", dir)
 
 	var accepted map[string]interface{}
 	if err := json.Unmarshal([]byte(run("get", "1", "-f", "json", "-d", dir)), &accepted); err != nil {
@@ -57,9 +74,7 @@ func TestGetShowsAcceptanceAndClaimFields(t *testing.T) {
 	if accepted["validated_by"] != "verifier-1" {
 		t.Errorf("validated_by = %v, want verifier-1", accepted["validated_by"])
 	}
-	if _, ok := accepted["validation_batch_id"]; !ok {
-		// Empty batch id is dropped by the field's omitempty; the important
-		// thing is that validated_by is present.
-		t.Logf("validation_batch_id omitted (empty for a single accept), which is expected")
+	if got := accepted["validation_batch_id"]; got != batchID {
+		t.Errorf("validation_batch_id = %v, want %q", got, batchID)
 	}
 }
