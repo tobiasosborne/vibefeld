@@ -14,7 +14,6 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/service"
 	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/support"
-	"github.com/tobiasosborne/vibefeld/internal/taint"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -108,10 +107,8 @@ func runTaintTrace(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("node %s not found", nodeID.String())
 	}
 
-	// LoadState already ran the authoritative taint pass; keep it explicit so
-	// the trace cannot diverge from derived state.
-	taint.RecomputeAll(st.AllNodes())
-
+	// LoadState already ran the authoritative taint pass (state.Replay does not
+	// derive taint; its callers do), so the trace reads derived state directly.
 	index := newTaintTraceIndex(st.AllNodes())
 	chain := ancestryChain(target, index)
 	entries := make([]traceEntry, len(chain))

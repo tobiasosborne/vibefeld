@@ -193,10 +193,3 @@ func classifyTarget(st State, n *node.Node, t Folded[SupportStatus]) (SupportSta
 	}
 	return SupportStatus{}, false
 }
-
-// latestRevisionSeq returns the latest ledger sequence among a node's recorded
-// content revisions (statement and dependency amendments, including reopened
-// ones), and whether any revision was recorded.
-func latestRevisionSeq(st State, id types.NodeID) (int, bool) {
-	return st.LatestAmendmentSeq(id)
-}
