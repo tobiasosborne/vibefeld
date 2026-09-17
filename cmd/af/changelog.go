@@ -9,9 +9,8 @@ import (
 // changelog is an ordered list of releases, newest first.
 var changelog = []release{
 	{
-		Version:    "0.1.11",
-		Date:       "unreleased",
-		Unreleased: true,
+		Version: "0.1.11",
+		Date:    "2026-09-17",
 		Items: []string{
 			"Taint follows proof support (D6). A node's support component is computed as a fold over result-use edges in dependency-topological order, so reference dependencies and validation dependencies now carry taint exactly like children: a severed or missing dependency target is `unresolved`, a pending/draft/needs_refinement target is `unresolved`, an admitted target contributes `tainted` and is not descended, and a validated target contributes its own component. Legacy result-use cycles (strongly connected components) are `unresolved`. A `local_assume` *cited as a dependency* is a hypothesis-use edge and carries nothing, but a `local_assume` child -- and a `local_assume`'s own children -- are ordinary result-use edges, so an admitted or pending step under a hypothesis taints the enclosing proof (it did in 0.1.7-0.1.10 too). A node whose immediate parent ID is absent attaches to its nearest present ancestor, the rule the ancestor pass already used. The ancestor-context component stays separate, so a validated sibling of an admitted node stays `clean`. The old rules 0-7 in `docs/concepts.md` are replaced by the new ordered rule list.",
 			"Per-node taint precedence changed: the order is now own severed -> own admitted -> own unresolved -> ancestor unresolved (0.1.10 ordered own unresolved -> ancestor unresolved -> own admitted). The visible effect is that an `admitted` node under a `pending` ancestor now reports `self_admitted` where 0.1.10 reported `unresolved`; scripts reading `taint_state` or `validation.taint_counts` will see it.",
