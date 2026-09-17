@@ -102,7 +102,9 @@ type GraphEdge struct {
 }
 
 // Provider is the result-use adjacency over state with an optional overlay of
-// prospective nodes. It implements cycle.DependencyProvider.
+// prospective nodes. It implements cycle.DependencyProvider. Every adjacency
+// list in deps is deduplicated and sorted in hierarchical-ID order at
+// construction; consumers rely on that order and must not re-sort.
 type Provider struct {
 	deps     map[string][]types.NodeID
 	order    []types.NodeID
@@ -243,7 +245,12 @@ func resultUseEdges(u *universe) Provider {
 				dangling(t)
 			}
 		}
-		p.deps[info.id.String()] = dedupe(edges)
+		// Adjacency is sorted once here, at construction, so Prepare's Tarjan
+		// pass and every Walk consume it as-is: the walk (and therefore every
+		// fold built on it) is deterministic without re-sorting per visit.
+		deduped := dedupe(edges)
+		sort.Slice(deduped, func(i, j int) bool { return deduped[i].Less(deduped[j]) })
+		p.deps[info.id.String()] = deduped
 		p.edges[info.id.String()] = dedupeGraphEdges(gEdges)
 	}
 

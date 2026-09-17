@@ -146,7 +146,7 @@ func Walk[T any](g *Graph, fold func(n *node.Node, targets []Folded[T]) T) map[s
 		for _, idStr := range comp {
 			n := g.nodes[idStr]
 			targets := make([]Folded[T], 0, len(g.deps[idStr]))
-			for _, dep := range sortedDeps(g.deps[idStr]) {
+			for _, dep := range g.deps[idStr] {
 				depStr := dep.String()
 				if compSet[depStr] && cyclic {
 					targets = append(targets, Folded[T]{ID: dep, Cycle: true})
@@ -178,46 +178,82 @@ type tarjan struct {
 	sccs    [][]string
 }
 
-func (t *tarjan) strongConnect(v string, p Provider) {
+// frame is one vertex being expanded by the iterative strongConnect: its
+// adjacency and how far through it the walk has got.
+type frame struct {
+	v    string
+	deps []types.NodeID
+	next int
+}
+
+// strongConnect is Tarjan's algorithm with an explicit frame stack rather than
+// recursion, so a deep legacy dependency chain cannot exhaust the goroutine
+// stack. Adjacency lists arrive sorted from the Provider, so the traversal
+// order — and every fold built on it — is deterministic.
+func (t *tarjan) strongConnect(root string, p Provider) {
+	t.push(root)
+	frames := []frame{{v: root, deps: p.deps[root]}}
+
+	for len(frames) > 0 {
+		top := &frames[len(frames)-1]
+		if top.next < len(top.deps) {
+			w := top.deps[top.next].String()
+			top.next++
+			if p.nodes[w] == nil {
+				continue // missing/prospective target: not a vertex
+			}
+			if _, seen := t.index[w]; !seen {
+				t.push(w)
+				frames = append(frames, frame{v: w, deps: p.deps[w]})
+				continue
+			}
+			if t.onStack[w] && t.index[w] < t.lowlink[top.v] {
+				t.lowlink[top.v] = t.index[w]
+			}
+			continue
+		}
+
+		// Every target of v has been expanded: close v, then fold its lowlink
+		// into the caller's, which is what the recursive form did on return.
+		v := top.v
+		frames = frames[:len(frames)-1]
+		if t.lowlink[v] == t.index[v] {
+			t.popComponent(v)
+		}
+		if len(frames) > 0 {
+			caller := frames[len(frames)-1].v
+			if t.lowlink[v] < t.lowlink[caller] {
+				t.lowlink[caller] = t.lowlink[v]
+			}
+		}
+	}
+}
+
+// push assigns v its index and puts it on the SCC stack.
+func (t *tarjan) push(v string) {
 	t.index[v] = t.next
 	t.lowlink[v] = t.next
 	t.next++
 	t.stack = append(t.stack, v)
 	t.onStack[v] = true
+}
 
-	for _, dep := range sortedDeps(p.deps[v]) {
-		w := dep.String()
-		if p.nodes[w] == nil {
-			continue // missing/prospective target: not a vertex
-		}
-		if _, seen := t.index[w]; !seen {
-			t.strongConnect(w, p)
-			if t.lowlink[w] < t.lowlink[v] {
-				t.lowlink[v] = t.lowlink[w]
-			}
-		} else if t.onStack[w] {
-			if t.index[w] < t.lowlink[v] {
-				t.lowlink[v] = t.index[w]
-			}
+// popComponent pops the strongly connected component whose root is v.
+func (t *tarjan) popComponent(v string) {
+	var comp []string
+	for {
+		w := t.stack[len(t.stack)-1]
+		t.stack = t.stack[:len(t.stack)-1]
+		t.onStack[w] = false
+		comp = append(comp, w)
+		if w == v {
+			break
 		}
 	}
-
-	if t.lowlink[v] == t.index[v] {
-		var comp []string
-		for {
-			w := t.stack[len(t.stack)-1]
-			t.stack = t.stack[:len(t.stack)-1]
-			t.onStack[w] = false
-			comp = append(comp, w)
-			if w == v {
-				break
-			}
-		}
-		id := len(t.sccs)
-		t.sccs = append(t.sccs, comp)
-		for _, w := range comp {
-			t.sccOf[w] = id
-		}
+	id := len(t.sccs)
+	t.sccs = append(t.sccs, comp)
+	for _, w := range comp {
+		t.sccOf[w] = id
 	}
 }
 
@@ -228,12 +264,4 @@ func (t *tarjan) hasSelfLoop(id string, p Provider) bool {
 		}
 	}
 	return false
-}
-
-// sortedDeps returns a copy of deps in stable hierarchical-ID order so the
-// walk — and therefore every fold built on it — is deterministic.
-func sortedDeps(deps []types.NodeID) []types.NodeID {
-	out := append([]types.NodeID(nil), deps...)
-	sort.Slice(out, func(i, j int) bool { return out[i].Less(out[j]) })
-	return out
 }
