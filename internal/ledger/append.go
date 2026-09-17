@@ -69,12 +69,23 @@ func cleanupTempFiles(tempPaths []string, start, end int) {
 	}
 }
 
+// nofsyncEnv is a test-only switch for the benchmark job: when it is exactly
+// "1", fsyncDir returns without syncing the directory. It exists so the
+// benchmark can measure the per-event directory-fsync cost by running the same
+// workload with and without it. It is UNSAFE for durability: a crash after an
+// append may lose the directory entry even though the event file was written,
+// so the ledger could come back short. It must never be set in production.
+const nofsyncEnv = "AF_TEST_NO_FSYNC"
+
 // fsyncDir flushes the directory entry created by a rename so that the new
 // event file survives a crash. On platforms where directory fsync is not
 // supported (e.g. some filesystems return EINVAL), the error is ignored: the
 // rename itself is still atomic, and losing the explicit directory fsync only
 // affects durability, not consistency.
 func fsyncDir(dir string) error {
+	if os.Getenv(nofsyncEnv) == "1" {
+		return nil
+	}
 	d, err := os.Open(dir)
 	if err != nil {
 		return fmt.Errorf("failed to open ledger directory for fsync: %w", err)

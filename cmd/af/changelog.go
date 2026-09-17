@@ -20,9 +20,8 @@ var changelog = []release{
 		},
 	},
 	{
-		Version:    "0.1.10",
-		Date:       "unreleased",
-		Unreleased: true,
+		Version: "0.1.10",
+		Date:    "2026-09-16",
 		Items: []string{
 			"`af health` no longer infers that repeated scrutiny means a claim is false. The absolute subtree repair-fatigue alarm is removed and replaced with descriptive per-node rework: resolved challenges, statement and dependency amendments, and refuted children. The top hotspots are listed (configurable with `--hotspots`, default 5) and a per-node `--rework-warn` threshold (default 5) marks a warning, explicitly labelled rework rather than evidence of falsity. Health blockers now also report open challenges with severity and age, and stalled (held longer than the lock timeout) or stale (expired) claims with their owner and expiry; claims record their acquisition time separately from their expiry.",
 			"One jobs classifier: `af status`'s Prover/Verifier summary, `af status --urgent`, `af get`, `af export --graph json` and `af health` now all use `internal/jobs` (`FindJobs` / `IsProverJob` / `IsVerifierJob`), and the render-side workflow-only heuristic is deleted, so the surfaces can no longer disagree.",
@@ -37,6 +36,7 @@ var changelog = []release{
 			"Claim generations and fenced auto-release (D5): a claim's generation is the ledger sequence of the `nodes_claimed` event that created it, shown as `claim_seq` by `af get` and `af jobs -f json` and cleared on release. `NodeValidated`/`NodeAdmitted`/`NodeRefuted`/`NodeArchived` carry an optional `claim_seq` and `release_claim`; a terminal action taken by the claim holder releases the claim in the same event, and replay releases only when the generation still matches, so a retried or delayed release cannot evict a later claim. This closes the hole where `af accept` left a node claimed. `af release` afterwards is a documented no-op (exit 0). Legacy events replay unchanged.",
 			"`af admit`, `af refute` and `af archive` record the acting agent identity (`--agent` or `AF_AGENT_ID`) as an optional `by` on their events, and auto-release the caller's claim on the same `claim_seq` fence as accept (D5). `internal/lock.GetLockInfo` now reads a `ClaimLock` under its mutex and applies `ClockSkewTolerance` like `IsExpired` (uj18).",
 			"Guardrails labelled as guardrails (D9): `af archive` refuses when a challenge is open on the node or on an active (non-severed) descendant unless `--force --reason`; `NodeArchived` records `reason` and `forced`, and the verification checklist lists children archived with a challenge open so the next accept acknowledges the abandoned obligation. `af accept` with an identity refuses when the verifier is recorded as the node's author, proof author or an amender; `--allow-self` is explicit and records `self_accepted: true`; verdict files run the same check and cannot opt out. Without `--agent`/`AF_AGENT_ID`, `af accept` prints a one-line warning (text output) and the identity becomes required in 0.1.11. This is recorded provenance, not proof of independence (see `docs/trust-model.md`).",
+			"Benchmark job: `scripts/synth-workspace.sh` generates a deterministic synthetic workspace (N nodes, high fan-out, cross-reference deps, verification rounds) through real `af` commands, and `scripts/benchmark.sh` measures 100- and 1000-node workspaces at 10 and 50 concurrent writers: per-command p50/p95 latency, exit-1 retries, lock waits, events and bytes appended, single-command latency for `status`/`jobs`/`health`/`audit`/`export --graph json`/bulk accept, and the per-event directory-fsync cost via the test-only `AF_TEST_NO_FSYNC` switch. The e2e scale test (`-tags integration`) builds 1000 nodes through the service API and asserts replay, contiguity, audit and `support_current` invariants without wall-time assertions.",
 		},
 	},
 	{
