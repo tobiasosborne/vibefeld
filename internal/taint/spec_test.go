@@ -46,6 +46,7 @@ type specGraph struct {
 	dep     map[string][]string
 	valDep  map[string][]string
 	missing map[string]bool // targets deliberately absent from the graph
+	deleted []string        // non-leaf nodes removed to punch a hole in the ID space
 
 	adj   map[string][]string
 	reach map[string]map[string]bool
@@ -166,8 +167,18 @@ func (g *specGraph) targets(id string) []string {
 			return out
 		}
 	}
-	n := g.nodes[id]
+	n, exists := g.nodes[id]
 	var out []string
+	if !exists {
+		// A node absent from the graph is not a vertex: it has no outgoing
+		// result-use edges, matching the production walk, which skips a target
+		// with no *node.Node behind it.
+		if g.adj == nil {
+			g.adj = make(map[string][]string)
+		}
+		g.adj[id] = nil
+		return nil
+	}
 	if !specSevered(n.epistemic) {
 		for child := range g.nodes {
 			if g.effParent(child) != id {

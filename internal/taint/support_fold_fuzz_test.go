@@ -263,6 +263,25 @@ func randomSpecGraph(rng *rand.Rand) *specGraph {
 			}
 		}
 	}
+
+	// One graph in four has a hole in the ID space: a non-root, non-leaf node is
+	// deleted while its descendants stay. Such a node is not a vertex, and its
+	// children attach to the nearest present ancestor in both the ancestor pass
+	// and the support graph. Legacy or hand-edited ledgers can look like this.
+	if rng.Intn(4) == 0 {
+		var candidates []string
+		for _, id := range ids {
+			if id == "1" || childCount[id] == 0 {
+				continue
+			}
+			candidates = append(candidates, id)
+		}
+		if len(candidates) > 0 {
+			victim := candidates[rng.Intn(len(candidates))]
+			delete(g.nodes, victim)
+			g.deleted = append(g.deleted, victim)
+		}
+	}
 	return g
 }
 
@@ -301,6 +320,9 @@ func (g *specGraph) describe() string {
 	for _, id := range ids {
 		n := g.nodes[id]
 		out += fmt.Sprintf("  %s type=%s state=%s deps=%v valdeps=%v\n", id, n.typ, n.epistemic, g.dep[id], g.valDep[id])
+	}
+	if len(g.deleted) > 0 {
+		out += fmt.Sprintf("  (deleted from the graph: %v)\n", g.deleted)
 	}
 	return out
 }

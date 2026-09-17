@@ -8,6 +8,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/support"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -321,5 +322,47 @@ func TestTaint_AdmittedStepUnderHypothesisTaintsRoot(t *testing.T) {
 		if n.TaintState != w {
 			t.Errorf("node %s taint = %s, want %s", id, n.TaintState, w)
 		}
+	}
+}
+
+// TestRefutedChild_TaintCleanButSupportNotCurrent pins the deliberate division
+// of labour between the two signals (D6 review item 2): after a child is
+// refuted the parent's taint is clean -- the severed step is no longer part of
+// what the proof rests on -- while support_current reports TARGET_REFUTED, which
+// is what tells a reader the parent's recorded verdict must be re-earned.
+func TestRefutedChild_TaintCleanButSupportNotCurrent(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	root := parseNodeID(t, "1")
+	child := parseNodeID(t, "1.1")
+
+	if err := svc.CreateNode(child, schema.NodeTypeClaim, "Step", schema.InferenceAssumption); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AcceptNode(child); err != nil {
+		t.Fatalf("accept child: %v", err)
+	}
+	if err := svc.AcceptNode(root); err != nil {
+		t.Fatalf("accept root: %v", err)
+	}
+	if err := svc.RequestRefinement(child, "counterexample found", "verifier1"); err != nil {
+		t.Fatalf("request refinement: %v", err)
+	}
+	if err := svc.RefuteNode(child); err != nil {
+		t.Fatalf("refute child: %v", err)
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.GetNode(root).TaintState; got != node.TaintClean {
+		t.Errorf("root taint = %s, want clean (a refuted child is severed)", got)
+	}
+	if got := st.GetNode(child).TaintState; got != node.TaintClean {
+		t.Errorf("refuted child taint = %s, want clean", got)
+	}
+	sup := support.Current(st)["1"]
+	if sup.Current || sup.Cause != support.CauseTargetRefuted || sup.Node.String() != "1.1" {
+		t.Errorf("root support_current = %+v, want not-current TARGET_REFUTED on 1.1", sup)
 	}
 }

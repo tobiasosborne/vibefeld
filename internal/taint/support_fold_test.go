@@ -149,3 +149,35 @@ func TestSupportFold_AncestorSeparation(t *testing.T) {
 		t.Errorf("validated sibling of admitted node = %s, want clean", sibling.TaintState)
 	}
 }
+
+// TestSupportFold_RefutedChildContributesNothing pins a decision, not an
+// accident: a refuted child is severed exactly like an archived one, so it
+// contributes nothing to its parent's taint and is itself clean. Taint says
+// what a proof currently rests on, and a disproven step is not part of that.
+// Whether the parent's recorded verdict survived its child's refutation is a
+// different question with its own signal: support_current reports
+// TARGET_REFUTED and af audit reports SUPPORT_NOT_CURRENT
+// (see docs/concepts.md and docs/trust-model.md, "What taint does not say").
+func TestSupportFold_RefutedChildContributesNothing(t *testing.T) {
+	root := makeNode("1", schema.EpistemicValidated, node.TaintUnresolved)
+	refuted := makeNode("1.1", schema.EpistemicRefuted, node.TaintUnresolved)
+	ok := makeNode("1.2", schema.EpistemicValidated, node.TaintUnresolved)
+
+	RecomputeAll([]*node.Node{root, refuted, ok})
+
+	if refuted.TaintState != node.TaintClean {
+		t.Errorf("refuted node = %s, want clean", refuted.TaintState)
+	}
+	if root.TaintState != node.TaintClean {
+		t.Errorf("parent of a refuted child = %s, want clean (severed children contribute nothing)", root.TaintState)
+	}
+
+	// A *dependency* on the same refuted node is unresolved: severance applies
+	// to the parent's decomposition, not to a node that cites the result.
+	consumer := makeNode("1.3", schema.EpistemicValidated, node.TaintClean)
+	setDeps(t, consumer, "1.1")
+	RecomputeAll([]*node.Node{root, refuted, ok, consumer})
+	if consumer.TaintState != node.TaintUnresolved {
+		t.Errorf("consumer of a refuted dependency = %s, want unresolved", consumer.TaintState)
+	}
+}
