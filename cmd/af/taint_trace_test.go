@@ -236,11 +236,11 @@ func TestTaintTraceCmd_ExplainsAdmittedDescendant(t *testing.T) {
 	if !strings.Contains(output, "Current taint: tainted") {
 		t.Errorf("expected tainted root, got: %s", output)
 	}
-	if !strings.Contains(output, "descendant 1.1 is admitted") {
-		t.Errorf("expected admitted descendant reason, got: %s", output)
+	if !strings.Contains(output, "tainted via child 1.1") || !strings.Contains(output, "admitted") {
+		t.Errorf("expected admitted child source, got: %s", output)
 	}
-	if !strings.Contains(output, "Descendant source(s):\n  1.1 — admitted (self_admitted)") {
-		t.Errorf("expected descendant source block, got: %s", output)
+	if !strings.Contains(output, "Support source(s):\n  1.1") {
+		t.Errorf("expected support source block, got: %s", output)
 	}
 }
 
@@ -278,8 +278,12 @@ func TestTaintTraceCmd_SparseTreeUsesNearestExistingParent(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if output := buf.String(); !strings.Contains(output, "descendant 1.1.1 is admitted") {
-		t.Errorf("sparse trace did not use nearest existing parent: %s", output)
+	output := buf.String()
+	if !strings.Contains(output, "Current taint: tainted") {
+		t.Errorf("sparse admitted node attaches to its nearest present ancestor and must taint the root: %s", output)
+	}
+	if !strings.Contains(output, "tainted via child 1.1.1") {
+		t.Errorf("expected a child source for the sparse admitted node: %s", output)
 	}
 }
 
@@ -303,7 +307,9 @@ func TestTaintTraceCmd_ExplainsNeedsRefinementSources(t *testing.T) {
 		want   string
 	}{
 		{nodeID: "1.1", want: "node is reopened for refinement"},
-		{nodeID: "1", want: "descendant 1.1 is reopened for refinement"},
+		// The verb is the component the source contributes: a reopened child is
+		// unresolved, not tainted.
+		{nodeID: "1", want: "unresolved via child 1.1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.nodeID, func(t *testing.T) {
@@ -366,11 +372,12 @@ func TestTaintTraceCmd_ExplainsPendingDescendantInJSON(t *testing.T) {
 	}
 
 	var result struct {
-		TaintState        string `json:"taint_state"`
-		DescendantSources []struct {
-			NodeID         string `json:"node_id"`
-			EpistemicState string `json:"epistemic_state"`
-		} `json:"descendant_sources"`
+		TaintState     string `json:"taint_state"`
+		SupportSources []struct {
+			SourceID string `json:"source_id"`
+			State    string `json:"state"`
+			Edge     string `json:"edge"`
+		} `json:"support_sources"`
 	}
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		t.Fatal(err)
@@ -378,8 +385,14 @@ func TestTaintTraceCmd_ExplainsPendingDescendantInJSON(t *testing.T) {
 	if result.TaintState != "unresolved" {
 		t.Errorf("taint_state = %q, want unresolved", result.TaintState)
 	}
-	if len(result.DescendantSources) != 1 || result.DescendantSources[0].NodeID != "1.1" || result.DescendantSources[0].EpistemicState != "pending" {
-		t.Errorf("descendant_sources = %#v, want pending node 1.1", result.DescendantSources)
+	found := false
+	for _, s := range result.SupportSources {
+		if s.SourceID == "1.1" && s.State == "pending" && s.Edge == "child" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("support_sources = %#v, want pending child 1.1", result.SupportSources)
 	}
 }
 
@@ -432,5 +445,62 @@ func TestTaintTraceCmd_NoProof(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error when no proof exists")
+	}
+}
+
+// TestTaintTraceCmd_NamesLegacyCycle covers the one unresolved source that has
+// no non-validated node behind it: a legacy result-use cycle. Every member is
+// validated, so the walk finds nothing to blame and used to print an empty
+// "Support source(s):" block.
+func TestTaintTraceCmd_NamesLegacyCycle(t *testing.T) {
+	render.DisableColor()
+	defer render.EnableColor()
+	dir, svc := setupTaintTraceTest(t)
+	ldg, err := ledger.NewLedger(filepath.Join(dir, "ledger"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Two siblings citing each other: rejected on today's creation path, so it
+	// is built as a legacy ledger would have it.
+	left, err := node.NewNode(nid("1.1"), schema.NodeTypeClaim, "Left", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := node.NewNodeWithOptions(nid("1.2"), schema.NodeTypeClaim, "Right", schema.InferenceAssumption,
+		node.NodeOptions{Dependencies: []types.NodeID{nid("1.1")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []ledger.Event{
+		ledger.NewNodeCreated(*left),
+		ledger.NewNodeCreated(*right),
+		ledger.NewNodeDepsAmended(nid("1.1"), nil, []types.NodeID{nid("1.2")}, nil, nil, "prover1", "legacy", "", false),
+		ledger.NewNodeValidated(nid("1.1")),
+		ledger.NewNodeValidated(nid("1.2")),
+		ledger.NewNodeValidated(nid("1")),
+	} {
+		if _, err := ldg.Append(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := svc.LoadState(); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTaintTraceCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"1.1", "--dir", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Current taint: unresolved") {
+		t.Fatalf("cycle member should be unresolved: %s", output)
+	}
+	if !strings.Contains(output, "unresolved via cycle 1.1 -> 1.2 -> 1.1") {
+		t.Errorf("expected a named cycle source, got: %s", output)
 	}
 }

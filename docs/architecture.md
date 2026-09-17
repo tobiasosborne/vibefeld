@@ -452,25 +452,34 @@ SHA256(type + statement + latex + inference + sorted(context) + sorted(dependenc
 
 ### Taint Computation
 
-Taint propagates epistemic uncertainty in both directions through the proof tree:
+Taint has two separate components: an ancestor chain and a support component
+folded over result-use edges (children, reference dependencies and validation
+dependencies):
 
 ```go
-func ComputeTaintInTree(n *Node, allNodes []*Node) TaintState {
+func ComputeTaint(n *Node, graph *Graph) TaintState {
     if n is archived/refuted { return clean }
+    if n is admitted { return self_admitted }
     if n is pending/draft/needs_refinement { return unresolved }
     if a non-severed ancestor is pending/draft/needs_refinement { return unresolved }
-    if n is admitted { return self_admitted }
-    if an active descendant is pending/draft/needs_refinement { return unresolved }
-    if a non-severed ancestor or active descendant is admitted { return tainted }
+    up = fold over result-use targets, dependency-first:
+        severed child -> nothing; admitted target -> tainted (not descended);
+        pending/draft/needs_refinement target -> unresolved;
+        severed/missing/cyclic target -> unresolved;
+        validated target -> target's own support component;
+        local_assume cited as a dependency -> nothing (hypothesis-use)
+    if up is unresolved { return unresolved }
+    if a non-severed ancestor or up is admitted { return tainted }
     return clean
 }
 ```
 
-Ancestor-chain state is derived only from epistemic states; subtree state is
-computed deepest-first. Thus admitted or unresolved-state descendants affect their ancestors
-without that derived result leaking down into validated siblings. Archived/refuted
-child branches are severed. Replay runs a full authoritative recomputation after
-applying all audit events.
+Ancestor-chain state is derived only from epistemic states; the support
+component is folded from results. Thus admitted or unresolved-state results
+affect their consumers and ancestors without that derived result leaking down
+into validated siblings. Archived/refuted child branches are severed; an
+explicit dependency on a severed or missing node is unresolved. Replay runs a
+full authoritative recomputation after applying all audit events.
 
 ---
 

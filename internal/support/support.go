@@ -20,9 +20,20 @@ import (
 
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
-	"github.com/tobiasosborne/vibefeld/internal/state"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
+
+// State is the read-only slice of derived state the support graph needs. It is
+// satisfied by *state.State. It exists so this package does not import
+// internal/state: internal/state imports internal/taint, and internal/taint
+// folds over the graph this package prepares, so a support -> state import
+// would close the cycle state -> taint -> support -> state (v3.1 amendment 4).
+type State interface {
+	AllNodes() []*node.Node
+	GetNode(types.NodeID) *node.Node
+	HasBlockingChallenges(types.NodeID) bool
+	LatestAmendmentSeq(types.NodeID) (int, bool)
+}
 
 // EdgeKind distinguishes the two support edges.
 type EdgeKind int
@@ -91,7 +102,9 @@ type GraphEdge struct {
 }
 
 // Provider is the result-use adjacency over state with an optional overlay of
-// prospective nodes. It implements cycle.DependencyProvider.
+// prospective nodes. It implements cycle.DependencyProvider. Every adjacency
+// list in deps is deduplicated and sorted in hierarchical-ID order at
+// construction; consumers rely on that order and must not re-sort.
 type Provider struct {
 	deps     map[string][]types.NodeID
 	order    []types.NodeID
@@ -130,11 +143,25 @@ func (p *Provider) Dangling() []DanglingDep {
 	return p.dangling
 }
 
+// EdgesFrom returns the result-use edges leaving id, with their origin kind.
+// It is the read-only view folds and traces use to name an edge (child,
+// reference dependency, validation dependency).
+func (p *Provider) EdgesFrom(id types.NodeID) []GraphEdge {
+	return p.edges[id.String()]
+}
+
 // ResultUseEdges builds the result-use graph over state plus the prospective
 // overlay. Only result-use edges are present; local_assume targets are
 // hypothesis-use and are therefore absent.
-func ResultUseEdges(st *state.State, overlay []ProspectiveNode) Provider {
+func ResultUseEdges(st State, overlay []ProspectiveNode) Provider {
 	return resultUseEdges(newUniverse(st, overlay))
+}
+
+// ResultUseEdgesFromNodes builds the result-use graph from a bare node slice,
+// with no state handle. It is what internal/taint uses to fold over the same
+// prepared graph without importing internal/state.
+func ResultUseEdgesFromNodes(nodes []*node.Node) Provider {
+	return resultUseEdges(newUniverseFromNodes(nodes, nil))
 }
 
 // resultUseEdges builds the adjacency for an already-constructed universe.
@@ -153,8 +180,12 @@ func resultUseEdges(u *universe) Provider {
 
 	children := make(map[string][]*nodeInfo)
 	for _, info := range u.nodes {
-		if info.hasParent {
-			key := info.parent.String()
+		// A node whose immediate parent ID is absent attaches to its nearest
+		// present ancestor, the same rule the taint ancestor pass uses
+		// (taint.nearestExistingParent), so the two components agree on what a
+		// parent is even when the ID space has a hole.
+		if parent, ok := u.effParent(info); ok {
+			key := parent.String()
 			children[key] = append(children[key], info)
 		}
 	}
@@ -183,12 +214,17 @@ func resultUseEdges(u *universe) Provider {
 				p.dangling = append(p.dangling, DanglingDep{From: info.id, To: to, Severed: true})
 			}
 		}
-		if !info.severed && info.typ != schema.NodeTypeLocalAssume {
-			// (i) children: a parent's proof is its non-local_assume children,
-			// and a local_assume parent introduces hypotheses rather than
-			// establishing its children, so it contributes no result edge.
+		if !info.severed {
+			// (i) children: a parent's proof is its children, whatever either
+			// node's type (v3.2 amendment). A local_assume child is a step of
+			// its parent's decomposition, and a local_assume's own children are
+			// the derivation under the hypothesis, which the enclosing proof
+			// relies on; excluding either direction hid an admitted step under
+			// a hypothesis from the taint fold. Only the *hypothesis-use* edge
+			// -- citing a local_assume as a dependency, clause (ii) -- carries
+			// nothing.
 			for _, c := range children[info.id.String()] {
-				if c.typ == schema.NodeTypeLocalAssume || c.severed {
+				if c.severed {
 					continue
 				}
 				add(c.id, EdgeChild)
@@ -209,7 +245,12 @@ func resultUseEdges(u *universe) Provider {
 				dangling(t)
 			}
 		}
-		p.deps[info.id.String()] = dedupe(edges)
+		// Adjacency is sorted once here, at construction, so Prepare's Tarjan
+		// pass and every Walk consume it as-is: the walk (and therefore every
+		// fold built on it) is deterministic without re-sorting per visit.
+		deduped := dedupe(edges)
+		sort.Slice(deduped, func(i, j int) bool { return deduped[i].Less(deduped[j]) })
+		p.deps[info.id.String()] = deduped
 		p.edges[info.id.String()] = dedupeGraphEdges(gEdges)
 	}
 
@@ -243,7 +284,7 @@ func dedupeGraphEdges(edges []GraphEdge) []GraphEdge {
 // DanglingDeps reports result-use dependencies on missing or severed nodes for
 // the given state and overlay. It is a thin wrapper over ResultUseEdges for
 // callers (e.g. audit) that only need the blockers.
-func DanglingDeps(st *state.State, overlay []ProspectiveNode) []DanglingDep {
+func DanglingDeps(st State, overlay []ProspectiveNode) []DanglingDep {
 	p := ResultUseEdges(st, overlay)
 	return p.dangling
 }
@@ -271,25 +312,30 @@ type universe struct {
 	enclDone bool
 }
 
-func newUniverse(st *state.State, overlay []ProspectiveNode) *universe {
+func newUniverse(st State, overlay []ProspectiveNode) *universe {
+	if st == nil {
+		return newUniverseFromNodes(nil, overlay)
+	}
+	return newUniverseFromNodes(st.AllNodes(), overlay)
+}
+
+func newUniverseFromNodes(nodes []*node.Node, overlay []ProspectiveNode) *universe {
 	u := &universe{nodes: make(map[string]*nodeInfo)}
-	if st != nil {
-		for _, n := range st.AllNodes() {
-			if n == nil {
-				continue
-			}
-			parent, hasParent := n.ID.Parent()
-			u.nodes[n.ID.String()] = &nodeInfo{
-				id:        n.ID,
-				typ:       n.Type,
-				parent:    parent,
-				hasParent: hasParent,
-				severed:   isSeveredState(n.EpistemicState),
-				exists:    true,
-				deps:      n.Dependencies,
-				valDeps:   n.ValidationDeps,
-				node:      n,
-			}
+	for _, n := range nodes {
+		if n == nil {
+			continue
+		}
+		parent, hasParent := n.ID.Parent()
+		u.nodes[n.ID.String()] = &nodeInfo{
+			id:        n.ID,
+			typ:       n.Type,
+			parent:    parent,
+			hasParent: hasParent,
+			severed:   isSeveredState(n.EpistemicState),
+			exists:    true,
+			deps:      n.Dependencies,
+			valDeps:   n.ValidationDeps,
+			node:      n,
 		}
 	}
 	for i := range overlay {
@@ -334,6 +380,29 @@ func (u *universe) isLocalAssume(id types.NodeID) bool {
 func (u *universe) isLocalDischarge(id types.NodeID) bool {
 	info, ok := u.nodes[id.String()]
 	return ok && info.typ == schema.NodeTypeLocalDischarge
+}
+
+// effParent returns the nearest present ancestor of a node: its immediate
+// parent when that ID exists in the universe, otherwise the nearest ancestor
+// that does. It mirrors taint.nearestExistingParent so the support graph's
+// child edges and the taint ancestor chain agree on parenthood when an
+// intermediate node is missing from the ledger. Reports false when no ancestor
+// is present (the root, or a node whose whole chain is absent).
+func (u *universe) effParent(info *nodeInfo) (types.NodeID, bool) {
+	if !info.hasParent {
+		return types.NodeID{}, false
+	}
+	id := info.parent
+	for {
+		if _, ok := u.nodes[id.String()]; ok {
+			return id, true
+		}
+		next, ok := id.Parent()
+		if !ok {
+			return types.NodeID{}, false
+		}
+		id = next
+	}
 }
 
 // childrenOf returns the children of parent sorted by child number.

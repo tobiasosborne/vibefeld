@@ -239,27 +239,39 @@ func TestCurrent_DescendantArchiveCarriesThroughCurrentTarget(t *testing.T) {
 	}
 }
 
-// TestCurrent_PendingLocalAssumeChildStaysCurrent locks that local_assume
-// children are not result-use edges: a pending hypothesis must not break its
-// parent's support.
-func TestCurrent_PendingLocalAssumeChildStaysCurrent(t *testing.T) {
+// TestCurrent_PendingLocalAssumeChildBreaksParent locks the v3.2 amendment on
+// the D4 side: a local_assume child is an ordinary result-use child edge, so a
+// pending hypothesis (or a pending step under one) leaves its parent's recorded
+// verdict TARGET_PENDING, exactly as any other pending child would. Citing a
+// local_assume as a *dependency* is still hypothesis-use and carries nothing
+// (TestResultUseEdges_LocalAssumeChildEdgesKept).
+func TestCurrent_PendingLocalAssumeChildBreaksParent(t *testing.T) {
 	st := state.NewState()
 	addNode(t, st, "1", schema.NodeTypeClaim)
 	addNode(t, st, "1.1", schema.NodeTypeLocalAssume)
 	validateNode(t, st, "1", 2)
 
 	got := Current(st)
-	if !got["1"].Current {
-		t.Fatalf("pending local_assume child should not break the parent: %+v", got["1"])
+	if got["1"].Current || got["1"].Cause != CauseTargetPending || got["1"].Node.String() != "1.1" {
+		t.Fatalf("pending local_assume child must break the parent: %+v", got["1"])
 	}
 
-	// The same holds for the children of a local_assume parent: its pending
-	// child is not a result-use edge of the local_assume either.
+	// The same holds for the children of a local_assume parent: the derivation
+	// under the hypothesis is work the local_assume's verdict rests on.
 	addNode(t, st, "1.1.1", schema.NodeTypeClaim)
 	validateNode(t, st, "1.1", 3)
 	got = Current(st)
-	if !got["1.1"].Current {
-		t.Fatalf("pending child of a local_assume should not break it: %+v", got["1.1"])
+	if got["1.1"].Current || got["1.1"].Cause != CauseTargetPending || got["1.1"].Node.String() != "1.1.1" {
+		t.Fatalf("pending child of a local_assume must break it: %+v", got["1.1"])
+	}
+
+	// With both hypothesis nodes validated the parent is current again.
+	validateNode(t, st, "1.1.1", 4)
+	validateNode(t, st, "1.1", 5)
+	validateNode(t, st, "1", 6)
+	got = Current(st)
+	if !got["1"].Current {
+		t.Fatalf("validated hypothesis subtree should be current: %+v", got["1"])
 	}
 }
 

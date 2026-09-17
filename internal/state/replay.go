@@ -7,10 +7,22 @@ import (
 	"fmt"
 
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
-	"github.com/tobiasosborne/vibefeld/internal/taint"
 )
 
-// Replay reads all events from the ledger and applies them to build the current state.
+// Replay reads all events from the ledger and applies them to build the current
+// state. It is pure event sourcing and does NOT derive taint: the TaintState on
+// the returned nodes is whatever the stored NodeCreated / TaintRecomputed audit
+// values happened to be, which may be stale. The caller must run
+// taint.RecomputeAll(st.AllNodes()) before the state is used or shown; this
+// package cannot do it itself because internal/taint folds over
+// internal/support, which would close an import cycle back through this package
+// (v3.1 amendment 4).
+//
+// The production callers that discharge that obligation are
+// service.LoadState, service.Replay / service.ReplayWithVerify (the wrappers in
+// internal/service/exports.go) and internal/audit's replay. Prefer one of those
+// over calling this directly.
+//
 // Returns an error if the ledger is nil, contains invalid JSON, or has unknown event types.
 func Replay(ldg *ledger.Ledger) (*State, error) {
 	return replayInternal(ldg, false)
@@ -19,11 +31,16 @@ func Replay(ldg *ledger.Ledger) (*State, error) {
 // ReplayWithVerify reads all events from the ledger, applies them to build state,
 // and verifies content hashes on all nodes. Returns an error if any node's
 // content hash does not match its computed hash.
+//
+// Like Replay it does not derive taint; the same caller obligation applies
+// (run taint.RecomputeAll on the returned state, or use service.ReplayWithVerify).
 func ReplayWithVerify(ldg *ledger.Ledger) (*State, error) {
 	return replayInternal(ldg, true)
 }
 
 // replayInternal is the shared implementation for Replay and ReplayWithVerify.
+// It applies events only; deriving taint is the caller's obligation (see
+// Replay's doc comment).
 func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 	if ldg == nil {
 		return nil, fmt.Errorf("cannot replay from nil ledger")
@@ -100,10 +117,13 @@ func replayInternal(ldg *ledger.Ledger, verifyHashes bool) (*State, error) {
 		return nil, err
 	}
 
-	// TaintRecomputed events are retained and applied as audit records, but
-	// taint itself is derived. Recompute it authoritatively after the complete
-	// event stream so ledgers produced by older versions self-heal on load.
-	taint.RecomputeAll(state.AllNodes())
+	// Taint is derived, not event-sourced: TaintRecomputed events are retained
+	// and applied here as audit records, but nothing in this package overrides
+	// them, so the TaintState returned is potentially stale. The authoritative
+	// recompute runs in the caller (service.LoadState, service.Replay /
+	// ReplayWithVerify, internal/audit), which keeps this package free of the
+	// taint import and therefore free of the state -> taint -> support -> state
+	// cycle.
 
 	return state, nil
 }

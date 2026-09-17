@@ -1708,6 +1708,60 @@ af deps 1.3 -f json      # JSON output
 
 ## Taint Management
 
+### `taint-trace`
+
+Explain why a node has its taint, following the D6 support relation: child,
+reference-dependency and validation-dependency edges all carry taint, each line
+names the edge kind and the source's revision, a severed dependency is
+unresolved, and an admitted result is taken on faith without descending. A
+`local_assume` cited as a dependency is a hypothesis-use edge and carries
+nothing; a `local_assume` child, and the children of a `local_assume`, are
+ordinary result-use edges.
+
+**Syntax:**
+```
+af taint-trace <node-id> [flags]
+```
+
+**Flags:**
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--dir` | `-d` | string | "." | Proof directory path |
+| `--format` | `-f` | string | "text" | Output format (text or json) |
+
+**Text output** shows `Current taint`, a `Support source(s)` list and the
+ancestry chain. Each source line is `<source id> — <component> via <edge>
+<source id> (<state>, taint <taint>[, verdict seq N][, revision seq N])`, where
+the component is what the source contributes (`tainted` for an admitted result,
+`unresolved` for a pending, reopened or severed one), so a real run reads:
+
+```
+Taint trace for node 1
+Current taint: tainted
+
+Support source(s):
+  1.1 — tainted via child 1.1 (admitted, taint self_admitted, verdict seq 6)
+
+Ancestry (root to target):
+  1 [validated] tainted
+```
+
+A legacy result-use cycle has no non-validated node behind it, so it is named as
+the cycle instead: `1.1 — unresolved via cycle 1.1 -> 1.2 -> 1.1`. **JSON
+output** carries `node_id`, `taint_state`, `trace` (the ancestry chain) and
+`support_sources`; each source carries `edge`, `contributes`, `path`, `state`,
+`taint`, `verdict_seq` / `revision_seq` when recorded, and `cycle` for a cycle
+source.
+
+**Examples:**
+```bash
+af taint-trace 1.6.4            # Why is 1.6.4 tainted?
+af taint-trace 1.2 -f json      # Machine-readable trace
+```
+
+---
+
 ### `recompute-taint`
 
 Re-sync `TaintRecomputed` audit records for all nodes using the same
@@ -1732,13 +1786,17 @@ af recompute-taint [flags]
 **Taint States:**
 | State | Description |
 |-------|-------------|
-| `clean` | No uncertainty in the ancestor chain or active subtree |
+| `clean` | No uncertainty in the ancestor chain or support component |
 | `self_admitted` | Admitted nodes |
-| `tainted` | Depends on an admitted ancestor or active descendant |
-| `unresolved` | Self, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
+| `tainted` | Depends on an admitted ancestor or result (child, reference or validation dependency) |
+| `unresolved` | Self, a non-severed ancestor, or a result is pending/draft/needs_refinement, or a dependency is severed/missing/cyclic |
 
-Archived/refuted child branches are severed upward. Upward-derived taint is not
-fed back down, so validated siblings remain uncontaminated.
+Archived/refuted child branches are severed upward and contribute nothing to
+taint (whether the parent's verdict still stands is reported by
+`support_current` / `af audit`, not by taint); an explicit dependency on a
+severed or missing node is unresolved. Upward-derived taint is not fed back
+down, so validated siblings remain uncontaminated, and a `local_assume` cited as
+a dependency carries nothing.
 
 **Examples:**
 ```bash
@@ -2773,10 +2831,10 @@ af wizard respond-challenge
 
 | State | Description |
 |-------|-------------|
-| `clean` | No uncertainty in the ancestor chain or active subtree |
+| `clean` | No uncertainty in the ancestor chain or support component |
 | `self_admitted` | Node itself was admitted |
-| `tainted` | Depends on an admitted ancestor or active descendant |
-| `unresolved` | Self, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
+| `tainted` | Depends on an admitted ancestor or result (child, reference or validation dependency) |
+| `unresolved` | Self, a non-severed ancestor, or a result is pending/draft/needs_refinement, or a dependency is severed/missing/cyclic |
 
 ---
 

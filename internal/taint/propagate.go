@@ -16,50 +16,34 @@ const (
 )
 
 type treeTaints struct {
-	nodes    []*node.Node
-	children map[string][]*node.Node
-	down     map[string]taintComponent
-	up       map[string]taintComponent
-	final    map[string]node.TaintState
+	nodes []*node.Node
+	down  map[string]taintComponent
+	up    map[string]taintComponent // D6 support component (result-use fold)
+	final map[string]node.TaintState
 }
 
-// PropagateTaint recomputes taint for root, its ancestors, and its descendants.
-// Descendant-derived taint is used only while walking upward, so it cannot leak
-// back down into siblings. The complete tree is inspected in linear time so an
-// ancestor's subtree contribution includes every relevant branch.
+// PropagateTaint is a thin wrapper over RecomputeAll kept for its callers'
+// signatures. There is no affected set: since D6 made reference and validation
+// dependencies carry taint, a change can reach ancestors, descendants and every
+// transitive reverse dependent, so EVERY node in allNodes is rederived and the
+// nodes whose stored taint actually changed are applied and returned. root is
+// used only as a nil guard and to scope the caller's event emission; it does
+// not restrict what is recomputed, and passing a different root cannot change
+// the result.
 //
-// Returns list of nodes whose taint actually changed.
-// Root is included when its taint changed.
-//
-// Returns nil/empty slice if:
-// - root is nil
-// - allNodes is nil or empty
-// - no affected node changed
+// Returns nil when root is nil, when allNodes is empty, or when no node
+// changed.
 func PropagateTaint(root *node.Node, allNodes []*node.Node) []*node.Node {
-	if root == nil || len(allNodes) == 0 {
+	if root == nil {
 		return nil
 	}
-
-	computed := computeTreeTaints(allNodes)
-	var changed []*node.Node
-	for _, n := range computed.nodes {
-		if !n.ID.Equal(root.ID) && !root.ID.IsAncestorOf(n.ID) && !n.ID.IsAncestorOf(root.ID) {
-			continue
-		}
-		newTaint := computed.final[n.ID.String()]
-		if n.TaintState != newTaint {
-			n.TaintState = newTaint
-			changed = append(changed, n)
-		}
-	}
-
-	return changed
+	return RecomputeAll(allNodes)
 }
 
 // RecomputeAll recomputes and applies taint for every node in a proof tree.
-// It returns every node whose stored taint changed. Both the shallow ancestor
-// pass and deepest-first subtree pass are linear in the number of nodes (plus
-// the size of sparse node-ID paths).
+// It returns every node whose stored taint changed. The ancestor pass is linear
+// in the number of nodes (plus the size of sparse node-ID paths), and the D6
+// support component is one fold over one prepared result-use graph.
 func RecomputeAll(allNodes []*node.Node) []*node.Node {
 	if len(allNodes) == 0 {
 		return nil
@@ -79,10 +63,9 @@ func RecomputeAll(allNodes []*node.Node) []*node.Node {
 
 func computeTreeTaints(allNodes []*node.Node) treeTaints {
 	result := treeTaints{
-		children: make(map[string][]*node.Node),
-		down:     make(map[string]taintComponent),
-		up:       make(map[string]taintComponent),
-		final:    make(map[string]node.TaintState),
+		down:  make(map[string]taintComponent),
+		up:    make(map[string]taintComponent),
+		final: make(map[string]node.TaintState),
 	}
 
 	nodeMap := make(map[string]*node.Node, len(allNodes))
@@ -121,9 +104,6 @@ func computeTreeTaints(allNodes []*node.Node) treeTaints {
 		for _, n := range byDepth[depth] {
 			parent := nearestExistingParent(n, nodeMap, nearestCache)
 			parentFor[n.ID.String()] = parent
-			if parent != nil {
-				result.children[parent.ID.String()] = append(result.children[parent.ID.String()], n)
-			}
 		}
 	}
 
@@ -142,28 +122,14 @@ func computeTreeTaints(allNodes []*node.Node) treeTaints {
 		}
 	}
 
-	// Compute the subtree component deepest-first. An admitted child contributes
-	// tainted without inspecting its subtree; a severed child cuts off its branch.
-	for depth := maxDepth; depth >= 1; depth-- {
-		for _, n := range byDepth[depth] {
-			up := componentClean
-			for _, child := range result.children[n.ID.String()] {
-				if isSevered(child) {
-					continue
-				}
-				if isUnresolvedState(child.EpistemicState) {
-					up = combineComponents(up, componentUnresolved)
-				} else if schema.IntroducesTaint(child.EpistemicState) {
-					up = combineComponents(up, componentTainted)
-				} else {
-					up = combineComponents(up, result.up[child.ID.String()])
-				}
-				if up == componentUnresolved {
-					break
-				}
-			}
-			result.up[n.ID.String()] = up
-		}
+	// Compute the support component (children, reference and validation
+	// dependencies) with the shared D6 fold over one prepared result-use graph.
+	// This replaces the 0.1.7 subtree walk: reference and validation targets now
+	// carry taint exactly like children, severed dependency targets and legacy
+	// cycles are unresolved, and admitted targets are not descended.
+	supportVals := supportComponents(result.nodes)
+	for key, v := range supportVals {
+		result.up[key] = v.comp
 	}
 
 	for _, n := range result.nodes {
@@ -229,18 +195,24 @@ func combineComponents(a, b taintComponent) taintComponent {
 	return componentClean
 }
 
+// finalTaint applies the D6 per-node precedence: own severed state, then own
+// admitted (self_admitted), then unresolved (own state first, then the support
+// component and ancestors), then tainted (ancestors then support), then clean.
+// An admitted node is a deliberate escape hatch, so its own verdict is not
+// overridden by an ancestor's unresolved state; the ancestor component is
+// applied only after the node's own state.
 func finalTaint(n *node.Node, down, up taintComponent) node.TaintState {
 	if isSevered(n) {
 		return node.TaintClean
+	}
+	if schema.IntroducesTaint(n.EpistemicState) {
+		return node.TaintSelfAdmitted
 	}
 	if isUnresolvedState(n.EpistemicState) {
 		return node.TaintUnresolved
 	}
 	if down == componentUnresolved {
 		return node.TaintUnresolved
-	}
-	if schema.IntroducesTaint(n.EpistemicState) {
-		return node.TaintSelfAdmitted
 	}
 	if up == componentUnresolved {
 		return node.TaintUnresolved

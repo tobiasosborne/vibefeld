@@ -226,38 +226,55 @@ Source: `internal/node/node.go`, `internal/taint/compute.go`, `internal/taint/pr
 
 | State | Description |
 |-------|-------------|
-| `clean` | No uncertainty in the ancestor chain or active descendant subtree |
+| `clean` | No uncertainty in the ancestor chain or support component |
 | `self_admitted` | This node was admitted (introduced taint) |
-| `tainted` | A non-severed ancestor or active descendant is admitted |
-| `unresolved` | Node, non-severed ancestor, or active descendant is pending/draft/needs_refinement |
+| `tainted` | A non-severed ancestor or a result this node relies on is admitted |
+| `unresolved` | Node, a non-severed ancestor, or a result is pending/draft/needs_refinement, or a dependency is severed/missing/cyclic |
 
 ### Computation Rules
 
-Unlike workflow and epistemic states, taint is **computed** (not directly transitioned) from epistemic states in both directions. Stored ancestor taint is not an input. The rules are applied in priority order:
+Unlike workflow and epistemic states, taint is **computed** (not directly transitioned) from epistemic states. Stored ancestor taint is not an input. The rules are applied in priority order:
 
 ```
 0. IF node is archived/refuted THEN taint = 'clean'
-1. IF node is pending/draft/needs_refinement THEN taint = 'unresolved'
-2. IF any non-severed ancestor is pending/draft/needs_refinement THEN taint = 'unresolved'
-3. IF node is admitted THEN taint = 'self_admitted'
-4. IF any active descendant is pending/draft/needs_refinement THEN taint = 'unresolved'
+1. IF node is admitted THEN taint = 'self_admitted'
+2. IF node is pending/draft/needs_refinement THEN taint = 'unresolved'
+3. IF any non-severed ancestor is pending/draft/needs_refinement THEN taint = 'unresolved'
+4. IF the support component is unresolved THEN taint = 'unresolved'
 5. IF any non-severed ancestor is admitted THEN taint = 'tainted'
-6. IF any active descendant is admitted THEN taint = 'tainted'
+6. IF the support component is tainted THEN taint = 'tainted'
 7. OTHERWISE taint = 'clean'
 ```
 
+The **support component** is a fold over result-use edges (every child
+whatever its type, plus reference dependencies and validation dependencies that
+are not `local_assume` nodes) in dependency-topological order: a severed
+(refuted or archived) child contributes nothing; an admitted target contributes
+`tainted` and is not descended; a pending/draft/needs_refinement target
+contributes `unresolved`; a severed or missing dependency target contributes
+`unresolved`; a validated target contributes its own component; a legacy
+result-use cycle is `unresolved`; and a `local_assume` *cited as a dependency*
+is hypothesis-use and carries nothing. A `local_assume` child, and a
+`local_assume`'s own children, are ordinary result-use edges, so an admitted
+step under a hypothesis taints the enclosing proof.
+
 ### Taint Propagation
 
-When a node's epistemic state changes, taint must be recomputed for:
-1. The node itself
-2. Its ancestors
-3. Its descendants
+When a node's epistemic state, or any of its dependency edges, changes, taint
+is rederived for **every** node. A change reaches the node itself, its
+ancestors, its descendants and the reverse dependents that cite it through
+dependencies or validation dependencies, transitively, so there is no smaller
+affected set worth computing; `taint.PropagateTaint` is a wrapper over
+`taint.RecomputeAll` that returns the nodes whose stored taint actually
+changed.
 
-The upward subtree component is computed deepest-first. Archived/refuted child
-branches are skipped, and admitted nodes ignore their subtrees. The downward
-ancestor component uses epistemic states only, which prevents an admitted child
-from contaminating its validated siblings. Replay finishes with the same full
-recompute, making derived taint authoritative over historical audit events.
+The support component is folded deepest-result-first over one prepared
+result-use graph. Archived/refuted child branches are skipped, an explicit
+dependency on a severed or missing node is unresolved, and admitted nodes
+ignore their own results. The downward ancestor component uses epistemic states
+only, which prevents an admitted child from contaminating its validated
+siblings. Replay finishes with the same full recompute, making derived taint
+authoritative over historical audit events.
 
 ### Taint Events
 
@@ -290,7 +307,8 @@ import "github.com/tobiasosborne/vibefeld/internal/taint"
 // Compute complete taint for a single node in its tree
 taintState := taint.ComputeTaintInTree(node, allNodes)
 
-// Recompute the changed node, ancestors, and descendants
+// Rederive every node after a change (a thin wrapper over RecomputeAll;
+// root is only a nil guard and the caller's event scope)
 changedNodes := taint.PropagateTaint(root, allNodes)
 
 // Authoritatively recompute every node (used by replay and repair)
@@ -484,7 +502,7 @@ Node Created
 | or tainted*   | | admitted      | |               |
 +---------------+ +---------------+ +---------------+
 
-* taint depends on non-severed ancestors and active descendants
+* taint depends on non-severed ancestors and the result-use support component
 ```
 
 ### Invariants

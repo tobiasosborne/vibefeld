@@ -15,6 +15,7 @@ import (
 	"github.com/tobiasosborne/vibefeld/internal/ledger"
 	"github.com/tobiasosborne/vibefeld/internal/node"
 	"github.com/tobiasosborne/vibefeld/internal/schema"
+	"github.com/tobiasosborne/vibefeld/internal/taint"
 	"github.com/tobiasosborne/vibefeld/internal/types"
 )
 
@@ -333,6 +334,7 @@ func TestReplay_TaintRecomputedEvent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Replay failed: %v", err)
 			}
+			taint.RecomputeAll(state.AllNodes())
 
 			got := state.GetNode(nodeID)
 			if got == nil {

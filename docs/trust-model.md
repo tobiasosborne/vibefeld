@@ -16,6 +16,8 @@ closed structurally.
 |-----|-----------|-----|
 | Admitted or pending descendants left a validated root `clean` | 0.1.7 | Taint now propagates upward; replay recomputes taint authoritatively, so old workspaces self-heal on load |
 | A reopened (`needs_refinement`) node left the root `clean` | 0.1.7 | `needs_refinement` counts as unresolved for the node, its ancestors, and its descendants |
+| Cross-references did not carry taint, so lemma A could cite an admitted lemma B and stay `clean` | 0.1.11 | Taint is a fold over result-use edges (D6); reference and validation dependencies now carry taint exactly like children, and a severed or missing dependency target is unresolved. External references remain outside the lattice |
+| An admitted step under a `local_assume` left the enclosing proof `validated` / `clean` | 0.1.11 | The first D6 cut excluded `local_assume` from child edges in both directions, which disconnected a whole hypothesis subtree from the fold. A child is now a result-use edge whatever either node's type; only a `local_assume` *cited as a dependency* is hypothesis-use and carries nothing |
 | Statement changed after acceptance | always | `af amend` only works on `pending` nodes |
 
 ## Open (ordered by how easily an agent can exploit them)
@@ -40,17 +42,7 @@ closed structurally.
    obligation was discharged, that a forced archive was justified, or that the
    accepting verifier read the checklist: `--force`, the reason text and the
    accept are all recorded provenance, not enforcement of rigor.
-2. **Cross-references do not carry taint.** Taint flows along the tree only.
-   A node's reference `dependencies` and external references are not
-   consulted, so lemma A can cite an admitted lemma B and stay `clean`. This
-   matters for DAG-shaped arguments (many lemmas citing each other) far more
-   than for tree-shaped ones. *Audit:* `af audit` reports `CITES_SEVERED`
-   (missing/archived/refuted dependency targets), `SUPPORT_NOT_CURRENT`
-   (`TARGET_PENDING`, `TARGET_REFUTED`, `TARGET_REVISED` causes) and
-   `PENDING_EXTERNAL_CITED_BY_VALIDATED`; `af pending-refs` lists the pending
-   externals. *Fix:* include dependency targets in the down-component of taint
-   (the cycle package already guarantees a DAG). Tracked: vibefeld-0ry1.
-3. **Roles are convention, not enforcement.** Nothing stops one process from
+2. **Roles are convention, not enforcement.** Nothing stops one process from
    calling `refine` and `accept` on the same node. Author and verifier
    identities are recorded (0.1.6) but `accept` does not refuse when they
    match; `resolve-challenge` is a prover action. *Audit:* `af audit` reports
@@ -69,7 +61,7 @@ closed structurally.
    self-accept visible and refusable, but a driver can still supply different
    strings or pass `--allow-self`. It does not enforce role separation between
    processes, and `resolve-challenge` remains a prover action.
-4. **Ledger is append-only but not tamper-evident.** Node content is hashed
+3. **Ledger is append-only but not tamper-evident.** Node content is hashed
    but events are not hash-chained, so an agent with shell access to the
    workspace could rewrite history without replay noticing. Relevant when
    agents have write access beyond the `af` binary. *Audit:* `af audit` reports
@@ -78,6 +70,24 @@ closed structurally.
    acceptance, not a coordinated ledger rewrite. *Fix:* per-event hash
    chain, verified by `af replay --verify`. Belongs to the v0.2 kernel work
    (docs/prd.md, "v0.2 Target"). Tracked: vibefeld-8x16.
+
+## What taint does not say
+
+Taint answers one question: what is this proof currently resting on. Two
+deliberate boundaries follow from that.
+
+**A refuted or archived child is severed.** It contributes nothing to its
+parent's taint, and its own taint is `clean`, because a disproven or abandoned
+step is no longer part of what the proof rests on. This is *not* a statement
+that the parent's recorded verdict survived: a parent whose child was refuted
+after acceptance is reported by `support_current` (cause `TARGET_REFUTED`, the
+`!` marker in `af status`) and by `af audit` (`SUPPORT_NOT_CURRENT`). Reading
+taint alone on such a node is reading the wrong signal — a `validated` /
+`clean` node with `support_current: false` needs re-verification.
+
+**External references are outside the lattice.** A citation of a paper or a
+result outside the workspace carries no taint; `af audit` lists
+`PENDING_EXTERNAL_CITED_BY_VALIDATED` instead.
 
 ## Audit
 
@@ -89,7 +99,7 @@ findings with a strict code fail `af audit --strict` (exit 3, `AUDIT_FAILED`).
 | Gap | Finding codes |
 |-----|---------------|
 | Archive-the-hard-step | `ARCHIVED_WITH_OPEN_CHALLENGE` (historical) |
-| Cross-references do not carry taint | `CITES_SEVERED`, `SUPPORT_NOT_CURRENT`, `PENDING_EXTERNAL_CITED_BY_VALIDATED` |
+| Cross-references carry taint; external references do not | `CITES_SEVERED`, `SUPPORT_NOT_CURRENT`, `PENDING_EXTERNAL_CITED_BY_VALIDATED` |
 | Roles are convention, not enforcement | `SELF_ACCEPT`, `UNKNOWN_PROVENANCE`, `VALIDATED_WITH_OPEN_BLOCKING_CHALLENGE` |
 | Ledger is append-only but not tamper-evident | `HASH_MISMATCH` (content moved after acceptance only) |
 

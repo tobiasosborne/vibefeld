@@ -503,9 +503,9 @@ func TestPropagateTaint_ArchivedBranchSeversDescendantTaint(t *testing.T) {
 	}
 }
 
-func TestPropagateTaint_PendingAncestorPrecedesSelfAdmission(t *testing.T) {
+func TestPropagateTaint_SelfAdmissionPrecedesPendingAncestor(t *testing.T) {
 	root := makeNode("1", schema.EpistemicPending, node.TaintUnresolved)
-	admittedChild := makeNode("1.2", schema.EpistemicAdmitted, node.TaintSelfAdmitted)
+	admittedChild := makeNode("1.2", schema.EpistemicAdmitted, node.TaintClean)
 	allNodes := []*node.Node{root, admittedChild}
 
 	changed := PropagateTaint(admittedChild, allNodes)
@@ -513,8 +513,10 @@ func TestPropagateTaint_PendingAncestorPrecedesSelfAdmission(t *testing.T) {
 	if root.TaintState != node.TaintUnresolved {
 		t.Errorf("root.TaintState = %v, want %v", root.TaintState, node.TaintUnresolved)
 	}
-	if admittedChild.TaintState != node.TaintUnresolved {
-		t.Errorf("admittedChild.TaintState = %v, want %v", admittedChild.TaintState, node.TaintUnresolved)
+	// D6 per-node precedence: the node's own admitted verdict comes before an
+	// ancestor's unresolved state, so the admitted child stays self_admitted.
+	if admittedChild.TaintState != node.TaintSelfAdmitted {
+		t.Errorf("admittedChild.TaintState = %v, want %v", admittedChild.TaintState, node.TaintSelfAdmitted)
 	}
 	if len(changed) != 1 || changed[0] != admittedChild {
 		t.Errorf("PropagateTaint() changed = %v, want admitted child only", nodeIDs(changed))
@@ -999,7 +1001,13 @@ func TestPropagateTaint_SparseMissingParents(t *testing.T) {
 			t.Errorf("deepChild.TaintState = %v, want %v", deepChild.TaintState, node.TaintTainted)
 		}
 
-		// The admitted node, its descendant, and the validated root change.
+		// The admitted node, its descendant and the root all change: a node
+		// whose immediate parent ID is absent is a child of its nearest present
+		// ancestor (the same rule the ancestor pass uses), so the admitted node
+		// is a child edge of the root and taints it.
+		if root.TaintState != node.TaintTainted {
+			t.Errorf("root.TaintState = %v, want %v", root.TaintState, node.TaintTainted)
+		}
 		if len(changed) != 3 {
 			t.Errorf("PropagateTaint() returned %d changed nodes, want 3", len(changed))
 		}
@@ -1030,7 +1038,12 @@ func TestPropagateTaint_SparseMissingParents(t *testing.T) {
 			t.Errorf("deepChild.TaintState = %v, want %v", deepChild.TaintState, node.TaintUnresolved)
 		}
 
-		// Both sparse descendants and the validated root should change.
+		// Both sparse descendants change, and so does the root: with 1.1 absent
+		// the pending 1.1.1 is a child of the nearest present ancestor (the
+		// root), so it makes the root unresolved.
+		if root.TaintState != node.TaintUnresolved {
+			t.Errorf("root.TaintState = %v, want %v", root.TaintState, node.TaintUnresolved)
+		}
 		if len(changed) != 3 {
 			t.Errorf("PropagateTaint() returned %d changed nodes, want 3", len(changed))
 		}

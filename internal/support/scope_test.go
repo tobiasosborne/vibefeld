@@ -100,32 +100,46 @@ func TestCheckCreation_DischargePreAndPostContext(t *testing.T) {
 	}
 }
 
-// TestResultUseEdges_LocalAssumeOnEitherSideExcluded verifies the decision that
-// child result-use edges are excluded both when the child is a local_assume and
-// when the parent is a local_assume.
-func TestResultUseEdges_LocalAssumeOnEitherSideExcluded(t *testing.T) {
+// TestResultUseEdges_LocalAssumeChildEdgesKept pins the v3.2 amendment to
+// clause (i): a child edge exists whatever either node's type. Only clause
+// (ii) -- citing a local_assume as a dependency -- is hypothesis-use and
+// carries nothing.
+func TestResultUseEdges_LocalAssumeChildEdgesKept(t *testing.T) {
 	st := state.NewState()
 	addNode(t, st, "1", schema.NodeTypeClaim)
 	addNode(t, st, "1.1", schema.NodeTypeClaim)
 	addNode(t, st, "1.1.1", schema.NodeTypeLocalAssume) // child is an assume
 	addNode(t, st, "1.2", schema.NodeTypeLocalAssume)   // parent is an assume
 	addNode(t, st, "1.2.1", schema.NodeTypeClaim)       // non-assume child of an assume
+	addNode(t, st, "1.3", schema.NodeTypeLocalDischarge, "1.2")
 
 	p := ResultUseEdges(st, nil)
 
-	// Child condition: 1.1's local_assume child contributes no result edge.
-	deps, _ := p.GetNodeDependencies(mustID(t, "1.1"))
+	// Child condition: 1.1's local_assume child IS a result edge.
+	if !hasDep(t, p, "1.1", "1.1.1") {
+		deps, _ := p.GetNodeDependencies(mustID(t, "1.1"))
+		t.Fatalf("local_assume child contributed no result edge: %v", deps)
+	}
+	// Parent condition: a local_assume's own children are result edges too --
+	// the derivation under the hypothesis is work the enclosing proof relies on.
+	if !hasDep(t, p, "1.2", "1.2.1") {
+		deps, _ := p.GetNodeDependencies(mustID(t, "1.2"))
+		t.Fatalf("local_assume parent contributed no child result edge: %v", deps)
+	}
+	// Clause (ii) is unchanged: citing the hypothesis itself carries nothing.
+	if hasDep(t, p, "1.3", "1.2") {
+		deps, _ := p.GetNodeDependencies(mustID(t, "1.3"))
+		t.Fatalf("dependency on a local_assume became a result edge: %v", deps)
+	}
+}
+
+func hasDep(t *testing.T, p Provider, from, to string) bool {
+	t.Helper()
+	deps, _ := p.GetNodeDependencies(mustID(t, from))
 	for _, d := range deps {
-		if d.String() == "1.1.1" {
-			t.Fatalf("local_assume child contributed a result edge: %v", deps)
+		if d.String() == to {
+			return true
 		}
 	}
-	// Parent condition: 1.2 is a local_assume, so its claim child is not a
-	// result edge of 1.2.
-	deps, _ = p.GetNodeDependencies(mustID(t, "1.2"))
-	for _, d := range deps {
-		if d.String() == "1.2.1" {
-			t.Fatalf("local_assume parent contributed a child result edge: %v", deps)
-		}
-	}
+	return false
 }
