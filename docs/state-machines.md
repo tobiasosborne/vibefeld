@@ -261,11 +261,12 @@ step under a hypothesis taints the enclosing proof.
 ### Taint Propagation
 
 When a node's epistemic state, or any of its dependency edges, changes, taint
-must be recomputed for:
-1. The node itself
-2. Its ancestors
-3. Its descendants
-4. The reverse dependents that cite it through dependencies or validation dependencies, transitively
+is rederived for **every** node. A change reaches the node itself, its
+ancestors, its descendants and the reverse dependents that cite it through
+dependencies or validation dependencies, transitively, so there is no smaller
+affected set worth computing; `taint.PropagateTaint` is a wrapper over
+`taint.RecomputeAll` that returns the nodes whose stored taint actually
+changed.
 
 The support component is folded deepest-result-first over one prepared
 result-use graph. Archived/refuted child branches are skipped, an explicit
@@ -306,7 +307,8 @@ import "github.com/tobiasosborne/vibefeld/internal/taint"
 // Compute complete taint for a single node in its tree
 taintState := taint.ComputeTaintInTree(node, allNodes)
 
-// Recompute the changed node, ancestors, and descendants
+// Rederive every node after a change (a thin wrapper over RecomputeAll;
+// root is only a nil guard and the caller's event scope)
 changedNodes := taint.PropagateTaint(root, allNodes)
 
 // Authoritatively recompute every node (used by replay and repair)

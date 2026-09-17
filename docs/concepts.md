@@ -452,12 +452,14 @@ function ComputeTaint(node, graph):
     return clean
 ```
 
-When a node's epistemic state, or any of its dependency edges, changes, taint
-is recomputed for that node and every node the change can reach: its ancestors,
-its descendants, and the reverse dependents that cite it through dependencies
-or validation dependencies, transitively. Replay also runs a full authoritative
-recompute after the complete event stream, so stale historical `TaintRecomputed`
-audit events cannot override derived state.
+When a node's epistemic state, or any of its dependency edges, changes, every
+node is rederived. There is no affected set: a change reaches its ancestors, its
+descendants and the reverse dependents that cite it through dependencies or
+validation dependencies, transitively, which in the worst case is the whole
+proof, and the fold is linear in nodes plus edges anyway. Only the nodes whose
+taint actually changed are written and emitted as `TaintRecomputed` events.
+Replay also runs the same full derivation after the complete event stream, so
+stale historical `TaintRecomputed` audit events cannot override derived state.
 
 ### Why It Matters for Proof Integrity
 

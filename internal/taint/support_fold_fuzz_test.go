@@ -18,11 +18,16 @@ import (
 //
 //  1. the production fold equals the independent spec in spec_test.go;
 //  2. RecomputeAll is idempotent;
-//  3. an incremental PropagateTaint from any root equals the full derivation;
-//  4. no clean node has a support path through a non-validated result;
-//  5. a validated sibling of an admitted node is not tainted by it.
+//  3. no clean node has a support path through a non-validated result;
+//  4. a validated sibling of an admitted node is not tainted by it.
 //
-// A mismatch reports the offending graph in a readable form.
+// A mismatch reports the offending graph in a readable form. The former
+// property "an incremental PropagateTaint from a random root equals the full
+// derivation" is gone: PropagateTaint is a documented wrapper over RecomputeAll,
+// so it compared a full recompute with itself. Its replacement is the
+// ledger-driven differential in ledger_fuzz_test.go, which drives random
+// command sequences through a real ledger and compares replay + RecomputeAll
+// against the same spec.
 func TestDifferentialFuzz_SupportTaintRules(t *testing.T) {
 	const cases = 3000
 	for seed := int64(0); seed < cases; seed++ {
@@ -41,17 +46,14 @@ func TestDifferentialFuzz_SupportTaintRules(t *testing.T) {
 			t.Fatalf("seed %d: RecomputeAll not idempotent, changed %v\n%s", seed, changedIDs(changed), g.describe())
 		}
 
-		// Incremental propagation from a random root equals the full derivation,
-		// even when every stored taint starts stale.
-		if len(nodes) > 0 {
-			root := nodes[rand.New(rand.NewSource(seed+1)).Intn(len(nodes))]
-			for _, n := range nodes {
-				n.TaintState = node.TaintUnresolved
-			}
-			PropagateTaint(root, nodes)
-			if diff := diffTaints(taintMap(nodes), want); diff != "" {
-				t.Fatalf("seed %d: PropagateTaint != RecomputeAll: %s\n%s", seed, diff, g.describe())
-			}
+		// A stale starting point does not change the derivation: every node is
+		// rederived from epistemic states and edges alone.
+		for _, n := range nodes {
+			n.TaintState = node.TaintUnresolved
+		}
+		RecomputeAll(nodes)
+		if diff := diffTaints(taintMap(nodes), want); diff != "" {
+			t.Fatalf("seed %d: recompute from stale taint != spec: %s\n%s", seed, diff, g.describe())
 		}
 
 		if bad := cleanPathThroughUnvalidated(g, want); bad != "" {

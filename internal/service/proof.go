@@ -1316,9 +1316,10 @@ func (s *ProofService) emitTaintRecomputedEvents(nodeID types.NodeID, oldTaints 
 
 		allNodes := st.AllNodes()
 
-		// Recompute in memory first. LoadState already performs an authoritative
-		// full recompute, but keeping this targeted call here makes the affected-set
-		// contract explicit and protects non-replay callers.
+		// Rederive in memory first. LoadState already performs the same
+		// authoritative full recompute, but keeping the call here protects
+		// non-replay callers. PropagateTaint rederives every node (there is no
+		// affected set); n only scopes this emission.
 		taint.PropagateTaint(n, allNodes)
 
 		if oldTaints == nil {
@@ -1330,8 +1331,8 @@ func (s *ProofService) emitTaintRecomputedEvents(nodeID types.NodeID, oldTaints 
 		// Every changed node is emitted, not only ancestors and descendants:
 		// reference and validation dependencies carry taint, so a node that cites
 		// the transitioned node (a reverse dependent) must record its new taint
-		// too. A node whose taint did not change is skipped, so the filter is
-		// exactly the affected set the fold computed.
+		// too. Every node is rederived and only the ones whose taint actually
+		// changed are emitted, so the filter is exactly the set that moved.
 		var events []ledger.Event
 		for _, changed := range allNodes {
 			if changed == nil {
@@ -1672,9 +1673,8 @@ func (s *ProofService) RefineNodeBulk(parentID types.NodeID, owner string, child
 		return nil, wrapSequenceMismatch(err, "RefineNodeBulk")
 	}
 
-	// Emit audit events once for the parent: the affected set (parent, its
-	// ancestors, and all its descendants) already covers every new child, so a
-	// single reload suffices. The NodeCreated events are committed at this
+	// Emit audit events once for the parent: the derivation covers every node,
+	// including each new child, so a single reload suffices. The NodeCreated events are committed at this
 	// point and taint is derived, so an audit-emission failure must not hide
 	// the created IDs from the caller (mirrors AcceptNodeBulk).
 	if err := s.emitTaintRecomputedEvents(parentID, oldTaints); err != nil {

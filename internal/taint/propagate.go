@@ -22,39 +22,22 @@ type treeTaints struct {
 	final map[string]node.TaintState
 }
 
-// PropagateTaint recomputes taint for root and every node whose taint the
-// change can reach: ancestors, descendants, and — because reference and
-// validation dependencies now carry taint exactly like children — the reverse
-// dependents that cite the changed node, transitively. It applies and returns
-// every node whose stored taint actually changed.
+// PropagateTaint is a thin wrapper over RecomputeAll kept for its callers'
+// signatures. There is no affected set: since D6 made reference and validation
+// dependencies carry taint, a change can reach ancestors, descendants and every
+// transitive reverse dependent, so EVERY node in allNodes is rederived and the
+// nodes whose stored taint actually changed are applied and returned. root is
+// used only as a nil guard and to scope the caller's event emission; it does
+// not restrict what is recomputed, and passing a different root cannot change
+// the result.
 //
-// Descendant-derived taint is used only while folding upward, so it cannot
-// leak back down into siblings. The complete graph is inspected in linear time
-// so an ancestor's support contribution includes every relevant branch.
-//
-// Returns list of nodes whose taint actually changed.
-// Root is included when its taint changed.
-//
-// Returns nil/empty slice if:
-// - root is nil
-// - allNodes is nil or empty
-// - no affected node changed
+// Returns nil when root is nil, when allNodes is empty, or when no node
+// changed.
 func PropagateTaint(root *node.Node, allNodes []*node.Node) []*node.Node {
-	if root == nil || len(allNodes) == 0 {
+	if root == nil {
 		return nil
 	}
-
-	computed := computeTreeTaints(allNodes)
-	var changed []*node.Node
-	for _, n := range computed.nodes {
-		newTaint := computed.final[n.ID.String()]
-		if n.TaintState != newTaint {
-			n.TaintState = newTaint
-			changed = append(changed, n)
-		}
-	}
-
-	return changed
+	return RecomputeAll(allNodes)
 }
 
 // RecomputeAll recomputes and applies taint for every node in a proof tree.

@@ -15,8 +15,10 @@ import (
 // to build the current state.
 //
 // Taint is deliberately not recomputed here: Apply runs once per event during
-// replay, so tree-wide derivation here would make replay quadratic. replayInternal
-// performs one authoritative taint.RecomputeAll pass after all events are applied.
+// replay, so tree-wide derivation here would make replay quadratic. Nor does
+// replayInternal recompute it -- no code in this package does. The one
+// authoritative taint.RecomputeAll pass is the caller's obligation after the
+// last event is applied; see Replay's doc comment for who discharges it.
 //
 // Returns an error if:
 // - The state or event is nil
