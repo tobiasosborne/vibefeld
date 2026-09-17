@@ -307,7 +307,9 @@ func TestTaintTraceCmd_ExplainsNeedsRefinementSources(t *testing.T) {
 		want   string
 	}{
 		{nodeID: "1.1", want: "node is reopened for refinement"},
-		{nodeID: "1", want: "tainted via child 1.1"},
+		// The verb is the component the source contributes: a reopened child is
+		// unresolved, not tainted.
+		{nodeID: "1", want: "unresolved via child 1.1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.nodeID, func(t *testing.T) {
@@ -443,5 +445,62 @@ func TestTaintTraceCmd_NoProof(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error when no proof exists")
+	}
+}
+
+// TestTaintTraceCmd_NamesLegacyCycle covers the one unresolved source that has
+// no non-validated node behind it: a legacy result-use cycle. Every member is
+// validated, so the walk finds nothing to blame and used to print an empty
+// "Support source(s):" block.
+func TestTaintTraceCmd_NamesLegacyCycle(t *testing.T) {
+	render.DisableColor()
+	defer render.EnableColor()
+	dir, svc := setupTaintTraceTest(t)
+	ldg, err := ledger.NewLedger(filepath.Join(dir, "ledger"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Two siblings citing each other: rejected on today's creation path, so it
+	// is built as a legacy ledger would have it.
+	left, err := node.NewNode(nid("1.1"), schema.NodeTypeClaim, "Left", schema.InferenceAssumption)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := node.NewNodeWithOptions(nid("1.2"), schema.NodeTypeClaim, "Right", schema.InferenceAssumption,
+		node.NodeOptions{Dependencies: []types.NodeID{nid("1.1")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []ledger.Event{
+		ledger.NewNodeCreated(*left),
+		ledger.NewNodeCreated(*right),
+		ledger.NewNodeDepsAmended(nid("1.1"), nil, []types.NodeID{nid("1.2")}, nil, nil, "prover1", "legacy", "", false),
+		ledger.NewNodeValidated(nid("1.1")),
+		ledger.NewNodeValidated(nid("1.2")),
+		ledger.NewNodeValidated(nid("1")),
+	} {
+		if _, err := ldg.Append(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := svc.LoadState(); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTaintTraceCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"1.1", "--dir", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "Current taint: unresolved") {
+		t.Fatalf("cycle member should be unresolved: %s", output)
+	}
+	if !strings.Contains(output, "unresolved via cycle 1.1 -> 1.2 -> 1.1") {
+		t.Errorf("expected a named cycle source, got: %s", output)
 	}
 }

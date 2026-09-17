@@ -66,11 +66,15 @@ type traceEntry struct {
 
 // supportSource is one nearest cause of the target's taint or unresolved state,
 // reached through the support relation. Edge is "self", "ancestor", "child",
-// "dependency", "validation_dep" or "missing".
+// "dependency", "validation_dep", "cycle" or "missing". Contributes is the
+// component this source hands its dependents: "tainted", "unresolved" or
+// "missing".
 type supportSource struct {
 	SourceID    string   `json:"source_id"`
 	Edge        string   `json:"edge"`
+	Contributes string   `json:"contributes,omitempty"`
 	Path        []string `json:"path,omitempty"`
+	Cycle       []string `json:"cycle,omitempty"`
 	State       string   `json:"state"`
 	Taint       string   `json:"taint,omitempty"`
 	VerdictSeq  int      `json:"verdict_seq,omitempty"`
@@ -178,6 +182,12 @@ func traceSupportSources(st *state.State, p support.Provider, target *node.Node)
 	var out []supportSource
 	seen := make(map[string]bool)
 
+	// Legacy result-use cycles are the one source the fold reports that has no
+	// non-validated node behind it: every member is validated and the walk
+	// below would exhaust itself on `seen`. Index the cyclic components so a
+	// walk that enters one names it.
+	cycleOf := cyclicComponentIndex(p)
+
 	// Own state and ancestor-context sources first.
 	if s, ok := selfSource(st, target); ok {
 		out = append(out, s)
@@ -196,7 +206,14 @@ func traceSupportSources(st *state.State, p support.Provider, target *node.Node)
 
 		n := st.GetNode(id)
 		if n == nil {
-			out = append(out, supportSource{SourceID: key, Edge: via, Path: path, Missing: true, State: "missing"})
+			out = append(out, supportSource{SourceID: key, Edge: via, Contributes: "missing", Path: path, Missing: true, State: "missing"})
+			return
+		}
+		if members, ok := cycleOf[key]; ok {
+			s := makeSource(st, n, "cycle", path)
+			s.Contributes = "unresolved"
+			s.Cycle = cyclePath(p, id, members)
+			out = append(out, s)
 			return
 		}
 		if traceSevered(n) {
@@ -214,9 +231,16 @@ func traceSupportSources(st *state.State, p support.Provider, target *node.Node)
 		}
 	}
 
-	// Start from the direct result-use edges of the target.
+	// Start from the direct result-use edges of the target. The target itself
+	// may be a member of a legacy cycle, which is why it is checked first.
 	startPath := []string{target.ID.String()}
 	if !traceSevered(target) && !traceUnresolvedState(target.EpistemicState) && !schema.IntroducesTaint(target.EpistemicState) {
+		if members, ok := cycleOf[target.ID.String()]; ok {
+			s := makeSource(st, target, "cycle", startPath)
+			s.Contributes = "unresolved"
+			s.Cycle = cyclePath(p, target.ID, members)
+			return append(out, s)
+		}
 		for _, e := range sortedEdges(p.EdgesFrom(target.ID)) {
 			walk(e.To, append(append([]string(nil), startPath...), e.To.String()), graphEdgeKindName(e.Kind))
 		}
@@ -224,9 +248,57 @@ func traceSupportSources(st *state.State, p support.Provider, target *node.Node)
 	return out
 }
 
+// cyclicComponentIndex maps every node in a legacy result-use cycle to the set
+// of its component's members.
+func cyclicComponentIndex(p support.Provider) map[string]map[string]bool {
+	out := make(map[string]map[string]bool)
+	for _, comp := range support.Prepare(p).CyclicComponents() {
+		members := make(map[string]bool, len(comp))
+		for _, id := range comp {
+			members[id.String()] = true
+		}
+		for _, id := range comp {
+			out[id.String()] = members
+		}
+	}
+	return out
+}
+
+// cyclePath returns one cycle through start inside its component, as IDs, with
+// start repeated at the end (e.g. 1.3 -> 1.5 -> 1.3). It is a depth-first
+// search restricted to the component, so a path back to start always exists.
+func cyclePath(p support.Provider, start types.NodeID, members map[string]bool) []string {
+	startKey := start.String()
+	visited := map[string]bool{startKey: true}
+	var dfs func(id types.NodeID, path []string) []string
+	dfs = func(id types.NodeID, path []string) []string {
+		for _, e := range sortedEdges(p.EdgesFrom(id)) {
+			key := e.To.String()
+			if !members[key] {
+				continue
+			}
+			if key == startKey {
+				return append(append([]string(nil), path...), startKey)
+			}
+			if visited[key] {
+				continue
+			}
+			visited[key] = true
+			if found := dfs(e.To, append(append([]string(nil), path...), key)); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+	if found := dfs(start, []string{startKey}); found != nil {
+		return found
+	}
+	return []string{startKey}
+}
+
 func selfSource(st *state.State, n *node.Node) (supportSource, bool) {
 	if traceSevered(n) {
-		return supportSource{SourceID: n.ID.String(), Edge: "self", State: string(n.EpistemicState)}, true
+		return supportSource{SourceID: n.ID.String(), Edge: "self", Contributes: "unresolved", State: string(n.EpistemicState)}, true
 	}
 	if traceUnresolvedState(n.EpistemicState) || schema.IntroducesTaint(n.EpistemicState) {
 		return makeSource(st, n, "self", []string{n.ID.String()}), true
@@ -257,11 +329,30 @@ func makeSource(st *state.State, n *node.Node, edge string, path []string) suppo
 	return supportSource{
 		SourceID:    n.ID.String(),
 		Edge:        edge,
+		Contributes: contributedComponent(n),
 		Path:        path,
 		State:       string(n.EpistemicState),
 		Taint:       string(n.TaintState),
 		VerdictSeq:  verdict,
 		RevisionSeq: revision,
+	}
+}
+
+// contributedComponent is the component this source hands its dependents, which
+// is what the fold does with it: an admitted result is taken on faith and
+// contributes `tainted`; a pending/draft/needs_refinement result, or a severed
+// node reached as a dependency, is `unresolved`. It is not the source's own
+// taint state (an admitted node's own taint is `self_admitted`).
+func contributedComponent(n *node.Node) string {
+	switch {
+	case traceSevered(n):
+		return "unresolved"
+	case traceUnresolvedState(n.EpistemicState):
+		return "unresolved"
+	case schema.IntroducesTaint(n.EpistemicState):
+		return "tainted"
+	default:
+		return "clean"
 	}
 }
 
@@ -402,9 +493,20 @@ func outputTaintTraceText(cmd *cobra.Command, target *node.Node, entries []trace
 	return nil
 }
 
+// formatSource renders one source line. The verb is the component the source
+// actually contributes ("unresolved via ..." for a pending or severed source,
+// "tainted via ..." for an admitted one), and a legacy result-use cycle names
+// the cycle instead of a single edge.
 func formatSource(s supportSource) string {
 	if s.Missing {
 		return fmt.Sprintf("missing result via %s", s.Edge)
+	}
+	verb := s.Contributes
+	if verb == "" || verb == "clean" {
+		verb = "tainted"
+	}
+	if s.Edge == "cycle" {
+		return fmt.Sprintf("%s via cycle %s", verb, strings.Join(s.Cycle, " -> "))
 	}
 	detail := s.State
 	if s.Taint != "" {
@@ -416,7 +518,7 @@ func formatSource(s supportSource) string {
 	if s.RevisionSeq > 0 {
 		detail += fmt.Sprintf(", revision seq %d", s.RevisionSeq)
 	}
-	return fmt.Sprintf("tainted via %s %s (%s)", s.Edge, s.SourceID, detail)
+	return fmt.Sprintf("%s via %s %s (%s)", verb, s.Edge, s.SourceID, detail)
 }
 
 func init() {

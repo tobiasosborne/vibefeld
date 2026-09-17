@@ -1730,11 +1730,29 @@ af taint-trace <node-id> [flags]
 | `--dir` | `-d` | string | "." | Proof directory path |
 | `--format` | `-f` | string | "text" | Output format (text or json) |
 
-**Text output** shows `Current taint`, a `Support source(s)` list such as
-`1 tainted via child 1.1 (admitted, verdict seq 5)`, and the ancestry chain. The
-source detail carries the recorded verdict sequence, or the latest statement or
-dependency amendment sequence, when one exists. **JSON output** carries
-`node_id`, `taint_state`, `trace` (the ancestry chain) and `support_sources`.
+**Text output** shows `Current taint`, a `Support source(s)` list and the
+ancestry chain. Each source line is `<source id> — <component> via <edge>
+<source id> (<state>, taint <taint>[, verdict seq N][, revision seq N])`, where
+the component is what the source contributes (`tainted` for an admitted result,
+`unresolved` for a pending, reopened or severed one), so a real run reads:
+
+```
+Taint trace for node 1
+Current taint: tainted
+
+Support source(s):
+  1.1 — tainted via child 1.1 (admitted, taint self_admitted, verdict seq 6)
+
+Ancestry (root to target):
+  1 [validated] tainted
+```
+
+A legacy result-use cycle has no non-validated node behind it, so it is named as
+the cycle instead: `1.1 — unresolved via cycle 1.1 -> 1.2 -> 1.1`. **JSON
+output** carries `node_id`, `taint_state`, `trace` (the ancestry chain) and
+`support_sources`; each source carries `edge`, `contributes`, `path`, `state`,
+`taint`, `verdict_seq` / `revision_seq` when recorded, and `cycle` for a cycle
+source.
 
 **Examples:**
 ```bash
