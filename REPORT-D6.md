@@ -42,7 +42,9 @@ clean**.
    - severed or missing dependency/validation target → `unresolved`;
    - validated target → its own support component;
    - legacy result-use SCC → `unresolved`;
-   - `local_assume` target (hypothesis-use) → nothing.
+   - `local_assume` *cited as a dependency* (hypothesis-use) → nothing; a
+     `local_assume` **child**, and a `local_assume`'s own children, are
+     ordinary result-use edges (v3.2 amendment, see the review-fix section).
    Any `unresolved` target wins; else any `tainted` target.
 5. non-severed ancestor admitted → `tainted`.
 6. otherwise `clean`.
@@ -152,12 +154,119 @@ The fuzz adds ~1.5 s to `internal/taint`.
   old `descendant_sources`; `trace` entries no longer carry per-entry
   descendant lists). Human-readable reason text changed; scripts matching it
   should update, as with 0.1.7.
-- No ledger-based command-sequence fuzz was added: the differential fuzz
-  samples the command outcomes (epistemic states and edges) directly, and the
-  independent spec is the oracle. A ledger round-trip fuzz would duplicate
-  `state.Replay` coverage without adding taint semantics.
+- ~~No ledger-based command-sequence fuzz was added~~ — added in the review-fix
+  pass below (`internal/taint/ledger_fuzz_test.go`); the original reasoning was
+  wrong, because nothing else exercised `state.Apply` ordering or stale
+  `TaintRecomputed` audit events replayed over derived taint.
 
 ## Handoff
 
 Unpushed: `git push` the branch and let CI run the corpus check. 0.1.11 is not
 tagged; the changelog entry is `Unreleased: true` alongside 0.1.10.
+
+## Review fixes (2026-09-17)
+
+Opus review of this branch (`review-d6-opus.md`), fixed here. One blocker, four
+should-fixes, three nits. Gates after every commit: `go build ./cmd/af`,
+`go vet ./...`, `go test ./...`, plus `scripts/corpus-check.sh ./af` (211
+workspaces OK) and `scripts/corpus-taint-diff.sh` against 0.1.10 (still
+0/211 workspaces, 0 nodes changed).
+
+1. **BLOCKER — a `local_assume` subtree contributed nothing.** Clause (i) of the
+   support relation excluded `local_assume` in both directions, which
+   disconnected a whole hypothesis subtree from the fold: an `af admit` under a
+   hypothesis left the enclosing proof `validated` / `clean`, a regression
+   against 0.1.10 reachable in eight CLI calls. Clause (i) is now "`t` is a
+   child of `n`" with no exclusion; only a `local_assume` cited as a
+   *dependency* (clause (ii)) is hypothesis-use and carries nothing, and a
+   `local_assume`'s own epistemic state folds like any other node's. The plan
+   carries a "v3.2 amendment (2026-09-17)" section saying so.
+
+   *Differential test, before and after.* The spec (`internal/taint/spec_test.go`
+   `specGraph.targets`) and the fuzz safety property were rewritten from the
+   amended plan text **first**, against unfixed production:
+   `go test ./internal/taint/ -run TestDifferentialFuzz_SupportTaintRules`
+   FAILED — `seed 1: production != spec: 1.1.1 production=clean spec=unresolved`
+   (a validated `local_assume` at 1.1.1 with a draft child). After the
+   production change in `internal/support/support.go` the same command passes,
+   as do the 3000 in-memory cases and the new ledger-driven cases. The
+   ledger-level regression test for the reviewer's exact eight-command scenario
+   (`internal/service.TestTaint_AdmittedStepUnderHypothesisTaintsRoot`) fails on
+   the pre-fix fold with `node 1 taint = clean, want tainted` / `node 1.1 taint
+   = clean, want tainted` and passes after; the CLI now reports the 0.1.10
+   numbers for that workspace (`1 clean, 1 self_admitted, 2 tainted`).
+
+   *Consequence for D4.* The relation is shared, so `support_current` sees the
+   same edges: a pending `local_assume` child (or a pending step under one) is
+   `TARGET_PENDING` for its parent, and a refuted `local_assume` child is
+   `TARGET_REFUTED`. `internal/support/current.go` no longer skips
+   `local_assume` on either side, and the changelog says so.
+
+2. **Refuted child.** Kept as-is by decision: a refuted child stays severed and
+   contributes nothing; the parent's stale verdict is D4's job
+   (`support_current` = `TARGET_REFUTED`, `af audit` = `SUPPORT_NOT_CURRENT`).
+   Now documented (`docs/concepts.md` rule 4, `docs/trust-model.md` "What taint
+   does not say", plan v3.2 §3) and pinned by
+   `taint.TestSupportFold_RefutedChildContributesNothing` and
+   `service.TestRefutedChild_TaintCleanButSupportNotCurrent`, which asserts the
+   two signals disagreeing on purpose.
+
+3. **Child edges vs. missing intermediate ancestors.** The support graph indexed
+   children by the literal `ID.Parent()` while the ancestor pass used
+   `nearestExistingParent`, so a node under a missing ancestor was a descendant
+   but nobody's child. `universe.effParent` now applies the same
+   nearest-present-ancestor rule, and one generated graph in four deletes a
+   non-root, non-leaf node so ID holes are fuzzed (the variant fails against the
+   old literal-parent map at seed 44).
+
+4. **`state.Replay` taint contract.** `Replay`, `ReplayWithVerify`,
+   `replayInternal` and `Apply` now state that replay does not derive taint,
+   that `taint.RecomputeAll` is the caller's obligation, and which three
+   production callers discharge it. The old `Apply` comment asserted the
+   opposite. No rename.
+
+5. **`PropagateTaint`.** Now a documented thin wrapper over `RecomputeAll`
+   (`root` is only a nil guard and the caller's event scope); there is no
+   affected set, and `docs/concepts.md`, `docs/state-machines.md`, the changelog
+   and the service comments no longer claim one. The vacuous fuzz property 3
+   (full recompute vs full recompute) is replaced by
+   `TestDifferentialFuzz_LedgerCommandSequences`: random command sequences
+   (accept, admit, refute, archive, request-refinement, amend, amend-deps
+   including `--reopen`, unvalidate, stale `taint_recomputed` events) are
+   applied to a real ledger through production `state.Apply`, then
+   `state.Replay` + `RecomputeAll` is compared against the independent spec.
+   This also fills item 9's missing "command sequences" coverage; it catches the
+   item 1 blocker independently (seed 4).
+
+6. **Changelog.** 0.1.11 now names the per-node precedence flip (own severed →
+   own admitted → own unresolved → ancestor unresolved; an `admitted` node under
+   a `pending` ancestor reports `self_admitted` where 0.1.10 reported
+   `unresolved`), the amended clause (i) and its `support_current` consequence,
+   and the nearest-present-ancestor rule.
+
+7. **Constant factor.** Adjacency lists are deduplicated and sorted once in
+   `resultUseEdges` and consumed as-is by Prepare and Walk (`sortedDeps` is
+   gone). Measured at 1000 nodes this is within run-to-run noise
+   (3.4 ms → 3.4 ms plain, 4.4 ms → 4.2 ms with one cross-dependency per node):
+   the constant is dominated by the per-node maps, not the sorts. `tarjan`'s
+   `strongConnect` is now iterative (explicit frame stack), so a deep legacy
+   chain cannot exhaust the goroutine stack. The expensive half — the per-node
+   `LoadState` + recompute inside the bulk accept / `verdicts apply` loops,
+   ~0.9 s of fold for a 100-node bulk accept on a 1000-node proof — is **not**
+   changed here; filed as **vibefeld-e8td** (P2) with the measured numbers.
+
+8. **`af taint-trace`.** (a) A node unresolved because of a legacy result-use
+   SCC used to print an empty "Support source(s):" block; cyclic components are
+   indexed and the source is named, `1.1 — unresolved via cycle 1.1 -> 1.2 ->
+   1.1` (`cmd/af.TestTaintTraceCmd_NamesLegacyCycle`). (b) Each line's verb is
+   the component the source contributes (`unresolved via` for a pending,
+   reopened or severed source, `tainted via` for an admitted one) instead of a
+   hardcoded "tainted via"; JSON sources gain `contributes` and `cycle`.
+   (c) `docs/cli-reference.md` and the changelog now show output pasted from a
+   real run, including the leading source id and `, taint <state>`.
+
+9. **Leftovers.** The unused `latestRevisionSeq` wrapper is deleted; the orphan
+   "active descendant" paragraph in `docs/concepts.md` is rewritten into the
+   boundary-node rule it was meant to state; the redundant `taint.RecomputeAll`
+   in `cmd/af/taint_trace.go` is removed (verified: `LoadState` already derives
+   taint) and its comment corrected.
