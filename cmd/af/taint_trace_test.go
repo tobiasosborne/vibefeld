@@ -278,8 +278,12 @@ func TestTaintTraceCmd_SparseTreeUsesNearestExistingParent(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if output := buf.String(); !strings.Contains(output, "Current taint: clean") {
-		t.Errorf("sparse admitted node with no direct child edge must not taint the root: %s", output)
+	output := buf.String()
+	if !strings.Contains(output, "Current taint: tainted") {
+		t.Errorf("sparse admitted node attaches to its nearest present ancestor and must taint the root: %s", output)
+	}
+	if !strings.Contains(output, "tainted via child 1.1.1") {
+		t.Errorf("expected a child source for the sparse admitted node: %s", output)
 	}
 }
 

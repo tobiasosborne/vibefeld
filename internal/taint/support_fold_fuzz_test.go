@@ -101,10 +101,12 @@ func changedIDs(nodes []*node.Node) []string {
 
 // cleanPathThroughUnvalidated walks result-use edges from every clean node and
 // reports the first target that is not a validated node. Severed children are
-// not result-use edges; local_assume targets are hypothesis-use. A missing
-// target, a severed dependency, an admitted or pending target would all make
-// the citing node non-clean, so a clean node must only rest on validated
-// results.
+// not result-use edges; a local_assume cited as a dependency is hypothesis-use.
+// local_assume nodes and their subtrees are walked like any other child (v3.2
+// amendment): an admitted step under a hypothesis must not leave the enclosing
+// proof clean. A missing target, a severed dependency, an admitted or pending
+// target would all make the citing node non-clean, so a clean node must only
+// rest on validated results.
 func cleanPathThroughUnvalidated(g *specGraph, taints map[string]node.TaintState) string {
 	var walk func(id string, seen map[string]bool) string
 	walk = func(id string, seen map[string]bool) string {
@@ -113,13 +115,13 @@ func cleanPathThroughUnvalidated(g *specGraph, taints map[string]node.TaintState
 		}
 		seen[id] = true
 		n := g.nodes[id]
-		if n.typ != schema.NodeTypeLocalAssume && !specSevered(n.epistemic) {
+		if !specSevered(n.epistemic) {
 			for child := range g.nodes {
-				if g.parent[child] != id {
+				if g.effParent(child) != id {
 					continue
 				}
 				cn := g.nodes[child]
-				if cn.typ == schema.NodeTypeLocalAssume || specSevered(cn.epistemic) {
+				if specSevered(cn.epistemic) {
 					continue
 				}
 				if cn.epistemic != schema.EpistemicValidated {
@@ -178,7 +180,7 @@ func admittedSiblingTaintsValidated(g *specGraph, taints map[string]node.TaintSt
 		// the only possible taint source.
 		hasChild := false
 		for child := range g.nodes {
-			if g.parent[child] == id {
+			if g.effParent(child) == id {
 				hasChild = true
 				break
 			}
@@ -187,19 +189,19 @@ func admittedSiblingTaintsValidated(g *specGraph, taints map[string]node.TaintSt
 			continue
 		}
 		downClean := true
-		for p := g.parent[id]; p != ""; {
+		for p := g.effParent(id); p != ""; {
 			pn := g.nodes[p]
 			if pn.epistemic != schema.EpistemicValidated {
 				downClean = false
 				break
 			}
-			p = g.parent[p]
+			p = g.effParent(p)
 		}
 		if !downClean {
 			continue
 		}
 		for sib := range g.nodes {
-			if sib == id || g.parent[sib] != g.parent[id] || !schema.IntroducesTaint(g.nodes[sib].epistemic) {
+			if sib == id || g.effParent(sib) != g.effParent(id) || !schema.IntroducesTaint(g.nodes[sib].epistemic) {
 				continue
 			}
 			if taints[id] == node.TaintTainted {

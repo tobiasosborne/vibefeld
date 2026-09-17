@@ -17,6 +17,7 @@ closed structurally.
 | Admitted or pending descendants left a validated root `clean` | 0.1.7 | Taint now propagates upward; replay recomputes taint authoritatively, so old workspaces self-heal on load |
 | A reopened (`needs_refinement`) node left the root `clean` | 0.1.7 | `needs_refinement` counts as unresolved for the node, its ancestors, and its descendants |
 | Cross-references did not carry taint, so lemma A could cite an admitted lemma B and stay `clean` | 0.1.11 | Taint is a fold over result-use edges (D6); reference and validation dependencies now carry taint exactly like children, and a severed or missing dependency target is unresolved. External references remain outside the lattice |
+| An admitted step under a `local_assume` left the enclosing proof `validated` / `clean` | 0.1.11 | The first D6 cut excluded `local_assume` from child edges in both directions, which disconnected a whole hypothesis subtree from the fold. A child is now a result-use edge whatever either node's type; only a `local_assume` *cited as a dependency* is hypothesis-use and carries nothing |
 | Statement changed after acceptance | always | `af amend` only works on `pending` nodes |
 
 ## Open (ordered by how easily an agent can exploit them)
@@ -69,6 +70,24 @@ closed structurally.
    acceptance, not a coordinated ledger rewrite. *Fix:* per-event hash
    chain, verified by `af replay --verify`. Belongs to the v0.2 kernel work
    (docs/prd.md, "v0.2 Target"). Tracked: vibefeld-8x16.
+
+## What taint does not say
+
+Taint answers one question: what is this proof currently resting on. Two
+deliberate boundaries follow from that.
+
+**A refuted or archived child is severed.** It contributes nothing to its
+parent's taint, and its own taint is `clean`, because a disproven or abandoned
+step is no longer part of what the proof rests on. This is *not* a statement
+that the parent's recorded verdict survived: a parent whose child was refuted
+after acceptance is reported by `support_current` (cause `TARGET_REFUTED`, the
+`!` marker in `af status`) and by `af audit` (`SUPPORT_NOT_CURRENT`). Reading
+taint alone on such a node is reading the wrong signal — a `validated` /
+`clean` node with `support_current: false` needs re-verification.
+
+**External references are outside the lattice.** A citation of a paper or a
+result outside the workspace carries no taint; `af audit` lists
+`PENDING_EXTERNAL_CITED_BY_VALIDATED` instead.
 
 ## Audit
 

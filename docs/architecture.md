@@ -467,7 +467,7 @@ func ComputeTaint(n *Node, graph *Graph) TaintState {
         pending/draft/needs_refinement target -> unresolved;
         severed/missing/cyclic target -> unresolved;
         validated target -> target's own support component;
-        local_assume target -> nothing
+        local_assume cited as a dependency -> nothing (hypothesis-use)
     if up is unresolved { return unresolved }
     if a non-severed ancestor or up is admitted { return tainted }
     return clean

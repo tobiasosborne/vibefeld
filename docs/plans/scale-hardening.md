@@ -545,3 +545,51 @@ text above, these win.
 5. **Cut-line discipline.** Each further mechanism proposed in review is
    accepted only with a named failure it prevents on the MIP\*=RE or
    ~200-lemma workspaces; otherwise it is filed for v0.2.
+
+## v3.2 amendment (2026-09-17)
+
+Adopted after the D6 review on `work/d6-support-taint`. Where it conflicts
+with the text above, this wins.
+
+1. **Clause (i) of the support relation loses its `local_assume`
+   exclusion.** Clause (i) now reads: **`t` is a child of `n`** — with no
+   exclusion in either direction. A parent has a result-use edge to a
+   `local_assume` child, and a `local_assume` has result-use edges to its own
+   children. Clause (ii) is unchanged: a `t ∈ n.dependencies ∪
+   n.validation_deps` that is a `local_assume` is a hypothesis-use edge and
+   carries nothing. A `local_assume` node's own epistemic state is folded
+   like any other node's (pending → `unresolved`, admitted → `tainted`,
+   validated → its own support component), which is what 0.1.10 did.
+
+   *Why.* The review found a regression against 0.1.10: as written, clause (i)
+   disconnected an entire `local_assume` subtree from the fold in both
+   directions, so an `af admit` under a hypothesis left the enclosing proof
+   `validated` / `clean` — reachable in eight ordinary CLI calls, and exactly
+   the signal taint exists for. Before D6 the up-pass was a plain subtree walk
+   and that work was visible. A hypothesis is still "introduced, not
+   established", but that is a statement about *citing* it, not about the
+   derivation carried out under it, which the enclosing proof does rely on.
+
+   *Consequences.* The relation is shared, so `support_current` (D4) sees the
+   same edges: a pending `local_assume` child, or a pending step under one,
+   now makes its parent `TARGET_PENDING`, and a refuted `local_assume` child is
+   `TARGET_REFUTED` like any other refuted child. Regression coverage:
+   `internal/service.TestTaint_AdmittedStepUnderHypothesisTaintsRoot`
+   (the reviewer's eight-command scenario at the ledger level),
+   `internal/support.TestResultUseEdges_LocalAssumeChildEdgesKept`,
+   `internal/support.TestCurrent_PendingLocalAssumeChildBreaksParent`.
+
+2. **Child edges use the nearest present ancestor.** A node whose immediate
+   parent ID is absent from the node set attaches to the nearest ancestor that
+   is present, the rule the ancestor pass already used
+   (`taint.nearestExistingParent`). Before this, a hole in the ID space made a
+   node a descendant for the ancestor component but nobody's child for the
+   support component, so an admitted node under a missing intermediate ancestor
+   was invisible to the root.
+
+3. **A refuted child stays severed.** Rule 1 ("severed children contribute
+   nothing") covers `refuted` as well as `archived`, deliberately: taint says
+   what the proof rests on, and a disproven step is not part of it. Whether the
+   parent's recorded verdict still stands is `support_current`'s question
+   (`TARGET_REFUTED`) and `af audit`'s, not taint's. This is now stated in
+   `docs/concepts.md` and `docs/trust-model.md` and pinned by a test.

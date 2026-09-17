@@ -247,3 +247,79 @@ func assertTaintChange(t *testing.T, changes []TaintChange, nodeID string, oldTa
 	}
 	t.Errorf("no taint change found for %s in %#v", nodeID, changes)
 }
+
+// TestTaint_AdmittedStepUnderHypothesisTaintsRoot is the regression test for
+// the D6 blocker found in review: with the pre-amendment support relation a
+// local_assume subtree was disconnected from the fold in both directions, so an
+// admitted step under a hypothesis left the enclosing proof validated/clean.
+// It reproduces the reviewer's eight-command scenario through the service and
+// asserts the derived taint after a full ledger replay.
+func TestTaint_AdmittedStepUnderHypothesisTaintsRoot(t *testing.T) {
+	svc, _ := setupTestProof(t)
+	root := parseNodeID(t, "1")
+	assume := parseNodeID(t, "1.1")
+	discharge := parseNodeID(t, "1.2")
+	deep := parseNodeID(t, "1.1.1")
+
+	if err := svc.ClaimNode(root, "prover", time.Hour); err != nil {
+		t.Fatalf("claim root: %v", err)
+	}
+	if err := svc.Refine(RefineSpec{
+		ParentID: root, Owner: "prover", ChildID: assume,
+		NodeType: schema.NodeTypeLocalAssume, Statement: "Assume not R",
+		Inference: schema.InferenceLocalAssume,
+	}); err != nil {
+		t.Fatalf("refine 1.1: %v", err)
+	}
+	if err := svc.Refine(RefineSpec{
+		ParentID: root, Owner: "prover", ChildID: discharge,
+		NodeType: schema.NodeTypeLocalDischarge, Statement: "Discharge",
+		Inference: schema.InferenceLocalDischarge, Dependencies: []types.NodeID{assume},
+	}); err != nil {
+		t.Fatalf("refine 1.2: %v", err)
+	}
+	if err := svc.ReleaseNode(root, "prover"); err != nil {
+		t.Fatalf("release root: %v", err)
+	}
+	if err := svc.ClaimNode(assume, "prover", time.Hour); err != nil {
+		t.Fatalf("claim 1.1: %v", err)
+	}
+	if err := svc.Refine(RefineSpec{
+		ParentID: assume, Owner: "prover", ChildID: deep,
+		NodeType: schema.NodeTypeClaim, Statement: "Deep step under the hypothesis",
+		Inference: schema.InferenceModusPonens,
+	}); err != nil {
+		t.Fatalf("refine 1.1.1: %v", err)
+	}
+	if err := svc.ReleaseNode(assume, "prover"); err != nil {
+		t.Fatalf("release 1.1: %v", err)
+	}
+	if err := svc.AdmitNode(deep); err != nil {
+		t.Fatalf("admit 1.1.1: %v", err)
+	}
+	for _, id := range []types.NodeID{assume, discharge, root} {
+		if err := svc.AcceptNode(id); err != nil {
+			t.Fatalf("accept %s: %v", id.String(), err)
+		}
+	}
+
+	st, err := svc.LoadState()
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	want := map[string]node.TaintState{
+		"1":     node.TaintTainted,      // the admitted step is under its hypothesis
+		"1.1":   node.TaintTainted,      // the hypothesis's own derivation is admitted
+		"1.1.1": node.TaintSelfAdmitted, // the escape hatch itself
+		"1.2":   node.TaintClean,        // the discharge cites the hypothesis, not the step
+	}
+	for id, w := range want {
+		n := st.GetNode(parseNodeID(t, id))
+		if n == nil {
+			t.Fatalf("node %s missing after replay", id)
+		}
+		if n.TaintState != w {
+			t.Errorf("node %s taint = %s, want %s", id, n.TaintState, w)
+		}
+	}
+}

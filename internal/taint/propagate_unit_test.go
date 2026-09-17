@@ -1001,13 +1001,15 @@ func TestPropagateTaint_SparseMissingParents(t *testing.T) {
 			t.Errorf("deepChild.TaintState = %v, want %v", deepChild.TaintState, node.TaintTainted)
 		}
 
-		// The admitted node and its descendant change. The validated root does
-		// not: under the D6 result-use relation a child edge requires the direct
-		// parent ID to exist, so a node whose intermediate ancestors are absent
-		// from allNodes contributes no support component upward. (In a real
-		// ledger the intermediate nodes exist; this is a synthetic sparse input.)
-		if len(changed) != 2 {
-			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
+		// The admitted node, its descendant and the root all change: a node
+		// whose immediate parent ID is absent is a child of its nearest present
+		// ancestor (the same rule the ancestor pass uses), so the admitted node
+		// is a child edge of the root and taints it.
+		if root.TaintState != node.TaintTainted {
+			t.Errorf("root.TaintState = %v, want %v", root.TaintState, node.TaintTainted)
+		}
+		if len(changed) != 3 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 3", len(changed))
 		}
 	})
 
@@ -1036,11 +1038,14 @@ func TestPropagateTaint_SparseMissingParents(t *testing.T) {
 			t.Errorf("deepChild.TaintState = %v, want %v", deepChild.TaintState, node.TaintUnresolved)
 		}
 
-		// Both sparse descendants change. The validated root does not: with the
-		// intermediate parent 1.1 absent there is no direct child edge to either
-		// node, so neither contributes a support component upward.
-		if len(changed) != 2 {
-			t.Errorf("PropagateTaint() returned %d changed nodes, want 2", len(changed))
+		// Both sparse descendants change, and so does the root: with 1.1 absent
+		// the pending 1.1.1 is a child of the nearest present ancestor (the
+		// root), so it makes the root unresolved.
+		if root.TaintState != node.TaintUnresolved {
+			t.Errorf("root.TaintState = %v, want %v", root.TaintState, node.TaintUnresolved)
+		}
+		if len(changed) != 3 {
+			t.Errorf("PropagateTaint() returned %d changed nodes, want 3", len(changed))
 		}
 	})
 }

@@ -178,8 +178,12 @@ func resultUseEdges(u *universe) Provider {
 
 	children := make(map[string][]*nodeInfo)
 	for _, info := range u.nodes {
-		if info.hasParent {
-			key := info.parent.String()
+		// A node whose immediate parent ID is absent attaches to its nearest
+		// present ancestor, the same rule the taint ancestor pass uses
+		// (taint.nearestExistingParent), so the two components agree on what a
+		// parent is even when the ID space has a hole.
+		if parent, ok := u.effParent(info); ok {
+			key := parent.String()
 			children[key] = append(children[key], info)
 		}
 	}
@@ -208,12 +212,17 @@ func resultUseEdges(u *universe) Provider {
 				p.dangling = append(p.dangling, DanglingDep{From: info.id, To: to, Severed: true})
 			}
 		}
-		if !info.severed && info.typ != schema.NodeTypeLocalAssume {
-			// (i) children: a parent's proof is its non-local_assume children,
-			// and a local_assume parent introduces hypotheses rather than
-			// establishing its children, so it contributes no result edge.
+		if !info.severed {
+			// (i) children: a parent's proof is its children, whatever either
+			// node's type (v3.2 amendment). A local_assume child is a step of
+			// its parent's decomposition, and a local_assume's own children are
+			// the derivation under the hypothesis, which the enclosing proof
+			// relies on; excluding either direction hid an admitted step under
+			// a hypothesis from the taint fold. Only the *hypothesis-use* edge
+			// -- citing a local_assume as a dependency, clause (ii) -- carries
+			// nothing.
 			for _, c := range children[info.id.String()] {
-				if c.typ == schema.NodeTypeLocalAssume || c.severed {
+				if c.severed {
 					continue
 				}
 				add(c.id, EdgeChild)
@@ -364,6 +373,29 @@ func (u *universe) isLocalAssume(id types.NodeID) bool {
 func (u *universe) isLocalDischarge(id types.NodeID) bool {
 	info, ok := u.nodes[id.String()]
 	return ok && info.typ == schema.NodeTypeLocalDischarge
+}
+
+// effParent returns the nearest present ancestor of a node: its immediate
+// parent when that ID exists in the universe, otherwise the nearest ancestor
+// that does. It mirrors taint.nearestExistingParent so the support graph's
+// child edges and the taint ancestor chain agree on parenthood when an
+// intermediate node is missing from the ledger. Reports false when no ancestor
+// is present (the root, or a node whose whole chain is absent).
+func (u *universe) effParent(info *nodeInfo) (types.NodeID, bool) {
+	if !info.hasParent {
+		return types.NodeID{}, false
+	}
+	id := info.parent
+	for {
+		if _, ok := u.nodes[id.String()]; ok {
+			return id, true
+		}
+		next, ok := id.Parent()
+		if !ok {
+			return types.NodeID{}, false
+		}
+		id = next
+	}
 }
 
 // childrenOf returns the children of parent sorted by child number.

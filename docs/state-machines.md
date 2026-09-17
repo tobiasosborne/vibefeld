@@ -246,14 +246,17 @@ Unlike workflow and epistemic states, taint is **computed** (not directly transi
 7. OTHERWISE taint = 'clean'
 ```
 
-The **support component** is a fold over result-use edges (non-`local_assume`
-children, reference dependencies and validation dependencies) in
-dependency-topological order: a severed child contributes nothing; an admitted
-target contributes `tainted` and is not descended; a pending/draft/needs_refinement
-target contributes `unresolved`; a severed or missing dependency target
-contributes `unresolved`; a validated target contributes its own component; a
-legacy result-use cycle is `unresolved`; and a `local_assume` target is
-hypothesis-use and carries nothing.
+The **support component** is a fold over result-use edges (every child
+whatever its type, plus reference dependencies and validation dependencies that
+are not `local_assume` nodes) in dependency-topological order: a severed
+(refuted or archived) child contributes nothing; an admitted target contributes
+`tainted` and is not descended; a pending/draft/needs_refinement target
+contributes `unresolved`; a severed or missing dependency target contributes
+`unresolved`; a validated target contributes its own component; a legacy
+result-use cycle is `unresolved`; and a `local_assume` *cited as a dependency*
+is hypothesis-use and carries nothing. A `local_assume` child, and a
+`local_assume`'s own children, are ordinary result-use edges, so an admitted
+step under a hypothesis taints the enclosing proof.
 
 ### Taint Propagation
 

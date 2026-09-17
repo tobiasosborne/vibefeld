@@ -117,14 +117,12 @@ func classifyCurrent(st State, n *node.Node, targets []Folded[SupportStatus], ch
 	// The result-use relation severs archived and refuted children (0.1.7) so
 	// that taint does not pass through an abandoned branch. support_current is
 	// stricter for the severed child: archived is cleared, but refuted is a real
-	// obstacle to its parent and so must be inspected explicitly here. Only
-	// non-local_assume children are result-use edges, and a local_assume parent
-	// contributes no result edges at all, so skip both. Ordinary (unsevered)
-	// pending children arrive through targets below.
+	// obstacle to its parent and so must be inspected explicitly here. Every
+	// child is a result-use edge whatever its type (v3.2 amendment), so a
+	// local_assume child and the children of a local_assume are inspected like
+	// any other. Ordinary (unsevered) pending children arrive through targets
+	// below.
 	for _, c := range children {
-		if n.Type == schema.NodeTypeLocalAssume || c.Type == schema.NodeTypeLocalAssume {
-			continue
-		}
 		if c.EpistemicState == schema.EpistemicRefuted {
 			return SupportStatus{Cause: CauseTargetRefuted, Node: c.ID}
 		}

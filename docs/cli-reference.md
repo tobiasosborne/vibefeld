@@ -1713,8 +1713,10 @@ af deps 1.3 -f json      # JSON output
 Explain why a node has its taint, following the D6 support relation: child,
 reference-dependency and validation-dependency edges all carry taint, each line
 names the edge kind and the source's revision, a severed dependency is
-unresolved, and an admitted result is taken on faith without descending.
-Hypothesis-use edges (`local_assume` targets) carry nothing.
+unresolved, and an admitted result is taken on faith without descending. A
+`local_assume` cited as a dependency is a hypothesis-use edge and carries
+nothing; a `local_assume` child, and the children of a `local_assume`, are
+ordinary result-use edges.
 
 **Syntax:**
 ```
@@ -1771,10 +1773,12 @@ af recompute-taint [flags]
 | `tainted` | Depends on an admitted ancestor or result (child, reference or validation dependency) |
 | `unresolved` | Self, a non-severed ancestor, or a result is pending/draft/needs_refinement, or a dependency is severed/missing/cyclic |
 
-Archived/refuted child branches are severed upward; an explicit dependency on a
+Archived/refuted child branches are severed upward and contribute nothing to
+taint (whether the parent's verdict still stands is reported by
+`support_current` / `af audit`, not by taint); an explicit dependency on a
 severed or missing node is unresolved. Upward-derived taint is not fed back
-down, so validated siblings remain uncontaminated, and `local_assume`
-hypothesis-use carries nothing.
+down, so validated siblings remain uncontaminated, and a `local_assume` cited as
+a dependency carries nothing.
 
 **Examples:**
 ```bash

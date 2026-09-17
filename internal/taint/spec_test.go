@@ -27,15 +27,18 @@ import (
 //   - a pending/draft/needs_refinement target -> unresolved;
 //   - a severed or missing dependency/validation target -> unresolved;
 //   - a validated target -> its own support component;
-//   - local_assume (hypothesis-use) edges carry nothing;
+//   - a local_assume cited as a dependency (hypothesis-use) carries nothing;
 //   - a legacy result-use cycle: members of one strongly connected component
 //     are unresolved.
 //
-// Result-use edges are: non-local_assume children (when the parent is not a
-// local_assume), and non-local_assume dependencies and validation dependencies.
-// The ancestor component is the chain of present ancestors by hierarchical ID
-// (skipping absent IDs), separate from and never pushed into the support
-// component.
+// Result-use edges are (v3.2 amendment): every non-severed child of a node,
+// whatever either node's type — a local_assume child is a step of its parent's
+// decomposition and a local_assume's own children are work the enclosing proof
+// relies on — plus non-local_assume dependencies and validation dependencies.
+// A child whose immediate parent ID is absent attaches to its nearest present
+// ancestor, the same rule the ancestor pass uses. The ancestor component is the
+// chain of present ancestors by hierarchical ID (skipping absent IDs), separate
+// from and never pushed into the support component.
 
 type specGraph struct {
 	nodes   map[string]specNode
@@ -153,9 +156,10 @@ func (g *specGraph) specSupport(id string, memo map[string]specResult) specResul
 	return r
 }
 
-// targets lists the result-use targets of id: non-severed non-local_assume
-// children when id is not a local_assume, plus non-local_assume dependency and
-// validation targets (missing targets included, matching the production graph).
+// targets lists the result-use targets of id: every non-severed child (the
+// v3.2 amendment dropped the local_assume exclusion from clause (i) in both
+// directions), plus non-local_assume dependency and validation targets (missing
+// targets included, matching the production graph).
 func (g *specGraph) targets(id string) []string {
 	if g.adj != nil {
 		if out, ok := g.adj[id]; ok {
@@ -164,13 +168,12 @@ func (g *specGraph) targets(id string) []string {
 	}
 	n := g.nodes[id]
 	var out []string
-	if !specSevered(n.epistemic) && n.typ != schema.NodeTypeLocalAssume {
+	if !specSevered(n.epistemic) {
 		for child := range g.nodes {
-			if g.parent[child] != id {
+			if g.effParent(child) != id {
 				continue
 			}
-			cn := g.nodes[child]
-			if cn.typ == schema.NodeTypeLocalAssume || specSevered(cn.epistemic) {
+			if specSevered(g.nodes[child].epistemic) {
 				continue
 			}
 			out = append(out, child)
@@ -189,6 +192,18 @@ func (g *specGraph) targets(id string) []string {
 	}
 	g.adj[id] = out
 	return out
+}
+
+// effParent is the nearest present ancestor of id. A node whose immediate
+// parent ID is absent from the graph is a child of the nearest ancestor that is
+// present, which is the rule the ancestor pass uses.
+func (g *specGraph) effParent(id string) string {
+	for p := g.parent[id]; p != ""; p = g.parent[p] {
+		if _, ok := g.nodes[p]; ok {
+			return p
+		}
+	}
+	return ""
 }
 
 // sameSCC reports whether two nodes are mutually reachable over result-use
