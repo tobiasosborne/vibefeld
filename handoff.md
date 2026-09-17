@@ -1,3 +1,47 @@
+# Handoff - 2026-09-17: v0.1.11 tagged; D6 landed; scale-hardening epic closed
+
+- **main** = v0.1.11. D6 (taint as a fold over the prepared support graph)
+  is merged: one Opus review (`docs/plans/reports/D6.md`, "Review fixes"
+  section) found a real regression in the plan's own support-relation text
+  (a `local_assume` subtree was invisible to taint, so an admitted step
+  under a hypothesis left the root validated/clean) plus 8 should-fix/nit
+  items; one Opus fix pass resolved all nine. Plan amended to v3.2
+  (`docs/plans/scale-hardening.md`, last section): clause (i) is now "t is
+  a child of n" with no local_assume exclusion; refuted/archived children
+  stay severed for taint (documented, pinned by test); child edges use the
+  nearest present ancestor. `support_current` shares the relation and now
+  sees local_assume children.
+- Checks on the release binary: gates green, corpus check OK (211),
+  `scripts/corpus-taint-diff.sh` 0/211, full `export --graph json` diff vs
+  the 0.1.10 binary 0/211 (6 corpus workspaces contain local_assume nodes).
+- Epic vibefeld-67y5 and vibefeld-cmww closed. GitHub #3: Tobias posted the
+  reply; the issue stays open until he is satisfied 0.1.11 landed.
+
+## For Tobias
+
+1. Close GitHub #3 once you have looked at v0.1.11 (`af changelog` has
+   the 0.1.11 notes; GitHub releases for 0.1.9-0.1.11 are optional).
+2. Follow-up bead vibefeld-e8td (P2): bulk accept / verdicts apply recompute
+   taint once per node (~0.9 s of fold for a 100-node bulk accept on a
+   1000-node proof, vs ~0.17 s in 0.1.10); recompute once per batch.
+3. Known nit left as-is: `af taint-trace` prints the source id twice
+   (`1.1 - tainted via child 1.1 (...)`); docs show the real output.
+   `docs/prd.md` still describes the pre-D6 taint model (historical).
+
+## Open beads worth knowing
+
+vibefeld-e8td (above); vibefeld-8rjx (fs.WriteNode corrupt-file flake under
+load); vibefeld-bsb1 (ledger lock timeout under load); the P2 feature ideas.
+
+## Process notes
+
+Today's cadence per Tobias: Opus subagents (review, then fix pass), Claude
+final check, merge; no codex, no fable subagents. Opus review took ~14 min
+and found 9 items; fix pass ~27 min. Worktree `../vibefeld-wt-d6` and
+branch `work/d6-support-taint` removed after merge.
+
+---
+
 # Handoff - 2026-09-16 (final): v0.1.10 tagged; D6 preserved on a branch for 0.1.11
 
 Tobias asked to wind up at 0.1.10. State at this handoff:
