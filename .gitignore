@@ -9,3 +9,6 @@
 # Coverage profiles
 coverage*.out
 *.coverprofile
+
+# TLC metadata when running TLC by hand (scripts/tla-check.sh uses a temp dir)
+specs/tla/states/

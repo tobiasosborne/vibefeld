@@ -1,3 +1,46 @@
+# Handoff - 2026-09-23: TLA+ smoketest (exploratory)
+
+- New: `specs/tla/LedgerCommit.tla` models the write path (lock-free load,
+  `ledger.lock` O_EXCL + token, CAS, per-event rename, crash, `af reap
+  --ledger-lock` / `RemoveIfStale`, lock-free readers). 11 models in
+  `specs/tla/models/*.cfg`, each declaring `\* expect: pass|violates <Inv>`;
+  `scripts/tla-check.sh` runs them all (~30 s) and fails on any mismatch.
+  README has the step-to-Go mapping and results. Bead vibefeld-w2mt.1
+  (closed); vibefeld-8fm6 now depends on it.
+- TLA+ tools: tla2tools v1.7.4 (TLC 2.19) at `~/.local/share/tla/`,
+  wrappers `tlc`/`pcal`/`sany` in `~/.local/bin`; the script downloads the
+  pinned jar to `~/.cache/vibefeld/` elsewhere.
+- **Model findings (not yet reproduced in Go):**
+  - vibefeld-y9cp (P1 bug): two concurrent `af reap --ledger-lock` (or one,
+    if the holder pid is not visible) can unlink a fresh lock; two writers
+    then pass the CAS on the same tail and `os.Rename` replaces an
+    acknowledged event. Contiguous ledger, undetectable. A no-replace
+    publish (link / RENAME_NOREPLACE) stops the loss in the model; the reap
+    itself also needs to be atomic.
+  - vibefeld-5hn4 (P3): non-atomic readdir could make a lock-free reader
+    report a gap (exit 4) on a healthy ledger; untested on ext4.
+- Also noticed while scoping (not filed): `internal/lock` has no production
+  importer (claims are ledger events); `assumptions/`, `external/`,
+  `pending-defs/` are written outside the ledger; `docs/architecture.md`
+  calls validated/admitted final though the code allows unvalidate/unadmit.
+
+## For Tobias
+
+1. Decide whether to chase vibefeld-y9cp next (Go repro, then fix).
+2. Scope beyond this smoketest (event semantics, trace validation) is in
+   vibefeld-8fm6 / the session notes; nothing further is committed.
+
+Gates: `go build`, `go test ./...` green; `scripts/tla-check.sh` 11/11.
+
+**Beads drift (not fixed):** the local beads DB and the tracked
+`.beads/issues.jsonl` have diverged in both directions (git has e.g.
+vibefeld-8rjx, -bsb1, -cmww, -67y5 that the DB lacks; the DB has the v0.2
+epic vibefeld-w2mt and children that git lacks). A full `bd export` would
+have dropped ~40 issues from git, so this commit only appends the three new
+issues. Reconcile before the next full export.
+
+---
+
 # Handoff - 2026-09-17: v0.1.11 tagged; D6 landed; scale-hardening epic closed
 
 - **main** = v0.1.11. D6 (taint as a fold over the prepared support graph)
